@@ -1,0 +1,14 @@
+{
+  "meta": {
+    "label": "Admin Toolkit",
+    "description": "Dataiku DSS administration toolkit with diagnostics, visualizations, and management tools",
+    "icon": "icon-bar-chart"
+  },
+  "baseType": "STANDARD",
+  "hasBackend": "true",
+  "enableJavascriptModules": "true",
+  "noJSSecurity": "true",
+  "useContextualCodeEnv": "true",
+  "standardWebAppLibraries": ["dataiku"],
+  "params": []
+}

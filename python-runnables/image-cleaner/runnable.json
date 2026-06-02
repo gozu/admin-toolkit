@@ -1,0 +1,48 @@
+{
+    "meta": {
+        "label": "Image Cleaner",
+        "description": "Detect, scan, and optionally delete stale Dataiku container images from the target host's container registry. Runs on the target DSS host so cloud metadata and registry credentials are local to that host.",
+        "icon": "icon-trash"
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": [
+        {
+            "name": "operation",
+            "label": "Operation",
+            "description": "detect-provider, scan, or delete.",
+            "type": "STRING",
+            "mandatory": true
+        },
+        {
+            "name": "provider",
+            "label": "Provider",
+            "description": "Registry provider: ecr, acr, or gar. ECR is currently implemented for remote macro operations.",
+            "type": "STRING",
+            "mandatory": false
+        },
+        {
+            "name": "cutoff",
+            "label": "Cutoff date",
+            "description": "YYYY-MM-DD. Images pushed before this date are considered deletable.",
+            "type": "STRING",
+            "mandatory": false
+        },
+        {
+            "name": "images_json",
+            "label": "Images JSON",
+            "description": "JSON array of {repositoryName, imageDigest} entries for delete.",
+            "type": "STRING",
+            "mandatory": false
+        },
+        {
+            "name": "dryRun",
+            "label": "Dry run",
+            "description": "When true, validate delete candidates without deleting.",
+            "type": "BOOLEAN",
+            "mandatory": false,
+            "defaultValue": true
+        }
+    ]
+}

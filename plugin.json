@@ -1,0 +1,571 @@
+{
+    "id": "admin-toolkit",
+    "version": "0.4.491",
+    "meta": {
+        "label": "Admin Toolkit",
+        "description": "Dataiku DSS administration toolkit with diagnostics, visualizations, and management tools. Supports multi-instance scanning: configure remote DSS hosts as plugin presets and switch between them from the top-bar dropdown. The toolkit will offer to create an ADMINTOOLKIT project on each host the first time a macro-using module is opened.",
+        "author": "Alex Kaos",
+        "icon": "icon-bar-chart"
+    },
+    "paramsPythonSetup": "dbhealth-connection-choices.py",
+    "params": [
+        {
+            "name": "sep_security",
+            "label": "Advanced Actions",
+            "description": "Create your secret on <a href=\"https://gozu.github.io/hash.html\" target=\"_blank\" rel=\"noopener noreferrer\">the secret generator</a> \u2014 type a password there, then paste the result below.",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "red_actions_secret",
+            "label": "Advanced Actions secret",
+            "description": "Paste the secret from the link above to enable advanced actions (delete / replace / migrate / deploy / send). Leave empty to keep them locked.",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
+            "name": "sep_dbhealth",
+            "label": "DB Health",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "dbhealth_connection",
+            "label": "RuntimeDB Connection",
+            "description": "PostgreSQL connection for DB Health tool (typically 'runtimedb'). Select (None) to disable DB Health.",
+            "type": "SELECT",
+            "getChoicesFromPython": true,
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
+            "name": "dbhealth_password",
+            "label": "DB Password (unencrypted)",
+            "type": "PASSWORD",
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
+            "name": "sep_outreach",
+            "label": "Outreach",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "outreach_mail_channel",
+            "label": "Mail Channel ID",
+            "description": "DSS messaging channel ID used for outreach emails (e.g. 'mail-channel-1'). Leave empty to auto-select the first available channel.",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
+            "name": "sep_outreach_thresholds",
+            "label": "Advanced Options",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "thresh_inactive_project_days",
+            "label": "Inactive Project Days",
+            "description": "Projects inactive longer than this are flagged.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 180
+        },
+        {
+            "name": "thresh_code_env_count_unhealthy",
+            "label": "Code Env Sprawl Threshold",
+            "description": "Projects with more code envs than this are flagged.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 1
+        },
+        {
+            "name": "thresh_code_studio_count_unhealthy",
+            "label": "Code Studio Sprawl Threshold",
+            "description": "Projects with more code studios than this are flagged.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 7
+        },
+        {
+            "name": "thresh_empty_project_kb",
+            "label": "Empty Project Size (KB)",
+            "description": "Projects larger than this (in KB) are not considered empty.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 1024
+        },
+        {
+            "name": "thresh_orphan_notebook_min",
+            "label": "Orphan Notebook Minimum",
+            "description": "Minimum notebook count in a project before orphan check triggers.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 5
+        },
+        {
+            "name": "thresh_large_flow_objects",
+            "label": "Large Flow Object Count",
+            "description": "Projects with more flow objects than this are flagged as large flows.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 100
+        },
+        {
+            "name": "thresh_overshared_project_permissions",
+            "label": "Overshared Project Permission Count",
+            "description": "Projects with more permission entries than this are flagged as overshared.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 10
+        },
+        {
+            "name": "thresh_high_freq_scenario_minutes",
+            "label": "High-Freq Scenario Threshold (min)",
+            "description": "Scenarios running more often than this (minutes) are flagged.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 30
+        },
+        {
+            "name": "thresh_disabled_features_cutoff",
+            "label": "Disabled Features Cutoff",
+            "description": "More disabled features than this triggers a warning.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 5
+        },
+        {
+            "name": "sep_health_scoring",
+            "label": "Health & Scoring",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "thresh_open_files_minimum",
+            "label": "Open Files Minimum",
+            "description": "Minimum open files limit before flagging.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 65535
+        },
+        {
+            "name": "thresh_java_heap_minimum_mb",
+            "label": "Java Heap Minimum (MB)",
+            "description": "Minimum Java heap per component (MB) before flagging.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 2048
+        },
+        {
+            "name": "thresh_python_critical_below",
+            "label": "Python Critical Below",
+            "description": "Python versions below this are flagged critical.",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": "3.8"
+        },
+        {
+            "name": "thresh_python_warning_below",
+            "label": "Python Warning Below",
+            "description": "Python versions below this are flagged warning.",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": "3.9"
+        },
+        {
+            "name": "thresh_spark_version_minimum",
+            "label": "Spark Version Minimum",
+            "description": "Spark major version below this is flagged.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 3
+        },
+        {
+            "name": "thresh_project_count_warning",
+            "label": "Project Count Warning",
+            "description": "More projects than this triggers a warning.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 500
+        },
+        {
+            "name": "thresh_filesystem_warning_pct",
+            "label": "Filesystem Warning %",
+            "description": "Filesystem usage above this triggers a warning.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 70
+        },
+        {
+            "name": "thresh_filesystem_critical_pct",
+            "label": "Filesystem Critical %",
+            "description": "Filesystem usage above this triggers a critical alert.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 90
+        },
+        {
+            "name": "thresh_health_warning_below",
+            "label": "Health Warning Below",
+            "description": "Overall health score below this triggers a warning.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 80
+        },
+        {
+            "name": "thresh_health_critical_below",
+            "label": "Health Critical Below",
+            "description": "Overall health score below this is critical.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 50
+        },
+        {
+            "name": "thresh_deprecated_python_prefixes",
+            "label": "Deprecated Python Prefixes",
+            "description": "Comma-separated version prefixes to flag (e.g. 2.,3.6,3.7).",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": "2.,3.6,3.7"
+        },
+        {
+            "name": "sep_health_scoring_weights",
+            "label": "Health Scoring Weights",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "weight_code_envs",
+            "label": "Weight: Code Environments",
+            "description": "Weight for code environments category.",
+            "type": "DOUBLE",
+            "mandatory": false,
+            "defaultValue": 0.35
+        },
+        {
+            "name": "weight_project_footprint",
+            "label": "Weight: Project Footprint",
+            "description": "Weight for project footprint category.",
+            "type": "DOUBLE",
+            "mandatory": false,
+            "defaultValue": 0.3
+        },
+        {
+            "name": "weight_system_capacity",
+            "label": "Weight: System Capacity",
+            "description": "Weight for system capacity category.",
+            "type": "DOUBLE",
+            "mandatory": false,
+            "defaultValue": 0.15
+        },
+        {
+            "name": "weight_security_isolation",
+            "label": "Weight: Security Isolation",
+            "description": "Weight for security isolation category.",
+            "type": "DOUBLE",
+            "mandatory": false,
+            "defaultValue": 0.1
+        },
+        {
+            "name": "weight_version_currency",
+            "label": "Weight: Version Currency",
+            "description": "Weight for version currency category.",
+            "type": "DOUBLE",
+            "mandatory": false,
+            "defaultValue": 0.05
+        },
+        {
+            "name": "weight_runtime_config",
+            "label": "Weight: Runtime Config",
+            "description": "Weight for runtime config category.",
+            "type": "DOUBLE",
+            "mandatory": false,
+            "defaultValue": 0.05
+        },
+        {
+            "name": "sep_log_analysis",
+            "label": "Log Analysis",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "log_lines_before",
+            "label": "Log Context Lines Before",
+            "description": "Context lines to show before each error.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 10
+        },
+        {
+            "name": "log_lines_after",
+            "label": "Log Context Lines After",
+            "description": "Context lines to show after each error.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 100
+        },
+        {
+            "name": "log_grouping_window_sec",
+            "label": "Log Grouping Window (sec)",
+            "description": "Errors within this window (seconds) are grouped.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 5
+        },
+        {
+            "name": "log_max_errors",
+            "label": "Max Log Errors",
+            "description": "Maximum unique error signatures to display.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 5
+        },
+        {
+            "name": "log_ai_system_prompt",
+            "label": "AI Log Analysis System Prompt",
+            "description": "System prompt for AI log analysis.",
+            "type": "TEXTAREA",
+            "mandatory": false,
+            "defaultValue": "You are an expert Dataiku DSS administrator and backend engineer analyzing error logs from a DSS instance's backend.log file.\n\nIMPORTANT RULES:\n- Only analyze lines with log4j level WARN, ERROR, FATAL, or SEVERE. Completely ignore INFO, DEBUG, and TRACE lines.\n- For severity, use the EXACT log4j level from the log line (e.g. [WARN], [ERROR], [FATAL]). Do NOT invent your own severity like \"Critical\" or \"Informational\" \u2014 only use what the log says.\n- Do NOT mention things that are working correctly or look normal. Do NOT speculate about potential issues not evidenced in the log data.\n- If there are no WARN/ERROR/FATAL/SEVERE entries, simply state that no issues were found.\n\nBefore answering, think step-by-step through each error carefully. For each error pattern:\n- Reason through what component, subsystem, or configuration could cause it.\n- Search the web for the specific error message, Java exception, or stack trace to find known issues, Dataiku Knowledge Base articles, community posts, or release notes.\n- Cross-reference with official Dataiku documentation (doc.dataiku.com) for configuration guidance, known limitations, and recommended fixes.\n- Only after researching, provide your diagnosis and remediation.\n\nYour task:\n1. Identify the root cause of each distinct error or warning pattern.\n2. Tag each issue with its log4j level exactly as it appears in the log (e.g. ERROR, WARN, FATAL).\n3. Provide specific, actionable remediation steps, including links to relevant documentation or KB articles when available.\n4. Group related errors sharing a root cause.\n5. Highlight data loss risk, security issues, or service outage indicators.\n6. Do not write anything about INFO level logs, only WARN and above.\n\nFormat: markdown with headings per issue (include the log4j level in the heading, e.g. \"## [ERROR] FileNotFoundException in saved model lookup\"), bullet points for remediation. Start with a 2-3 sentence Executive Summary."
+        },
+        {
+            "name": "sep_scan_display",
+            "label": "Scan & Display",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "scan_large_file_threshold_gb",
+            "label": "Large File Threshold (GB)",
+            "description": "Files larger than this (GB) are flagged during dir scans.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 100
+        },
+        {
+            "name": "scan_dir_tree_default_depth",
+            "label": "Dir Tree Default Depth",
+            "description": "Default directory tree scan depth.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 3
+        },
+        {
+            "name": "scan_file_viewer_max_lines",
+            "label": "File Viewer Max Lines",
+            "description": "Maximum lines shown in file viewer.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 10000
+        },
+        {
+            "name": "scan_syntax_highlight_max_kb",
+            "label": "Syntax Highlight Max (KB)",
+            "description": "Max file size (KB) for syntax highlighting.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 500
+        },
+        {
+            "name": "sep_performance",
+            "label": "Performance",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "perf_parallel_workers_default",
+            "label": "Default Worker Threads",
+            "description": "Default thread pool size for parallel API calls.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 8
+        },
+        {
+            "name": "perf_parallel_workers_max",
+            "label": "Max Worker Threads",
+            "description": "Maximum worker threads allowed.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 32
+        },
+        {
+            "name": "perf_code_env_detail_workers",
+            "label": "Code Env Detail Workers",
+            "description": "Workers for fetching code env details.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 8
+        },
+        {
+            "name": "perf_code_env_timeout_ms",
+            "label": "Code Env Timeout (ms)",
+            "description": "Backend timeout for code env analysis.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 600000
+        },
+        {
+            "name": "perf_project_footprint_timeout_ms",
+            "label": "Project Footprint Timeout (ms)",
+            "description": "Backend timeout for project footprint scan.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 600000
+        },
+        {
+            "name": "perf_cache_ttl_overview",
+            "label": "Cache TTL: Overview (sec)",
+            "description": "Cache TTL for overview endpoint.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 600
+        },
+        {
+            "name": "perf_cache_ttl_projects",
+            "label": "Cache TTL: Projects (sec)",
+            "description": "Cache TTL for projects endpoint.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 600
+        },
+        {
+            "name": "perf_cache_ttl_code_envs",
+            "label": "Cache TTL: Code Envs (sec)",
+            "description": "Cache TTL for code envs endpoint.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 600
+        },
+        {
+            "name": "perf_codenvclean_thread_max",
+            "label": "Codenvclean Max Threads",
+            "description": "Maximum threads for code env cleanup tool.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 20
+        },
+        {
+            "name": "perf_tracking_issue_page_size",
+            "label": "Issue Fetch Page Size",
+            "description": "Number of issues fetched per page.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 500
+        },
+        {
+            "name": "perf_cache_ttl_connections",
+            "label": "Cache TTL: Connections (sec)",
+            "description": "Cache TTL for connections endpoint.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 600
+        },
+        {
+            "name": "perf_cache_ttl_users",
+            "label": "Cache TTL: Users (sec)",
+            "description": "Cache TTL for users endpoint.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 600
+        },
+        {
+            "name": "perf_cache_ttl_license",
+            "label": "Cache TTL: License (sec)",
+            "description": "Cache TTL for license endpoint.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 600
+        },
+        {
+            "name": "perf_cache_ttl_usage_full",
+            "label": "Cache TTL: Code Env Usage (sec)",
+            "description": "Cache TTL for code env usage endpoint.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 600
+        },
+        {
+            "name": "perf_cache_ttl_outreach",
+            "label": "Cache TTL: Outreach (sec)",
+            "description": "Cache TTL for outreach data endpoint.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 600
+        },
+        {
+            "name": "perf_cache_ttl_inactive",
+            "label": "Cache TTL: Inactive Projects (sec)",
+            "description": "Cache TTL for inactive projects endpoint.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 600
+        },
+        {
+            "name": "perf_cache_ttl_plugins",
+            "label": "Cache TTL: Plugins (sec)",
+            "description": "Cache TTL for plugins endpoint.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 600
+        },
+        {
+            "name": "perf_cache_ttl_log_errors",
+            "label": "Cache TTL: Log Errors (sec)",
+            "description": "Cache TTL for log errors endpoint.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 600
+        },
+        {
+            "name": "perf_cache_ttl_dir_tree",
+            "label": "Cache TTL: Dir Tree (sec)",
+            "description": "Cache TTL for directory tree endpoint.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 600
+        },
+        {
+            "name": "perf_fe_timeout_code_envs",
+            "label": "FE Timeout: Code Envs (ms)",
+            "description": "Frontend timeout for code envs fetch (ms).",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 620000
+        },
+        {
+            "name": "perf_fe_timeout_project_footprint",
+            "label": "FE Timeout: Project Footprint (ms)",
+            "description": "Frontend timeout for project footprint (ms).",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 620000
+        },
+        {
+            "name": "perf_fe_timeout_projects",
+            "label": "FE Timeout: Projects (ms)",
+            "description": "Frontend timeout for projects list (ms).",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 45000
+        },
+        {
+            "name": "perf_fe_timeout_logs",
+            "label": "FE Timeout: Log Errors (ms)",
+            "description": "Frontend timeout for log errors (ms).",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 30000
+        },
+        {
+            "name": "perf_fe_timeout_llm_analysis",
+            "label": "FE Timeout: AI Log Analysis (ms)",
+            "description": "Timeout for AI log analysis (ms).",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 120000
+        },
+        {
+            "name": "perf_sqlite_connect_timeout",
+            "label": "SQLite Connect Timeout (sec)",
+            "description": "Timeout for SQLite connections (sec).",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 30
+        }
+    ]
+}

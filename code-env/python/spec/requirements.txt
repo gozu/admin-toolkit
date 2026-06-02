@@ -1,0 +1,10 @@
+flask
+python-dateutil
+boto3
+azure-identity
+google-auth
+google-cloud-artifact-registry
+psycopg2-binary
+numpy
+pandas
+rich

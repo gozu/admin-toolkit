@@ -1,0 +1,38 @@
+import { useState } from 'react';
+import { useDiag } from '../../context/DiagContext';
+import { MemoryChart, MemoryAnalysisCard } from '../index';
+import { ProcessMetricsTable } from '../ProcessMetricsTable';
+import { ProcessUsageByUser } from '../ProcessUsageByUser';
+
+export function MemoryPage() {
+  const { state } = useDiag();
+  const { parsedData } = state;
+  const [selectedUser, setSelectedUser] = useState<string | null>(null);
+
+  const hasMemory = parsedData.memoryInfo && Object.keys(parsedData.memoryInfo).length > 0;
+
+  return (
+    <div className="w-full py-4 space-y-6">
+      {hasMemory ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <MemoryChart />
+          <MemoryAnalysisCard />
+        </div>
+      ) : (
+        <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-8 text-center">
+          <p className="text-[var(--text-secondary)]">No memory data available.</p>
+        </div>
+      )}
+      <ProcessUsageByUser
+        variant="memory"
+        selectedUser={selectedUser}
+        onSelectUser={setSelectedUser}
+      />
+      <ProcessMetricsTable
+        variant="memory"
+        filterUser={selectedUser}
+        onClearFilter={() => setSelectedUser(null)}
+      />
+    </div>
+  );
+}

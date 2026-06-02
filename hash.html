@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Admin Toolkit — Destructive Actions password hash</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #2d333b;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --teal: #2AB1AC;
+    --red: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .card {
+    width: 100%;
+    max-width: 560px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; line-height: 1.5; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 16px 0 6px; }
+  input[type="password"], input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    outline: none;
+  }
+  input:focus { border-color: var(--teal); }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 18px; }
+  button {
+    appearance: none;
+    border: 1px solid var(--teal);
+    background: rgba(42, 177, 172, 0.15);
+    color: var(--teal);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  button:hover { background: rgba(42, 177, 172, 0.28); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .result {
+    margin-top: 20px;
+    display: none;
+  }
+  .result.show { display: block; }
+  .hash {
+    width: 100%;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    word-break: break-all;
+    background: var(--bg);
+    border: 1px solid var(--teal);
+    border-radius: 8px;
+    padding: 12px;
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .copy {
+    margin-top: 10px;
+    border-color: var(--border);
+    background: transparent;
+    color: var(--text);
+  }
+  .copy:hover { border-color: var(--teal); }
+  .err { color: var(--red); font-size: 13px; margin-top: 12px; min-height: 16px; }
+  .note {
+    margin-top: 22px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .note strong { color: var(--text); }
+  code { color: var(--teal); font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Destructive Actions — password hash</h1>
+    <p class="sub">
+      Type the password you want to gate destructive actions with. This page derives a
+      salted PBKDF2 hash <strong>entirely in your browser</strong> — the password is never
+      sent anywhere. Paste the resulting hash into the Admin Toolkit plugin settings field
+      <em>“Destructive Actions password (hash)”</em>.
+    </p>
+
+    <form id="form">
+      <label for="pw">Password</label>
+      <input id="pw" type="password" autocomplete="new-password" placeholder="Choose a password" />
+      <label for="pw2">Confirm password</label>
+      <input id="pw2" type="password" autocomplete="new-password" placeholder="Re-type it" />
+      <div class="row">
+        <button id="go" type="submit">Generate hash</button>
+        <label style="margin:0; font-weight:400; color:var(--muted); display:flex; align-items:center; gap:6px;">
+          <input id="show" type="checkbox" style="width:auto;" /> show
+        </label>
+      </div>
+    </form>
+
+    <div class="err" id="err"></div>
+
+    <div class="result" id="result">
+      <label>Hash to paste into plugin settings</label>
+      <div class="hash" id="hash"></div>
+      <button class="copy" id="copy" type="button">Copy to clipboard</button>
+    </div>
+
+    <div class="note">
+      Format: <code>pbkdf2_sha256$&lt;iterations&gt;$&lt;base64-salt&gt;$&lt;base64-derived&gt;</code><br />
+      Algorithm: PBKDF2-HMAC-SHA-256 · 600,000 iterations · random 16-byte salt · 32-byte key.<br />
+      <strong>Offline-safe:</strong> this page makes no network requests. You can save it and
+      open it from disk.
+    </div>
+  </div>
+
+<script>
+  const ITERATIONS = 600000;
+  const DKLEN = 32;
+  const SALT_BYTES = 16;
+
+  function b64(bytes) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
+  }
+
+  async function derive(password, salt) {
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw', enc.encode(password), { name: 'PBKDF2' }, false, ['deriveBits']
+    );
+    const bits = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', hash: 'SHA-256', salt: salt, iterations: ITERATIONS },
+      keyMaterial,
+      DKLEN * 8
+    );
+    return new Uint8Array(bits);
+  }
+
+  const form = document.getElementById('form');
+  const pw = document.getElementById('pw');
+  const pw2 = document.getElementById('pw2');
+  const show = document.getElementById('show');
+  const err = document.getElementById('err');
+  const result = document.getElementById('result');
+  const hashEl = document.getElementById('hash');
+  const copyBtn = document.getElementById('copy');
+  const go = document.getElementById('go');
+
+  show.addEventListener('change', () => {
+    const t = show.checked ? 'text' : 'password';
+    pw.type = t; pw2.type = t;
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    err.textContent = '';
+    result.classList.remove('show');
+    const p = pw.value;
+    if (!p) { err.textContent = 'Enter a password.'; return; }
+    if (p !== pw2.value) { err.textContent = 'Passwords do not match.'; return; }
+    if (!crypto || !crypto.subtle) {
+      err.textContent = 'Web Crypto is unavailable — open this page over https:// or from a local file.';
+      return;
+    }
+    go.disabled = true;
+    go.textContent = 'Generating…';
+    try {
+      const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
+      const derived = await derive(p, salt);
+      const phc = 'pbkdf2_sha256$' + ITERATIONS + '$' + b64(salt) + '$' + b64(derived);
+      hashEl.textContent = phc;
+      result.classList.add('show');
+    } catch (ex) {
+      err.textContent = 'Failed to derive hash: ' + (ex && ex.message ? ex.message : ex);
+    } finally {
+      go.disabled = false;
+      go.textContent = 'Generate hash';
+    }
+  });
+
+  copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(hashEl.textContent);
+      copyBtn.textContent = 'Copied ✓';
+      setTimeout(() => { copyBtn.textContent = 'Copy to clipboard'; }, 1500);
+    } catch {
+      const r = document.createRange();
+      r.selectNodeContents(hashEl);
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(r);
+    }
+  });
+</script>
+</body>
+</html>

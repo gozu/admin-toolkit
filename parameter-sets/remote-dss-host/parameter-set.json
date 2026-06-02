@@ -1,0 +1,49 @@
+/* Parameter set descriptor: remote DSS hosts the Admin Toolkit can scan. */
+{
+    "meta": {
+        "label": "Remote DSS Hosts",
+        "description": "A remote DSS instance this toolkit can scan.",
+        "icon": "icon-server"
+    },
+
+    "defaultDefinableInline": false,
+    "defaultDefinableAtProjectLevel": false,
+
+    "params": [
+        {
+            "name": "label",
+            "label": "Label",
+            "description": "Display name for this host in the top-bar dropdown.",
+            "type": "STRING",
+            "mandatory": true
+        },
+        {
+            "name": "url",
+            "label": "URL (https://host:port)",
+            "description": "Base URL of the remote DSS public API (no trailing slash).",
+            "type": "STRING",
+            "mandatory": true
+        },
+        {
+            "name": "apiKey",
+            "label": "Admin API Key",
+            "description": "Admin-level personal or global API key on the remote DSS. NOTE: stored as plaintext — DSS encrypts PASSWORD-typed plugin params with a key the webapp backend can't access, so we use STRING here so the webapp can build the remote DSSClient. Only DSS admins can read plugin settings, so the key is admin-only.",
+            "type": "STRING",
+            "mandatory": true
+        },
+        {
+            "name": "verifyTls",
+            "label": "Verify TLS",
+            "description": "Verify the remote's TLS certificate. Turn off only for dev hosts with self-signed certs.",
+            "type": "BOOLEAN",
+            "defaultValue": true
+        },
+        {
+            "name": "backupProjectKey",
+            "label": "Backup project key",
+            "description": "Optional. Managed-folder backups use this project on the remote host. Leave blank to auto-detect the running Admin Toolkit webapp project.",
+            "type": "STRING",
+            "mandatory": false
+        }
+    ]
+}

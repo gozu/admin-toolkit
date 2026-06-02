@@ -1,0 +1,11 @@
+{
+    "meta": {
+        "label": "Host metrics",
+        "description": "Read CPU, memory, filesystem, limits, OS, install, restart, Python, and DSS version metadata from the target host. Runs as the dataiku service account so it can read local host files regardless of webapp impersonation.",
+        "icon": "icon-server"
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": []
+}

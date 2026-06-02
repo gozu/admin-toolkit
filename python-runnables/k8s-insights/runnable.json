@@ -1,0 +1,48 @@
+{
+    "meta": {
+        "label": "K8S Insights",
+        "description": "Deterministic rule engine that audits any DSS-managed EKS cluster: collects kubectl + filesystem probes, runs 30+ rules, returns ranked findings with concrete remediation. Runs on the target DSS host so kubectl and the local DSS managed-cluster directory are reachable.",
+        "icon": "icon-cogs"
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": [
+        {
+            "name": "cluster_id",
+            "label": "Cluster ID",
+            "description": "DSS managed cluster identifier (directory under $DIP_HOME/clusters/). When empty, the first cluster found is used.",
+            "type": "STRING",
+            "mandatory": false
+        },
+        {
+            "name": "operation",
+            "label": "Operation",
+            "description": "audit (default), list-clusters, cluster-health, or describe-pod.",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": "audit"
+        },
+        {
+            "name": "rules_filter",
+            "label": "Rule filter (CSV)",
+            "description": "Optional comma-separated list of rule IDs to evaluate. Empty = all rules.",
+            "type": "STRING",
+            "mandatory": false
+        },
+        {
+            "name": "namespace",
+            "label": "Namespace",
+            "description": "Namespace of the pod to inspect (describe-pod operation only).",
+            "type": "STRING",
+            "mandatory": false
+        },
+        {
+            "name": "pod_name",
+            "label": "Pod name",
+            "description": "Name of the pod to inspect (describe-pod operation only).",
+            "type": "STRING",
+            "mandatory": false
+        }
+    ]
+}

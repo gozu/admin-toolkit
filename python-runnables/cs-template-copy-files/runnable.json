@@ -1,0 +1,24 @@
+{
+    "meta": {
+        "label": "Code Studio template-replace: copy libName files",
+        "description": "Copy resource files from one Code Studio libName directory to another. Runs as the dataiku service account so it can write into <DIP_HOME>/lib/code_studio/ regardless of webapp impersonation.",
+        "icon": "icon-files-o"
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": [
+        {
+            "name": "src_dir",
+            "label": "Source directory (absolute path)",
+            "type": "STRING",
+            "mandatory": true
+        },
+        {
+            "name": "dst_dir",
+            "label": "Destination directory (absolute path)",
+            "type": "STRING",
+            "mandatory": true
+        }
+    ]
+}

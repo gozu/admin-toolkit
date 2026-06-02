@@ -1,0 +1,40 @@
+{
+    "meta": {
+        "label": "DB Health: query runtimedb",
+        "description": "Run a curated PostgreSQL operation against the DSS runtimedb. Runs as the dataiku service account on the target host so psycopg2 can authenticate via the local socket + .pgpass.",
+        "icon": "icon-database"
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": [
+        {
+            "name": "operation",
+            "label": "Operation",
+            "description": "Operation to perform: test-password, run-query, list-tables.",
+            "type": "STRING",
+            "mandatory": true
+        },
+        {
+            "name": "sql",
+            "label": "SQL query",
+            "description": "SQL to execute for run-query (read-only enforced).",
+            "type": "STRING",
+            "mandatory": false
+        },
+        {
+            "name": "connection",
+            "label": "DSS connection name",
+            "description": "Name of the DSS PostgreSQL connection to read credentials from (defaults to plugin setting).",
+            "type": "STRING",
+            "mandatory": false
+        },
+        {
+            "name": "password",
+            "label": "Unencrypted password (optional)",
+            "description": "Override password when DSS-stored credential cannot be decrypted (e.g. user-bound key).",
+            "type": "STRING",
+            "mandatory": false
+        }
+    ]
+}

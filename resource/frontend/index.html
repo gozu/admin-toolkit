@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dataiku Diagnostics</title>
+    <!-- Google Fonts preconnect — actual families (Roboto + JetBrains Mono) are loaded via src/index.css -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Loaders.css for pacman animation -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/loaders.css/0.1.2/loaders.min.css">
+    <style>
+      /* Pacman loader styling */
+      .loader-container {
+        width: 100px;
+        height: 100px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 0 auto;
+      }
+
+      .pacman > div:nth-child(1),
+      .pacman > div:nth-child(2) {
+        border-top-color: #00b5aa !important;
+        border-left-color: #00b5aa !important;
+        border-bottom-color: #00b5aa !important;
+      }
+
+      .pacman > div:nth-child(3),
+      .pacman > div:nth-child(4),
+      .pacman > div:nth-child(5) {
+        background-color: #00b5aa !important;
+      }
+
+      /* Log viewer styling */
+      .log-viewer {
+        color: #f8f8f2;
+        line-height: 1.4;
+      }
+
+      .log-viewer .log-error {
+        color: #ff6b6b;
+        background-color: rgba(255, 107, 107, 0.1);
+      }
+
+      .log-viewer .log-warn {
+        color: #ffd93d;
+      }
+
+      .log-viewer .log-info {
+        color: #6bcb77;
+      }
+
+      .log-viewer .log-debug {
+        color: #a8a8a8;
+      }
+
+      .log-viewer .log-trace {
+        color: #666666;
+      }
+
+      .log-viewer .log-default {
+        color: #f8f8f2;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

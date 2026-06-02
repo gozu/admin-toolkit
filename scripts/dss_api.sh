@@ -96,13 +96,17 @@ if [[ -n "${DATA_PAYLOAD}" ]]; then
   )
 fi
 
-for form_arg in "${FORM_ARGS[@]}"; do
-  curl_args+=(-F "${form_arg}")
-done
+if [[ ${#FORM_ARGS[@]} -gt 0 ]]; then
+  for form_arg in "${FORM_ARGS[@]}"; do
+    curl_args+=(-F "${form_arg}")
+  done
+fi
 
-for hdr in "${EXTRA_HEADERS[@]}"; do
-  curl_args+=(-H "${hdr}")
-done
+if [[ ${#EXTRA_HEADERS[@]} -gt 0 ]]; then
+  for hdr in "${EXTRA_HEADERS[@]}"; do
+    curl_args+=(-H "${hdr}")
+  done
+fi
 
 if [[ "${RAW_ONLY}" == "true" ]]; then
   curl "${curl_args[@]}"

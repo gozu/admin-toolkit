@@ -40,9 +40,9 @@ WEBAPP_PROJECT_KEY ?= $(shell cat .dss-project-key 2>/dev/null || echo PYTHONAUD
 WEBAPP_ID ?= $(shell cat .dss-webapp-id 2>/dev/null || echo nlJn2Gm)
 
 # PROD deploy (locked down) wrappers
-SECURE_DIST_DIR ?= /data/dist
-SECURE_PLUGIN_WRAPPER ?= /data/dss-secure-actions/bin/dss_plugin_update_admin-toolkit
-SECURE_RESTART_WRAPPER ?= /data/dss-secure-actions/bin/dss_webapp_restart_DIAG_PARSER_BRANCH1
+SECURE_DIST_DIR ?= $(CURDIR)/dist
+SECURE_PLUGIN_WRAPPER ?= /Users/akaos/Documents/dss-secure-actions/bin/dss_plugin_update_admin-toolkit
+SECURE_RESTART_WRAPPER ?= /Users/akaos/Documents/dss-secure-actions/bin/dss_webapp_restart_DIAG_PARSER_BRANCH1
 SECURE_WEBAPP_ID ?= Gv9CLFn
 
 # ----------------------------
@@ -146,8 +146,12 @@ clean: dist-clean
 
 secure-copy-zip:
 	@mkdir -p "$(SECURE_DIST_DIR)"
-	@cp -f "dist/$(archive_file_name)" "$(SECURE_DIST_DIR)/$(archive_file_name)"
-	@echo "[SUCCESS] Copied plugin ZIP to $(SECURE_DIST_DIR)/$(archive_file_name)"
+	@if [ "$$(cd "$(SECURE_DIST_DIR)" && pwd)" != "$$(cd dist && pwd)" ]; then \
+		cp -f "dist/$(archive_file_name)" "$(SECURE_DIST_DIR)/$(archive_file_name)"; \
+		echo "[SUCCESS] Copied plugin ZIP to $(SECURE_DIST_DIR)/$(archive_file_name)"; \
+	else \
+		echo "[INFO] SECURE_DIST_DIR is the local dist/ — using built ZIP in place."; \
+	fi
 
 deploy-prod-secure: secure-copy-zip
 	@echo "[START] Deploying to PROD (secure wrappers)..."

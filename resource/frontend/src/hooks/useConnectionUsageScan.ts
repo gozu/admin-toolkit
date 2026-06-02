@@ -6,6 +6,7 @@ import {
   connectionUsageScanStore,
   getConnectionUsageScanController,
   setConnectionUsageScanController,
+  type ConnectionUsageScanError,
 } from '../state/connectionUsageScanStore';
 import type {
   ConnectionLocalFilesystemUsage,
@@ -15,7 +16,8 @@ import type {
 
 export function useConnectionUsageScan() {
   const { setParsedData } = useDiag();
-  const { scanning, scanned, total, error } = connectionUsageScanStore.use();
+  const { scanning, scanned, total, error, scanErrors, failedProjectCount, scannedProjectCount } =
+    connectionUsageScanStore.use();
 
   const scan = useCallback(async () => {
     if (connectionUsageScanStore.get().scanning) return;
@@ -36,13 +38,24 @@ export function useConnectionUsageScan() {
       updatedAt: new Date().toISOString(),
     });
 
-    connectionUsageScanStore.patch({ scanning: true, error: null, scanned: null, total: null });
+    connectionUsageScanStore.patch({
+      scanning: true,
+      error: null,
+      scanned: null,
+      total: null,
+      scanErrors: [],
+      failedProjectCount: 0,
+      scannedProjectCount: 0,
+    });
     setParsedData({
       connectionDatasetUsages: [],
       connectionLlmUsages: [],
       connectionLocalFilesystemUsages: [],
       connectionUsageTotal: null,
       connectionUsageScanned: null,
+      connectionUsageScanErrors: [],
+      connectionUsageFailedProjectCount: 0,
+      connectionUsageScannedProjectCount: 0,
       connectionUsageLoading: runningLifecycle(0, 'Discovering projects'),
     });
 
@@ -77,15 +90,27 @@ export function useConnectionUsageScan() {
             connectionUsageLoading: runningLifecycle(pct, `Scanned ${n} / ${scanTotal} projects`),
           });
         } else if (event === 'done') {
-          connectionUsageScanStore.patch({ scanned: scanTotal });
           const dataset = (data.datasetUsages || []) as ConnectionUsageItem[];
           const llm = (data.llmUsages || []) as ConnectionUsageItem[];
           const fs = (data.localFilesystemUsages || []) as ConnectionLocalFilesystemUsage[];
+          const scanErrors = (data.scanErrors || []) as ConnectionUsageScanError[];
+          const failedProjectCount = Number(data.failedProjectCount) || 0;
+          const scannedProjectCount =
+            data.scannedProjectCount != null ? Number(data.scannedProjectCount) : scanTotal;
+          connectionUsageScanStore.patch({
+            scanned: scanTotal,
+            scanErrors,
+            failedProjectCount,
+            scannedProjectCount,
+          });
           setParsedData({
             connectionDatasetUsages: dataset,
             connectionLlmUsages: llm,
             connectionLocalFilesystemUsages: fs,
             connectionUsageScanned: scanTotal,
+            connectionUsageScanErrors: scanErrors,
+            connectionUsageFailedProjectCount: failedProjectCount,
+            connectionUsageScannedProjectCount: scannedProjectCount,
             connectionUsageLoading: {
               phase: 'done',
               startedAt,
@@ -125,5 +150,15 @@ export function useConnectionUsageScan() {
     setParsedData({ connectionUsageLoading: { phase: 'queued' } });
   }, [setParsedData]);
 
-  return { scanning, scanned, total, error, scan, abort };
+  return {
+    scanning,
+    scanned,
+    total,
+    error,
+    scanErrors,
+    failedProjectCount,
+    scannedProjectCount,
+    scan,
+    abort,
+  };
 }

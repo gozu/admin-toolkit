@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDiag } from '../context/DiagContext';
 import { useConnectionUsageScan } from '../hooks/useConnectionUsageScan';
+import { ScanIncompleteNotice } from './ScanIncompleteNotice';
 import { dssUrls } from '../utils/codeEnvUsageLinks';
 import type {
   ConnectionDatasetUsage,
@@ -29,7 +30,8 @@ export function ConnectionUsageCard() {
   const { state } = useDiag();
   const { parsedData } = state;
 
-  const { scanning, scanned, total, error, scan, abort } = useConnectionUsageScan();
+  const { scanning, scanned, total, error, failedProjectCount, scannedProjectCount, scan, abort } =
+    useConnectionUsageScan();
 
   const datasetUsages = useMemo(() => parsedData.connectionDatasetUsages || [], [parsedData.connectionDatasetUsages]);
   const llmUsages = useMemo(() => parsedData.connectionLlmUsages || [], [parsedData.connectionLlmUsages]);
@@ -81,6 +83,12 @@ export function ConnectionUsageCard() {
           )}
         </div>
       </section>
+
+      {/* Scan incomplete notice (self-hides when no failures) */}
+      <ScanIncompleteNotice
+        failedProjectCount={failedProjectCount}
+        scannedProjectCount={scannedProjectCount}
+      />
 
       {/* Progress */}
       {isLoading && (

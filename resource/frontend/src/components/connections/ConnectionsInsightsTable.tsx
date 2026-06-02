@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useDiag } from '../../context/DiagContext';
+import { ScanIncompleteNotice } from '../ScanIncompleteNotice';
 import { DataGrid } from '../common/DataGrid';
 import type { ColumnDef } from '../../utils/dataGridTypes';
 import {
@@ -238,6 +239,16 @@ export function ConnectionsInsightsTable() {
           )}
         </div>
       </div>
+
+      {/* Scan incomplete notice (self-hides when no failures) */}
+      {(parsedData.connectionUsageFailedProjectCount ?? 0) > 0 && (
+        <div className="px-4 pt-3">
+          <ScanIncompleteNotice
+            failedProjectCount={parsedData.connectionUsageFailedProjectCount}
+            scannedProjectCount={parsedData.connectionUsageScannedProjectCount}
+          />
+        </div>
+      )}
 
       <DataGrid
         rows={filtered}

@@ -9,6 +9,7 @@ import { ProjectCodeEnvUsageModal } from './ProjectCodeEnvUsageModal';
 import { ProjectSavedModelsModal } from './ProjectSavedModelsModal';
 import { ProjectCodeStudiosModal } from './ProjectCodeStudiosModal';
 import { ProjectFolderBreakdownModal } from './ProjectFolderBreakdownModal';
+import { ScanIncompleteNotice } from './ScanIncompleteNotice';
 import { dssUrls } from '../utils/codeEnvUsageLinks';
 import { normalizeModelValue } from '../utils/modelKind';
 import type { ColumnDef } from '../utils/dataGridTypes';
@@ -134,6 +135,7 @@ export function ProjectFootprintTable() {
     state.parsedData.projectFootprintSummary?.instanceAvgProjectGB ??
     rows[0]?.instanceAvgProjectGB ??
     0;
+  const footprintSummary = state.parsedData.projectFootprintSummary;
 
   const ownerEmailByLogin = useMemo(() => {
     const m = new Map<string, string>();
@@ -366,6 +368,14 @@ export function ProjectFootprintTable() {
 
   const headerExtra = (
     <>
+      {(footprintSummary?.failedProjectCount ?? 0) > 0 && (
+        <div className="px-4 py-2 border-b border-[var(--border-glass)]">
+          <ScanIncompleteNotice
+            failedProjectCount={footprintSummary?.failedProjectCount}
+            scannedProjectCount={footprintSummary?.scannedProjectCount}
+          />
+        </div>
+      )}
       <div className="px-4 py-2 text-sm text-[var(--text-secondary)] border-b border-[var(--border-glass)]">
         Average project size on instance:{' '}
         <span className="font-mono text-[var(--text-primary)]">{avgProjectGb.toFixed(2)} GB</span>

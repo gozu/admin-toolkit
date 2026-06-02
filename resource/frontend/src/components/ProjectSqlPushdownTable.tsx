@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Card } from './Card';
+import { ScanIncompleteNotice } from './ScanIncompleteNotice';
 import { getBackendUrl } from '../utils/api';
 import {
   getSqlPushdownScan,
@@ -213,6 +214,14 @@ export function ProjectSqlPushdownTable() {
         warehouse-sized data through the DSS host. Recipes below qualify for
         pushdown but are running on the DSS engine.
       </div>
+
+      {scan.status === 'done' && (
+        <ScanIncompleteNotice
+          failedProjectCount={scan.failedProjectCount}
+          scannedProjectCount={scan.scannedProjectCount}
+          className="mx-4 my-3"
+        />
+      )}
 
       {isScanning && (
         <div className="px-4 py-3 border-b border-[var(--border-glass)]">

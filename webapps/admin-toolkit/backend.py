@@ -4853,12 +4853,14 @@ def _collect_project_code_env_usage(
         'usageBreakdownByProject': usage_breakdown_by_project,
         'usageDetailsByProject': usage_details_by_project,
         'envMetaByKey': env_meta_by_key,
-        'codeStudiosByProject': _list_code_studios_by_project(client, project_info),
+        'codeStudiosByProject': _list_code_studios_by_project(client, project_info, progress_cb),
     }
 
 
 def _list_code_studios_by_project(
-    client: Any, project_info: Dict[str, Dict[str, str]]
+    client: Any,
+    project_info: Dict[str, Dict[str, str]],
+    progress_cb: Optional[Callable[..., None]] = None,
 ) -> Dict[str, List[Dict[str, str]]]:
     """Return {project_key: [{id, name}, ...]} for all known projects."""
     studios_by_project: Dict[str, List[Dict[str, str]]] = {}
@@ -4872,20 +4874,28 @@ def _list_code_studios_by_project(
                 cs_name = str(raw.get('name') or cs_id)
                 if cs_id:
                     entries.append({'id': cs_id, 'name': cs_name})
-        except Exception:
+        except Exception as exc:
+            app.logger.debug("[footprint-map] code studio list failed project=%s: %s", pk, exc)
+            _notify_progress(progress_cb, 'project_code_studios_error', f"code studio list failed: {exc}", 'warn', pk)
             entries = []
         studios_by_project[pk] = entries
     return studios_by_project
 
 
-def _count_permissions_by_project(client: Any, project_info: Dict[str, Dict[str, str]]) -> Dict[str, int]:
+def _count_permissions_by_project(
+    client: Any,
+    project_info: Dict[str, Dict[str, str]],
+    progress_cb: Optional[Callable[..., None]] = None,
+) -> Dict[str, int]:
     """Return {project_key: permission_entry_count} for all known projects."""
     counts: Dict[str, int] = {}
     for pk in project_info:
         try:
             raw = client.get_project(pk).get_settings().get_raw()
             counts[pk] = len(raw.get('permissions') or [])
-        except Exception:
+        except Exception as exc:
+            app.logger.debug("[footprint-map] permission count failed project=%s: %s", pk, exc)
+            _notify_progress(progress_cb, 'project_permissions_error', f"permission count failed: {exc}", 'warn', pk)
             counts[pk] = 0
     return counts
 
@@ -5743,6 +5753,7 @@ def api_connection_usages():
         dataset_conns = []
         llm_conns = []
         local_fs_objects = []
+        errors = []
 
         # 1. Dataset connections
         try:
@@ -5768,6 +5779,7 @@ def api_connection_usages():
                         })
         except Exception as e:
             app.logger.debug("[conn_usage] list_datasets failed for %s: %s", project_key, e)
+            errors.append({'projectKey': project_key, 'area': 'datasets', 'error': str(e)[:240]})
 
         # 2. Managed folders using local filesystem connections
         try:
@@ -5797,6 +5809,7 @@ def api_connection_usages():
                     })
         except Exception as e:
             app.logger.debug("[conn_usage] list_managed_folders failed for %s: %s", project_key, e)
+            errors.append({'projectKey': project_key, 'area': 'folders', 'error': str(e)[:240]})
 
         # 3. LLM recipe connections
         try:
@@ -5829,14 +5842,17 @@ def api_connection_usages():
                             })
                 except Exception as e:
                     app.logger.debug("[conn_usage] recipe %s/%s failed: %s", project_key, r.get('name'), e)
+                    errors.append({'projectKey': project_key, 'area': 'recipes', 'error': str(e)[:240]})
         except Exception as e:
             app.logger.debug("[conn_usage] list_recipes failed for %s: %s", project_key, e)
+            errors.append({'projectKey': project_key, 'area': 'recipes', 'error': str(e)[:240]})
 
         return {
             'projectKey': project_key,
             'datasetConns': dataset_conns,
             'llmConns': llm_conns,
             'localFilesystemObjects': local_fs_objects,
+            'errors': errors,
         }
 
     def generate():
@@ -5876,6 +5892,7 @@ def api_connection_usages():
         llm_map: Dict[str, List[Dict]] = {}       # conn -> [{projectKey, projectName, recipeName, recipeType, llmId}]
         local_fs_usages: List[Dict[str, Any]] = []
         scanned = 0
+        scan_errors = []
 
         workers = min(8, max(1, len(project_keys)))
         pool = ThreadPoolExecutor(max_workers=workers)
@@ -5885,8 +5902,10 @@ def api_connection_usages():
                 pk = futures[future]
                 try:
                     result = future.result()
-                except Exception:
+                except Exception as exc:
                     result = {'projectKey': pk, 'datasetConns': [], 'llmConns': []}
+                    scan_errors.append({'projectKey': pk, 'area': 'scan', 'error': str(exc)[:240]})
+                scan_errors.extend(result.get('errors', []) or [])
 
                 pname = project_names.get(pk, pk)
                 owner = str(project_owner_by_key.get(pk) or 'Unknown')
@@ -5959,6 +5978,9 @@ def api_connection_usages():
         total_ms = int((time.time() - t0) * 1000)
         yield "event: done\ndata: %s\n\n" % json.dumps({
             'total_ms': total_ms,
+            'scanErrors': scan_errors,
+            'failedProjectCount': len({e['projectKey'] for e in scan_errors}),
+            'scannedProjectCount': len(project_keys),
             'datasetUsages': dataset_usages,
             'llmUsages': llm_usages,
             'localFilesystemUsages': sorted(
@@ -6050,6 +6072,7 @@ def api_sql_pushdown_audit():
         client = _thread_client()
         proj = client.get_project(project_key)
         findings: List[Dict[str, Any]] = []
+        errors: List[Dict[str, Any]] = []
 
         ds_map = _dataset_map_for(proj)
 
@@ -6057,7 +6080,8 @@ def api_sql_pushdown_audit():
             recipes = proj.list_recipes() or []
         except Exception as e:
             app.logger.debug("[sql_pushdown] list_recipes failed for %s: %s", project_key, e)
-            return {'projectKey': project_key, 'findings': findings}
+            errors.append({'projectKey': project_key, 'area': 'recipes', 'error': str(e)[:240]})
+            return {'projectKey': project_key, 'findings': findings, 'errors': errors}
 
         for r in recipes:
             if not isinstance(r, dict):
@@ -6156,8 +6180,9 @@ def api_sql_pushdown_audit():
                 })
             except Exception as e:
                 app.logger.debug("[sql_pushdown] recipe %s/%s failed: %s", project_key, rname, e)
+                errors.append({'projectKey': project_key, 'area': 'recipe', 'error': str(e)[:240]})
 
-        return {'projectKey': project_key, 'findings': findings}
+        return {'projectKey': project_key, 'findings': findings, 'errors': errors}
 
     def generate():
         t0 = time.time()
@@ -6191,6 +6216,7 @@ def api_sql_pushdown_audit():
         yield "event: init\ndata: %s\n\n" % json.dumps({'total': len(project_keys)})
 
         per_project: Dict[str, List[Dict[str, Any]]] = {}
+        scan_errors = []
         scanned = 0
 
         workers = min(8, max(1, len(project_keys)))
@@ -6201,10 +6227,12 @@ def api_sql_pushdown_audit():
                 pk = futures[future]
                 try:
                     result = future.result()
-                except Exception:
+                except Exception as exc:
                     result = {'projectKey': pk, 'findings': []}
+                    scan_errors.append({'projectKey': pk, 'area': 'scan', 'error': str(exc)[:240]})
                 if result.get('findings'):
                     per_project[pk] = result['findings']
+                scan_errors.extend(result.get('errors', []) or [])
                 scanned += 1
                 if scanned % 20 == 0 or scanned == len(project_keys):
                     yield "event: progress\ndata: %s\n\n" % json.dumps({'scanned': scanned})
@@ -6250,6 +6278,9 @@ def api_sql_pushdown_audit():
         yield "event: done\ndata: %s\n\n" % json.dumps({
             'total_ms': total_ms,
             'ownerGroups': owner_groups,
+            'scanErrors': scan_errors,
+            'failedProjectCount': len({e['projectKey'] for e in scan_errors}),
+            'scannedProjectCount': len(project_keys),
         })
 
     return Response(stream_with_context(generate()),
@@ -8151,11 +8182,36 @@ def api_project_footprint():
                 'project_footprint_done',
                 f"project footprint done rows={len(project_rows)} selected={len(project_keys)} total={total_project_count} timedOut={benchmark_timed_out}",
             )
+            # Surface per-project scan failures collected during the footprint/usage phases.
+            _scan_error_area = {
+                'project_footprint_fetch_error': 'footprint',
+                'project_footprint_fetch_timeout': 'footprint',
+                'project_code_studios_error': 'code_studios',
+                'project_permissions_error': 'permissions',
+                'project_saved_models_error': 'saved_models',
+            }
+            scan_errors: List[Dict[str, Any]] = []
+            failed_project_keys: set = set()
+            for ev in benchmark_events:
+                area = _scan_error_area.get(ev.get('step'))
+                if not area:
+                    continue
+                pk = ev.get('projectKey') or ''
+                scan_errors.append({
+                    'projectKey': pk,
+                    'area': area,
+                    'error': str(ev.get('message') or '')[:240],
+                })
+                if pk:
+                    failed_project_keys.add(pk)
             _update_progress_summary(True)
             _finish_progress('project_footprint', progress_run_id, status='done', summary=benchmark_summary)
             return {
                 'projects': project_rows,
                 'summary': summary,
+                'scanErrors': scan_errors,
+                'failedProjectCount': len(failed_project_keys),
+                'scannedProjectCount': len(project_keys),
             }
         except Exception as exc:
             timed_out_or_error = True
@@ -9068,7 +9124,8 @@ def _cex_scan(
 
         try:
             recipes = project.list_recipes() or []
-        except Exception:
+        except Exception as exc:
+            event('recipes_error', str(exc)[:200], project_key, 'warn')
             recipes = []
         for recipe_item in recipes:
             if not isinstance(recipe_item, dict):
@@ -9144,7 +9201,8 @@ def _cex_scan(
 
         try:
             webapps = project.list_webapps() or []
-        except Exception:
+        except Exception as exc:
+            event('webapps_error', str(exc)[:200], project_key, 'warn')
             webapps = []
         for webapp_item in webapps:
             webapp_raw = _cex_item_raw(webapp_item)
@@ -9185,7 +9243,8 @@ def _cex_scan(
         try:
             lab = client._perform_json('GET', f'/projects/{project_key}/models/lab/')
             tasks = lab.get('mlTasks') if isinstance(lab, dict) else []
-        except Exception:
+        except Exception as exc:
+            event('ml_tasks_error', str(exc)[:200], project_key, 'warn')
             tasks = []
         for task in tasks or []:
             if not isinstance(task, dict):
@@ -9236,8 +9295,8 @@ def _cex_scan(
         ):
             try:
                 non_carrier_counts[key] += len(getter() or [])
-            except Exception:
-                pass
+            except Exception as exc:
+                event(f'{key}_error', str(exc)[:200], project_key, 'warn')
 
         try:
             studios = project.list_code_studios(as_type='listitems') or []
@@ -9280,6 +9339,17 @@ def _cex_scan(
     project_rows = _cex_group_project_rows(usage_rows)
     project_override_count = len([row for row in project_rows if row.get('projectOverrides')])
 
+    scan_errors = [
+        {
+            'projectKey': str(ev.get('projectKey')),
+            'area': str(ev.get('area') or ev.get('step') or 'scan'),
+            'error': str(ev.get('message') or ev.get('error') or '')[:240],
+        }
+        for ev in events
+        if ev.get('level') in ('warn', 'error') and ev.get('projectKey') and ev.get('projectKey') != '*'
+    ]
+    failed_project_count = len({err['projectKey'] for err in scan_errors})
+
     return {
         'configs': configs,
         'usageRows': usage_rows,
@@ -9301,6 +9371,9 @@ def _cex_scan(
         },
         'nonCarrierCounts': non_carrier_counts,
         'events': events[-500:],
+        'scanErrors': scan_errors,
+        'failedProjectCount': failed_project_count,
+        'scannedProjectCount': len(catalog),
         'timedOut': timed_out,
         'elapsedMs': round((time.time() - started) * 1000.0, 2),
         'configNames': config_names,
@@ -9925,7 +9998,7 @@ def api_container_execs_replace():
 
 @app.route('/api/tools/inactive-projects', methods=['GET'])
 def api_tools_inactive_projects():
-    """Fast endpoint: list inactive projects using only list_projects() (~0.1s)."""
+    """List inactive projects using lastModifiedOn derived from a per-project git-log walk (via _list_projects_catalog) for edit-accurate timestamps; cached."""
     from datetime import datetime, timezone
 
     def _load():
@@ -10770,6 +10843,29 @@ def api_llm_audit():
             summary = llm_audit.summarize_rows(classified_rows)
             summary['pricingFetchedAt'] = pricing_fetched_at_iso
             summary['totalElapsedMs'] = round((time.time() - started) * 1000.0, 2)
+
+            # Surface per-project scan failures collected during phases 4/4b.
+            _scan_error_area = {
+                'scan_project_failed': 'scan',
+                'usage_scan_project_failed': 'usage_scan',
+            }
+            scan_errors: List[Dict[str, Any]] = []
+            failed_project_keys: set = set()
+            for ev in events:
+                area = _scan_error_area.get(ev.get('step'))
+                if not area:
+                    continue
+                pk = ev.get('projectKey') or ''
+                scan_errors.append({
+                    'projectKey': pk,
+                    'area': area,
+                    'error': str(ev.get('message') or '')[:240],
+                })
+                if pk:
+                    failed_project_keys.add(pk)
+            summary['scanErrors'] = scan_errors
+            summary['failedProjectCount'] = len(failed_project_keys)
+            summary['scannedProjectCount'] = total_projects
 
             set_summary(100, 'done',
                         projectsTotal=total_projects,

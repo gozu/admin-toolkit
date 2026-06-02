@@ -11,6 +11,9 @@ export interface SqlPushdownScanState {
   status: 'idle' | 'scanning' | 'done' | 'error';
   error: string | null;
   elapsedMs: number | null;
+  scanErrors?: string[];
+  failedProjectCount?: number;
+  scannedProjectCount?: number;
   // Stored timestamps so lifecycle resolution stays pure at render time.
   startedAt: string | null;
   finishedAt: string | null;
@@ -121,6 +124,9 @@ async function runScan() {
           ownerGroups: (data.ownerGroups || []) as SqlPushdownOwnerGroup[],
           scanned: store.get().total,
           elapsedMs: Number(data.total_ms) || null,
+          scanErrors: (data.scanErrors || []) as string[],
+          failedProjectCount: Number(data.failedProjectCount) || 0,
+          scannedProjectCount: Number(data.scannedProjectCount) || 0,
           finishedAt: new Date().toISOString(),
         });
       }

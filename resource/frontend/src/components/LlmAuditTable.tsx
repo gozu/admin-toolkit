@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useDiag } from '../context/DiagContext';
 import { getBackendUrl } from '../utils/api';
+import { ScanIncompleteNotice } from './ScanIncompleteNotice';
 import { DataGrid } from './common/DataGrid';
 import type { ColumnDef } from '../utils/dataGridTypes';
 import type { LlmAuditRow, LlmAuditStatus, LlmAuditUsageAsset } from '../types';
@@ -496,6 +497,15 @@ export function LlmAuditTable() {
             </div>
           </div>
         </div>
+
+        {(audit?.failedProjectCount ?? 0) > 0 && (
+          <div className="px-4 py-3 border-b border-[var(--border-glass)]">
+            <ScanIncompleteNotice
+              failedProjectCount={audit?.failedProjectCount}
+              scannedProjectCount={audit?.scannedProjectCount}
+            />
+          </div>
+        )}
 
         {isLoading && (
           <div className="px-4 py-3 border-b border-[var(--border-glass)]">

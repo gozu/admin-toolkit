@@ -174,12 +174,18 @@ export interface SqlPushdownOwnerGroup {
   ownerEmail: string | null;
   totalRecipes: number;
   projects: SqlPushdownProjectFinding[];
+  scanErrors?: { projectKey: string; area: string; error: string }[];
+  failedProjectCount?: number;
+  scannedProjectCount?: number;
 }
 
 export interface ProjectFootprintSummary {
   instanceProjectRiskAvg: number;
   instanceAvgProjectGB: number;
   projectCount: number;
+  scanErrors?: { projectKey: string; area: string; error: string }[];
+  failedProjectCount?: number;
+  scannedProjectCount?: number;
   benchmark?: {
     enabled?: boolean;
     projectLimit?: number;
@@ -702,6 +708,9 @@ export interface ParsedData {
   connectionLocalFilesystemUsages?: ConnectionLocalFilesystemUsage[];
   connectionUsageTotal?: number | null;
   connectionUsageScanned?: number | null;
+  connectionUsageScanErrors?: { projectKey: string; area: string; error: string }[];
+  connectionUsageFailedProjectCount?: number;
+  connectionUsageScannedProjectCount?: number;
   userStats?: UserStats;
   usersByProjects?: Record<string, string>;
   users?: User[];
@@ -850,6 +859,9 @@ export interface ContainerExecScanResult {
   elapsedMs?: number;
   configNames?: string[];
   globalDefaultConfig?: string | null;
+  scanErrors?: { projectKey: string; area: string; error: string }[];
+  failedProjectCount?: number;
+  scannedProjectCount?: number;
 }
 
 export interface ContainerExecReplaceResult {
@@ -1117,6 +1129,9 @@ export interface LlmAuditResponse {
   summary: LlmAuditSummary;
   pricingFetchedAt?: string | null;
   events?: Array<{ tMs: number; level: string; step: string; message: string; projectKey?: string }>;
+  scanErrors?: { projectKey: string; area: string; error: string }[];
+  failedProjectCount?: number;
+  scannedProjectCount?: number;
 }
 
 export type K8sSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info';

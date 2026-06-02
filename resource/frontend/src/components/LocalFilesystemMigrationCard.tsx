@@ -3,6 +3,7 @@ import { useDiag } from '../context/DiagContext';
 import { Modal } from './Modal';
 import { useModal } from '../hooks/useModal';
 import { useConnectionUsageScan } from '../hooks/useConnectionUsageScan';
+import { ScanIncompleteNotice } from './ScanIncompleteNotice';
 import { fetchJson } from '../utils/api';
 import type {
   CodeEnvUsageRef,
@@ -48,7 +49,8 @@ type LocalFilesystemOwnerGroup = {
 export function LocalFilesystemMigrationCard() {
   const { state } = useDiag();
   const { parsedData } = state;
-  const { scanning, scanned, total, error, scan, abort } = useConnectionUsageScan();
+  const { scanning, scanned, total, error, failedProjectCount, scannedProjectCount, scan, abort } =
+    useConnectionUsageScan();
 
   const usages = useMemo(
     () => parsedData.connectionLocalFilesystemUsages || [],
@@ -84,6 +86,12 @@ export function LocalFilesystemMigrationCard() {
           )}
         </div>
       </section>
+
+      {/* Scan incomplete notice (self-hides when no failures) */}
+      <ScanIncompleteNotice
+        failedProjectCount={failedProjectCount}
+        scannedProjectCount={scannedProjectCount}
+      />
 
       {/* Progress */}
       {isLoading && (

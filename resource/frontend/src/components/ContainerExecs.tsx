@@ -3,6 +3,7 @@ import { Modal } from './Modal';
 import { useModal } from '../hooks/useModal';
 import { fetchJson, getBackendUrl } from '../utils/api';
 import { ProgressIndicator } from './common/ProgressIndicator';
+import { ScanIncompleteNotice } from './ScanIncompleteNotice';
 import { containerExecsScan } from '../state/containerExecsStore';
 import type { ReactNode } from 'react';
 import type {
@@ -487,6 +488,11 @@ export function ContainerExecs() {
         <p className="text-sm text-[var(--text-muted)]">
           Explicit project and job-level overrides that differ from the DSS instance default.
         </p>
+        <ScanIncompleteNotice
+          failedProjectCount={data?.failedProjectCount}
+          scannedProjectCount={data?.scannedProjectCount}
+          className="mt-2"
+        />
       </div>
 
       {error && (

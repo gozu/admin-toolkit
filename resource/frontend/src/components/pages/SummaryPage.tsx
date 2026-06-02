@@ -26,9 +26,6 @@ function runtimeCardForIssue(issueId: string): RuntimeCard | null {
   if (issueId.startsWith('java-memory-')) {
     return { id: 'javaMemoryLimits-table', title: 'Java Memory Settings', dataKey: 'javaMemoryLimits' };
   }
-  if (issueId === 'impersonation-disabled' || issueId.startsWith('features-disabled-')) {
-    return { id: 'enabledSettings-table', title: 'Enabled Settings', dataKey: 'enabledSettings' };
-  }
   if (issueId === 'cgroups-disabled' || issueId === 'cgroups-empty-targets') {
     return { id: 'cgroupSettings-table', title: 'CGroups Config', dataKey: 'cgroupSettings' };
   }

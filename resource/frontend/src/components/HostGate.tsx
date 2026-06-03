@@ -160,13 +160,7 @@ export function HostGate({ onEnter }: HostGateProps) {
             <svg className="w-4 h-4 mt-0.5 shrink-0 text-[var(--neon-amber)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p>This tool is <strong className="text-[var(--text-primary)]">not officially supported</strong> and has had limited testing — it's provided on a best-effort basis and is in beta. Results may be incorrect; verify outputs before acting on them, and try it against a sandbox instance before production.</p>
-          </div>
-          <div className="flex items-start gap-2">
-            <svg className="w-4 h-4 mt-0.5 shrink-0 text-[var(--neon-cyan)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p><strong className="text-[var(--text-primary)]">Platinum support only.</strong> Do not contact <span className="font-mono">support@dataiku.com</span>. Route all requests through your TAM or <a href="mailto:alex.kaos@dataiku.com" className="text-[var(--accent)] hover:underline">alex.kaos@dataiku.com</a>.</p>
+            <p><strong className="text-[var(--text-primary)]">Beta, best-effort tool</strong> — not officially supported and lightly tested. Results may be wrong, so verify outputs before acting and test against a sandbox before production.</p>
           </div>
         </div>
 

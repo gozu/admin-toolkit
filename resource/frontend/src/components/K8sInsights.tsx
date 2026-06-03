@@ -402,7 +402,26 @@ function K8sOverviewCard({ data }: { data: NonNullable<ReturnType<typeof k8sInsi
   const pricingOk = data.pricingStatus?.ok !== false;
   const floorFinding = (data.findings || []).find((f) => f.rule === 'cluster-floor-projection');
   const floorHourly = floorFinding ? (floorFinding.evidence as { floorHourly?: number }).floorHourly : undefined;
-  const floorSavings = floorFinding?.costImpactPerMonth ?? 0;
+  // CPU-node reclaim is now a per-finding sum (the floor is informational only):
+  // full monthly cost of each over-provisioned / single-pod-locked node. Both are
+  // per-node and mutually exclusive per node, so sum their dollars keyed by node.
+  const cpuNodeCost = new Map<string, number>();
+  for (const f of data.findings || []) {
+    if (f.rule !== 'node-over-provisioned' && f.rule !== 'node-locked-by-single-pod') continue;
+    if ((f.costImpactPerMonth ?? 0) <= 0) continue;
+    const node = (f.evidence as { node?: string }).node || f.id;
+    cpuNodeCost.set(node, Math.max(cpuNodeCost.get(node) ?? 0, f.costImpactPerMonth!));
+  }
+  // Idle pods add fractional node cost — but only when their node isn't already
+  // fully counted above (else an idle pod on an over-provisioned node double-counts).
+  let idlePodSavings = 0;
+  for (const f of data.findings || []) {
+    if (f.rule !== 'idle-long-running-pod' || (f.costImpactPerMonth ?? 0) <= 0) continue;
+    const node = (f.evidence as { node?: string }).node;
+    if (node && cpuNodeCost.has(node)) continue;
+    idlePodSavings += f.costImpactPerMonth!;
+  }
+  const cpuSavings = [...cpuNodeCost.values()].reduce((a, b) => a + b, 0) + idlePodSavings;
   // Idle GPU pods hold a GPU node the bin-pack floor must keep (the pod requests a
   // GPU), so their recoverable savings are additive to the floor. De-dup per node.
   const gpuWasteByNode = new Map<string, number>();
@@ -412,16 +431,14 @@ function K8sOverviewCard({ data }: { data: NonNullable<ReturnType<typeof k8sInsi
     gpuWasteByNode.set(node, Math.max(gpuWasteByNode.get(node) ?? 0, f.costImpactPerMonth!));
   }
   const gpuWaste = [...gpuWasteByNode.values()].reduce((a, b) => a + b, 0);
-  const total = floorSavings + gpuWaste;
-  const savingsMonthly = total > 0 ? total : null;
-  // The floor's own savings, split into CPU-node vs GPU-node reclaim (backend
-  // evidence). Falls back to all-CPU if an older backend hasn't emitted the split.
+  // GPU node reclaim stays floor-derived (unchanged). Falls back to 0 if an older
+  // backend hasn't emitted the split.
   const ev = (floorFinding?.evidence ?? {}) as {
-    floorCpuSavingsMonthly?: number;
     floorGpuSavingsMonthly?: number;
   };
   const floorGpuSavings = ev.floorGpuSavingsMonthly ?? 0;
-  const floorCpuSavings = ev.floorCpuSavingsMonthly ?? floorSavings;
+  const total = cpuSavings + floorGpuSavings + gpuWaste;
+  const savingsMonthly = total > 0 ? total : null;
   const showGpuRows = gpuWaste > 0 || floorGpuSavings > 0;
 
   return (
@@ -455,7 +472,7 @@ function K8sOverviewCard({ data }: { data: NonNullable<ReturnType<typeof k8sInsi
             Potential savings
           </div>
           <div className="space-y-1 max-w-xs font-mono text-sm">
-            <K8sSavingsRow label="Consolidate CPU nodes" value={floorCpuSavings} />
+            <K8sSavingsRow label="Consolidate CPU nodes" value={cpuSavings} />
             {showGpuRows && <K8sSavingsRow label="Reclaim idle GPU nodes" value={floorGpuSavings} />}
             {showGpuRows && <K8sSavingsRow label="Free GPU from idle pods" value={gpuWaste} />}
             <div className="flex justify-between border-t border-white/10 pt-1 mt-1 text-green-300">
@@ -539,8 +556,6 @@ function K8sFindingsList({
 // (cluster-floor-projection). They keep firing as findings but suppress the green
 // $/mo badge so the list's badges don't double-count the floor / exceed the bill.
 const FLOOR_SUBSUMED_RULES = new Set([
-  'node-over-provisioned',
-  'node-locked-by-single-pod',
   'gpu-node-idle',
   'cpu-pod-on-gpu-node',
 ]);

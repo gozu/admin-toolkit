@@ -355,11 +355,17 @@ class Rule19IdleLongRunningPod(Rule):
     id = 'idle-long-running-pod'
     category = 'cost'
     severity = 'medium'
-    requires_probes = ['probe_pods', 'probe_top_pods']
+    # probe_nodes lets us attribute a fractional node cost to the idle pod when
+    # pricing is available. We deliberately do NOT declare '_pricing': that would
+    # make the whole rule skip when pricing fails (see _price_map docstring),
+    # suppressing the cleanup finding. _monthly() returns None on missing pricing,
+    # so the finding still fires without a dollar figure.
+    requires_probes = ['probe_pods', 'probe_top_pods', 'probe_nodes']
 
     def evaluate(self, probes: ProbeBundle) -> List[Finding]:
         out: List[Finding] = []
         usage = _build_usage_index(probes)
+        nodes_by_name = {node_name(n): n for n in items(probes, 'probe_nodes')}
         for pod in items(probes, 'probe_pods'):
             if is_kube_system_ns(pod_namespace(pod)):
                 continue
@@ -379,6 +385,21 @@ class Rule19IdleLongRunningPod(Rule):
             worst = max(cpu_pct, mem_pct)
             if worst >= 0.01:
                 continue
+            # Fractional node cost: the share of its node the idle pod's requests
+            # occupy. Recoverable only once the pod is removed, so it's additive to
+            # the floor (which keeps the pod, since the pod still holds its request).
+            node_n = pod_node(pod)
+            cost_impact: Optional[float] = None
+            node = nodes_by_name.get(node_n)
+            if node:
+                alloc_cpu, alloc_mem, _ = node_allocatable(node)
+                monthly = _monthly(probes, node_instance_type(node))
+                if monthly is not None and (alloc_cpu > 0 or alloc_mem > 0):
+                    frac = max(
+                        cpu_req / alloc_cpu if alloc_cpu > 0 else 0,
+                        mem_req / alloc_mem if alloc_mem > 0 else 0,
+                    )
+                    cost_impact = round(min(frac, 1.0) * monthly, 2)
             out.append(Finding(
                 id=make_id(self.id, f'{pod_namespace(pod)}/{pod_name(pod)}'),
                 rule=self.id,
@@ -391,10 +412,12 @@ class Rule19IdleLongRunningPod(Rule):
                 ),
                 evidence={
                     'pod': f'{pod_namespace(pod)}/{pod_name(pod)}',
+                    'node': node_n,
                     'ageHours': round(age, 1),
                     'cpuPctOfRequest': round(cpu_pct, 4),
                     'memPctOfRequest': round(mem_pct, 4),
                 },
+                cost_impact_per_month=cost_impact,
                 remediation=[
                     kubectl_remediation(
                         'Delete the pod (DSS will recreate if still needed)',

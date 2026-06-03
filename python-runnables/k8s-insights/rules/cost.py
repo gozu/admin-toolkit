@@ -355,17 +355,11 @@ class Rule19IdleLongRunningPod(Rule):
     id = 'idle-long-running-pod'
     category = 'cost'
     severity = 'medium'
-    # probe_nodes lets us attribute a fractional node cost to the idle pod when
-    # pricing is available. We deliberately do NOT declare '_pricing': that would
-    # make the whole rule skip when pricing fails (see _price_map docstring),
-    # suppressing the cleanup finding. _monthly() returns None on missing pricing,
-    # so the finding still fires without a dollar figure.
-    requires_probes = ['probe_pods', 'probe_top_pods', 'probe_nodes']
+    requires_probes = ['probe_pods', 'probe_top_pods']
 
     def evaluate(self, probes: ProbeBundle) -> List[Finding]:
         out: List[Finding] = []
         usage = _build_usage_index(probes)
-        nodes_by_name = {node_name(n): n for n in items(probes, 'probe_nodes')}
         for pod in items(probes, 'probe_pods'):
             if is_kube_system_ns(pod_namespace(pod)):
                 continue
@@ -385,21 +379,6 @@ class Rule19IdleLongRunningPod(Rule):
             worst = max(cpu_pct, mem_pct)
             if worst >= 0.01:
                 continue
-            # Fractional node cost: the share of its node the idle pod's requests
-            # occupy. Recoverable only once the pod is removed, so it's additive to
-            # the floor (which keeps the pod, since the pod still holds its request).
-            node_n = pod_node(pod)
-            cost_impact: Optional[float] = None
-            node = nodes_by_name.get(node_n)
-            if node:
-                alloc_cpu, alloc_mem, _ = node_allocatable(node)
-                monthly = _monthly(probes, node_instance_type(node))
-                if monthly is not None and (alloc_cpu > 0 or alloc_mem > 0):
-                    frac = max(
-                        cpu_req / alloc_cpu if alloc_cpu > 0 else 0,
-                        mem_req / alloc_mem if alloc_mem > 0 else 0,
-                    )
-                    cost_impact = round(min(frac, 1.0) * monthly, 2)
             out.append(Finding(
                 id=make_id(self.id, f'{pod_namespace(pod)}/{pod_name(pod)}'),
                 rule=self.id,
@@ -412,12 +391,10 @@ class Rule19IdleLongRunningPod(Rule):
                 ),
                 evidence={
                     'pod': f'{pod_namespace(pod)}/{pod_name(pod)}',
-                    'node': node_n,
                     'ageHours': round(age, 1),
                     'cpuPctOfRequest': round(cpu_pct, 4),
                     'memPctOfRequest': round(mem_pct, 4),
                 },
-                cost_impact_per_month=cost_impact,
                 remediation=[
                     kubectl_remediation(
                         'Delete the pod (DSS will recreate if still needed)',
@@ -496,13 +473,51 @@ class Rule21ClusterFloorProjection(Rule):
         pods = items(probes, 'probe_pods')
         if not nodes:
             return []
+        price_by_type = _price_map(probes)
+
+        # GPU usage + packable-pod count per node, to flag idle nodes.
+        gpu_use_by_node: Dict[str, int] = {}
+        packable_by_node: Dict[str, int] = {}
+        for p in pods:
+            node_n = pod_node(p)
+            _, _, gpu_req = pod_total_requests(p)
+            if gpu_req > 0 and node_n:
+                gpu_use_by_node[node_n] = gpu_use_by_node.get(node_n, 0) + gpu_req
+            if pod_owner_kind(p) == 'DaemonSet' or is_kube_system_ns(pod_namespace(p)):
+                continue
+            if node_n:
+                packable_by_node[node_n] = packable_by_node.get(node_n, 0) + 1
+
+        # Idle nodes: an idle GPU node (nothing consumes its GPU) or an empty node
+        # (no non-DaemonSet, non-kube-system pod). These are reclaimable outright —
+        # "saving if the node weren't running" = its full price — so we pull them
+        # out of the bin-pack and credit their full cost separately, instead of
+        # letting the floor mislabel them as workload consolidation.
+        idle_node_names: set = set()
+        idle_hourly = 0.0
+        for n in nodes:
+            name = node_name(n)
+            instance = node_instance_type(n)
+            if not instance:
+                continue
+            is_idle_gpu = node_is_gpu(n) and gpu_use_by_node.get(name, 0) <= 0
+            is_empty = packable_by_node.get(name, 0) == 0
+            if is_idle_gpu or is_empty:
+                idle_node_names.add(name)
+                idle_hourly += (price_by_type.get(instance) or 0.0)
+
+        # Only workload nodes feed the bin-pack.
         groups_by_instance: Dict[str, NodeGroup] = {}
-        current_count_by_instance: Dict[str, int] = {}
+        workload_count_by_instance: Dict[str, int] = {}
+        full_count_by_instance: Dict[str, int] = {}
         for n in nodes:
             instance = node_instance_type(n)
             if not instance:
                 continue
-            current_count_by_instance[instance] = current_count_by_instance.get(instance, 0) + 1
+            full_count_by_instance[instance] = full_count_by_instance.get(instance, 0) + 1
+            if node_name(n) in idle_node_names:
+                continue
+            workload_count_by_instance[instance] = workload_count_by_instance.get(instance, 0) + 1
             if instance in groups_by_instance:
                 continue
             cpu, mem, gpu = node_allocatable(n)
@@ -537,7 +552,6 @@ class Rule21ClusterFloorProjection(Rule):
                 node_selector=((p.get('spec') or {}).get('nodeSelector') or {}),
                 tolerations=((p.get('spec') or {}).get('tolerations') or []),
             ))
-        price_by_type = _price_map(probes)
         result = compute_floor(pod_reqs, node_groups, price_by_type)
         floor_hourly = 0.0
         floor_breakdown = []
@@ -546,49 +560,43 @@ class Rule21ClusterFloorProjection(Rule):
             cost = (price_by_type.get(inst) or 0.0) * count
             floor_hourly += cost
             floor_breakdown.append({'instanceType': inst, 'count': count, 'hourly': cost})
-        current_hourly = sum((price_by_type.get(inst) or 0.0) * cnt for inst, cnt in current_count_by_instance.items())
-        savings_hourly = max(0.0, current_hourly - floor_hourly)
-        if savings_hourly <= 0:
+        current_hourly = sum((price_by_type.get(inst) or 0.0) * cnt for inst, cnt in full_count_by_instance.items())
+        workload_current_hourly = sum((price_by_type.get(inst) or 0.0) * cnt for inst, cnt in workload_count_by_instance.items())
+        consolidation_hourly = max(0.0, workload_current_hourly - floor_hourly)
+        total_savings_hourly = idle_hourly + consolidation_hourly
+        if total_savings_hourly <= 0:
             return []
-        # Split the floor savings into GPU-node vs CPU-node reclaim so the headline
-        # can itemize them. GPU-node reclaim = idle GPU nodes with no GPU-requesting
-        # pod (the floor drops them); a pod-held GPU node stays at $0 here because
-        # the floor honors its GPU request. Clamp into [0, total] so the two lines
-        # always sum to savings.
-        gpu_instance_types = {node_instance_type(n) for n in nodes if node_is_gpu(n) and node_instance_type(n)}
-        floor_count_by_instance = {groups_by_instance[g].instance_type: c for g, c in result.by_group.items()}
-        gpu_savings_hourly = 0.0
-        for inst, cur in current_count_by_instance.items():
-            if inst in gpu_instance_types:
-                gpu_savings_hourly += (cur - floor_count_by_instance.get(inst, 0)) * (price_by_type.get(inst) or 0.0)
-        gpu_savings_hourly = min(max(0.0, gpu_savings_hourly), savings_hourly)
-        cpu_savings_hourly = savings_hourly - gpu_savings_hourly
+
+        total_nodes = sum(full_count_by_instance.values())
+        workload_nodes = sum(workload_count_by_instance.values())
+        floor_nodes = sum(result.by_group.values())
         return [Finding(
             id=make_id(self.id, 'cluster'),
             rule=self.id,
             severity='high',
             category='cost',
-            title=f'Bin-pack floor: ~${savings_hourly:.2f}/hr (${savings_hourly*730:.0f}/mo) potential savings',
+            title=f'Bin-pack floor: ~${consolidation_hourly:.2f}/hr (${consolidation_hourly*730:.0f}/mo) consolidation savings',
             summary=(
-                f'Current spend ~${current_hourly:.2f}/hr across '
-                f'{sum(current_count_by_instance.values())} nodes. With first-fit-decreasing '
-                f'bin-packing of the current pod set at current requests, the same workloads fit '
-                f'on {sum(result.by_group.values())} nodes (~${floor_hourly:.2f}/hr).'
+                f'Current spend ~${current_hourly:.2f}/hr across {total_nodes} nodes. '
+                f'{len(idle_node_names)} idle/empty node(s) (~${idle_hourly:.2f}/hr) are reclaimable '
+                f'outright; the remaining {workload_nodes} workload node(s) bin-pack to '
+                f'{floor_nodes} node(s) (~${floor_hourly:.2f}/hr).'
             ),
             evidence={
                 'currentHourly': round(current_hourly, 3),
                 'currentMonthly': round(current_hourly * 730, 2),
                 'floorHourly': round(floor_hourly, 3),
                 'floorMonthly': round(floor_hourly * 730, 2),
-                'savingsHourly': round(savings_hourly, 3),
-                'savingsMonthly': round(savings_hourly * 730, 2),
-                'floorCpuSavingsMonthly': round(cpu_savings_hourly * 730, 2),
-                'floorGpuSavingsMonthly': round(gpu_savings_hourly * 730, 2),
-                'currentByInstance': current_count_by_instance,
+                'savingsHourly': round(total_savings_hourly, 3),
+                'savingsMonthly': round(total_savings_hourly * 730, 2),
+                'consolidationSavingsMonthly': round(consolidation_hourly * 730, 2),
+                'idleNodeSavingsMonthly': round(idle_hourly * 730, 2),
+                'idleNodeCount': len(idle_node_names),
+                'currentByInstance': full_count_by_instance,
                 'floorBreakdown': floor_breakdown,
                 'unplaceablePods': result.unplaceable[:20],
             },
-            cost_impact_per_month=round(savings_hourly * 730, 2),
+            cost_impact_per_month=round(consolidation_hourly * 730, 2),
             remediation=[
                 doc_link_remediation(
                     'Action plan: address the per-pod overrequest findings, then cordon empty nodes',

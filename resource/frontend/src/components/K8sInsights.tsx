@@ -401,29 +401,16 @@ function K8sOverviewCard({ data }: { data: NonNullable<ReturnType<typeof k8sInsi
   const cost = data.costSnapshot || { currentHourly: null, currentMonthly: null, nodes: [] };
   const pricingOk = data.pricingStatus?.ok !== false;
   const floorFinding = (data.findings || []).find((f) => f.rule === 'cluster-floor-projection');
-  const floorHourly = floorFinding ? (floorFinding.evidence as { floorHourly?: number }).floorHourly : undefined;
-  // CPU-node reclaim is now a per-finding sum (the floor is informational only):
-  // full monthly cost of each over-provisioned / single-pod-locked node. Both are
-  // per-node and mutually exclusive per node, so sum their dollars keyed by node.
-  const cpuNodeCost = new Map<string, number>();
-  for (const f of data.findings || []) {
-    if (f.rule !== 'node-over-provisioned' && f.rule !== 'node-locked-by-single-pod') continue;
-    if ((f.costImpactPerMonth ?? 0) <= 0) continue;
-    const node = (f.evidence as { node?: string }).node || f.id;
-    cpuNodeCost.set(node, Math.max(cpuNodeCost.get(node) ?? 0, f.costImpactPerMonth!));
-  }
-  // Idle pods add fractional node cost — but only when their node isn't already
-  // fully counted above (else an idle pod on an over-provisioned node double-counts).
-  let idlePodSavings = 0;
-  for (const f of data.findings || []) {
-    if (f.rule !== 'idle-long-running-pod' || (f.costImpactPerMonth ?? 0) <= 0) continue;
-    const node = (f.evidence as { node?: string }).node;
-    if (node && cpuNodeCost.has(node)) continue;
-    idlePodSavings += f.costImpactPerMonth!;
-  }
-  const cpuSavings = [...cpuNodeCost.values()].reduce((a, b) => a + b, 0) + idlePodSavings;
+  // The backend floor rule now splits its savings into workload consolidation vs
+  // idle/empty-node reclaim and emits both as evidence; the frontend just reads them.
+  const ev = (floorFinding?.evidence ?? {}) as {
+    consolidationSavingsMonthly?: number;
+    idleNodeSavingsMonthly?: number;
+  };
+  const consolidation = ev.consolidationSavingsMonthly ?? floorFinding?.costImpactPerMonth ?? 0;
+  const idleNodes = ev.idleNodeSavingsMonthly ?? 0;
   // Idle GPU pods hold a GPU node the bin-pack floor must keep (the pod requests a
-  // GPU), so their recoverable savings are additive to the floor. De-dup per node.
+  // GPU), so their recoverable savings are additive. De-dup per node.
   const gpuWasteByNode = new Map<string, number>();
   for (const f of data.findings || []) {
     if (f.rule !== 'gpu-pod-not-using-gpu' || (f.costImpactPerMonth ?? 0) <= 0) continue;
@@ -431,19 +418,25 @@ function K8sOverviewCard({ data }: { data: NonNullable<ReturnType<typeof k8sInsi
     gpuWasteByNode.set(node, Math.max(gpuWasteByNode.get(node) ?? 0, f.costImpactPerMonth!));
   }
   const gpuWaste = [...gpuWasteByNode.values()].reduce((a, b) => a + b, 0);
-  // GPU node reclaim stays floor-derived (unchanged). Falls back to 0 if an older
-  // backend hasn't emitted the split.
-  const ev = (floorFinding?.evidence ?? {}) as {
-    floorGpuSavingsMonthly?: number;
-  };
-  const floorGpuSavings = ev.floorGpuSavingsMonthly ?? 0;
-  const total = cpuSavings + floorGpuSavings + gpuWaste;
+  const total = consolidation + idleNodes + gpuWaste;
   const savingsMonthly = total > 0 ? total : null;
-  const showGpuRows = gpuWaste > 0 || floorGpuSavings > 0;
+  const savingsPct =
+    savingsMonthly != null && cost.currentMonthly
+      ? Math.round((savingsMonthly / cost.currentMonthly) * 100)
+      : null;
 
   return (
     <div className="glass-card p-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div>
+          <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider">Monthly cost</div>
+          <div className="text-2xl font-mono">
+            {cost.currentMonthly != null ? `${formatUsd(cost.currentMonthly)}/mo` : '—'}
+          </div>
+          <div className="text-xs text-[var(--text-muted)] font-mono">
+            {cost.currentHourly != null ? `${formatUsd(cost.currentHourly)} / hr` : ''}
+          </div>
+        </div>
         <div>
           <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider">Nodes</div>
           <div className="text-2xl font-mono">{data.cluster.nodeCount ?? '—'}</div>
@@ -452,17 +445,17 @@ function K8sOverviewCard({ data }: { data: NonNullable<ReturnType<typeof k8sInsi
           <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider">Pods</div>
           <div className="text-2xl font-mono">{data.cluster.podCount ?? '—'}</div>
         </div>
-        <div>
-          <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider">Hourly cost</div>
-          <div className="text-2xl font-mono">{formatUsd(cost.currentHourly)}</div>
-          <div className="text-xs text-[var(--text-muted)] font-mono">
-            {cost.currentMonthly != null ? `${formatUsd(cost.currentMonthly)} / mo` : ''}
-          </div>
-        </div>
         {pricingOk && (
           <div>
-            <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider">Bin-pack floor</div>
-            <div className="text-2xl font-mono">{floorHourly != null ? formatUsd(floorHourly) : '—'}</div>
+            <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider">
+              Potential savings
+            </div>
+            <div className="text-2xl font-mono text-green-300">
+              {savingsMonthly != null ? `${formatUsd(savingsMonthly)}/mo` : '—'}
+            </div>
+            <div className="text-xs text-[var(--text-muted)] font-mono">
+              {savingsPct != null ? `~${savingsPct}% of spend` : ''}
+            </div>
           </div>
         )}
       </div>
@@ -472,9 +465,9 @@ function K8sOverviewCard({ data }: { data: NonNullable<ReturnType<typeof k8sInsi
             Potential savings
           </div>
           <div className="space-y-1 max-w-xs font-mono text-sm">
-            <K8sSavingsRow label="Consolidate CPU nodes" value={cpuSavings} />
-            {showGpuRows && <K8sSavingsRow label="Reclaim idle GPU nodes" value={floorGpuSavings} />}
-            {showGpuRows && <K8sSavingsRow label="Free GPU from idle pods" value={gpuWaste} />}
+            <K8sSavingsRow label="Consolidate nodes (bin-pack)" value={consolidation} />
+            {idleNodes > 0 && <K8sSavingsRow label="Reclaim idle / empty nodes" value={idleNodes} />}
+            {gpuWaste > 0 && <K8sSavingsRow label="Free GPU from idle pods" value={gpuWaste} />}
             <div className="flex justify-between border-t border-white/10 pt-1 mt-1 text-green-300">
               <span>Total</span>
               <span>{formatUsd(savingsMonthly)}/mo</span>
@@ -556,6 +549,8 @@ function K8sFindingsList({
 // (cluster-floor-projection). They keep firing as findings but suppress the green
 // $/mo badge so the list's badges don't double-count the floor / exceed the bill.
 const FLOOR_SUBSUMED_RULES = new Set([
+  'node-over-provisioned',
+  'node-locked-by-single-pod',
   'gpu-node-idle',
   'cpu-pod-on-gpu-node',
 ]);

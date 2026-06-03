@@ -15,6 +15,7 @@ import { MODULE_BY_ID, MODULE_NAV_SECTIONS } from '../../utils/moduleRegistry';
 import { getActiveHost } from '../../state/hostStore';
 import { useRedVisible } from '../../state/redUnlockStore';
 import { ExternalLinkIcon } from '../ExternalLinkIcon';
+import { loadFromStorage, saveToStorage } from '../../utils/storage';
 
 /* ------------------------------------------------------------------ */
 /*  Icons (20x20, viewBox 0 0 24 24, stroke=currentColor, sw=1.5)    */
@@ -602,6 +603,19 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
     }))
     .filter((section) => section.items.length > 0);
 
+  // Sections are a single-open accordion in the expanded sidebar: opening one
+  // collapses the others. Collapsed-by-default (null) on first load; the choice
+  // is persisted so it survives reloads. Rail (icon-only) mode ignores this.
+  const [reducedMotion] = useState(prefersReducedMotion);
+  const [openSection, setOpenSection] = useState<string | null>(() =>
+    loadFromStorage<string | null>('sidebar-open-section', null),
+  );
+  useEffect(() => {
+    saveToStorage('sidebar-open-section', openSection);
+  }, [openSection]);
+  const toggleSection = (title: string) =>
+    setOpenSection((cur) => (cur === title ? null : title));
+
   // Glyph state is now derived directly from each module's Lifecycle. No
   // separate initialization/justReady tracking is needed — `queued` is the
   // default starting state (○) and `done` is the only path to ✓.
@@ -612,6 +626,19 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
   function getBadgeCount(badge?: 'logs'): number {
     if (badge === 'logs') return logsBadge;
     return 0;
+  }
+
+  // Shared navigation behaviour for both the rail rows and the expanded tiles.
+  function handleNavClick(pageId: PageId, label: string) {
+    if (pageId === 'sanity-check') {
+      const base = getActiveHost().url || window.location.origin;
+      const url = `${base.replace(/\/$/, '')}/admin/maintenance/sanitycheck/`;
+      addDebugLog(`External: open ${url} (clicked "${label}")`, 'navigation');
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    addDebugLog(`Navigate: ${activePage} → ${pageId} (clicked "${label}")`, 'navigation');
+    setActivePage(pageId);
   }
 
   function renderNavItem(pageId: PageId) {
@@ -633,17 +660,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
       <button
         key={pageId}
         type="button"
-        onClick={() => {
-          if (pageId === 'sanity-check') {
-            const base = getActiveHost().url || window.location.origin;
-            const url = `${base.replace(/\/$/, '')}/admin/maintenance/sanitycheck/`;
-            addDebugLog(`External: open ${url} (clicked "${label}")`, 'navigation');
-            window.open(url, '_blank', 'noopener,noreferrer');
-            return;
-          }
-          addDebugLog(`Navigate: ${activePage} → ${pageId} (clicked "${label}")`, 'navigation');
-          setActivePage(pageId);
-        }}
+        onClick={() => handleNavClick(pageId, label)}
         title={collapsed ? label : undefined}
         className={`relative flex items-center gap-3 w-full rounded-md px-2.5 py-1.5 text-sm transition-colors duration-200 ${baseClasses} ${collapsed ? 'justify-center px-0' : ''}`}
       >
@@ -691,9 +708,95 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
     );
   }
 
+  // Expanded sidebar: each module is a squarish tile — big icon, label beneath,
+  // status glyph + badge in the corners. Active tile is filled with the accent
+  // (tools keep the red treatment). Replaces the rail's icon+label row.
+  function renderTile(pageId: PageId) {
+    const item = MODULE_BY_ID[pageId];
+    const label = item.navLabel || item.label;
+    const isActive = activePage === pageId;
+    const isTool = item.tool === true;
+    const badgeCount = getBadgeCount(item.badge);
+
+    const tileBase = isTool
+      ? (isActive
+        ? 'border border-red-400/40 bg-red-500/15 text-red-300'
+        : 'border border-red-400/20 text-red-300/90 hover:text-red-200 hover:bg-red-500/10 hover:border-red-400/40')
+      : (isActive
+        ? 'border border-[var(--accent)]/40 bg-[var(--accent-muted)] text-[var(--accent)]'
+        : 'border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] hover:border-[var(--border-hover)]');
+
+    return (
+      <button
+        key={pageId}
+        type="button"
+        onClick={() => handleNavClick(pageId, label)}
+        title={label}
+        aria-current={isActive ? 'page' : undefined}
+        className={`relative flex aspect-square flex-col items-center justify-center gap-1.5 rounded-lg p-2 text-center transition-colors duration-200 ${tileBase}`}
+      >
+        <span className="flex items-center justify-center [&>svg]:w-7 [&>svg]:h-7">{icons[pageId]}</span>
+        <span className={`text-[11px] leading-tight line-clamp-2${isTool ? ' premium-shine-text' : ''}`}>
+          {label}
+          {pageId === 'sanity-check' && <ExternalLinkIcon />}
+        </span>
+        {badgeCount > 0 && (
+          <span className="absolute top-1 left-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-[var(--accent-muted)] text-[var(--accent)] text-[10px] font-medium px-1">
+            {badgeCount}
+          </span>
+        )}
+        {/* Action pages (noLoadGlyph) never show a load glyph — same rule as the rail. */}
+        {!item.noLoadGlyph && (
+          <span className="absolute top-1 right-1">
+            <SidebarItemStatus module={item} data={parsedData} />
+          </span>
+        )}
+      </button>
+    );
+  }
+
+  function renderAccordionSection(section: NavSection) {
+    const isOpen = openSection === section.title;
+    const cols = section.items.length === 1 ? 'grid-cols-1' : 'grid-cols-2';
+    return (
+      <div key={section.title} className="flex-none">
+        <button
+          type="button"
+          onClick={() => toggleSection(section.title)}
+          aria-expanded={isOpen}
+          className="flex flex-shrink-0 items-center gap-2 w-full rounded-md px-2 py-2 text-[11px] font-semibold uppercase tracking-wider text-[#2AB1AC] hover:bg-[var(--bg-hover)] transition-colors"
+        >
+          <motion.svg
+            animate={{ rotate: isOpen ? 0 : -90 }}
+            transition={{ duration: reducedMotion ? 0 : 0.2 }}
+            className="w-3.5 h-3.5 flex-shrink-0"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </motion.svg>
+          <span className="flex-1 text-left">{section.title}</span>
+        </button>
+        {isOpen && (
+          <motion.div
+            className="px-0.5 pt-1 pb-2"
+            initial={reducedMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: reducedMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className={`grid ${cols} gap-2`}>
+              {section.items.map(renderTile)}
+            </div>
+          </motion.div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <aside
-      className="flex flex-col h-full bg-[var(--bg-sidebar)] border-r border-[var(--border-default)] overflow-hidden"
+      className={`flex flex-col h-full bg-[var(--bg-sidebar)] border-r border-[var(--border-default)] overflow-hidden ${collapsed ? '' : 'w-64'}`}
     >
       {/* Host picker + collapse toggle */}
       <div className={`flex items-center px-4 ${collapsed ? 'flex-col gap-1.5 px-2 py-3' : 'justify-between h-11'}`}>
@@ -745,9 +848,12 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
       {/* Divider */}
       <div className="mx-3 border-t border-[var(--border-default)]" />
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0">
-        {visibleSections.map((section, idx) => renderSection(section, idx))}
+      {/* Navigation — rail mode keeps the icon-only list; expanded mode is a
+          single-open accordion of big-icon tile grids. */}
+      <nav className="flex-1 min-h-0 flex flex-col overflow-y-auto px-2 py-3">
+        {collapsed
+          ? visibleSections.map((section, idx) => renderSection(section, idx))
+          : visibleSections.map(renderAccordionSection)}
       </nav>
 
     </aside>

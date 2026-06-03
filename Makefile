@@ -74,6 +74,7 @@ DEPLOY_COMMIT_PATHS := \
 # Frontend incremental build
 # ----------------------------
 FRONTEND_STAMP := resource/dist/.build-stamp
+NODE_MODULES_STAMP := resource/frontend/node_modules/.install-stamp
 FRONTEND_DEPS := $(shell find resource/frontend/src resource/frontend/public -type f 2>/dev/null) \
 	resource/frontend/index.html \
 	resource/frontend/package.json \
@@ -83,9 +84,16 @@ FRONTEND_DEPS := $(shell find resource/frontend/src resource/frontend/public -ty
 	resource/frontend/tsconfig.app.json \
 	resource/frontend/tsconfig.node.json
 
-$(FRONTEND_STAMP): $(FRONTEND_DEPS)
+# Only reinstall deps when the lockfile actually changes (a version-only bump to
+# package.json does not alter the dependency tree, so it must not trigger npm install).
+$(NODE_MODULES_STAMP): resource/frontend/package-lock.json
+	@echo "[INFO] Lockfile changed — installing frontend dependencies..."
+	cd resource/frontend && npm install
+	@touch $@
+
+$(FRONTEND_STAMP): $(FRONTEND_DEPS) $(NODE_MODULES_STAMP)
 	@echo "[START] Building frontend..."
-	cd resource/frontend && npm install && MODE=production npm run build
+	cd resource/frontend && MODE=production npm run build
 	mkdir -p resource/dist
 	touch $@
 	@echo "[SUCCESS] Frontend build complete!"
@@ -202,7 +210,15 @@ deploy-dev:
 # ----------------------------
 .PHONY: deploy-all deploy
 
-deploy-all: deploy-dev deploy-prod-secure
+# DEV (akaos, via API) and PROD (secure sudo wrappers) are independent targets on
+# different servers — run them concurrently and fail if either side fails.
+deploy-all:
+	@$(MAKE) deploy-dev & pid_dev=$$!; \
+	$(MAKE) deploy-prod-secure & pid_prod=$$!; \
+	rc=0; \
+	wait $$pid_dev || rc=1; \
+	wait $$pid_prod || rc=1; \
+	exit $$rc
 
 # ----------------------------
 # Main deploy target

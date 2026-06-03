@@ -641,19 +641,19 @@ function SidebarSection({ section, idx, collapsed, renderItem }: SidebarSectionP
         onClick={toggle}
         onKeyDown={onKeyDown}
         aria-expanded={isOpen}
-        className="flex items-center justify-between gap-2 w-full px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#2AB1AC] hover:text-[var(--text-primary)] transition-colors"
+        className="flex items-center gap-1 w-full px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#2AB1AC] hover:text-[var(--text-primary)] transition-colors"
       >
-        <span>{section.title}</span>
         <motion.svg
           animate={{ rotate: isOpen ? 0 : -90 }}
           transition={{ duration: 0.2 }}
-          className="w-3.5 h-3.5 flex-shrink-0"
+          className="w-3 h-3 flex-shrink-0 -ml-0.5"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </motion.svg>
+        <span>{section.title}</span>
       </button>
       <div className="collapse-content" data-state={isOpen ? 'open' : 'closed'}>
         <div>

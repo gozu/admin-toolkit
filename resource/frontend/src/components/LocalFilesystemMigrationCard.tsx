@@ -4,7 +4,9 @@ import { Modal } from './Modal';
 import { useModal } from '../hooks/useModal';
 import { useConnectionUsageScan } from '../hooks/useConnectionUsageScan';
 import { ScanIncompleteNotice } from './ScanIncompleteNotice';
+import { DataGrid } from './common/DataGrid';
 import { fetchJson } from '../utils/api';
+import type { ColumnDef } from '../utils/dataGridTypes';
 import type {
   CodeEnvUsageRef,
   ConnectionLocalFilesystemUsage,
@@ -134,7 +136,9 @@ export function LocalFilesystemMigrationCard() {
 function LocalFilesystemOutreachPanel({ usages }: { usages: ConnectionLocalFilesystemUsage[] }) {
   const { state } = useDiag();
   const previewModal = useModal();
-  const [expandedOwner, setExpandedOwner] = useState<string | null>(null);
+  const detailModal = useModal();
+  const { open: openDetail } = detailModal;
+  const [detailOwner, setDetailOwner] = useState<LocalFilesystemOwnerGroup | null>(null);
   const [selectedOwners, setSelectedOwners] = useState<Set<string>>(() => new Set());
   const [previewItems, setPreviewItems] = useState<EmailPreviewItem[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -228,6 +232,63 @@ function LocalFilesystemOutreachPanel({ usages }: { usages: ConnectionLocalFiles
     }
   };
 
+  const columns: ColumnDef<LocalFilesystemOwnerGroup>[] = [
+    {
+      id: 'select',
+      label: '',
+      headerClassName: 'w-8',
+      render: (group) => (
+        <input
+          type="checkbox"
+          checked={selectedOwners.has(group.owner)}
+          onChange={() => toggleOwner(group.owner)}
+          aria-label={`Select ${group.owner}`}
+          className="accent-[var(--accent)]"
+        />
+      ),
+    },
+    {
+      id: 'owner',
+      label: 'Project Owner',
+      defaultSortDir: 'asc',
+      render: (group) => (
+        <div>
+          <div className="font-medium text-[var(--text-primary)]">{group.owner}</div>
+          <div className="text-xs font-mono text-[var(--text-muted)]">{group.ownerEmail}</div>
+        </div>
+      ),
+      sortValue: (group) => group.owner.toLowerCase(),
+    },
+    {
+      id: 'projectCount',
+      label: 'Projects',
+      align: 'right',
+      mono: true,
+      render: (group) => group.projectCount,
+      sortValue: (group) => group.projectCount,
+    },
+    {
+      id: 'objectCount',
+      label: 'Objects',
+      align: 'right',
+      mono: true,
+      render: (group) => (
+        <button
+          type="button"
+          onClick={() => {
+            setDetailOwner(group);
+            openDetail();
+          }}
+          className="font-mono hover:text-[var(--neon-cyan)] hover:underline focus:outline-none"
+          title={`Show objects owned by ${group.owner}`}
+        >
+          {group.objectCount}
+        </button>
+      ),
+      sortValue: (group) => group.objectCount,
+    },
+  ];
+
   return (
     <section className="glass-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -274,59 +335,24 @@ function LocalFilesystemOutreachPanel({ usages }: { usages: ConnectionLocalFiles
         </div>
       )}
 
-      <div className="overflow-auto max-h-[55vh]">
-        <table className="table-dark w-full">
-          <thead>
-            <tr>
-              <th className="w-8" />
-              <th>Project Owner</th>
-              <th className="text-right">Projects</th>
-              <th className="text-right">Objects</th>
-            </tr>
-          </thead>
-          <tbody>
-            {groups.map((group) => {
-              const isExpanded = expandedOwner === group.owner;
-              const isSelected = selectedOwners.has(group.owner);
-              return (
-                <Fragment key={group.owner}>
-                  <tr className="align-top">
-                    <td className="py-2">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleOwner(group.owner)}
-                        aria-label={`Select ${group.owner}`}
-                        className="accent-[var(--accent)]"
-                      />
-                    </td>
-                    <td
-                      className="py-2 cursor-pointer"
-                      onClick={() => setExpandedOwner(isExpanded ? null : group.owner)}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-[var(--text-muted)]">{isExpanded ? '▼' : '▶'}</span>
-                        <span className="font-medium text-[var(--text-primary)]">{group.owner}</span>
-                      </div>
-                      <div className="ml-4 text-xs font-mono text-[var(--text-muted)]">{group.ownerEmail}</div>
-                    </td>
-                    <td className="py-2 text-right font-mono text-[var(--text-primary)]">{group.projectCount}</td>
-                    <td className="py-2 text-right font-mono text-[var(--text-muted)]">{group.objectCount}</td>
-                  </tr>
-                  {isExpanded && (
-                    <tr>
-                      <td />
-                      <td colSpan={3} className="pb-3">
-                        <LocalFilesystemObjectsTable projects={group.projects} />
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <DataGrid
+        rows={groups}
+        columns={columns}
+        rowKey={(group) => group.owner}
+        defaultSortColumnId="objectCount"
+        emptyMessage="No local filesystem objects found."
+        scroll={{ maxH: '55vh' }}
+        rowClassName={() => '[&>td]:align-top'}
+      />
+
+      <Modal
+        isOpen={detailModal.isOpen}
+        onClose={detailModal.close}
+        title={detailOwner ? `${detailOwner.owner} — local filesystem objects` : 'Objects'}
+        sizePreset="large"
+      >
+        {detailOwner && <LocalFilesystemObjectsTable projects={detailOwner.projects} />}
+      </Modal>
 
       <Modal
         isOpen={previewModal.isOpen}

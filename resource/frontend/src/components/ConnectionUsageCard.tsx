@@ -1,8 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDiag } from '../context/DiagContext';
 import { useConnectionUsageScan } from '../hooks/useConnectionUsageScan';
 import { ScanIncompleteNotice } from './ScanIncompleteNotice';
+import { Modal } from './Modal';
+import { useModal } from '../hooks/useModal';
+import { DataGrid } from './common/DataGrid';
 import { dssUrls } from '../utils/codeEnvUsageLinks';
+import type { ColumnDef } from '../utils/dataGridTypes';
 import type {
   ConnectionDatasetUsage,
   ConnectionLlmUsage,
@@ -20,11 +24,6 @@ const LLM_MESH_TYPES = new Set([
   'Cohere', 'MistralAI', 'StabilityAI', 'SageMakerLLM', 'Milvus',
   'NVIDIANIMLLM', 'AzureAIFoundry', 'AzureLLM',
 ]);
-
-const INITIAL_PROJECT_LIMIT = 5;
-
-type SortKey = 'name' | 'projectCount';
-type SortDir = 'asc' | 'desc';
 
 export function ConnectionUsageCard() {
   const { state } = useDiag();
@@ -190,56 +189,92 @@ function ConnectionUsageTable({
 }) {
   const { state, setFocusedConnectionFilter, setActivePage } = useDiag();
   const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('projectCount');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
-  const [expandedConn, setExpandedConn] = useState<string | null>(null);
-  const [showAll, setShowAll] = useState<Record<string, boolean>>({});
-  const rowRefs = useRef(new Map<string, HTMLTableRowElement>());
+  const [detailConn, setDetailConn] = useState<ConnectionUsageItem | null>(null);
+  const detailModal = useModal();
+  const { open: openDetail } = detailModal;
 
+  // Seed the search box when navigated here with a focused connection.
   useEffect(() => {
     const target = state.focusedConnectionFilter?.name ?? null;
     if (!target) return;
     if (!items.some((c) => c.name === target)) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing context signal to local UI state
     setSearch(target);
-    setExpandedConn(target);
     setFocusedConnectionFilter(null);
-    requestAnimationFrame(() => {
-      rowRefs.current.get(target)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
   }, [state.focusedConnectionFilter, items, setFocusedConnectionFilter]);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
-    let list = items;
-    if (q) {
-      list = list.filter(
-        (c) => c.name.toLowerCase().includes(q) || c.type.toLowerCase().includes(q),
-      );
-    }
-    list = [...list].sort((a, b) => {
-      const av = sortKey === 'name' ? a.name.toLowerCase() : a.projectCount;
-      const bv = sortKey === 'name' ? b.name.toLowerCase() : b.projectCount;
-      if (av < bv) return sortDir === 'asc' ? -1 : 1;
-      if (av > bv) return sortDir === 'asc' ? 1 : -1;
-      return 0;
-    });
-    return list;
-  }, [items, search, sortKey, sortDir]);
-
-  const toggleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortKey(key);
-      setSortDir(key === 'name' ? 'asc' : 'desc');
-    }
-  };
-
-  const sortArrow = (key: SortKey) =>
-    sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    const q = search.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (c) => c.name.toLowerCase().includes(q) || c.type.toLowerCase().includes(q),
+    );
+  }, [items, search]);
 
   const countLabel = mode === 'dataset' ? 'Datasets' : 'Recipes';
+
+  const columns = useMemo<ColumnDef<ConnectionUsageItem>[]>(
+    () => [
+      {
+        id: 'name',
+        label: 'Connection',
+        mono: true,
+        defaultSortDir: 'asc',
+        cellClassName: 'whitespace-nowrap',
+        render: (conn) => (
+          <button
+            type="button"
+            onClick={() => {
+              setFocusedConnectionFilter({ name: conn.name });
+              setActivePage('connections-insights');
+            }}
+            className={`bg-transparent p-0 text-[var(--text-primary)] ${DEEP_LINK_CLASS}`}
+            title={`Open ${conn.name} in Insights`}
+          >
+            {conn.name}
+          </button>
+        ),
+        sortValue: (conn) => conn.name.toLowerCase(),
+      },
+      {
+        id: 'type',
+        label: 'Type',
+        defaultSortDir: 'asc',
+        cellClassName: 'whitespace-nowrap',
+        render: (conn) => conn.type,
+        sortValue: (conn) => conn.type.toLowerCase(),
+      },
+      {
+        id: 'projectCount',
+        label: 'Projects',
+        align: 'right',
+        mono: true,
+        render: (conn) => (
+          <button
+            type="button"
+            onClick={() => {
+              setDetailConn(conn);
+              openDetail();
+            }}
+            className={DEEP_LINK_CLASS}
+            title={`Show projects using ${conn.name}`}
+          >
+            {conn.projectCount}
+          </button>
+        ),
+        sortValue: (conn) => conn.projectCount,
+      },
+      {
+        id: 'count',
+        label: countLabel,
+        align: 'right',
+        mono: true,
+        render: (conn) => (mode === 'dataset' ? conn.datasetCount : conn.recipeCount) ?? 0,
+        sortValue: (conn) => (mode === 'dataset' ? conn.datasetCount : conn.recipeCount) ?? 0,
+      },
+    ],
+    [mode, countLabel, openDetail, setFocusedConnectionFilter, setActivePage],
+  );
 
   return (
     <div>
@@ -254,172 +289,104 @@ function ConnectionUsageTable({
         />
       </div>
 
-      <div className="overflow-auto max-h-[60vh]">
-        <table className="table-dark w-full">
-          <thead>
-            <tr>
-              <th
-                className="cursor-pointer select-none"
-                onClick={() => toggleSort('name')}
-              >
-                Connection{sortArrow('name')}
-              </th>
-              <th>Type</th>
-              <th
-                className="cursor-pointer select-none text-right"
-                onClick={() => toggleSort('projectCount')}
-              >
-                Projects{sortArrow('projectCount')}
-              </th>
-              <th className="text-right">{countLabel}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((conn) => {
-              const isExpanded = expandedConn === conn.name;
-              const projects = conn.projects;
-              const isShowingAll = showAll[conn.name] || false;
-              const visibleProjects = isShowingAll
-                ? projects
-                : projects.slice(0, INITIAL_PROJECT_LIMIT);
-              const hiddenCount = projects.length - INITIAL_PROJECT_LIMIT;
+      <DataGrid
+        rows={filtered}
+        columns={columns}
+        rowKey={(conn) => conn.name}
+        defaultSortColumnId="projectCount"
+        filtersActive={search.trim().length > 0}
+        noMatchMessage="No connections match the current filter."
+        scroll={{ maxH: '60vh' }}
+      />
 
+      <Modal
+        isOpen={detailModal.isOpen}
+        onClose={detailModal.close}
+        title={detailConn ? `${detailConn.name} — projects` : 'Projects'}
+        sizePreset="large"
+      >
+        {detailConn && <ConnectionUsageDetail conn={detailConn} mode={mode} />}
+      </Modal>
+    </div>
+  );
+}
+
+function ConnectionUsageDetail({
+  conn,
+  mode,
+}: {
+  conn: ConnectionUsageItem;
+  mode: 'dataset' | 'llm';
+}) {
+  return (
+    <div className="overflow-auto max-h-[70vh]">
+      <table className="table-dark w-full text-sm">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>{mode === 'dataset' ? 'Dataset' : 'Recipe'}</th>
+            <th>{mode === 'dataset' ? 'Type' : 'LLM ID'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {conn.projects.map((p, i) => {
+            if (mode === 'dataset') {
+              const dp = p as ConnectionDatasetUsage;
               return (
-                <tr
-                  key={conn.name}
-                  ref={(el) => {
-                    if (el) rowRefs.current.set(conn.name, el);
-                    else rowRefs.current.delete(conn.name);
-                  }}
-                  className="align-top"
-                >
-                  <td colSpan={4} className="!p-0">
-                    {/* Main row */}
-                    <div
-                      className="grid grid-cols-[1fr_auto_auto_auto] items-center px-3 py-2 cursor-pointer hover:bg-[var(--bg-glass)] transition-colors"
-                      onClick={() => setExpandedConn(isExpanded ? null : conn.name)}
+                <tr key={`${dp.projectKey}-${dp.datasetName}-${i}`}>
+                  <td className="text-[var(--neon-cyan)]">
+                    <a
+                      href={dssUrls.project(dp.projectKey)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={DEEP_LINK_CLASS}
                     >
-                      <span className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-[var(--text-muted)]">{isExpanded ? '▼' : '▶'}</span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setFocusedConnectionFilter({ name: conn.name });
-                            setActivePage('connections-insights');
-                          }}
-                          className={`bg-transparent p-0 text-[var(--text-primary)] ${DEEP_LINK_CLASS}`}
-                          title={`Open ${conn.name} in Insights`}
-                        >
-                          {conn.name}
-                        </button>
-                      </span>
-                      <span className="text-[var(--text-secondary)] px-4 text-sm">{conn.type}</span>
-                      <span className="text-right font-mono tabular-nums text-[var(--text-primary)] px-4 min-w-[60px]">{conn.projectCount}</span>
-                      <span className="text-right font-mono tabular-nums text-[var(--text-muted)] min-w-[60px]">
-                        {mode === 'dataset' ? conn.datasetCount : conn.recipeCount}
-                      </span>
-                    </div>
-
-                    {/* Expanded detail */}
-                    {isExpanded && (
-                      <div className="px-6 pb-3 border-b border-[var(--border-glass)]">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-[var(--text-muted)]">
-                              <th className="text-left font-normal py-1">Project</th>
-                              <th className="text-left font-normal py-1">
-                                {mode === 'dataset' ? 'Dataset' : 'Recipe'}
-                              </th>
-                              <th className="text-left font-normal py-1">
-                                {mode === 'dataset' ? 'Type' : 'LLM ID'}
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {visibleProjects.map((p, i) => {
-                              if (mode === 'dataset') {
-                                const dp = p as ConnectionDatasetUsage;
-                                return (
-                                  <tr key={`${dp.projectKey}-${dp.datasetName}-${i}`} className="text-xs hover:bg-[var(--bg-active)]! transition-colors">
-                                    <td className="py-0.5 text-[var(--neon-cyan)]">
-                                      <a
-                                        href={dssUrls.project(dp.projectKey)}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        className={DEEP_LINK_CLASS}
-                                      >
-                                        {dp.projectName || dp.projectKey}
-                                      </a>
-                                    </td>
-                                    <td className="py-0.5 text-[var(--text-secondary)]">
-                                      <a
-                                        href={dssUrls.dataset(dp.projectKey, dp.datasetName)}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        className={DEEP_LINK_CLASS}
-                                      >
-                                        {dp.datasetName}
-                                      </a>
-                                    </td>
-                                    <td className="py-0.5 text-[var(--text-muted)]">{dp.datasetType}</td>
-                                  </tr>
-                                );
-                              } else {
-                                const lp = p as ConnectionLlmUsage;
-                                return (
-                                  <tr key={`${lp.projectKey}-${lp.recipeName}-${i}`} className="text-xs hover:bg-[var(--bg-active)]! transition-colors">
-                                    <td className="py-0.5 text-[var(--neon-cyan)]">
-                                      <a
-                                        href={dssUrls.project(lp.projectKey)}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        className={DEEP_LINK_CLASS}
-                                      >
-                                        {lp.projectName || lp.projectKey}
-                                      </a>
-                                    </td>
-                                    <td className="py-0.5 text-[var(--text-secondary)]">
-                                      <a
-                                        href={dssUrls.recipe(lp.projectKey, lp.recipeName)}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        className={DEEP_LINK_CLASS}
-                                      >
-                                        {lp.recipeName}
-                                      </a>
-                                    </td>
-                                    <td className="py-0.5 text-[var(--text-muted)]">{lp.llmId}</td>
-                                  </tr>
-                                );
-                              }
-                            })}
-                          </tbody>
-                        </table>
-                        {hiddenCount > 0 && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowAll((prev) => ({ ...prev, [conn.name]: !isShowingAll }));
-                            }}
-                            className="mt-1 text-xs font-medium text-[#7fb3ea] hover:text-[#c9d2de] transition-colors"
-                          >
-                            {isShowingAll ? 'Show less' : `Show ${hiddenCount} more`}
-                          </button>
-                        )}
-                      </div>
-                    )}
+                      {dp.projectName || dp.projectKey}
+                    </a>
                   </td>
+                  <td className="text-[var(--text-secondary)]">
+                    <a
+                      href={dssUrls.dataset(dp.projectKey, dp.datasetName)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={DEEP_LINK_CLASS}
+                    >
+                      {dp.datasetName}
+                    </a>
+                  </td>
+                  <td className="text-[var(--text-muted)]">{dp.datasetType}</td>
                 </tr>
               );
-            })}
-          </tbody>
-        </table>
-      </div>
+            }
+            const lp = p as ConnectionLlmUsage;
+            return (
+              <tr key={`${lp.projectKey}-${lp.recipeName}-${i}`}>
+                <td className="text-[var(--neon-cyan)]">
+                  <a
+                    href={dssUrls.project(lp.projectKey)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={DEEP_LINK_CLASS}
+                  >
+                    {lp.projectName || lp.projectKey}
+                  </a>
+                </td>
+                <td className="text-[var(--text-secondary)]">
+                  <a
+                    href={dssUrls.recipe(lp.projectKey, lp.recipeName)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={DEEP_LINK_CLASS}
+                  >
+                    {lp.recipeName}
+                  </a>
+                </td>
+                <td className="text-[var(--text-muted)]">{lp.llmId}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

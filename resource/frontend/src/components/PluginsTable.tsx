@@ -25,6 +25,7 @@ export function PluginsTable({ onOpenUsage }: PluginsTableProps = {}) {
   const { parsedData } = state;
   const plugins = parsedData.plugins || [];
   const details = parsedData.pluginDetails;
+  const usagesPending = parsedData.pluginUsagesPending ?? false;
 
   const [pluginFilters, setPluginFilters] = useState<MultiValue<SelectOption>>([]);
   const [typeFilters, setTypeFilters] = useState<MultiValue<SelectOption>>([]);
@@ -116,6 +117,13 @@ export function PluginsTable({ onOpenUsage }: PluginsTableProps = {}) {
       sortValue: (row) => row.projectsUsingCount ?? -1,
       render: (row) => {
         if (row.projectsUsingCount == null) {
+          if (usagesPending && !row.usagesError) {
+            return (
+              <span className="text-[var(--text-muted)]" title="Scanning plugin usages…">
+                …
+              </span>
+            );
+          }
           return (
             <span
               className="text-[var(--text-muted)]"
@@ -144,7 +152,7 @@ export function PluginsTable({ onOpenUsage }: PluginsTableProps = {}) {
         );
       },
     },
-  ], [onOpenUsage]);
+  ], [onOpenUsage, usagesPending]);
 
   const nameOnlyColumns = useMemo<ColumnDef<string>[]>(() => [
     { id: 'name', label: 'Plugin Name', render: (name) => name },

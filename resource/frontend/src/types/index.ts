@@ -720,6 +720,9 @@ export interface ParsedData {
   plugins?: string[];
   pluginDetails?: PluginInfo[];
   pluginsCount?: number;
+  /** True while the deferred /api/plugins/usages scan is still in flight, so the
+   *  "Projects" column shows a pending placeholder instead of "?". */
+  pluginUsagesPending?: boolean;
   codeEnvs?: CodeEnv[];
   codeEnvSizes?: Record<string, number>;
   codeEnvsExpectedCount?: number;

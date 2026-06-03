@@ -10316,11 +10316,52 @@ def api_plugins():
         plugins.sort()
         plugin_details.sort(key=lambda d: d.get('id', ''))
 
+        # Plugin currency: latest store version per plugin id (best-effort, cached
+        # separately so a short plugins-cache TTL doesn't refetch the store catalog).
+        latest_versions = _cache_get(
+            'plugin_store_versions',
+            _BACKEND_SETTINGS['cache_ttl_overview'],
+            lambda: _latest_store_plugin_versions(client),
+        )
+        for row in plugin_details:
+            latest = latest_versions.get(row.get('id') or '')
+            if latest:
+                row['latestVersion'] = latest
+
+        return {'plugins': plugins, 'pluginDetails': plugin_details, 'pluginsCount': len(plugins)}
+
+    data = _cache_get('plugins', _BACKEND_SETTINGS['cache_ttl_plugins'], loader)
+    return jsonify(data)
+
+
+@app.route('/api/plugins/usages')
+def api_plugins_usages():
+    """Per-plugin usage scan, split out of /api/plugins so the cheap plugin list
+    (names/versions) loads fast and these expensive get_plugin().list_usages()
+    fan-outs (2 chained DSS calls x N plugins) fill in asynchronously. Returns a
+    map keyed by plugin id; the frontend merges it into the pluginDetails rows."""
+    client = g.client
+
+    def loader():
+        _all_plugins = _sdk_fetch(
+            'list_plugins',
+            _BACKEND_SETTINGS['cache_ttl_overview'],
+            lambda: list(client.list_plugins()),
+        )
+        pids = []
+        for p in _all_plugins:
+            if isinstance(p, dict):
+                meta = p.get('meta') or {}
+                pid = p.get('id') or p.get('name') or meta.get('label')
+            else:
+                pid = str(p)
+            if pid:
+                pids.append(pid)
+
         # Fan out per-plugin usage scans in parallel. Per-plugin SDK call is
         # cached so subsequent loads within the cache window are free.
         usage_ttl = int(_BACKEND_SETTINGS.get('cache_ttl_plugins', 600))
         workers = max(1, int(_BACKEND_SETTINGS.get('parallel_workers_default', 8) or 8))
-        pids = [d['id'] for d in plugin_details if d.get('id')]
         usage_by_pid: Dict[str, Dict[str, Any]] = {}
         if pids:
             def _fetch_one(pid: str) -> Dict[str, Any]:
@@ -10342,26 +10383,10 @@ def api_plugins():
                             'missingTypes': [],
                             'usagesError': str(exc),
                         }
-        for row in plugin_details:
-            extra = usage_by_pid.get(row.get('id') or '')
-            if extra:
-                row.update(extra)
 
-        # Plugin currency: latest store version per plugin id (best-effort, cached
-        # separately so a short plugins-cache TTL doesn't refetch the store catalog).
-        latest_versions = _cache_get(
-            'plugin_store_versions',
-            _BACKEND_SETTINGS['cache_ttl_overview'],
-            lambda: _latest_store_plugin_versions(client),
-        )
-        for row in plugin_details:
-            latest = latest_versions.get(row.get('id') or '')
-            if latest:
-                row['latestVersion'] = latest
+        return {'usagesByPlugin': usage_by_pid}
 
-        return {'plugins': plugins, 'pluginDetails': plugin_details, 'pluginsCount': len(plugins)}
-
-    data = _cache_get('plugins', _BACKEND_SETTINGS['cache_ttl_plugins'], loader)
+    data = _cache_get('plugin_usages_all', _BACKEND_SETTINGS['cache_ttl_plugins'], loader)
     return jsonify(data)
 
 

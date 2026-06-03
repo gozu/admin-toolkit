@@ -155,6 +155,15 @@ interface PluginsResponse {
   pluginsCount?: number;
 }
 
+type PluginUsageFields = Pick<
+  PluginInfo,
+  'projectsUsingCount' | 'projectsUsing' | 'missingTypes' | 'usagesError'
+>;
+
+interface PluginUsagesResponse {
+  usagesByPlugin?: Record<string, PluginUsageFields>;
+}
+
 interface MailChannelsResponse {
   channels?: MailChannel[];
   configuredMailChannel?: string;
@@ -575,6 +584,8 @@ export function useApiDataLoader(enabled: boolean, reloadKey = 0) {
             plugins: pluginsRes.value.plugins || [],
             pluginDetails: pluginsRes.value.pluginDetails || [],
             pluginsCount: pluginsRes.value.pluginsCount || 0,
+            // Usage counts arrive later via the deferred /api/plugins/usages scan.
+            pluginUsagesPending: (pluginsRes.value.pluginDetails?.length || 0) > 0,
           };
           dispatch({ type: 'SET_PARSED_DATA', payload: currentParsedData });
           log(`Loaded plugins (${currentParsedData.pluginsCount || 0})`);
@@ -1428,6 +1439,29 @@ export function useApiDataLoader(enabled: boolean, reloadKey = 0) {
           }
         };
 
+        // Per-plugin usage scan, split out of /api/plugins so the cheap plugin
+        // list renders fast in Phase 2 and the expensive get_plugin().list_usages()
+        // fan-out fills the "projects using" column in asynchronously here.
+        const runPluginUsages = async () => {
+          const usagesRes = await settle(
+            timed<PluginUsagesResponse>('/api/plugins/usages', 620000),
+          );
+          if (cancelled) return;
+          if (usagesRes.status === 'fulfilled' && usagesRes.value) {
+            const byId = usagesRes.value.usagesByPlugin || {};
+            const merged = (currentParsedData.pluginDetails || []).map((row) =>
+              byId[row.id] ? { ...row, ...byId[row.id] } : row,
+            );
+            currentParsedData = { ...currentParsedData, pluginDetails: merged, pluginUsagesPending: false };
+            dispatch({ type: 'SET_PARSED_DATA', payload: currentParsedData });
+            log(`Loaded plugin usages (${Object.keys(byId).length} plugins)`);
+          } else {
+            currentParsedData = { ...currentParsedData, pluginUsagesPending: false };
+            dispatch({ type: 'SET_PARSED_DATA', payload: currentParsedData });
+            log(`Failed /api/plugins/usages: ${settledError(usagesRes)}`, 'warn');
+          }
+        };
+
         const runProjects = async () => {
           const projectsRes: PromiseSettledResult<ProjectsResponse | null> = basicProjectsEnabled
             ? await settle(timed<ProjectsResponse>('/api/projects', beSettings.fe_timeout_projects ?? 45000))
@@ -1543,7 +1577,12 @@ export function useApiDataLoader(enabled: boolean, reloadKey = 0) {
         const heavyStart = nowMs();
         const lowStart = nowMs();
         projectFootprintStarted = true;
-        const heavyGate = Promise.allSettled([runCodeEnvs(), runProjectFootprint(), runLlmAudit()]);
+        const heavyGate = Promise.allSettled([
+          runCodeEnvs(),
+          runProjectFootprint(),
+          runLlmAudit(),
+          runPluginUsages(),
+        ]);
         const connectionHealthGate = runConnectionHealth();
         log('Deferring /api/dir-tree root load until after Phase 3 (background autostart)');
         const lowGate = Promise.allSettled([runProjects(), runLogs()]);

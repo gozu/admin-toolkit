@@ -9,6 +9,7 @@ import type { ModuleDefinition } from '../../utils/moduleRegistry';
 import {
   SHOW_DEPRECATED_STORAGE_KEY,
   SHOW_EXPERIMENTAL_STORAGE_KEY,
+  SIDEBAR_CLASSIC_STORAGE_KEY,
 } from '../pages/SettingsPage';
 import { useToggleFlag } from '../../hooks/useToggleFlag';
 import { MODULE_BY_ID, MODULE_NAV_SECTIONS } from '../../utils/moduleRegistry';
@@ -588,6 +589,11 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
     SHOW_DEPRECATED_STORAGE_KEY,
     'deprecated-flag-changed',
   );
+  // User-selectable nav style: classic icon+label list vs. the new tile accordion.
+  const [classicSidebar] = useToggleFlag(
+    SIDEBAR_CLASSIC_STORAGE_KEY,
+    'sidebar-style-changed',
+  );
   const redVisible = useRedVisible();
 
   const visibleSections = NAV_SECTIONS
@@ -796,7 +802,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
 
   return (
     <aside
-      className={`flex flex-col h-full bg-[var(--bg-sidebar)] border-r border-[var(--border-default)] overflow-hidden ${collapsed ? '' : 'w-64'}`}
+      className={`flex flex-col h-full bg-[var(--bg-sidebar)] border-r border-[var(--border-default)] overflow-hidden ${!collapsed && !classicSidebar ? 'w-64' : ''}`}
     >
       {/* Host picker + collapse toggle */}
       <div className={`flex items-center px-4 ${collapsed ? 'flex-col gap-1.5 px-2 py-3' : 'justify-between h-11'}`}>
@@ -848,10 +854,11 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
       {/* Divider */}
       <div className="mx-3 border-t border-[var(--border-default)]" />
 
-      {/* Navigation — rail mode keeps the icon-only list; expanded mode is a
-          single-open accordion of big-icon tile grids. */}
+      {/* Navigation — rail mode (and the user's "classic" preference) render the
+          icon+label list; otherwise the expanded sidebar is a single-open accordion
+          of big-icon tile grids. */}
       <nav className="flex-1 min-h-0 flex flex-col overflow-y-auto px-2 py-3">
-        {collapsed
+        {collapsed || classicSidebar
           ? visibleSections.map((section, idx) => renderSection(section, idx))
           : visibleSections.map(renderAccordionSection)}
       </nav>

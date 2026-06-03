@@ -8,6 +8,7 @@ import { RedUnlockModal } from '../RedUnlockModal';
 export const SELECTED_MAIL_CHANNEL_STORAGE_KEY = 'selectedMailChannel';
 export const SHOW_EXPERIMENTAL_STORAGE_KEY = 'showExperimental';
 export const SHOW_DEPRECATED_STORAGE_KEY = 'showDeprecated';
+export const SIDEBAR_CLASSIC_STORAGE_KEY = 'sidebarClassic';
 
 // The only place to turn a password into a secret. Hosted on the admin's public
 // page; type the password there and paste the result into the plugin setting.
@@ -29,6 +30,11 @@ export function SettingsPage() {
   const [showDeprecated, setShowDeprecated] = useToggleFlag(
     SHOW_DEPRECATED_STORAGE_KEY,
     'deprecated-flag-changed',
+  );
+
+  const [classicSidebar, setClassicSidebar] = useToggleFlag(
+    SIDEBAR_CLASSIC_STORAGE_KEY,
+    'sidebar-style-changed',
   );
 
   const { authed: unlocked, expiresAt } = useRedState();
@@ -70,6 +76,27 @@ export function SettingsPage() {
               No mail channels available. They load during Phase 2 of the main loader.
             </p>
           )}
+        </label>
+      </section>
+
+      <section className="glass-card p-4 space-y-3">
+        <div>
+          <h3 className="text-lg font-semibold text-[var(--text-primary)]">Sidebar layout</h3>
+          <p className="text-sm text-[var(--text-muted)]">
+            Choose the navigation style: collapsible big-icon tiles (default), or the
+            classic always-expanded icon + label list.
+          </p>
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={classicSidebar}
+            onChange={(e) => setClassicSidebar(e.target.checked)}
+            className="h-4 w-4 accent-[var(--accent)]"
+          />
+          <span className="text-sm font-medium text-[var(--text-primary)]">
+            Use the classic sidebar (icon + label list)
+          </span>
         </label>
       </section>
 

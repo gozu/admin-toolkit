@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
 import { useDiag } from '../../context/DiagContext';
 import type { Lifecycle, PageId } from '../../types';
-import type { KeyboardEvent, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 import { resolveLifecycle } from '../../utils/pageLifecycle';
 import type { ModuleDefinition } from '../../utils/moduleRegistry';
@@ -585,13 +585,11 @@ interface SidebarSectionProps {
 
 // One nav section: a collapsible header (label + green chevron) over the classic
 // icon+label rows. Expanded by default; each section's open state persists.
-// Keyboard on a focused header: ↓/↑ move between headers, → expands, ← collapses.
 function SidebarSection({ section, idx, collapsed, renderItem }: SidebarSectionProps) {
-  const { isOpen, open, close, toggle } = useCollapsible({
+  const { isOpen, toggle } = useCollapsible({
     id: `sidebar-section-${section.title}`,
     defaultOpen: true,
   });
-  const headerRef = useRef<HTMLButtonElement>(null);
 
   // Rail (icon-only) mode: no headers, no collapsibility — unchanged.
   if (collapsed) {
@@ -602,44 +600,11 @@ function SidebarSection({ section, idx, collapsed, renderItem }: SidebarSectionP
     );
   }
 
-  const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
-    switch (e.key) {
-      case 'ArrowDown':
-      case 'ArrowUp': {
-        e.preventDefault();
-        const headers = Array.from(
-          headerRef.current?.closest('nav')?.querySelectorAll<HTMLButtonElement>(
-            '[data-sidebar-section]',
-          ) ?? [],
-        );
-        const i = headers.indexOf(headerRef.current!);
-        if (i === -1) return;
-        headers[e.key === 'ArrowDown' ? i + 1 : i - 1]?.focus();
-        break;
-      }
-      case 'ArrowRight':
-        if (!isOpen) {
-          e.preventDefault();
-          open();
-        }
-        break;
-      case 'ArrowLeft':
-        if (isOpen) {
-          e.preventDefault();
-          close();
-        }
-        break;
-    }
-  };
-
   return (
     <div className={idx > 0 ? 'mt-4' : ''}>
       <button
-        ref={headerRef}
         type="button"
-        data-sidebar-section
         onClick={toggle}
-        onKeyDown={onKeyDown}
         aria-expanded={isOpen}
         className="flex items-center gap-1 w-full px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#2AB1AC] hover:text-[var(--text-primary)] transition-colors"
       >
@@ -691,6 +656,38 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
     }))
     .filter((section) => section.items.length > 0);
 
+  // ↑/↓ change the active page (previous/next visible page), skipping section
+  // titles and pages in collapsed sections. No focus moves — the only feedback
+  // is the existing active highlight + blue bar. ←/→ are intentionally ignored.
+  const navRef = useRef<HTMLElement>(null);
+  const activePageRef = useRef(activePage);
+  activePageRef.current = activePage;
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) {
+        return;
+      }
+      const nav = navRef.current;
+      if (!nav) return;
+      const ids: PageId[] = Array.from(nav.querySelectorAll<HTMLElement>('[data-page-id]'))
+        .filter((el) => el.closest('.collapse-content')?.getAttribute('data-state') !== 'closed')
+        .map((el) => el.dataset.pageId as PageId)
+        .filter((id) => id !== 'sanity-check');
+      if (ids.length === 0) return;
+      const dir = e.key === 'ArrowDown' ? 1 : -1;
+      const i = ids.indexOf(activePageRef.current);
+      const next = i === -1 ? (dir === 1 ? 0 : ids.length - 1) : i + dir;
+      if (next < 0 || next >= ids.length) return;
+      e.preventDefault();
+      setActivePage(ids[next]);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [setActivePage]);
+
   // Glyph state is now derived directly from each module's Lifecycle. No
   // separate initialization/justReady tracking is needed — `queued` is the
   // default starting state (○) and `done` is the only path to ✓.
@@ -735,6 +732,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
       <button
         key={pageId}
         type="button"
+        data-page-id={pageId}
         onClick={() => handleNavClick(pageId, label)}
         title={collapsed ? label : undefined}
         className={`relative flex items-center gap-3 w-full rounded-md px-2.5 py-1.5 text-sm transition-colors duration-200 ${baseClasses} ${collapsed ? 'justify-center px-0' : ''}`}
@@ -825,7 +823,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
       <div className="mx-3 border-t border-[var(--border-default)]" />
 
       {/* Navigation — collapsible sections over the classic icon+label rows. */}
-      <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0">
+      <nav ref={navRef} className="flex-1 overflow-y-auto px-2 py-3 space-y-0">
         {visibleSections.map((section, idx) => (
           <SidebarSection
             key={section.title}

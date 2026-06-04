@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { fetchJson, ApiRequestError } from '../utils/api';
 import { useRedState } from '../state/redUnlockStore';
-import { dssUrls } from '../utils/codeEnvUsageLinks';
 
 interface NotebookResult {
   file: string;
@@ -24,9 +23,9 @@ interface AlgorithmReviewResult {
 
 /**
  * Settings action: materialize a human-reviewable copy of the webapp's
- * Dataiku-API logic inside the ADMINTOOLKIT project — the `adk_notebook` shared
- * libraries (written to the project Python library) plus one Jupyter notebook per
- * scan card, with the verbatim source. Server endpoint is @advanced-gated.
+ * Dataiku-API logic inside the project that hosts this webapp — the `adk_notebook`
+ * shared libraries (written to the project Python library) plus one Jupyter notebook
+ * per scan card, with the verbatim source. Server endpoint is @advanced-gated.
  */
 export function AlgorithmReviewCard() {
   const { authed: unlocked } = useRedState();
@@ -58,9 +57,8 @@ export function AlgorithmReviewCard() {
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">Algorithm review notebooks</h3>
         <p className="text-sm text-[var(--text-muted)]">
           Writes the <code className="text-[var(--text-secondary)]">adk_notebook</code> shared libraries
-          into the <span className="font-medium text-[var(--text-secondary)]">ADMINTOOLKIT</span> project's
-          Python library and creates one Jupyter notebook per scan, with the exact source — so the
-          Dataiku-API code can be reviewed and run inside DSS. Re-running updates in place.
+          into this webapp's own project Python library and creates one Jupyter notebook per scan, with the
+          exact source — so the Dataiku-API code can be reviewed and run inside DSS. Re-running updates in place.
         </p>
       </div>
 
@@ -76,7 +74,7 @@ export function AlgorithmReviewCard() {
             disabled={running}
             className="px-3 py-1.5 rounded bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30 text-sm transition-colors disabled:opacity-50"
           >
-            {running ? 'Creating…' : 'Create in ADMINTOOLKIT'}
+            {running ? 'Creating…' : 'Create review notebooks'}
           </button>
 
           {error && <p className="text-sm text-[var(--neon-red)] break-words">{error}</p>}
@@ -103,6 +101,7 @@ function AlgorithmReviewResultView({ result }: { result: AlgorithmReviewResult }
           </>
         )}
         {' '}· kernel <code className="text-[var(--text-secondary)]">{result.kernelEnv}</code>
+        {' '}· project <code className="text-[var(--text-secondary)]">{result.projectKey}</code>
       </p>
 
       {result.warnings.map((w) => (
@@ -139,7 +138,7 @@ function AlgorithmReviewResultView({ result }: { result: AlgorithmReviewResult }
                 </span>
               ) : (
                 <a
-                  href={dssUrls.notebook(result.projectKey, nb.notebookName)}
+                  href={`${window.location.origin}/projects/${encodeURIComponent(result.projectKey)}/notebooks/jupyter/${encodeURIComponent(nb.notebookName)}/`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[var(--accent)] hover:underline break-all"

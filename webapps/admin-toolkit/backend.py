@@ -7549,10 +7549,11 @@ def _adk_review_upsert_notebook(project: Any, name: str, content: Dict[str, Any]
 @advanced
 def api_algorithm_review_create():
     """Write the adk_notebook shared libraries + one verbatim notebook per scan card
-    into the ADMINTOOLKIT project, for human review of the Dataiku-API code."""
-    client = g.client
-    project = _resolve_macro_project(client)  # ADMINTOOLKIT; MacroProjectMissing → 409
-    project_key = MACRO_PROJECT_KEY
+    into the project that hosts this webapp (on the local instance), for human review
+    of the Dataiku-API code."""
+    client = _local_toolkit_client()            # LOCAL instance (not the remote host-selector)
+    project = _local_toolkit_project()           # the project the webapp is added to
+    project_key = dataiku.default_project_key()
 
     kernel_name, kernel_fallback, warnings = _adk_review_resolve_kernel(client)
 

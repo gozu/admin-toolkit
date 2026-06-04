@@ -540,6 +540,37 @@ def _format_log_errors(errors: List[Dict[str, Any]]) -> str:
                 class_name += ' log-trace'
 
             formatted_line = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            ts_match = re.search(r"\[(\d{4}/\d{2}/\d{2}-\d{2}:\d{2}:\d{2}\.\d{3})\]", formatted_line)
+            if ts_match:
+                formatted_line = formatted_line.replace(ts_match.group(0), f'<span class="log-timestamp">{ts_match.group(0)}</span>')
+            else:
+                start_ts_match = re.search(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:,\d{3})?)", formatted_line)
+                if start_ts_match:
+                    formatted_line = formatted_line.replace(start_ts_match.group(1), f'<span class="log-timestamp">{start_ts_match.group(1)}</span>')
+
+            level_match = re.search(r"\[(INFO|WARN|ERROR|FATAL|SEVERE|DEBUG|TRACE)\]", formatted_line)
+            if level_match:
+                formatted_line = formatted_line.replace(level_match.group(0), f'<span class="log-level">{level_match.group(0)}</span>')
+
+            formatted_line = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", '<span class="hljs-number">\\g<0></span>', formatted_line)
+            formatted_line = re.sub(r"\[ct: \d+\]", '<span class="hljs-number">\\g<0></span>', formatted_line)
+            formatted_line = re.sub(
+                r"\d+\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com\/[a-z0-9.\/-]+:[a-z0-9.\/-]+",
+                '<span class="hljs-string">\\g<0></span>',
+                formatted_line,
+            )
+            formatted_line = re.sub(
+                r"\b(pod|deployment|service|node|configmap|secret|namespace|replicaset|daemonset)s?\b",
+                '<span class="hljs-title">\\g<0></span>',
+                formatted_line,
+                flags=re.IGNORECASE,
+            )
+            formatted_line = re.sub(
+                r"Process [a-z]+ done \(return code \d+\)|Running [a-z]+ \([^)]+\)",
+                '<span class="hljs-comment">\\g<0></span>',
+                formatted_line,
+            )
+
             output += f'<div class="{class_name}">{formatted_line}</div>'
         output += '</div>'
     return output

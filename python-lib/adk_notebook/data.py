@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import re
+import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .parse import coerce_int, coerce_float, normalize_language, format_size_human
@@ -20,7 +21,7 @@ from . import client as _client_mod
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Overview  (backend.py:5269 api_overview — macro/"loader_remote" path)
+# Overview  (backend.py:5280 api_overview — macro/"loader_remote" path)
 # ─────────────────────────────────────────────────────────────────────────────
 def _instance_info_from_install_map(install: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """backend.py:5216 — verbatim."""
@@ -130,12 +131,15 @@ def llm_audit_report(client: Any) -> Dict[str, Any]:
     LiteLLM pricing catalog (current / obsolete / unknown) + a status summary.
 
     Reuses the plugin's existing ``llm_audit`` python-lib (the same module the
-    webapp uses). Lean port of api_llm_audit (backend.py:10515): pricing lookup
+    webapp uses). Lean port of api_llm_audit (backend.py:10675): pricing lookup
     + per-project list_llms + classify_llm + summarize_rows. The webapp's
-    phase-4b per-asset usage-reference scan is omitted (it only enriches each
-    row with projectsUsing / referencing projects).
+    phase-4b per-asset usage-reference scan is omitted (it only enriches each row
+    with projectsUsing / referencingProjects / usageAssets), so those three row
+    keys are absent here.
 
-    Returns {rows, summary, pricingFetchedAt}.
+    Returns {rows, summary, pricingFetchedAt} where summary carries
+    scanErrors / failedProjectCount / scannedProjectCount (matching the webapp,
+    which nests scan instrumentation inside summary).
     """
     from datetime import datetime, timezone
     import llm_audit  # plugin python-lib (sibling of adk_notebook)
@@ -151,7 +155,10 @@ def llm_audit_report(client: Any) -> Dict[str, Any]:
     project_names = {p['projectKey']: (p.get('name') or p['projectKey'])
                      for p in projects if isinstance(p, dict) and p.get('projectKey')}
 
+    total_projects = len(project_names)
     llm_rows: List[Dict[str, Any]] = []
+    scan_errors: List[Dict[str, Any]] = []
+    failed_project_keys: set = set()
     for pk in project_names:
         try:
             project = client.get_project(pk)
@@ -165,7 +172,15 @@ def llm_audit_report(client: Any) -> Dict[str, Any]:
                     'model': llm.get('model'), 'deployment': llm.get('deployment'),
                     'friendlyName': llm.get('friendlyName'), 'friendlyNameShort': llm.get('friendlyNameShort'),
                 })
-        except Exception:
+        except Exception as exc:
+            # Mirrors backend's 'scan_project_failed' event → area='scan',
+            # message=f'{pk}: {exc}'.
+            scan_errors.append({
+                'projectKey': pk,
+                'area': 'scan',
+                'error': f'{pk}: {exc}'[:240],
+            })
+            failed_project_keys.add(pk)
             continue
 
     seen: set = set()
@@ -188,7 +203,14 @@ def llm_audit_report(client: Any) -> Dict[str, Any]:
 
     summary = llm_audit.summarize_rows(classified_rows)
     summary['pricingFetchedAt'] = fetched_at
-    return {'rows': classified_rows, 'summary': summary, 'pricingFetchedAt': fetched_at}
+    summary['scanErrors'] = scan_errors
+    summary['failedProjectCount'] = len(failed_project_keys)
+    summary['scannedProjectCount'] = total_projects
+    return {
+        'rows': classified_rows,
+        'summary': summary,
+        'pricingFetchedAt': fetched_at,
+    }
 
 
 def db_query(client: Any, sql: str, connection: Optional[str] = None,
@@ -561,21 +583,78 @@ def _projects_catalog_cheap(client: Any) -> List[Dict[str, str]]:
     return out
 
 
-def _envs_by_project(client: Any) -> Dict[str, set]:
-    """Project → set of 'lang:name' code-env keys, from list_code_env_usages()."""
-    out: Dict[str, set] = {}
+def _envs_by_project(client: Any, project_info: Dict[str, Any]) -> Dict[str, Any]:
+    """Per-project code-env usage maps.
+
+    Faithful port of backend.py:_collect_project_code_env_usage (the
+    `include_project_object_scan=True, include_code_env_usage_api=False` path used
+    by api_project_footprint). Walks list_code_envs(), skips PLUGIN_MANAGED /
+    DSS_INTERNAL envs, matches each to list_code_env_usages() by (lang.upper(),
+    name), and for every *known* project that uses it builds three maps mirroring
+    backend.py:4790-4854:
+      - envsByProject:          project → set of 'lang:name' env keys
+      - usageBreakdownByProject: project → {usageType: count} (counts raw usages)
+      - usageDetailsByProject:   project → deduped, augmented usage entries
+
+    Usage entries are normalized via _normalize_usage_entry, augmented with the
+    codeEnv* fields (backend.py:4588-4599), then deduped via _dedupe_usage_entries
+    (whose signature keys on codeEnvKey). The notebook reads the same raw
+    list_code_env_usages() source that backend normalizes at backend.py:4587.
+    """
+    envs_by_project: Dict[str, set] = {k: set() for k in project_info.keys()}
+    usage_breakdown_by_project: Dict[str, Dict[str, int]] = {k: {} for k in project_info.keys()}
+    usage_details_by_project: Dict[str, List[Dict[str, Any]]] = {k: [] for k in project_info.keys()}
+
+    envs = [e for e in (client.list_code_envs() or []) if isinstance(e, dict)]
+    usages_by_env: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
     for u in (client.list_code_env_usages() or []):
         if not isinstance(u, dict):
             continue
-        project_key = _extract_usage_project_key(u)
-        if not project_key:
+        k = (str(u.get('envLang', '')).upper(), str(u.get('envName', '')))
+        usages_by_env.setdefault(k, []).append(u)
+
+    for env in envs:
+        env_name = env.get('envName') or env.get('name') or env.get('id')
+        if not env_name:
             continue
-        lang = normalize_language(u.get('envLang'))
-        name = u.get('envName')
-        if not name:
+        env_lang_raw = env.get('envLang') or env.get('language') or env.get('type') or 'PYTHON'
+        normalized_lang = normalize_language(env_lang_raw)
+        if str(env.get('deploymentMode') or '').upper() in _SKIP_DEPLOYMENT_MODES:
             continue
-        out.setdefault(project_key, set()).add(f"{lang}:{name}")
-    return out
+        env_key = f"{normalized_lang}:{env_name}"
+        env_owner_raw = env.get('owner')
+        env_owner = env_owner_raw.strip() if isinstance(env_owner_raw, str) and env_owner_raw.strip() else 'Unknown'
+        for raw_usage in usages_by_env.get((normalized_lang.upper(), env_name), []):
+            project_key = _extract_usage_project_key(raw_usage)
+            if project_key and project_key in envs_by_project:
+                envs_by_project[project_key].add(env_key)
+                normalized = _normalize_usage_entry(raw_usage, project_info)
+                usage_type = str(normalized.get('usageType') or 'UNKNOWN')
+                counts = usage_breakdown_by_project[project_key]
+                counts[usage_type] = counts.get(usage_type, 0) + 1
+                # Augment to backend's usage shape (backend.py:4588-4599) — the
+                # codeEnv* fields matter for both display and _usage_signature dedup.
+                usage_details_by_project[project_key].append({
+                    'projectKey': project_key,
+                    'projectName': str(normalized.get('projectName') or project_key),
+                    'usageType': usage_type,
+                    'objectType': str(normalized.get('objectType') or normalized.get('usageType') or 'UNKNOWN'),
+                    'objectId': str(normalized.get('objectId') or ''),
+                    'objectName': str(normalized.get('objectName') or normalized.get('objectId') or ''),
+                    'codeEnvKey': env_key,
+                    'codeEnvName': str(env_name),
+                    'codeEnvLanguage': normalized_lang,
+                    'codeEnvOwner': env_owner,
+                })
+
+    for project_key, usages in usage_details_by_project.items():
+        usage_details_by_project[project_key] = _dedupe_usage_entries(usages)
+
+    return {
+        'envsByProject': envs_by_project,
+        'usageBreakdownByProject': usage_breakdown_by_project,
+        'usageDetailsByProject': usage_details_by_project,
+    }
 
 
 def project_footprint(client: Any) -> Dict[str, Any]:
@@ -591,12 +670,26 @@ def project_footprint(client: Any) -> Dict[str, Any]:
     """
     catalog = _projects_catalog_cheap(client)
     project_info = {p['key']: {'name': p['name'], 'owner': p['owner']} for p in catalog}
-    envs_by_project = _envs_by_project(client)
+    usage_data = _envs_by_project(client, project_info)
+    envs_by_project = usage_data['envsByProject']
+    usage_breakdown_by_project = usage_data['usageBreakdownByProject']
+    usage_details_by_project = usage_data['usageDetailsByProject']
 
     raw_rows: List[Dict[str, Any]] = []
+    scan_errors: List[Dict[str, Any]] = []
+    failed_project_keys: set = set()
     total_gb_values: List[float] = []
     for key, meta in project_info.items():
         fp = compute_footprint_payload(client, 'project', key)
+        if fp is None:
+            # Backend keeps the project (zero-byte row) and records a 'footprint'
+            # scan error rather than dropping it.
+            scan_errors.append({
+                'projectKey': key,
+                'area': 'footprint',
+                'error': 'project footprint payload missing'[:240],
+            })
+            failed_project_keys.add(key)
         managed_datasets = _collect_bucket_size_by_name(fp, lambda n: 'manageddataset' in n or ('managed' in n and 'dataset' in n))
         managed_folders = _collect_bucket_size_by_name(fp, lambda n: 'managedfolder' in n or ('managed' in n and 'folder' in n))
         code_env_keys = envs_by_project.get(key) or set()
@@ -613,6 +706,7 @@ def project_footprint(client: Any) -> Dict[str, Any]:
             'name': str(meta.get('name') or key).replace('_', ' '),
             'owner': meta.get('owner') or 'Unknown',
             'codeEnvCount': code_env_count,
+            'codeEnvBytes': 0,
             'codeEnvKeys': sorted(code_env_keys),
             'managedDatasetsBytes': managed_datasets,
             'managedFoldersBytes': managed_folders,
@@ -622,6 +716,8 @@ def project_footprint(client: Any) -> Dict[str, Any]:
             'totalBytes': total_bytes,
             'totalGB': total_gb,
             'codeEnvHealth': _code_env_health(code_env_count),
+            'usageBreakdown': usage_breakdown_by_project.get(key) or {},
+            'usageDetails': usage_details_by_project.get(key) or [],
         })
 
     avg_project_gb = (sum(total_gb_values) / len(total_gb_values)) if total_gb_values else 0.0
@@ -641,13 +737,25 @@ def project_footprint(client: Any) -> Dict[str, Any]:
         })
 
     raw_rows.sort(key=lambda item: coerce_int(item.get('totalBytes'), 0), reverse=True)
+    avg_project_risk = (sum(project_risks) / len(project_risks)) if project_risks else 0.0
+    # backend's summary carries _footprint_available()/_footprint_unavailable_reason()
+    # (a cross-request circuit-breaker the frontend uses for an "unavailable" banner).
+    # A one-shot notebook has no latch state, so derive it from this run: available
+    # unless every project's footprint payload was missing.
+    footprint_available = (not project_info) or (len(failed_project_keys) < len(project_info))
+    footprint_reason = None if footprint_available else 'project footprint payload unavailable'
     return {
         'projects': raw_rows,
         'summary': {
-            'instanceProjectRiskAvg': round((sum(project_risks) / len(project_risks)) if project_risks else 0.0, 4),
+            'instanceProjectRiskAvg': round(avg_project_risk, 4),
             'instanceAvgProjectGB': round(avg_project_gb, 4),
             'projectCount': len(raw_rows),
+            'footprintAvailable': footprint_available,
+            'footprintReason': footprint_reason,
         },
+        'scanErrors': scan_errors,
+        'failedProjectCount': len(failed_project_keys),
+        'scannedProjectCount': len(project_info),
     }
 
 
@@ -684,6 +792,105 @@ def _extract_usage_type(usage: Dict[str, Any]) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip().upper()
     return 'UNKNOWN'
+
+
+_USAGE_SENTINEL = object()
+
+
+def _resolve_nested_path(payload: dict, path: str) -> Any:
+    """backend.py:2997 _resolve_nested_path — verbatim."""
+    current: Any = payload
+    for part in path.split('.'):
+        if isinstance(current, dict):
+            current = current.get(part)
+        else:
+            return _USAGE_SENTINEL
+    return current
+
+
+def _extract_nested_text(payload: Any, *paths: str) -> Optional[str]:
+    """backend.py:2989 — verbatim."""
+    if not isinstance(payload, dict):
+        return None
+    for path in paths:
+        value = _resolve_nested_path(payload, path)
+        if value is _USAGE_SENTINEL:
+            continue
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _extract_usage_object_type(usage: Dict[str, Any]) -> str:
+    """backend.py:3064 — verbatim."""
+    value = _extract_nested_text(usage, 'objectType', 'targetType', 'projectObjectType', 'object.type')
+    if value:
+        return value.upper()
+    return _extract_usage_type(usage)
+
+
+def _extract_usage_object_id(usage: Dict[str, Any]) -> str:
+    """backend.py:3077 — verbatim."""
+    value = _extract_nested_text(usage, 'objectId', 'targetId', 'id', 'object.id', 'objectSmartId')
+    if value:
+        return value
+    return ''
+
+
+def _extract_usage_object_name(usage: Dict[str, Any]) -> str:
+    """backend.py:3091 — verbatim."""
+    value = _extract_nested_text(usage, 'objectName', 'targetName', 'name', 'displayName',
+                                 'object.name', 'object.displayName')
+    if value:
+        return value
+    fallback = _extract_usage_object_id(usage)
+    if fallback:
+        return fallback
+    return _extract_usage_object_type(usage)
+
+
+def _normalize_usage_entry(usage: Dict[str, Any], project_names: Dict[str, Any]) -> Dict[str, Any]:
+    """backend.py:3109 — verbatim."""
+    project_key = _extract_usage_project_key(usage) or ''
+    project_meta = project_names.get(project_key) or {}
+    project_name = (
+        _extract_nested_text(usage, 'projectSummary.name', 'project.name', 'projectName')
+        or project_meta.get('name')
+        or project_key
+    )
+    return {
+        'projectKey': project_key,
+        'projectName': project_name,
+        'usageType': _extract_usage_type(usage),
+        'objectType': _extract_usage_object_type(usage),
+        'objectId': _extract_usage_object_id(usage),
+        'objectName': _extract_usage_object_name(usage),
+    }
+
+
+def _usage_signature(usage: Dict[str, Any]) -> str:
+    """backend.py:3135 — verbatim."""
+    return '|'.join([
+        str(usage.get('projectKey') or ''),
+        str(usage.get('usageType') or ''),
+        str(usage.get('objectType') or ''),
+        str(usage.get('objectId') or ''),
+        str(usage.get('objectName') or ''),
+        str(usage.get('codeEnvKey') or ''),
+    ])
+
+
+def _dedupe_usage_entries(usages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """backend.py:3148 — verbatim."""
+    seen = set()
+    out: List[Dict[str, Any]] = []
+    for usage in usages:
+        sig = _usage_signature(usage)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        out.append(usage)
+    return out
 
 
 def get_code_env_size_map(client: Any) -> Dict[str, int]:
@@ -728,12 +935,17 @@ _SKIP_DEPLOYMENT_MODES = {'PLUGIN_MANAGED', 'DSS_INTERNAL'}
 def code_env_catalog(client: Any) -> Dict[str, Any]:
     """Code env inventory: per-env rows + python/R version counts.
 
-    Lean port of api_code_envs: list_code_envs + list_code_env_usages + the
-    global-footprint size map. The webapp's per-env settings fetch (an owner /
-    version fallback) is omitted — owner/version come from the listing — so each
-    row stays a single bulk call instead of N. Row shape matches the webapp:
-    name, version, language, sizeBytes, owner, usageCount, usageSummary,
-    projectCount, projectKeys.
+    Lean port of api_code_envs (backend.py:6613). The current webapp defers the
+    size map and loads it lazily via /api/code-envs/sizes; here it is merged in
+    eagerly from the global footprint (_get_code_env_size_map) since the notebook
+    is one-shot. The webapp's per-env settings fetch (an owner / version
+    fallback) and its phase-4b usage-detail normalization are omitted —
+    owner/version come from the listing — so each row stays a single bulk call
+    instead of N, and the row drops the webapp's enrichment-only `ownerEmail`
+    and `usageDetails` keys. Core row shape matches the webapp: name, version,
+    language, sizeBytes, owner, usageCount, usageSummary, projectCount,
+    projectKeys. totalEnvCount / skippedEnvCount and the python/R version counts
+    match.
     """
     envs = [e for e in (client.list_code_envs() or []) if isinstance(e, dict)]
     total_env_count = len(envs)
@@ -882,6 +1094,7 @@ def _scan_project_connections(client: Any, project_key: str, conn_types: Dict[st
     dataset_conns: List[Dict[str, Any]] = []
     llm_conns: List[Dict[str, Any]] = []
     local_fs_objects: List[Dict[str, Any]] = []
+    errors: List[Dict[str, Any]] = []
 
     try:
         for ds in proj.list_datasets():
@@ -896,8 +1109,9 @@ def _scan_project_connections(client: Any, project_key: str, conn_types: Dict[st
                         'objectType': 'dataset', 'objectId': dataset_name, 'objectName': dataset_name,
                         'objectSubtype': dataset_type, 'connection': conn_name, 'path': _format_dataset_path(params),
                     })
-    except Exception:
-        pass
+    except Exception as exc:
+        errors.append({'projectKey': project_key, 'area': 'datasets',
+                       'error': str(exc)[:240]})
 
     try:
         for folder in proj.list_managed_folders():
@@ -921,8 +1135,9 @@ def _scan_project_connections(client: Any, project_key: str, conn_types: Dict[st
                     'objectSubtype': str(raw.get('type') or 'managed folder'),
                     'connection': conn_name, 'path': folder_path or '',
                 })
-    except Exception:
-        pass
+    except Exception as exc:
+        errors.append({'projectKey': project_key, 'area': 'folders',
+                       'error': str(exc)[:240]})
 
     try:
         recipes = proj.list_recipes()
@@ -946,13 +1161,16 @@ def _scan_project_connections(client: Any, project_key: str, conn_types: Dict[st
                     if len(parts) >= 3:
                         llm_conns.append({'recipeName': r.get('name', ''), 'recipeType': r.get('type', ''),
                                           'llmId': llm_id, 'connection': parts[1]})
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as exc:
+                errors.append({'projectKey': project_key, 'area': 'recipes',
+                               'error': str(exc)[:240]})
+    except Exception as exc:
+        errors.append({'projectKey': project_key, 'area': 'recipes',
+                       'error': str(exc)[:240]})
 
     return {'projectKey': project_key, 'datasetConns': dataset_conns,
-            'llmConns': llm_conns, 'localFilesystemObjects': local_fs_objects}
+            'llmConns': llm_conns, 'localFilesystemObjects': local_fs_objects,
+            'errors': errors}
 
 
 def connection_usages(client: Any) -> Dict[str, Any]:
@@ -982,11 +1200,14 @@ def connection_usages(client: Any) -> Dict[str, Any]:
     dataset_map: Dict[str, List[Dict]] = {}
     llm_map: Dict[str, List[Dict]] = {}
     local_fs_usages: List[Dict[str, Any]] = []
+    scan_errors: List[Dict[str, Any]] = []
     for pk in project_names:
         try:
             result = _scan_project_connections(client, pk, conn_types)
-        except Exception:
-            result = {'projectKey': pk, 'datasetConns': [], 'llmConns': [], 'localFilesystemObjects': []}
+        except Exception as exc:
+            result = {'projectKey': pk, 'datasetConns': [], 'llmConns': []}
+            scan_errors.append({'projectKey': pk, 'area': 'scan', 'error': str(exc)[:240]})
+        scan_errors.extend(result.get('errors', []) or [])
         pname = project_names.get(pk, pk)
         owner = str(project_owner_by_key.get(pk) or 'Unknown')
         owner_email = user_email_by_login.get(owner, owner)
@@ -1027,6 +1248,9 @@ def connection_usages(client: Any) -> Dict[str, Any]:
         'localFilesystemUsages': sorted(local_fs_usages, key=lambda item: (
             str(item.get('owner') or '').lower(), str(item.get('projectKey') or '').lower(),
             str(item.get('objectName') or '').lower())),
+        'scanErrors': scan_errors,
+        'failedProjectCount': len({e['projectKey'] for e in scan_errors}),
+        'scannedProjectCount': len(project_names),
     }
 
 
@@ -1104,6 +1328,13 @@ def _cex_add_row(rows: List[Dict[str, Any]], **kwargs) -> None:
     mode, effective, inherited = _cex_effective(selection, fallback_config)
     container_conf = str(selection.get('containerConf')) if isinstance(selection, dict) and selection.get('containerConf') else None
     row = {
+        'id': '|'.join([
+            str(kwargs.get('project_key') or ''),
+            str(kwargs.get('object_type') or ''),
+            str(kwargs.get('object_id') or ''),
+            str(kwargs.get('surface') or ''),
+            str(kwargs.get('raw_path') or ''),
+        ]),
         'projectKey': kwargs.get('project_key') or '',
         'projectName': kwargs.get('project_name') or kwargs.get('project_key') or '',
         'objectType': kwargs.get('object_type') or '',
@@ -1111,10 +1342,12 @@ def _cex_add_row(rows: List[Dict[str, Any]], **kwargs) -> None:
         'objectName': kwargs.get('object_name') or kwargs.get('object_id') or '',
         'surface': kwargs.get('surface') or '',
         'surfaceLabel': kwargs.get('surface_label') or kwargs.get('surface') or '',
+        'rawPath': kwargs.get('raw_path') or '',
         'containerMode': mode,
         'containerConf': container_conf,
         'effectiveContainerConf': effective,
         'inheritedFrom': inherited_from if inherited else None,
+        'writable': bool(kwargs.get('writable')),
         'replacementSupported': bool(kwargs.get('replacement_supported')),
         'notes': kwargs.get('notes') or '',
         'overrideLevel': kwargs.get('override_level') or '',
@@ -1146,19 +1379,32 @@ def _cex_group_project_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 def container_execs(client: Any) -> Dict[str, Any]:
     """Container-execution-config inventory + per-project/per-object explicit
-    overrides. Faithful synchronous port of _cex_scan (backend.py:8927).
+    overrides. Faithful synchronous port of _cex_scan (backend.py:8983).
 
-    Returns {configs, usageRows, projectRows, summary, nonCarrierCounts,
+    Returns {configs, usageRows, projectRows, summary, nonCarrierCounts, events,
+    scanErrors, failedProjectCount, scannedProjectCount, timedOut, elapsedMs,
     configNames, globalDefaultConfig}.
 
     NOTE: scans every project's recipes / webapps / ML tasks via the SDK +
     _perform_json — slow on large instances (the same heavy work the webapp
-    streams behind a progress bar).
+    streams behind a progress bar). The deadline/timeout machinery is dropped,
+    so timedOut is always False here.
     """
+    started = time.time()
     usage_rows: List[Dict[str, Any]] = []
+    events: List[Dict[str, Any]] = []
     non_carrier_counts: Dict[str, int] = {
         'jupyterNotebooks': 0, 'sqlNotebooks': 0, 'scenarios': 0, 'apiServices': 0,
         'sparkRecipes': 0, 'shellRecipes': 0, 'modelEvaluationStores': 0, 'modelComparisons': 0}
+
+    def event(step: str, message: str, project_key: str = '', level: str = 'info') -> None:
+        events.append({
+            'tMs': round((time.time() - started) * 1000.0, 2),
+            'level': level,
+            'step': step,
+            'message': message,
+            'projectKey': project_key,
+        })
 
     configs_raw: List[Dict[str, Any]] = []
     global_default = None
@@ -1169,8 +1415,8 @@ def container_execs(client: Any) -> Dict[str, Any]:
             configs_raw = [cfg for cfg in (container_settings.get('executionConfigs') or []) if isinstance(cfg, dict)]
             if container_settings.get('defaultExecutionConfig'):
                 global_default = str(container_settings.get('defaultExecutionConfig'))
-    except Exception:
-        pass
+    except Exception as exc:
+        event('general_settings_error', str(exc)[:200], '*', 'warn')
 
     configs = [_cex_clean_config(cfg) for cfg in configs_raw]
     config_names = sorted({str(cfg.get('name')) for cfg in configs_raw if cfg.get('name')})
@@ -1183,12 +1429,13 @@ def container_execs(client: Any) -> Dict[str, Any]:
                 continue
             try:
                 template_raw = client.get_code_studio_template(template_id).get_settings().get_raw()
-            except Exception:
+            except Exception as exc:
+                event('code_studio_template_error', str(exc)[:200], '*', 'warn')
                 template_raw = raw_item
             default_conf = template_raw.get('defaultContainerConf') if isinstance(template_raw, dict) else None
             template_default_by_id[template_id] = str(default_conf) if default_conf else None
-    except Exception:
-        pass
+    except Exception as exc:
+        event('code_studio_templates_error', str(exc)[:200], '*', 'warn')
 
     catalog = _projects_catalog_cheap(client)
     for project_meta in catalog:
@@ -1199,7 +1446,8 @@ def container_execs(client: Any) -> Dict[str, Any]:
         try:
             project = client.get_project(project_key)
             settings_raw = project.get_settings().get_raw()
-        except Exception:
+        except Exception as exc:
+            event('project_settings_error', str(exc)[:200], project_key, 'warn')
             continue
 
         code_sel = _cex_path_get(settings_raw, 'settings.container')
@@ -1220,12 +1468,24 @@ def container_execs(client: Any) -> Dict[str, Any]:
                          object_type='PROJECT', object_id=project_key, object_name=project_name,
                          surface=surface, surface_label=label, raw_path=path, selection=selection,
                          fallback_config=global_default, inherited_from='global default',
-                         replacement_supported=True, notes=notes, override_level='project',
+                         writable=True, replacement_supported=True, notes=notes, override_level='project',
                          object_subtype=label, project_config=global_default)
+
+        remap = _cex_path_get(settings_raw, 'bundleContainerSettings.remapping')
+        if isinstance(remap, dict):
+            for item in (remap.get('containerExecs') or []):
+                if not isinstance(item, dict):
+                    continue
+                for field in ('source', 'target'):
+                    conf = item.get(field)
+                    if not conf:
+                        continue
+                    non_carrier_counts['bundleRemaps'] = non_carrier_counts.get('bundleRemaps', 0) + 1
 
         try:
             recipes = project.list_recipes() or []
-        except Exception:
+        except Exception as exc:
+            event('recipes_error', str(exc)[:200], project_key, 'warn')
             recipes = []
         for recipe_item in recipes:
             if not isinstance(recipe_item, dict):
@@ -1237,7 +1497,8 @@ def container_execs(client: Any) -> Dict[str, Any]:
             try:
                 recipe_raw = client._perform_json('GET', f'/projects/{project_key}/recipes/{recipe_name}')
                 recipe_def = recipe_raw.get('recipe') if isinstance(recipe_raw, dict) else None
-            except Exception:
+            except Exception as exc:
+                event('recipe_error', f'{recipe_name}: {exc}'[:200], project_key, 'warn')
                 continue
             if not isinstance(recipe_def, dict):
                 continue
@@ -1245,34 +1506,37 @@ def container_execs(client: Any) -> Dict[str, Any]:
                 selection = _cex_path_get(recipe_def, 'params.containerSelection')
                 if isinstance(selection, dict):
                     mode, _, _ = _cex_effective(selection, code_effective)
-                    if mode == 'EXPLICIT_CONTAINER' and _cex_is_visible_job_override(selection, code_effective, global_default):
-                        _cex_add_row(usage_rows, project_key=project_key, project_name=project_name,
-                                     object_type='RECIPE', object_id=recipe_name, object_name=recipe_name,
-                                     surface='recipe_code', surface_label='Python/R code recipe',
-                                     raw_path='recipe.params.containerSelection', selection=selection,
-                                     fallback_config=code_effective, inherited_from='project code workload default',
-                                     replacement_supported=True, notes=f'{recipe_type} recipe',
-                                     override_level='job', object_subtype=f'{recipe_type} recipe',
-                                     project_config=code_effective, extra={'recipeType': recipe_type})
+                    if mode != 'EXPLICIT_CONTAINER' or not _cex_is_visible_job_override(selection, code_effective, global_default):
+                        continue
+                    _cex_add_row(usage_rows, project_key=project_key, project_name=project_name,
+                                 object_type='RECIPE', object_id=recipe_name, object_name=recipe_name,
+                                 surface='recipe_code', surface_label='Python/R code recipe',
+                                 raw_path='recipe.params.containerSelection', selection=selection,
+                                 fallback_config=code_effective, inherited_from='project code workload default',
+                                 writable=True, replacement_supported=True, notes=f'{recipe_type} recipe',
+                                 override_level='job', object_subtype=f'{recipe_type} recipe',
+                                 project_config=code_effective, extra={'recipeType': recipe_type})
             elif recipe_type in _CEX_NON_CARRIER_RECIPE_TYPES:
                 non_carrier_counts['shellRecipes' if recipe_type == 'shell' else 'sparkRecipes'] += 1
 
             visual_selection = _cex_path_get(recipe_def, 'params.engineParams.containerSelection')
             if isinstance(visual_selection, dict):
                 mode, _, _ = _cex_effective(visual_selection, visual_effective)
-                if mode == 'EXPLICIT_CONTAINER' and _cex_is_visible_job_override(visual_selection, visual_effective, global_default):
-                    _cex_add_row(usage_rows, project_key=project_key, project_name=project_name,
-                                 object_type='RECIPE', object_id=recipe_name, object_name=recipe_name,
-                                 surface='recipe_visual', surface_label='Visual recipe',
-                                 raw_path='recipe.params.engineParams.containerSelection', selection=visual_selection,
-                                 fallback_config=visual_effective, inherited_from='project visual recipe default',
-                                 replacement_supported=True, notes=f'{recipe_type} recipe using DSS engine',
-                                 override_level='job', object_subtype=f'{recipe_type} visual recipe',
-                                 project_config=visual_effective, extra={'recipeType': recipe_type})
+                if mode != 'EXPLICIT_CONTAINER' or not _cex_is_visible_job_override(visual_selection, visual_effective, global_default):
+                    continue
+                _cex_add_row(usage_rows, project_key=project_key, project_name=project_name,
+                             object_type='RECIPE', object_id=recipe_name, object_name=recipe_name,
+                             surface='recipe_visual', surface_label='Visual recipe',
+                             raw_path='recipe.params.engineParams.containerSelection', selection=visual_selection,
+                             fallback_config=visual_effective, inherited_from='project visual recipe default',
+                             writable=True, replacement_supported=True, notes=f'{recipe_type} recipe using DSS engine',
+                             override_level='job', object_subtype=f'{recipe_type} visual recipe',
+                             project_config=visual_effective, extra={'recipeType': recipe_type})
 
         try:
             webapps = project.list_webapps() or []
-        except Exception:
+        except Exception as exc:
+            event('webapps_error', str(exc)[:200], project_key, 'warn')
             webapps = []
         for webapp_item in webapps:
             webapp_raw = _cex_item_raw(webapp_item)
@@ -1281,28 +1545,31 @@ def container_execs(client: Any) -> Dict[str, Any]:
                 continue
             try:
                 detail = project.get_webapp(webapp_id).get_settings().get_raw()
-            except Exception:
+            except Exception as exc:
+                event('webapp_error', f'{webapp_id}: {exc}'[:200], project_key, 'warn')
                 continue
             selection = _cex_path_get(detail, 'params.infra.containerSelection')
             if isinstance(selection, dict):
                 mode, _, _ = _cex_effective(selection, webapp_effective)
-                if mode == 'EXPLICIT_CONTAINER' and _cex_is_visible_job_override(selection, webapp_effective, global_default):
-                    _cex_add_row(usage_rows, project_key=project_key, project_name=project_name,
-                                 object_type='WEBAPP', object_id=webapp_id,
-                                 object_name=str(detail.get('name') or webapp_raw.get('name') or webapp_id),
-                                 surface='webapp_backend', surface_label='Webapp backend',
-                                 raw_path='params.infra.containerSelection', selection=selection,
-                                 fallback_config=webapp_effective, inherited_from='project webapp backend default',
-                                 replacement_supported=True,
-                                 notes=str(detail.get('type') or webapp_raw.get('type') or 'webapp'),
-                                 override_level='job',
-                                 object_subtype=str(detail.get('type') or webapp_raw.get('type') or 'webapp'),
-                                 project_config=webapp_effective)
+                if mode != 'EXPLICIT_CONTAINER' or not _cex_is_visible_job_override(selection, webapp_effective, global_default):
+                    continue
+                _cex_add_row(usage_rows, project_key=project_key, project_name=project_name,
+                             object_type='WEBAPP', object_id=webapp_id,
+                             object_name=str(detail.get('name') or webapp_raw.get('name') or webapp_id),
+                             surface='webapp_backend', surface_label='Webapp backend',
+                             raw_path='params.infra.containerSelection', selection=selection,
+                             fallback_config=webapp_effective, inherited_from='project webapp backend default',
+                             writable=True, replacement_supported=True,
+                             notes=str(detail.get('type') or webapp_raw.get('type') or 'webapp'),
+                             override_level='job',
+                             object_subtype=str(detail.get('type') or webapp_raw.get('type') or 'webapp'),
+                             project_config=webapp_effective)
 
         try:
             lab = client._perform_json('GET', f'/projects/{project_key}/models/lab/')
             tasks = lab.get('mlTasks') if isinstance(lab, dict) else []
-        except Exception:
+        except Exception as exc:
+            event('ml_tasks_error', str(exc)[:200], project_key, 'warn')
             tasks = []
         for task in tasks or []:
             if not isinstance(task, dict):
@@ -1313,21 +1580,49 @@ def container_execs(client: Any) -> Dict[str, Any]:
                 continue
             try:
                 task_settings = client._perform_json('GET', f'/projects/{project_key}/models/lab/{analysis_id}/{task_id}/settings')
-            except Exception:
+            except Exception as exc:
+                event('ml_task_error', f'{task_id}: {exc}'[:200], project_key, 'warn')
                 continue
             selection = task_settings.get('containerSelection') if isinstance(task_settings, dict) else None
             if isinstance(selection, dict):
                 mode, _, _ = _cex_effective(selection, code_effective)
-                if mode == 'EXPLICIT_CONTAINER' and _cex_is_visible_job_override(selection, code_effective, global_default):
-                    _cex_add_row(usage_rows, project_key=project_key, project_name=project_name,
-                                 object_type='ML_TASK', object_id=f'{analysis_id}/{task_id}',
-                                 object_name=str(task.get('mlTaskName') or task_id),
-                                 surface='ml_task', surface_label='ML task', raw_path='containerSelection',
-                                 selection=selection, fallback_config=code_effective,
-                                 inherited_from='project/container default', replacement_supported=True,
-                                 notes=str(task.get('taskType') or ''), override_level='job',
-                                 object_subtype=str(task.get('taskType') or 'ML task'), project_config=code_effective,
-                                 extra={'analysisId': analysis_id, 'mlTaskId': task_id})
+                if mode != 'EXPLICIT_CONTAINER' or not _cex_is_visible_job_override(selection, code_effective, global_default):
+                    continue
+                _cex_add_row(usage_rows, project_key=project_key, project_name=project_name,
+                             object_type='ML_TASK', object_id=f'{analysis_id}/{task_id}',
+                             object_name=str(task.get('mlTaskName') or task_id),
+                             surface='ml_task', surface_label='ML task', raw_path='containerSelection',
+                             selection=selection, fallback_config=code_effective,
+                             inherited_from='project/container default', writable=True, replacement_supported=True,
+                             notes=str(task.get('taskType') or ''), override_level='job',
+                             object_subtype=str(task.get('taskType') or 'ML task'), project_config=code_effective,
+                             extra={'analysisId': analysis_id, 'mlTaskId': task_id})
+
+        for key, getter in (
+            ('jupyterNotebooks', lambda: project.list_jupyter_notebooks(as_type='listitems')),
+            ('sqlNotebooks', lambda: project.list_sql_notebooks(as_type='listitems')),
+            ('scenarios', lambda: project.list_scenarios()),
+            ('apiServices', lambda: project.list_api_services(as_type='listitems')),
+            ('modelEvaluationStores', lambda: project.list_model_evaluation_stores()),
+            ('modelComparisons', lambda: project.list_model_comparisons()),
+        ):
+            try:
+                non_carrier_counts[key] += len(getter() or [])
+            except Exception as exc:
+                event(f'{key}_error', str(exc)[:200], project_key, 'warn')
+
+        try:
+            studios = project.list_code_studios(as_type='listitems') or []
+        except Exception:
+            studios = []
+        for studio_item in studios:
+            studio_raw = _cex_item_raw(studio_item)
+            studio_id = str(studio_raw.get('id') or '')
+            template_id = str(studio_raw.get('templateId') or '')
+            if not studio_id:
+                continue
+            if template_id and template_default_by_id.get(template_id):
+                non_carrier_counts['codeStudioTemplateReferences'] = non_carrier_counts.get('codeStudioTemplateReferences', 0) + 1
 
     by_config: Dict[str, int] = {}
     by_type: Dict[str, int] = {}
@@ -1350,18 +1645,44 @@ def container_execs(client: Any) -> Dict[str, Any]:
 
     project_rows = _cex_group_project_rows(usage_rows)
     project_override_count = len([row for row in project_rows if row.get('projectOverrides')])
+
+    scan_errors = [
+        {
+            'projectKey': str(ev.get('projectKey')),
+            'area': str(ev.get('area') or ev.get('step') or 'scan'),
+            'error': str(ev.get('message') or ev.get('error') or '')[:240],
+        }
+        for ev in events
+        if ev.get('level') in ('warn', 'error') and ev.get('projectKey') and ev.get('projectKey') != '*'
+    ]
+    failed_project_count = len({err['projectKey'] for err in scan_errors})
+
     return {
         'configs': configs,
         'usageRows': usage_rows,
         'projectRows': project_rows,
         'summary': {
-            'configCount': len(configs), 'usageCount': len(usage_rows),
-            'explicitUsageCount': explicit, 'replacementSupportedCount': supported,
-            'projectOverrideCount': project_override_count, 'projectOverrideRowCount': project_override_rows,
-            'jobOverrideCount': job_override_rows, 'byConfig': by_config, 'byObjectType': by_type,
-            'byMode': by_mode, 'projectCount': len(catalog), 'projectUsageCount': len(projects_with_explicit),
+            'configCount': len(configs),
+            'usageCount': len(usage_rows),
+            'explicitUsageCount': explicit,
+            'inheritedUsageCount': 0,
+            'replacementSupportedCount': supported,
+            'projectOverrideCount': project_override_count,
+            'projectOverrideRowCount': project_override_rows,
+            'jobOverrideCount': job_override_rows,
+            'byConfig': by_config,
+            'byObjectType': by_type,
+            'byMode': by_mode,
+            'projectCount': len(catalog),
+            'projectUsageCount': len(projects_with_explicit),
         },
         'nonCarrierCounts': non_carrier_counts,
+        'events': events[-500:],
+        'scanErrors': scan_errors,
+        'failedProjectCount': failed_project_count,
+        'scannedProjectCount': len(catalog),
+        'timedOut': False,
+        'elapsedMs': round((time.time() - started) * 1000.0, 2),
         'configNames': config_names,
         'globalDefaultConfig': global_default,
     }

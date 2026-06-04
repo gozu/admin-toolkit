@@ -373,7 +373,7 @@ test.describe('Redesign Smoke Tests', () => {
     }
 
     // Also try tools
-    for (const label of ['Outreach', 'Code Env Cleaner']) {
+    for (const label of ['Code Env Cleaner']) {
       const btn = sidebarBtn(page, label);
       if (await btn.first().isVisible().catch(() => false)) {
         await btn.first().click();

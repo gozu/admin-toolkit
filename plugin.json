@@ -440,14 +440,6 @@
             "defaultValue": 20
         },
         {
-            "name": "perf_tracking_issue_page_size",
-            "label": "Issue Fetch Page Size",
-            "description": "Number of issues fetched per page.",
-            "type": "INT",
-            "mandatory": false,
-            "defaultValue": 500
-        },
-        {
             "name": "perf_cache_ttl_connections",
             "label": "Cache TTL: Connections (sec)",
             "description": "Cache TTL for connections endpoint.",

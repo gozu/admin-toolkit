@@ -4,6 +4,7 @@ import { loadFromStorage, saveToStorage } from '../../utils/storage';
 import { useToggleFlag } from '../../hooks/useToggleFlag';
 import { useRedState, forgetRed } from '../../state/redUnlockStore';
 import { RedUnlockModal } from '../RedUnlockModal';
+import { AlgorithmReviewCard } from '../AlgorithmReviewCard';
 
 export const SELECTED_MAIL_CHANNEL_STORAGE_KEY = 'selectedMailChannel';
 export const SHOW_EXPERIMENTAL_STORAGE_KEY = 'showExperimental';
@@ -133,6 +134,8 @@ export function SettingsPage() {
           “Advanced Actions secret”. The plaintext never leaves the browser.
         </p>
       </section>
+
+      <AlgorithmReviewCard />
 
       <section className="glass-card p-4 space-y-3">
         <div>

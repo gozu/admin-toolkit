@@ -86,9 +86,7 @@ _BACKEND_SETTINGS: Dict[str, Any] = {
     'fe_timeout_logs': 30000,
     'fe_timeout_llm_analysis': 120000,
     'fe_timeout_llm_audit': 1200000,
-    # Tracking
     'sqlite_connect_timeout': 30,
-    'tracking_issue_page_size': 500,
     # Codenvclean
     'codenvclean_thread_max': 20,
 }
@@ -1720,12 +1718,9 @@ def _bench_call(name: str, fn, *args, **kwargs):
 def _get_sdk_cache():
     global _SDK_CACHE
     if _SDK_CACHE is None:
-        try:
-            from db_adapter import load_tracking_backend_config, create_sdk_cache
-            _SDK_CACHE = create_sdk_cache(load_tracking_backend_config())
-        except Exception:
-            from sdk_cache import SdkApiCache
-            _SDK_CACHE = SdkApiCache(None)
+        # The SQL-backed tracking cache was dropped; this is the in-memory cache.
+        from sdk_cache import SdkApiCache
+        _SDK_CACHE = SdkApiCache(None)
     return _SDK_CACHE
 
 
@@ -7391,6 +7386,218 @@ def api_code_envs_replace():
         'skippedRows': len([r for r in results if r.get('status') == 'skipped']),
         'failedRows': len([r for r in results if r.get('status') == 'failed']),
         'results': results,
+    })
+
+
+# ── Algorithm review: ship adk_notebook libs + scan notebooks into ADMINTOOLKIT ──
+#
+# Materializes a human-reviewable copy of the webapp's Dataiku-API logic inside the
+# ADMINTOOLKIT project: writes the importable shared libraries into the project's
+# Python library and creates one Jupyter notebook per scan card (verbatim source).
+# Pure DSS-API writes → stays on g.client, no macro. API shapes verified live.
+
+def _adk_review_plugin_root() -> str:
+    """Plugin root dir, anchored on the imported adk_notebook package.
+
+    adk_notebook lives at <root>/python-lib/adk_notebook/__init__.py, so two
+    parents up from the package dir is the plugin root (where notebook-cards/ sits).
+    """
+    import adk_notebook
+    pkg_dir = os.path.dirname(os.path.abspath(adk_notebook.__file__))
+    python_lib_dir = os.path.dirname(pkg_dir)
+    return os.path.dirname(python_lib_dir)
+
+
+def _adk_review_lib_sources() -> Dict[str, str]:
+    """{path-under-lib/python: source_text} for the first-party closure the cards
+    import: the whole adk_notebook package plus llm_audit (reached via
+    data.llm_audit_report → ``import llm_audit``)."""
+    import adk_notebook
+    import llm_audit
+    out: Dict[str, str] = {}
+    pkg_dir = os.path.dirname(os.path.abspath(adk_notebook.__file__))
+    for fname in sorted(os.listdir(pkg_dir)):
+        if fname.endswith('.py'):
+            with open(os.path.join(pkg_dir, fname), 'r', encoding='utf-8') as fh:
+                out['adk_notebook/' + fname] = fh.read()
+    with open(os.path.abspath(llm_audit.__file__), 'r', encoding='utf-8') as fh:
+        out['llm_audit.py'] = fh.read()
+    return out
+
+
+def _adk_review_card_sources() -> Dict[str, Tuple[str, str]]:
+    """{notebook_name: (card_filename, source_text)} for the bundled scan cards.
+    Notebook name = card filename stem (e.g. ai-compute__model-audit__llm-audit-table)."""
+    cards_dir = os.path.join(_adk_review_plugin_root(), 'notebook-cards')
+    out: Dict[str, Tuple[str, str]] = {}
+    if not os.path.isdir(cards_dir):
+        return out
+    for fname in sorted(os.listdir(cards_dir)):
+        if fname.endswith('.py') and '__' in fname:
+            with open(os.path.join(cards_dir, fname), 'r', encoding='utf-8') as fh:
+                out[fname[:-3]] = (fname, fh.read())
+    return out
+
+
+def _adk_review_resolve_kernel(client: Any) -> Tuple[str, bool, List[str]]:
+    """Resolve the Jupyter kernel for the review notebooks.
+
+    The webapp uses a contextual code env; in practice that resolves to the instance
+    default (no plugin-managed Jupyter env exists — plugin envs have no kernel spec),
+    whose builtin kernel is ``python3``. If ADMINTOOLKIT pins a python env that exposes
+    a kernelSpecName, use it; otherwise fall back to python3 and warn."""
+    warnings: List[str] = []
+    try:
+        raw = client.get_project(MACRO_PROJECT_KEY).get_settings().get_raw()
+        env_cfg = (((raw.get('settings') or {}).get('codeEnvs') or {}).get('python') or {})
+        if str(env_cfg.get('mode') or '').upper() not in ('', 'INHERIT', 'USE_BUILTIN_MODE'):
+            env_name = str(env_cfg.get('envName') or '').strip()
+            if env_name:
+                catalog = _cer_env_catalog(client)
+                env = catalog.get(('PYTHON', env_name)) or {}
+                detail = _cer_fetch_env_detail(client, 'PYTHON', env_name)
+                kernel = _cer_kernel_spec_name(env, detail)
+                if kernel:
+                    return kernel, False, warnings
+    except Exception:
+        pass
+    warnings.append(
+        "Notebooks use the builtin 'python3' kernel (the webapp inherits the instance "
+        "default code env). Ensure that env has the 'rich' and 'python-dateutil' packages "
+        "installed so the cards can run."
+    )
+    return 'python3', True, warnings
+
+
+def _adk_review_card_title(source_text: str, fallback: str) -> str:
+    """First non-empty line of the card's leading docstring (its display title)."""
+    match = re.search(r'"""(.*?)"""', source_text, re.S)
+    if match:
+        for line in match.group(1).strip().splitlines():
+            if line.strip():
+                return line.strip()
+    return fallback
+
+
+def _adk_review_build_nbformat(card_filename: str, source_text: str, kernel_name: str) -> Dict[str, Any]:
+    """nbformat-v4 notebook: markdown header + one code cell with verbatim card source."""
+    title = _adk_review_card_title(source_text, card_filename)
+    markdown = [
+        "### %s\n" % title,
+        "\n",
+        "_Verbatim review copy of `notebook-cards/%s`._\n" % card_filename,
+        "\n",
+        "Imports the shared logic from the `adk_notebook` project library; "
+        "run the cell below to reproduce the matching webapp card.",
+    ]
+    display = 'Python 3' if kernel_name == 'python3' else kernel_name
+    return {
+        "cells": [
+            {"cell_type": "markdown", "metadata": {}, "source": markdown},
+            {"cell_type": "code", "metadata": {}, "execution_count": None,
+             "outputs": [], "source": source_text.splitlines(keepends=True)},
+        ],
+        "metadata": {
+            "kernelspec": {"name": kernel_name, "display_name": display, "language": "python"},
+            "language_info": {"name": "python"},
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+
+
+def _adk_review_ensure_folder(parent: Any, name: str) -> Any:
+    """get-or-add a child library folder (add_folder raises if it already exists)."""
+    try:
+        return parent.add_folder(name)
+    except Exception:
+        return parent.get_folder(name)
+
+
+def _adk_review_write_library_file(lib: Any, rel_under_python: str, text: str) -> None:
+    """Write text to lib/python/<rel_under_python>, creating folders as needed.
+    Overwriting a fixed path is idempotent (verified: re-runs update, never duplicate)."""
+    segments = rel_under_python.split('/')
+    folder = _adk_review_ensure_folder(lib, 'python')
+    for seg in segments[:-1]:
+        folder = _adk_review_ensure_folder(folder, seg)
+    try:
+        lib_file = folder.add_file(segments[-1])
+    except Exception:
+        lib_file = folder.get_file(segments[-1])
+    # Encode to UTF-8 bytes: passing str makes the SDK send a Latin-1 body, which
+    # blows up on the em-dashes / "›" in the source files (verified live).
+    lib_file.write(text.encode('utf-8'))
+
+
+def _adk_review_upsert_notebook(project: Any, name: str, content: Dict[str, Any],
+                                existing_names: set) -> str:
+    """Create the notebook, or replace it if it already exists.
+
+    create_jupyter_notebook raises on a duplicate name, and DSSNotebookContent in
+    some DSS versions exposes no content-setter (only get_raw/save), so re-create via
+    delete+create — verified idempotent (re-runs update content, never duplicate)."""
+    if name in existing_names:
+        try:
+            project.get_jupyter_notebook(name).delete()
+        except Exception:
+            pass
+        project.create_jupyter_notebook(name, content)
+        return 'updated'
+    project.create_jupyter_notebook(name, content)
+    return 'created'
+
+
+@app.route('/api/algorithm-review/create', methods=['POST'])
+@advanced
+def api_algorithm_review_create():
+    """Write the adk_notebook shared libraries + one verbatim notebook per scan card
+    into the ADMINTOOLKIT project, for human review of the Dataiku-API code."""
+    client = g.client
+    project = _resolve_macro_project(client)  # ADMINTOOLKIT; MacroProjectMissing → 409
+    project_key = MACRO_PROJECT_KEY
+
+    kernel_name, kernel_fallback, warnings = _adk_review_resolve_kernel(client)
+
+    # 1. Shared libraries → project Python library (self-contained import closure).
+    lib = project.get_library()
+    lib_written: List[str] = []
+    lib_errors: List[Dict[str, str]] = []
+    for rel_path, text in sorted(_adk_review_lib_sources().items()):
+        try:
+            _adk_review_write_library_file(lib, rel_path, text)
+            lib_written.append('python/' + rel_path)
+        except Exception as exc:
+            lib_errors.append({'file': rel_path, 'error': str(exc)[:500]})
+
+    # 2. One Jupyter notebook per scan card (idempotent upsert by name).
+    try:
+        existing = client._perform_json('GET', '/projects/%s/jupyter-notebooks/' % project_key)
+        existing_names = {(n.get('name') if isinstance(n, dict) else n) for n in (existing or [])}
+    except Exception:
+        existing_names = set()
+
+    notebooks: List[Dict[str, Any]] = []
+    for nb_name, (card_filename, source_text) in sorted(_adk_review_card_sources().items()):
+        entry: Dict[str, Any] = {'file': card_filename, 'notebookName': nb_name}
+        try:
+            content = _adk_review_build_nbformat(card_filename, source_text, kernel_name)
+            entry['status'] = _adk_review_upsert_notebook(project, nb_name, content, existing_names)
+        except Exception as exc:
+            entry['status'] = 'failed'
+            entry['error'] = str(exc)[:500]
+        notebooks.append(entry)
+
+    return jsonify({
+        'projectKey': project_key,
+        'kernelEnv': kernel_name,
+        'kernelFallbackUsed': kernel_fallback,
+        'warnings': warnings,
+        'library': {'written': lib_written, 'errors': lib_errors},
+        'notebooks': notebooks,
+        'createdCount': sum(1 for n in notebooks if n.get('status') == 'created'),
+        'updatedCount': sum(1 for n in notebooks if n.get('status') == 'updated'),
+        'failedCount': sum(1 for n in notebooks if n.get('status') == 'failed'),
     })
 
 

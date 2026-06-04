@@ -7435,35 +7435,61 @@ def _adk_review_card_sources() -> Dict[str, Tuple[str, str]]:
 def _adk_review_resolve_kernel(client: Any) -> Tuple[str, bool, List[str]]:
     """Resolve the Jupyter kernel for the review notebooks.
 
-    The notebooks should run on the plugin's OWN code env — the same env the webapp
-    uses (``useContextualCodeEnv``) — which ships rich + python-dateutil + the cloud
-    SDKs the cards need. Detect it from the plugin settings (``codeEnvName``) and use
-    its registered ``kernelSpecName``. If that env has no Jupyter kernel yet (its
-    ``installJupyterSupport`` build hasn't run), fall back to builtin ``python3`` + warn.
-    A notebook's kernel is independent of its project's default code env."""
-    warnings: List[str] = []
+    The notebooks must run on the plugin's OWN managed code env — the env that ships
+    rich + python-dateutil + the cloud SDKs the cards need. The plugin's *declared*
+    ``codeEnvName`` is NOT reliable on its own: when a plugin env is rebuilt, DSS can
+    create a version-suffixed sibling (``…_managed_1`` / ``_2`` / ``_3``) while the
+    declared name lags at the stale base. So resolve the whole managed-env *family*
+    (the base name plus its ``_N`` siblings) and pick the NEWEST member that has a
+    Jupyter kernel — that is the current env (verified live: a plugin's ``codeEnvName``
+    normally points at its highest-suffixed env). Fall back to builtin ``python3`` +
+    warn only if no family member has a Jupyter kernel yet (the ``installJupyterSupport``
+    build hasn't run). A notebook's kernel is independent of its project's default."""
     try:
         plugin_settings = client.get_plugin('admin-toolkit').get_settings().get_raw()
-        env_name = str((plugin_settings or {}).get('codeEnvName') or '').strip()
-        if env_name:
-            env = _cer_env_catalog(client).get(('PYTHON', env_name)) or {}
-            detail = _cer_fetch_env_detail(client, 'PYTHON', env_name)
-            kernel = _cer_kernel_spec_name(env, detail)
-            if kernel:
-                return kernel, False, warnings
-            warnings.append(
-                f"Plugin code env '{env_name}' has no Jupyter kernel yet — rebuild it with "
-                "Jupyter support (Administration → Plugins → Code env → Rebuild), "
-                "then re-run. Notebooks use the builtin 'python3' kernel meanwhile."
+        declared = str((plugin_settings or {}).get('codeEnvName') or '').strip()
+        base = re.sub(r'_\d+$', '', declared)  # strip a trailing _N to get the family base
+        if base:
+            catalog = _cer_env_catalog(client)
+            fam_re = re.compile(r'^' + re.escape(base) + r'(_\d+)?$')
+
+            def _suffix(name: str) -> int:
+                match = re.search(r'_(\d+)$', name)
+                return int(match.group(1)) if match else 0
+
+            family = sorted(
+                (
+                    name
+                    for (lang, name), env in catalog.items()
+                    if lang == 'PYTHON'
+                    and fam_re.match(name)
+                    and env.get('deploymentMode') in (None, 'PLUGIN_MANAGED')
+                ),
+                key=_suffix,
+                reverse=True,  # newest suffix first; the un-suffixed base counts as 0
             )
-            return 'python3', True, warnings
+            for name in family:
+                env = catalog.get(('PYTHON', name)) or {}
+                kernel = _cer_kernel_spec_name(env, _cer_fetch_env_detail(client, 'PYTHON', name))
+                if kernel:
+                    if name == declared:
+                        return kernel, False, []
+                    return kernel, False, [
+                        f"Plugin's declared code env '{declared}' is stale; "
+                        f"using newer build '{name}'."
+                    ]
+            newest = family[0] if family else (declared or 'plugin_admin-toolkit_managed')
+            return 'python3', True, [
+                f"Plugin code env '{newest}' has no Jupyter kernel yet — rebuild it with "
+                "Jupyter support (Administration → Plugins → Code env → Rebuild), then "
+                "re-run. Notebooks use the builtin 'python3' kernel meanwhile."
+            ]
     except Exception:
         pass
-    warnings.append(
+    return 'python3', True, [
         "Could not resolve the plugin code env; notebooks use the builtin 'python3' "
         "kernel. Ensure it has 'rich' + 'python-dateutil' so the cards can run."
-    )
-    return 'python3', True, warnings
+    ]
 
 
 def _adk_review_card_title(source_text: str, fallback: str) -> str:

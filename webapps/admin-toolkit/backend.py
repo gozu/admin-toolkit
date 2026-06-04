@@ -7552,6 +7552,37 @@ def _adk_review_upsert_notebook(project: Any, name: str, content: Dict[str, Any]
     return 'created'
 
 
+@app.route('/api/algorithm-review/debug', methods=['GET'])
+def api_algorithm_review_debug():
+    """TEMP diagnostic (non-gated): report the runtime paths used to find notebook-cards/."""
+    import adk_notebook
+    info: Dict[str, Any] = {}
+    info['backend_file'] = os.path.abspath(__file__)
+    info['adk_notebook_file'] = os.path.abspath(getattr(adk_notebook, '__file__', '') or '')
+    try:
+        pr = _adk_review_plugin_root()
+        info['plugin_root_via_adk'] = pr
+        info['cards_dir_via_adk'] = os.path.join(pr, 'notebook-cards')
+        info['cards_dir_via_adk_isdir'] = os.path.isdir(os.path.join(pr, 'notebook-cards'))
+        info['plugin_root_listing'] = sorted(os.listdir(pr)) if os.path.isdir(pr) else 'NOT_A_DIR'
+    except Exception as e:
+        info['plugin_root_via_adk_err'] = repr(e)[:300]
+    try:
+        br = os.path.dirname(os.path.dirname(os.path.dirname(info['backend_file'])))
+        info['plugin_root_via_backend'] = br
+        info['cards_dir_via_backend_isdir'] = os.path.isdir(os.path.join(br, 'notebook-cards'))
+        info['backend_root_listing'] = sorted(os.listdir(br)) if os.path.isdir(br) else 'NOT_A_DIR'
+    except Exception as e:
+        info['plugin_root_via_backend_err'] = repr(e)[:300]
+    try:
+        srcs = _adk_review_card_sources()
+        info['card_sources_count'] = len(srcs)
+        info['card_sources_names'] = sorted(srcs.keys())
+    except Exception as e:
+        info['card_sources_err'] = repr(e)[:300]
+    return jsonify(info)
+
+
 @app.route('/api/algorithm-review/create', methods=['POST'])
 @advanced
 def api_algorithm_review_create():

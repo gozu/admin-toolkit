@@ -7396,18 +7396,6 @@ def api_code_envs_replace():
 # Python library and creates one Jupyter notebook per scan card (verbatim source).
 # Pure DSS-API writes → stays on g.client, no macro. API shapes verified live.
 
-def _adk_review_plugin_root() -> str:
-    """Plugin root dir, anchored on the imported adk_notebook package.
-
-    adk_notebook lives at <root>/python-lib/adk_notebook/__init__.py, so two
-    parents up from the package dir is the plugin root (where notebook-cards/ sits).
-    """
-    import adk_notebook
-    pkg_dir = os.path.dirname(os.path.abspath(adk_notebook.__file__))
-    python_lib_dir = os.path.dirname(pkg_dir)
-    return os.path.dirname(python_lib_dir)
-
-
 def _adk_review_lib_sources() -> Dict[str, str]:
     """{path-under-lib/python: source_text} for the first-party closure the cards
     import: the whole adk_notebook package plus llm_audit (reached via
@@ -7427,8 +7415,13 @@ def _adk_review_lib_sources() -> Dict[str, str]:
 
 def _adk_review_card_sources() -> Dict[str, Tuple[str, str]]:
     """{notebook_name: (card_filename, source_text)} for the bundled scan cards.
-    Notebook name = card filename stem (e.g. ai-compute__model-audit__llm-audit-table)."""
-    cards_dir = os.path.join(_adk_review_plugin_root(), 'notebook-cards')
+
+    Cards live in ``adk_notebook/cards/`` (inside python-lib) — that tree is the only
+    plugin dir copied into the webapp backend's per-run sandbox, so it's reliably
+    present at runtime (the plugin root / notebook-cards/ are NOT copied). Notebook
+    name = card filename stem (e.g. ai-compute__model-audit__llm-audit-table)."""
+    import adk_notebook
+    cards_dir = os.path.join(os.path.dirname(os.path.abspath(adk_notebook.__file__)), 'cards')
     out: Dict[str, Tuple[str, str]] = {}
     if not os.path.isdir(cards_dir):
         return out
@@ -7554,26 +7547,17 @@ def _adk_review_upsert_notebook(project: Any, name: str, content: Dict[str, Any]
 
 @app.route('/api/algorithm-review/debug', methods=['GET'])
 def api_algorithm_review_debug():
-    """TEMP diagnostic (non-gated): report the runtime paths used to find notebook-cards/."""
+    """TEMP diagnostic (non-gated): confirm the cards dir is reachable at runtime."""
     import adk_notebook
     info: Dict[str, Any] = {}
-    info['backend_file'] = os.path.abspath(__file__)
-    info['adk_notebook_file'] = os.path.abspath(getattr(adk_notebook, '__file__', '') or '')
-    try:
-        pr = _adk_review_plugin_root()
-        info['plugin_root_via_adk'] = pr
-        info['cards_dir_via_adk'] = os.path.join(pr, 'notebook-cards')
-        info['cards_dir_via_adk_isdir'] = os.path.isdir(os.path.join(pr, 'notebook-cards'))
-        info['plugin_root_listing'] = sorted(os.listdir(pr)) if os.path.isdir(pr) else 'NOT_A_DIR'
-    except Exception as e:
-        info['plugin_root_via_adk_err'] = repr(e)[:300]
-    try:
-        br = os.path.dirname(os.path.dirname(os.path.dirname(info['backend_file'])))
-        info['plugin_root_via_backend'] = br
-        info['cards_dir_via_backend_isdir'] = os.path.isdir(os.path.join(br, 'notebook-cards'))
-        info['backend_root_listing'] = sorted(os.listdir(br)) if os.path.isdir(br) else 'NOT_A_DIR'
-    except Exception as e:
-        info['plugin_root_via_backend_err'] = repr(e)[:300]
+    pkg_dir = os.path.dirname(os.path.abspath(adk_notebook.__file__))
+    info['adk_notebook_file'] = adk_notebook.__file__
+    info['pkg_dir'] = pkg_dir
+    info['pkg_dir_listing'] = sorted(os.listdir(pkg_dir)) if os.path.isdir(pkg_dir) else 'NOT_A_DIR'
+    cards_dir = os.path.join(pkg_dir, 'cards')
+    info['cards_dir'] = cards_dir
+    info['cards_dir_isdir'] = os.path.isdir(cards_dir)
+    info['cards_listing'] = sorted(os.listdir(cards_dir)) if os.path.isdir(cards_dir) else 'NOT_A_DIR'
     try:
         srcs = _adk_review_card_sources()
         info['card_sources_count'] = len(srcs)

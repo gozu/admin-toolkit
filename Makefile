@@ -54,7 +54,6 @@ DEPLOY_COMMIT_PATHS := \
 	parameter-sets \
 	python-lib \
 	python-runnables \
-	notebook-cards \
 	webapps \
 	resource/dist \
 	resource/dbhealth-connection-choices.py \

@@ -7442,29 +7442,33 @@ def _adk_review_card_sources() -> Dict[str, Tuple[str, str]]:
 def _adk_review_resolve_kernel(client: Any) -> Tuple[str, bool, List[str]]:
     """Resolve the Jupyter kernel for the review notebooks.
 
-    The webapp uses a contextual code env; in practice that resolves to the instance
-    default (no plugin-managed Jupyter env exists — plugin envs have no kernel spec),
-    whose builtin kernel is ``python3``. If ADMINTOOLKIT pins a python env that exposes
-    a kernelSpecName, use it; otherwise fall back to python3 and warn."""
+    The notebooks should run on the plugin's OWN code env — the same env the webapp
+    uses (``useContextualCodeEnv``) — which ships rich + python-dateutil + the cloud
+    SDKs the cards need. Detect it from the plugin settings (``codeEnvName``) and use
+    its registered ``kernelSpecName``. If that env has no Jupyter kernel yet (its
+    ``installJupyterSupport`` build hasn't run), fall back to builtin ``python3`` + warn.
+    A notebook's kernel is independent of its project's default code env."""
     warnings: List[str] = []
     try:
-        raw = client.get_project(MACRO_PROJECT_KEY).get_settings().get_raw()
-        env_cfg = (((raw.get('settings') or {}).get('codeEnvs') or {}).get('python') or {})
-        if str(env_cfg.get('mode') or '').upper() not in ('', 'INHERIT', 'USE_BUILTIN_MODE'):
-            env_name = str(env_cfg.get('envName') or '').strip()
-            if env_name:
-                catalog = _cer_env_catalog(client)
-                env = catalog.get(('PYTHON', env_name)) or {}
-                detail = _cer_fetch_env_detail(client, 'PYTHON', env_name)
-                kernel = _cer_kernel_spec_name(env, detail)
-                if kernel:
-                    return kernel, False, warnings
+        plugin_settings = client.get_plugin('admin-toolkit').get_settings().get_raw()
+        env_name = str((plugin_settings or {}).get('codeEnvName') or '').strip()
+        if env_name:
+            env = _cer_env_catalog(client).get(('PYTHON', env_name)) or {}
+            detail = _cer_fetch_env_detail(client, 'PYTHON', env_name)
+            kernel = _cer_kernel_spec_name(env, detail)
+            if kernel:
+                return kernel, False, warnings
+            warnings.append(
+                f"Plugin code env '{env_name}' has no Jupyter kernel yet — rebuild it with "
+                "Jupyter support (Administration → Plugins → Code env → Rebuild), "
+                "then re-run. Notebooks use the builtin 'python3' kernel meanwhile."
+            )
+            return 'python3', True, warnings
     except Exception:
         pass
     warnings.append(
-        "Notebooks use the builtin 'python3' kernel (the webapp inherits the instance "
-        "default code env). Ensure that env has the 'rich' and 'python-dateutil' packages "
-        "installed so the cards can run."
+        "Could not resolve the plugin code env; notebooks use the builtin 'python3' "
+        "kernel. Ensure it has 'rich' + 'python-dateutil' so the cards can run."
     )
     return 'python3', True, warnings
 

@@ -7545,28 +7545,6 @@ def _adk_review_upsert_notebook(project: Any, name: str, content: Dict[str, Any]
     return 'created'
 
 
-@app.route('/api/algorithm-review/debug', methods=['GET'])
-def api_algorithm_review_debug():
-    """TEMP diagnostic (non-gated): confirm the cards dir is reachable at runtime."""
-    import adk_notebook
-    info: Dict[str, Any] = {}
-    pkg_dir = os.path.dirname(os.path.abspath(adk_notebook.__file__))
-    info['adk_notebook_file'] = adk_notebook.__file__
-    info['pkg_dir'] = pkg_dir
-    info['pkg_dir_listing'] = sorted(os.listdir(pkg_dir)) if os.path.isdir(pkg_dir) else 'NOT_A_DIR'
-    cards_dir = os.path.join(pkg_dir, 'cards')
-    info['cards_dir'] = cards_dir
-    info['cards_dir_isdir'] = os.path.isdir(cards_dir)
-    info['cards_listing'] = sorted(os.listdir(cards_dir)) if os.path.isdir(cards_dir) else 'NOT_A_DIR'
-    try:
-        srcs = _adk_review_card_sources()
-        info['card_sources_count'] = len(srcs)
-        info['card_sources_names'] = sorted(srcs.keys())
-    except Exception as e:
-        info['card_sources_err'] = repr(e)[:300]
-    return jsonify(info)
-
-
 @app.route('/api/algorithm-review/create', methods=['POST'])
 @advanced
 def api_algorithm_review_create():

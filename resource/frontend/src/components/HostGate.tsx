@@ -82,8 +82,7 @@ export function HostGate({ onEnter }: HostGateProps) {
   function handlePick(host: DssHost) {
     const status = statuses[host.id];
     if (
-      host.id !== 'local'
-      && status !== undefined
+      status !== undefined
       && status !== 'loading'
       && status.ok
       && status.pluginInstalled !== false
@@ -202,7 +201,7 @@ export function HostGate({ onEnter }: HostGateProps) {
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">Create remote support project</h2>
             <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
               {setupHost.label} has the plugin installed, but it is missing the ADMINTOOLKIT project used for
-              target-host macros and backups. Create it once on that host, then the scan can continue.
+              host macros and backups. Create it once, then the scan can continue.
             </p>
             {setupError && (
               <div className="mt-3 rounded border border-[var(--neon-red)]/40 bg-[var(--neon-red)]/10 px-3 py-2 text-sm text-[var(--neon-red)]">
@@ -244,7 +243,7 @@ interface HostCardProps {
 function HostCard({ host, status, accent, onClick }: HostCardProps) {
   const accentBorder = accent === 'local' ? 'border-[var(--neon-cyan)]/40' : 'border-[var(--border-glass)]';
   const reachable = status !== undefined && status !== 'loading' && status.ok && status.pluginInstalled !== false;
-  const needsSetup = reachable && host.id !== 'local' && status.adminToolkitProjectExists === false;
+  const needsSetup = reachable && status.adminToolkitProjectExists === false;
   return (
     <button
       onClick={onClick}

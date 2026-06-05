@@ -278,7 +278,22 @@ Hunt specifically for:
 Rate each finding's severity: Low, Medium, High, or Critical. Set
 "decision":"NO_GO" if ANY finding is High or Critical; otherwise "GO".
 Set "highest_severity" to the max severity across findings ("None" if no
-findings). Be precise and avoid false positives, but fail safe on genuine risk.
+findings).
+
+SEVERITY CALIBRATION — MANDATORY. Assign High/Critical ONLY to a concrete
+vulnerability that is ACTUALLY PRESENT in THIS changeset and exploitable as
+written — a real hole an attacker could use against code/data that is really
+here. You MUST NOT assign High/Critical to:
+  • hypothetical or "what if" scenarios, or risks about inputs/files NOT present
+    in this diff (e.g. "binary files could bypass scanning" when there are no
+    binary files here; "an attacker who can set env/push arbitrary refs");
+  • generic design, architecture, or threat-model opinions about the tooling;
+  • defense-in-depth / "could be even stricter" suggestions;
+  • supply-chain, reproducibility, or style/hygiene nits.
+Those are at most Low (informational). Blocking the push requires a genuine,
+present, exploitable High+ issue in the actual changes. When unsure whether an
+issue is real and present, do NOT inflate it — downgrade. Do not block for
+theoretical reasons.
 
 Return ONLY a single JSON object that conforms to this schema (no prose, no
 markdown fences):

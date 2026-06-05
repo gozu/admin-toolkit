@@ -126,3 +126,7 @@ tools/
 
 # Old README backup
 README.old.md
+.airtable-token
+
+# Dual-LLM pre-push security review reports (can be large / contain finding detail)
+security-reviews/

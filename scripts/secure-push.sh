@@ -23,8 +23,7 @@
 #   SECURE_PUSH_CLAUDE_MODEL     (default: opus)
 #   SECURE_PUSH_CODEX_REASONING  (default: xhigh; falls back to high)
 #   SECURE_PUSH_TIMEOUT          (per-reviewer seconds, default: 900)
-#   SECURE_PUSH_MAX_FILE_BYTES   (per-file content cap, default: 200000)
-#   SECURE_PUSH_MAX_PAYLOAD_BYTES(total payload cap,   default: 1500000)
+#   SECURE_PUSH_MAX_PAYLOAD_BYTES(total payload cap, default: 950000; < Codex 1MB)
 #
 set -uo pipefail
 
@@ -34,8 +33,9 @@ set -uo pipefail
 CLAUDE_MODEL="${SECURE_PUSH_CLAUDE_MODEL:-opus}"
 CODEX_REASONING="${SECURE_PUSH_CODEX_REASONING:-xhigh}"
 REVIEW_TIMEOUT="${SECURE_PUSH_TIMEOUT:-900}"
-MAX_FILE_BYTES="${SECURE_PUSH_MAX_FILE_BYTES:-200000}"
-MAX_PAYLOAD_BYTES="${SECURE_PUSH_MAX_PAYLOAD_BYTES:-1500000}"
+# Kept below Codex's hard input limit (1,048,576 chars). A diff larger than this
+# trips truncation, which fails closed (split the push or raise consciously).
+MAX_PAYLOAD_BYTES="${SECURE_PUSH_MAX_PAYLOAD_BYTES:-950000}"
 
 EMPTY_TREE=4b825dc642cb6eb9a060e54bf8d69288fbee4904
 ZERO_SHA=0000000000000000000000000000000000000000
@@ -63,7 +63,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCHEMA="$SCRIPT_DIR/secure-push.schema.json"
 cd "$REPO_ROOT" || exit 2
 
-for bin in git jq claude codex timeout; do
+for bin in git jq claude codex timeout python3; do
   command -v "$bin" >/dev/null 2>&1 || { echo "secure-push: required tool '$bin' not found" >&2; exit 2; }
 done
 [ -f "$SCHEMA" ] || { echo "secure-push: schema not found at $SCHEMA" >&2; exit 2; }
@@ -73,31 +73,33 @@ done
 # ---------------------------------------------------------------------------
 MODE=command          # command | hook
 DRY_RUN=0
-PUSH_ARGS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --hook)    MODE=hook ;;
     --dry-run) DRY_RUN=1 ;;
-    *)         PUSH_ARGS+=("$1") ;;   # command mode: forward to `git push`
+    *)         ;;   # hook mode receives <remote> <url> from git — ignored
   esac
   shift
 done
 
-# Loop-prevention: when this script pushes after a GO it sets
-# SECURE_PUSH_APPROVED=1, so the pre-push hook must not re-review that push.
-if [ "$MODE" = "hook" ] && [ "${SECURE_PUSH_APPROVED:-0}" = "1" ]; then
-  exit 0
-fi
+# Approval is bound to an EXACT commit SHA, not a blanket env flag: when this
+# script pushes after a GO it exports SECURE_PUSH_APPROVED_SHA=<reviewed HEAD>.
+# The hook skips re-review ONLY for refs whose tip equals that SHA; any other
+# ref is reviewed normally (no global bypass).
+APPROVED_SHA="${SECURE_PUSH_APPROVED_SHA:-}"
 
 # ---------------------------------------------------------------------------
 # Determine what to review: a list of "<base> <tip>" pairs.
 # ---------------------------------------------------------------------------
 PAIRS=()
+HEAD_SHA="$(git rev-parse HEAD 2>/dev/null || echo "")"
 if [ "$MODE" = "hook" ]; then
   # git feeds pre-push: <local_ref> <local_sha> <remote_ref> <remote_sha> per line.
   while read -r local_ref local_sha remote_ref remote_sha; do
     [ -z "${local_ref:-}" ] && continue
     [ "$local_sha" = "$ZERO_SHA" ] && continue   # branch deletion — nothing to scan
+    # SHA-bound bypass: only skip a ref already reviewed+approved this run.
+    if [ -n "$APPROVED_SHA" ] && [ "$local_sha" = "$APPROVED_SHA" ]; then continue; fi
     if [ "$remote_sha" = "$ZERO_SHA" ]; then base="$EMPTY_TREE"; else base="$remote_sha"; fi
     PAIRS+=("$base $local_sha")
   done
@@ -108,11 +110,12 @@ else
   else
     base="$EMPTY_TREE"
   fi
-  PAIRS+=("$base $(git rev-parse HEAD)")
+  PAIRS+=("$base $HEAD_SHA")
 fi
 
 if [ "${#PAIRS[@]}" -eq 0 ]; then
-  echo "secure-push: nothing to push — skipping review."
+  # Nothing left to review (no refs, deletions only, or all SHA-approved).
+  echo "secure-push: nothing to review — allowing."
   exit 0
 fi
 
@@ -137,30 +140,33 @@ sort -u "$WORK/files.all.txt" -o "$WORK/files.all.txt"
 comm -23 "$WORK/files.all.txt" "$WORK/files.txt" > "$WORK/files.excluded.txt"
 
 if [ ! -s "$WORK/diff.txt" ]; then
-  echo "secure-push: no changes to review between remote and local — skipping."
+  if [ -s "$WORK/files.all.txt" ]; then
+    # Changes exist but are ALL generated/vendored (excluded) — we cannot review
+    # them line-by-line, so fail closed rather than silently approve.
+    echo
+    echo "⛔ PUSH BLOCKED — the only changes are generated/vendored files that"
+    echo "   cannot be security-reviewed line-by-line:"
+    sed 's/^/     - /' "$WORK/files.excluded.txt"
+    echo "   Rebuild from reviewed source and push together with the source change,"
+    echo "   or set SECURE_PUSH_EXTRA_EXCLUDES appropriately."
+    exit 1
+  fi
+  echo "secure-push: no changes to review between remote and local — allowing."
   exit 0
 fi
 
 {
-  echo "=== GIT DIFF (changes about to be pushed) ==="
+  echo "=== GIT DIFF — the changes about to be pushed ==="
+  echo "(New files appear in full as additions; edits show hunks with context.)"
+  echo
   cat "$WORK/diff.txt"
   echo
-  echo "=== FULL CONTENTS OF CHANGED FILES (current working tree) ==="
-  while IFS= read -r f; do
-    [ -f "$f" ] || continue
-    sz=$(wc -c < "$f" | tr -d ' ')
-    echo "----- FILE: $f ($sz bytes) -----"
-    if [ "$sz" -gt "$MAX_FILE_BYTES" ]; then
-      echo "[truncated to first $MAX_FILE_BYTES bytes]"
-      head -c "$MAX_FILE_BYTES" "$f"
-    else
-      cat "$f"
-    fi
-    echo
-  done < "$WORK/files.txt"
+  echo "=== CHANGED FILES (all reviewed above via the diff) ==="
+  cat "$WORK/files.txt"
   if [ -s "$WORK/files.excluded.txt" ]; then
-    echo "=== CHANGED FILES EXCLUDED FROM LINE-LEVEL REVIEW (generated/build artifacts) ==="
-    echo "(These are derived from the source above and are not shown line-by-line.)"
+    echo
+    echo "=== CHANGED FILES EXCLUDED FROM LINE-LEVEL REVIEW (generated/vendored) ==="
+    echo "(Derived from the source above; not shown line-by-line.)"
     cat "$WORK/files.excluded.txt"
   fi
 } > "$WORK/payload.full.txt"
@@ -172,6 +178,7 @@ if [ "$psz" -gt "$MAX_PAYLOAD_BYTES" ]; then
     echo
     echo "[PAYLOAD TRUNCATED: total $psz bytes exceeded cap $MAX_PAYLOAD_BYTES]"
   } > "$WORK/payload.txt"
+  : > "$WORK/truncated"
 else
   cp "$WORK/payload.full.txt" "$WORK/payload.txt"
 fi
@@ -218,16 +225,39 @@ EOF
 # ---------------------------------------------------------------------------
 # Reviewers (run in parallel). Each writes <name>.json (verdict) + <name>.status.
 # ---------------------------------------------------------------------------
+# Extract the last balanced JSON object that has a "decision" key from arbitrary
+# text (Claude's print mode may wrap the verdict in prose / markdown fences).
+extract_verdict_json() {  # reads stdin, writes clean JSON (or nothing) to stdout
+  python3 -c '
+import sys, json
+t = sys.stdin.read()
+dec = json.JSONDecoder()
+best = None
+for i, ch in enumerate(t):
+    if ch != "{":
+        continue
+    try:
+        obj, _ = dec.raw_decode(t[i:])
+    except Exception:
+        continue
+    if isinstance(obj, dict) and "decision" in obj:
+        best = obj
+if best is not None:
+    sys.stdout.write(json.dumps(best))
+'
+}
+
 run_claude() {
   local rc=0
   timeout "$REVIEW_TIMEOUT" claude -p "$INSTRUCTION" \
       --model "$CLAUDE_MODEL" --output-format json --permission-mode plan \
+      --append-system-prompt "Your entire response MUST be exactly one JSON object and nothing else: no preamble, no explanation, no markdown code fences." \
       < "$WORK/payload.txt" > "$WORK/claude.raw.json" 2> "$WORK/claude.err" || rc=$?
   if [ "$rc" -ne 0 ]; then echo "exec_error:$rc" > "$WORK/claude.status"; return; fi
   if [ "$(jq -r '.is_error' "$WORK/claude.raw.json" 2>/dev/null)" != "false" ]; then
     echo "api_error" > "$WORK/claude.status"; return
   fi
-  jq -r '.result // empty' "$WORK/claude.raw.json" 2>/dev/null | sed '/^```/d' > "$WORK/claude.json"
+  jq -r '.result // empty' "$WORK/claude.raw.json" 2>/dev/null | extract_verdict_json > "$WORK/claude.json"
   if jq -e '.decision' "$WORK/claude.json" > /dev/null 2>&1; then
     echo "ok" > "$WORK/claude.status"
   else
@@ -269,15 +299,26 @@ wait "$cx_pid"
 verdict_pass() {  # $1=name -> prints PASS|FAIL ; populates D_/S_ globals
   local name="$1"
   local vf="$WORK/$name.json" sf="$WORK/$name.status"
-  local st d s
+  local st d s has_high bad
   st="$(cat "$sf" 2>/dev/null || echo missing)"
   if [ "$st" != "ok" ]; then
     printf -v "D_$name" '%s' "ERROR"; printf -v "S_$name" '%s' "$st"
     echo FAIL; return
   fi
-  d="$(jq -r '.decision // "ERROR"' "$vf")"
-  s="$(jq -r '.highest_severity // "Unknown"' "$vf")"
+  d="$(jq -r '.decision // "ERROR"' "$vf" 2>/dev/null)"
+  s="$(jq -r '.highest_severity // "Unknown"' "$vf" 2>/dev/null)"
   printf -v "D_$name" '%s' "$d"; printf -v "S_$name" '%s' "$s"
+  # Validate enums (fail closed on anything unexpected).
+  case "$d" in GO|NO_GO) ;; *) echo FAIL; return;; esac
+  case "$s" in None|Low|Medium|High|Critical) ;; *) echo FAIL; return;; esac
+  # Independently recompute severity from the findings array — do not trust the
+  # model's self-reported decision/highest_severity if they understate findings.
+  has_high="$(jq -r 'any((.findings // [])[]; (.severity=="High" or .severity=="Critical"))' "$vf" 2>/dev/null)"
+  [ "$has_high" = "true" ] && { echo FAIL; return; }
+  # Any finding with an out-of-enum severity is treated as untrusted -> fail closed.
+  bad="$(jq -r '[(.findings // [])[] | select((.severity | IN("Low","Medium","High","Critical")) | not)] | length' "$vf" 2>/dev/null)"
+  [ "${bad:-1}" != "0" ] && { echo FAIL; return; }
+  # Self-reported severity must also be below High, and decision must be GO.
   case "$s" in High|Critical) echo FAIL; return;; esac
   [ "$d" = "GO" ] && echo PASS || echo FAIL
 }
@@ -285,7 +326,10 @@ verdict_pass() {  # $1=name -> prints PASS|FAIL ; populates D_/S_ globals
 CLAUDE_RESULT="$(verdict_pass claude)"
 CODEX_RESULT="$(verdict_pass codex)"
 
-if [ "$CLAUDE_RESULT" = "PASS" ] && [ "$CODEX_RESULT" = "PASS" ]; then
+TRUNCATED=0
+[ -f "$WORK/truncated" ] && TRUNCATED=1
+
+if [ "$CLAUDE_RESULT" = "PASS" ] && [ "$CODEX_RESULT" = "PASS" ] && [ "$TRUNCATED" -eq 0 ]; then
   OVERALL="GO"
 else
   OVERALL="STOP"
@@ -323,6 +367,10 @@ REPORT="$OUTDIR/report.md"
   echo "- **HEAD:** \`$(git rev-parse HEAD 2>/dev/null)\`"
   echo "- **Branch:** \`$(git rev-parse --abbrev-ref HEAD 2>/dev/null)\`"
   echo "- **Files reviewed:** $(wc -l < "$WORK/files.txt" | tr -d ' ')"
+  [ "$TRUNCATED" -eq 1 ] && echo "- **⚠️ Payload truncated:** yes — forced STOP (review was incomplete)"
+  if [ -s "$WORK/files.excluded.txt" ]; then
+    echo "- **Excluded (generated/vendored, not line-reviewed):** $(wc -l < "$WORK/files.excluded.txt" | tr -d ' ') file(s)"
+  fi
   echo
   echo "## Reviewer verdicts"
   echo
@@ -382,10 +430,11 @@ if [ "$MODE" = "hook" ]; then
   exit 0
 fi
 
-# Command mode: perform the push, then show the report.
+# Command mode: push exactly the reviewed commit on the current branch, with
+# approval bound to that SHA (the hook re-reviews anything else).
 echo
 echo "✅ GO — both reviewers approved. Pushing…"
-if SECURE_PUSH_APPROVED=1 git push "${PUSH_ARGS[@]}"; then
+if SECURE_PUSH_APPROVED_SHA="$HEAD_SHA" git push origin HEAD; then
   echo
   echo "✅ Pushed successfully."
   print_report

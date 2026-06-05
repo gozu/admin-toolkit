@@ -1435,7 +1435,21 @@ export function useApiDataLoader(enabled: boolean, reloadKey = 0) {
                 `${c.ripoff || 0} overpriced, ${c.obsolete || 0} obsolete, ${c.unknown || 0} unknown`,
             );
           } else {
-            log(`Failed /api/llm-audit: ${settledError(llmAuditRes)}`, 'warn');
+            const rawErr = settledError(llmAuditRes);
+            log(`Failed /api/llm-audit: ${rawErr}`, 'warn');
+            // Parse inner error from JSON body (500 responses include structured body)
+            let innerErr = rawErr;
+            const jsonBodyMatch = rawErr.match(/\{[\s\S]*\}$/);
+            if (jsonBodyMatch) {
+              try {
+                const body = JSON.parse(jsonBodyMatch[0]) as Record<string, unknown>;
+                if (typeof body.error === 'string') innerErr = body.error;
+              } catch { /* ignore */ }
+            }
+            if (/SSL|CERTIFICATE|certificate.*verif|verif.*certif/i.test(innerErr)) {
+              log(`Model Audit root cause: SSL/TLS certificate verification failed — backend cannot reach external pricing API (corporate proxy with custom CA?). LLM connections may exist but will show as "No LLMs found".`, 'warn');
+            }
+            log(`Note: llmAuditLoading failure cascades to Users — Users will show ✕ even though user data loaded fine.`, 'warn');
           }
         };
 
@@ -1541,15 +1555,24 @@ export function useApiDataLoader(enabled: boolean, reloadKey = 0) {
                   throw new Error(`Stream failed: ${response.status}`);
                 }
                 const collected: ConnectionHealthResult[] = [];
+                let lastConnAt = nowMs();
+                const slowConns: Array<{ name: string; durationMs: number }> = [];
                 for await (const { event, payload } of parseSseStream(response.body)) {
                   if (cancelled) break;
                   const data = payload as Record<string, unknown>;
                   if (event === 'init') {
+                    lastConnAt = nowMs();
                     dispatch({
                       type: 'SET_PARSED_DATA',
                       payload: { connectionHealthTotal: Number(data.total) || 0 },
                     });
                   } else if (event === 'conn') {
+                    const now = nowMs();
+                    const gapMs = Math.round(now - lastConnAt);
+                    lastConnAt = now;
+                    if (gapMs > 5000) {
+                      slowConns.push({ name: String((data as { name?: unknown }).name ?? '?'), durationMs: gapMs });
+                    }
                     collected.push(data as unknown as ConnectionHealthResult);
                     dispatch({
                       type: 'SET_PARSED_DATA',
@@ -1557,7 +1580,14 @@ export function useApiDataLoader(enabled: boolean, reloadKey = 0) {
                     });
                   }
                 }
-                log(`Connection health scan done (${collected.length} connections)`);
+                const failedConns = collected.filter((c) => c.status === 'fail');
+                const failNote = failedConns.length > 0
+                  ? ` — ${failedConns.length} failed: ${failedConns.map((c) => `${c.name}(${c.type})`).join(', ')}`
+                  : '';
+                log(`Connection health scan done (${collected.length} connections${failNote})`);
+                if (slowConns.length > 0) {
+                  log(`Connection health: ${slowConns.length} slow connection(s) >5s: ${slowConns.map((c) => `${c.name} ${Math.round(c.durationMs / 1000)}s`).join(', ')}`, 'warn');
+                }
                 return collected;
               } catch (err) {
                 log(`Connection health scan failed: ${getErrorMessage(err)}`, 'warn');

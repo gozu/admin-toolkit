@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchJson } from '../utils/api';
+import { useDiag } from '../context/DiagContext';
 import { ProgressIndicator } from './common/ProgressIndicator';
 import { k8sInsightsScan, setK8sScanClusterId } from '../state/k8sInsightsStore';
 import { k8sClusterHealthStore } from '../state/k8sClusterHealthStore';
@@ -101,6 +102,7 @@ const UNAVAILABLE_CLUSTER_COLUMNS: ColumnDef<UnavailableCluster>[] = [
 export function K8sInsights() {
   const { data, loading, scanMessage, error, scanStarted } = k8sInsightsScan.use();
   const health = k8sClusterHealthStore.use();
+  const { addDebugLog } = useDiag();
   const [clusters, setClusters] = useState<K8sInsightsClustersResult | null>(null);
   const [clusterError, setClusterError] = useState<string | null>(null);
   const [selectedCluster, setSelectedCluster] = useState<string>('');
@@ -146,6 +148,36 @@ export function K8sInsights() {
       void k8sInsightsScan.load();
     }
   }, [clusters, scanStarted, loading, selectedCluster]);
+
+  // Log scan completion details for debug diagnosis
+  useEffect(() => {
+    if (!data) return;
+    const fs = data.findings || [];
+    const bySev: Record<string, number> = {};
+    for (const f of fs) bySev[f.severity] = (bySev[f.severity] ?? 0) + 1;
+    const sevStr = `${bySev['critical'] ?? 0}C/${bySev['high'] ?? 0}H/${bySev['medium'] ?? 0}M/${bySev['low'] ?? 0}L`;
+    // Mirrors savings logic in K8sOverviewCard
+    const floorFinding = fs.find((f) => f.rule === 'cluster-floor-projection');
+    const ev = (floorFinding?.evidence ?? {}) as { consolidationSavingsMonthly?: number; idleNodeSavingsMonthly?: number };
+    const consolidation = ev.consolidationSavingsMonthly ?? floorFinding?.costImpactPerMonth ?? 0;
+    const idleNodes = ev.idleNodeSavingsMonthly ?? 0;
+    const gpuMap = new Map<string, number>();
+    for (const f of fs) {
+      if (f.rule !== 'gpu-pod-not-using-gpu' || (f.costImpactPerMonth ?? 0) <= 0) continue;
+      const node = (f.evidence as { node?: string }).node || f.id;
+      gpuMap.set(node, Math.max(gpuMap.get(node) ?? 0, f.costImpactPerMonth!));
+    }
+    const total = consolidation + idleNodes + [...gpuMap.values()].reduce((a, b) => a + b, 0);
+    const ps = data.pricingStatus;
+    const savingsNote = ps?.ok === false
+      ? `savings unavailable (pricing: ${ps.error || 'unknown'})`
+      : total > 0
+        ? `savings $${Math.round(total)}/mo`
+        : `savings — (no cluster-floor-projection finding or total=0; idle-pod/memory findings don't contribute)`;
+    addDebugLog(`K8S Insights: ${data.findingsCount} finding(s) ${sevStr} | ${savingsNote}`, 'lifecycle');
+  // addDebugLog identity is stable; data is the scan result ref
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   const runScan = () => {
     if (!selectedCluster || loading) return;

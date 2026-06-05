@@ -146,7 +146,11 @@ def data_table(
         caption=Text(caption, style="grey62") if caption else None,
         box=box.SIMPLE_HEAVY,
         header_style="bold cyan",
-        row_styles=["", "on grey15"] if zebra else None,
+        # Zebra striping via `dim` (a foreground attribute) rather than a background
+        # colour: a hardcoded background (e.g. "on grey15") looks fine on a dark terminal
+        # but paints a near-black box that hides text in a light Jupyter notebook. `dim`
+        # has no background, so it stays readable on any page theme.
+        row_styles=["", "dim"] if zebra else None,
         expand=False,
         pad_edge=False,
     )

@@ -143,11 +143,15 @@ mkdir -p "$ISO"
 : > "$WORK/diff.txt"
 : > "$WORK/files.txt"
 : > "$WORK/files.all.txt"
+: > "$WORK/diff.secrets.txt"
 for pair in "${PAIRS[@]}"; do
   set -- $pair
-  git diff "$1" "$2" -- "${EXCLUDE_PATHSPEC[@]}"             >> "$WORK/diff.txt"      2>/dev/null
-  git diff --name-only "$1" "$2" -- "${EXCLUDE_PATHSPEC[@]}" >> "$WORK/files.txt"     2>/dev/null
-  git diff --name-only "$1" "$2"                             >> "$WORK/files.all.txt" 2>/dev/null
+  git diff "$1" "$2" -- "${EXCLUDE_PATHSPEC[@]}"             >> "$WORK/diff.txt"         2>/dev/null
+  git diff --name-only "$1" "$2" -- "${EXCLUDE_PATHSPEC[@]}" >> "$WORK/files.txt"        2>/dev/null
+  git diff --name-only "$1" "$2"                             >> "$WORK/files.all.txt"    2>/dev/null
+  # Secret pre-scan covers ALL changed files (incl. excluded ones), so a secret
+  # hidden in a generated/vendored file is still caught before any transmission.
+  git diff "$1" "$2"                                         >> "$WORK/diff.secrets.txt" 2>/dev/null
 done
 sort -u "$WORK/files.txt" -o "$WORK/files.txt"
 sort -u "$WORK/files.all.txt" -o "$WORK/files.all.txt"
@@ -178,13 +182,13 @@ fi
 # "password" or on these regex definitions themselves.
 # ---------------------------------------------------------------------------
 SECRET_RE='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|ghp_[0-9A-Za-z]{36}|gho_[0-9A-Za-z]{36}|ghs_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{60,}|xox[baprs]-[0-9A-Za-z-]{12,}|AIza[0-9A-Za-z_-]{35}|sk-[A-Za-z0-9]{32,}|glpat-[0-9A-Za-z_-]{20,}'
-if grep -E '^\+' "$WORK/diff.txt" 2>/dev/null | grep -Eq -e "$SECRET_RE"; then
-  hits="$(grep -E '^\+' "$WORK/diff.txt" 2>/dev/null | grep -Ec -e "$SECRET_RE")"
+if grep -E '^\+' "$WORK/diff.secrets.txt" 2>/dev/null | grep -Eq -e "$SECRET_RE"; then
+  hits="$(grep -E '^\+' "$WORK/diff.secrets.txt" 2>/dev/null | grep -Ec -e "$SECRET_RE")"
   echo
   echo "⛔ PUSH BLOCKED — local secret pre-scan found $hits added line(s) matching"
   echo "   high-confidence secret patterns. Nothing was sent to the LLM reviewers."
   echo "   Remove the secret(s) (and rotate them), then retry. Matched categories:"
-  grep -E '^\+' "$WORK/diff.txt" 2>/dev/null | grep -Eo -e "$SECRET_RE" \
+  grep -E '^\+' "$WORK/diff.secrets.txt" 2>/dev/null | grep -Eo -e "$SECRET_RE" \
     | sed -E 's/(.{6}).*/\1…[redacted]/' | sort -u | sed 's/^/     - /'
   exit 1
 fi

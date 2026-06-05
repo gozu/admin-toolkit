@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Version-controlled pre-push gate. Install with: make install-hooks
+# (sets git config core.hooksPath scripts/hooks)
+#
+# Delegates to the dual-LLM security reviewer. If the reviewer approves it
+# exits 0 and the push proceeds; otherwise it exits non-zero and git aborts.
+# When secure-push.sh itself performs the push it sets SECURE_PUSH_APPROVED=1,
+# which makes this hook skip re-review.
+set -uo pipefail
+root="$(git rev-parse --show-toplevel)"
+exec "$root/scripts/secure-push.sh" --hook "$@"

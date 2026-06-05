@@ -232,3 +232,14 @@ deploy:
 	@git commit -m "$(COMMIT_MSG)" -- $(DEPLOY_COMMIT_PATHS) || echo "[INFO] Nothing deploy-relevant to commit"
 	@$(MAKE) plugin
 	@$(MAKE) deploy-all
+
+# ----------------------------
+# Dual-LLM pre-push security gate (all logic lives in scripts/secure-push.sh)
+# ----------------------------
+.PHONY: secure-push install-hooks
+
+secure-push:        ## Dual-LLM security review, then push only if both approve
+	@./scripts/secure-push.sh
+
+install-hooks:      ## Route git's pre-push through the security gate
+	@git config core.hooksPath scripts/hooks && echo "pre-push gate installed (core.hooksPath=scripts/hooks)"

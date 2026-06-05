@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["decision", "highest_severity", "findings", "summary"],
+  "properties": {
+    "decision": { "enum": ["GO", "NO_GO"] },
+    "highest_severity": { "enum": ["None", "Low", "Medium", "High", "Critical"] },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "category", "title", "file", "line", "description", "recommendation"],
+        "properties": {
+          "severity": { "enum": ["Low", "Medium", "High", "Critical"] },
+          "category": { "enum": ["prompt_injection", "secret", "vulnerability", "malicious_code", "supply_chain", "other"] },
+          "title": { "type": "string" },
+          "file": { "type": ["string", "null"] },
+          "line": { "type": ["integer", "null"] },
+          "description": { "type": "string" },
+          "recommendation": { "type": "string" }
+        }
+      }
+    },
+    "summary": { "type": "string" }
+  }
+}

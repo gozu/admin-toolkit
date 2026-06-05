@@ -7502,8 +7502,29 @@ def _adk_review_card_title(source_text: str, fallback: str) -> str:
     return fallback
 
 
+_ADK_REVIEW_BOOTSTRAP_CELL = '''\
+# --- Auto-generated environment setup (NOT part of the reviewed card) ---
+# Make `rich` importable on whatever kernel runs this notebook. No-op on the plugin code
+# env (rich already present); on the builtin "python3" fallback it installs rich into the
+# user site. dataiku/dataikuapi, python-dateutil, and the adk_notebook project library are
+# already available on DSS kernels and need no install.
+import importlib, subprocess, sys
+try:
+    importlib.import_module("rich")
+except ImportError:
+    for _args in ([sys.executable, "-m", "pip", "install", "-q", "rich"],
+                  [sys.executable, "-m", "pip", "install", "-q", "--user", "rich"]):
+        try:
+            subprocess.check_call(_args)
+            break
+        except Exception:
+            continue
+'''
+
+
 def _adk_review_build_nbformat(card_filename: str, source_text: str, kernel_name: str) -> Dict[str, Any]:
-    """nbformat-v4 notebook: markdown header + one code cell with verbatim card source."""
+    """nbformat-v4 notebook: markdown header + a guarded `rich` setup cell + the verbatim
+    card code cell."""
     title = _adk_review_card_title(source_text, card_filename)
     markdown = [
         "### %s\n" % title,
@@ -7511,12 +7532,14 @@ def _adk_review_build_nbformat(card_filename: str, source_text: str, kernel_name
         "_Verbatim review copy of `notebook-cards/%s`._\n" % card_filename,
         "\n",
         "Imports the shared logic from the `adk_notebook` project library; "
-        "run the cell below to reproduce the matching webapp card.",
+        "run the cells below to reproduce the matching webapp card.",
     ]
     display = 'Python 3' if kernel_name == 'python3' else kernel_name
     return {
         "cells": [
             {"cell_type": "markdown", "metadata": {}, "source": markdown},
+            {"cell_type": "code", "metadata": {"tags": ["setup"]}, "execution_count": None,
+             "outputs": [], "source": _ADK_REVIEW_BOOTSTRAP_CELL.splitlines(keepends=True)},
             {"cell_type": "code", "metadata": {}, "execution_count": None,
              "outputs": [], "source": source_text.splitlines(keepends=True)},
         ],

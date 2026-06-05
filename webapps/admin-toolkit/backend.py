@@ -7492,6 +7492,20 @@ def _adk_review_resolve_kernel(client: Any) -> Tuple[str, bool, List[str]]:
     ]
 
 
+def _adk_review_audit_code_env_kernel(client: Any) -> str:
+    """Create-or-reuse a managed 'admintoolkitaudit' env (rich + dateutil + Jupyter
+    support; dataiku APIs are auto-provided) and trigger its build; return its kernel."""
+    name = 'admintoolkitaudit'
+    if ('PYTHON', name) not in _cer_env_catalog(client):
+        env = client.create_code_env('PYTHON', name, 'DESIGN_MANAGED')
+        settings = env.get_settings()
+        settings.set_required_packages('rich', 'python-dateutil')
+        settings.get_raw().setdefault('desc', {})['installJupyterSupport'] = True
+        settings.save()
+        env.update_packages(wait=False)  # async build
+    return 'py-dku-venv-' + name
+
+
 def _adk_review_card_title(source_text: str, fallback: str) -> str:
     """First non-empty line of the card's leading docstring (its display title)."""
     match = re.search(r'"""(.*?)"""', source_text, re.S)
@@ -7502,34 +7516,31 @@ def _adk_review_card_title(source_text: str, fallback: str) -> str:
     return fallback
 
 
-_ADK_REVIEW_BOOTSTRAP_CELL = '''\
-# --- Auto-generated environment setup (NOT part of the reviewed card) ---
-# Make `rich` importable on whatever kernel runs this notebook. No-op on the plugin code
-# env (rich already present); on the builtin "python3" fallback it installs rich into the
-# user site. dataiku/dataikuapi, python-dateutil, and the adk_notebook project library are
-# already available on DSS kernels and need no install.
-import importlib, subprocess, sys
+_ADK_REVIEW_PREFLIGHT_CELL = '''\
 try:
-    importlib.import_module("rich")
+    import rich
 except ImportError:
-    for _args in ([sys.executable, "-m", "pip", "install", "-q", "rich"],
-                  [sys.executable, "-m", "pip", "install", "-q", "--user", "rich"]):
-        try:
-            subprocess.check_call(_args)
-            break
-        except Exception:
-            continue
+    print(
+        "This notebook needs the 'rich' package, which isn't in the current kernel's code env.\\n"
+        "Fix: switch the kernel (Kernel menu -> Change kernel) to a code env that has rich:\\n"
+        "  - 'admintoolkitaudit'  (create it via the webapp's 'Create review notebooks' action,\\n"
+        "     ticking 'create a dedicated code env'), or\\n"
+        "  - the plugin env  'plugin_admin-toolkit_managed'."
+    )
+    raise SystemExit("rich is not available in this kernel - see the note above.")
 '''
 
 
 def _adk_review_build_nbformat(card_filename: str, source_text: str, kernel_name: str) -> Dict[str, Any]:
-    """nbformat-v4 notebook: markdown header + a guarded `rich` setup cell + the verbatim
+    """nbformat-v4 notebook: markdown header + a `rich` preflight cell + the verbatim
     card code cell."""
     title = _adk_review_card_title(source_text, card_filename)
     markdown = [
         "### %s\n" % title,
         "\n",
         "_Verbatim review copy of `notebook-cards/%s`._\n" % card_filename,
+        "\n",
+        "_Requires a kernel with the `rich` package (e.g. `admintoolkitaudit`, or the plugin env)._\n",
         "\n",
         "Imports the shared logic from the `adk_notebook` project library; "
         "run the cells below to reproduce the matching webapp card.",
@@ -7538,8 +7549,8 @@ def _adk_review_build_nbformat(card_filename: str, source_text: str, kernel_name
     return {
         "cells": [
             {"cell_type": "markdown", "metadata": {}, "source": markdown},
-            {"cell_type": "code", "metadata": {"tags": ["setup"]}, "execution_count": None,
-             "outputs": [], "source": _ADK_REVIEW_BOOTSTRAP_CELL.splitlines(keepends=True)},
+            {"cell_type": "code", "metadata": {"tags": ["preflight"]}, "execution_count": None,
+             "outputs": [], "source": _ADK_REVIEW_PREFLIGHT_CELL.splitlines(keepends=True)},
             {"cell_type": "code", "metadata": {}, "execution_count": None,
              "outputs": [], "source": source_text.splitlines(keepends=True)},
         ],
@@ -7604,7 +7615,16 @@ def api_algorithm_review_create():
     project = _local_toolkit_project()           # the project the webapp is added to
     project_key = dataiku.default_project_key()
 
-    kernel_name, kernel_fallback, warnings = _adk_review_resolve_kernel(client)
+    body = request.get_json(silent=True) or {}
+    if body.get('createCodeEnv'):
+        try:
+            kernel_name, kernel_fallback = _adk_review_audit_code_env_kernel(client), False
+            warnings = ["Code env 'admintoolkitaudit' is building (~a few min) — reopen the notebooks once it's ready."]
+        except Exception as exc:
+            kernel_name, kernel_fallback, warnings = _adk_review_resolve_kernel(client)
+            warnings = ["Couldn't create 'admintoolkitaudit' (%s); used '%s'." % (str(exc)[:120], kernel_name)] + warnings
+    else:
+        kernel_name, kernel_fallback, warnings = _adk_review_resolve_kernel(client)
 
     # 1. Shared libraries → project Python library (self-contained import closure).
     lib = project.get_library()

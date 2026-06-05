@@ -30,6 +30,7 @@ interface AlgorithmReviewResult {
 export function AlgorithmReviewCard() {
   const { authed: unlocked } = useRedState();
   const [running, setRunning] = useState(false);
+  const [createCodeEnv, setCreateCodeEnv] = useState(false);
   const [result, setResult] = useState<AlgorithmReviewResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,7 +42,7 @@ export function AlgorithmReviewCard() {
       const res = await fetchJson<AlgorithmReviewResult>('/api/algorithm-review/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ createCodeEnv }),
       });
       setResult(res);
     } catch (e) {
@@ -68,6 +69,21 @@ export function AlgorithmReviewCard() {
         </p>
       ) : (
         <>
+          <label className="flex items-start gap-2 text-sm text-[var(--text-secondary)] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={createCodeEnv}
+              onChange={(e) => setCreateCodeEnv(e.target.checked)}
+              disabled={running}
+              className="mt-0.5"
+            />
+            <span>
+              Also create a dedicated code env{' '}
+              <code className="text-[var(--text-secondary)]">admintoolkitaudit</code>{' '}
+              (with <code className="text-[var(--text-secondary)]">rich</code> + Jupyter support) and point the
+              notebooks at it. Leave unchecked to set the notebook kernels yourself to a rich-capable env.
+            </span>
+          </label>
           <button
             type="button"
             onClick={() => void run()}

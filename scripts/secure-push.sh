@@ -40,6 +40,24 @@ MAX_PAYLOAD_BYTES="${SECURE_PUSH_MAX_PAYLOAD_BYTES:-1500000}"
 EMPTY_TREE=4b825dc642cb6eb9a060e54bf8d69288fbee4904
 ZERO_SHA=0000000000000000000000000000000000000000
 
+# Generated/vendored artifacts are excluded from line-level review (they are
+# derived from reviewed source; including megabytes of minified bundles is noise
+# and overflows the reviewers). Their filenames are still listed in the payload,
+# and a push whose ONLY changes are excluded files fails closed (see below) —
+# generated output is never silently approved. Lockfiles are deliberately NOT
+# excluded: they are a prime supply-chain vector and must be reviewed.
+# Override via SECURE_PUSH_EXTRA_EXCLUDES (space-sep git pathspecs).
+EXCLUDE_PATHSPEC=(
+  "."
+  ':(exclude)resource/dist/**'
+  ':(exclude)**/*.min.js'
+  ':(exclude)**/*.min.css'
+  ':(exclude)dssapiref/**'
+  ':(exclude)**/node_modules/**'
+)
+# shellcheck disable=SC2206
+[ -n "${SECURE_PUSH_EXTRA_EXCLUDES:-}" ] && EXCLUDE_PATHSPEC+=( ${SECURE_PUSH_EXTRA_EXCLUDES} )
+
 REPO_ROOT="$(git rev-parse --show-toplevel)" || { echo "not a git repo" >&2; exit 2; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCHEMA="$SCRIPT_DIR/secure-push.schema.json"
@@ -106,12 +124,17 @@ trap 'rm -rf "$WORK"' EXIT
 
 : > "$WORK/diff.txt"
 : > "$WORK/files.txt"
+: > "$WORK/files.all.txt"
 for pair in "${PAIRS[@]}"; do
   set -- $pair
-  git diff "$1" "$2" >> "$WORK/diff.txt" 2>/dev/null
-  git diff --name-only "$1" "$2" >> "$WORK/files.txt" 2>/dev/null
+  git diff "$1" "$2" -- "${EXCLUDE_PATHSPEC[@]}"             >> "$WORK/diff.txt"      2>/dev/null
+  git diff --name-only "$1" "$2" -- "${EXCLUDE_PATHSPEC[@]}" >> "$WORK/files.txt"     2>/dev/null
+  git diff --name-only "$1" "$2"                             >> "$WORK/files.all.txt" 2>/dev/null
 done
 sort -u "$WORK/files.txt" -o "$WORK/files.txt"
+sort -u "$WORK/files.all.txt" -o "$WORK/files.all.txt"
+# Files that changed but are excluded from line-level review (build artifacts etc.)
+comm -23 "$WORK/files.all.txt" "$WORK/files.txt" > "$WORK/files.excluded.txt"
 
 if [ ! -s "$WORK/diff.txt" ]; then
   echo "secure-push: no changes to review between remote and local — skipping."
@@ -135,6 +158,11 @@ fi
     fi
     echo
   done < "$WORK/files.txt"
+  if [ -s "$WORK/files.excluded.txt" ]; then
+    echo "=== CHANGED FILES EXCLUDED FROM LINE-LEVEL REVIEW (generated/build artifacts) ==="
+    echo "(These are derived from the source above and are not shown line-by-line.)"
+    cat "$WORK/files.excluded.txt"
+  fi
 } > "$WORK/payload.full.txt"
 
 # Cap total payload size.
@@ -239,7 +267,8 @@ wait "$cx_pid"
 # Evaluate verdicts (fail-closed).
 # ---------------------------------------------------------------------------
 verdict_pass() {  # $1=name -> prints PASS|FAIL ; populates D_/S_ globals
-  local name="$1" vf="$WORK/$name.json" sf="$WORK/$name.status"
+  local name="$1"
+  local vf="$WORK/$name.json" sf="$WORK/$name.status"
   local st d s
   st="$(cat "$sf" 2>/dev/null || echo missing)"
   if [ "$st" != "ok" ]; then
@@ -275,7 +304,8 @@ mkdir -p "$OUTDIR"
 [ -s "$WORK/codex.err" ]  && cp "$WORK/codex.err"  "$OUTDIR/codex.stderr.txt"  2>/dev/null || true
 
 emit_findings_rows() {  # $1=name
-  local name="$1" vf="$WORK/$name.json"
+  local name="$1"
+  local vf="$WORK/$name.json"
   [ -f "$vf" ] || return 0
   jq -e '.findings' "$vf" >/dev/null 2>&1 || return 0
   jq -r --arg rev "$name" '

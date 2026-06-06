@@ -2,7 +2,7 @@
 
 A Dataiku DSS plugin for instance administration — health scoring, outreach campaigns, auditing, and cleanup.
 
-Connects to the running DSS instance via the Python API. All data is fetched in real time through a Flask backend with 38+ endpoints. No file uploads or diagnostic bundles needed.
+Connects to the running DSS instance via the Python API. All data is fetched in real time through a Flask backend. No file uploads or diagnostic bundles needed.
 
 **Multi-instance:** Configure additional DSS hosts as `remote-dss-host` plugin presets and switch between them from the top-bar dropdown. The toolkit will offer to create an `ADMINTOOLKIT` project on each host the first time it's needed (one-click confirm). The plugin must also be installed on every remote you want to fully scan.
 
@@ -34,8 +34,8 @@ Create these files in the project root:
 |------|----------|
 | `.dss-url` | DSS instance URL (e.g. `https://dss.example.com`) |
 | `.dss-api-key` | Admin API key for the instance |
-| `.dss-project-key` | *(optional)* Project key — defaults to `PYTHONAUDIT_TEST` |
-| `.dss-webapp-id` | *(optional)* Webapp ID — defaults to `haoMNtw` |
+| `.dss-project-key` | *(optional)* Project key — defaults to `YOUR_PROJECT_KEY` |
+| `.dss-webapp-id` | *(optional)* Webapp ID — defaults to `YOUR_WEBAPP_ID` |
 
 ### Development
 

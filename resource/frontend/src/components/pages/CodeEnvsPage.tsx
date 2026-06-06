@@ -533,7 +533,7 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
       targetChoices.some((env) => env.name === targetName) &&
       !replaceLoading,
   );
-  const canLiveApply = canSubmit && confirmText === 'do it';
+  const canLiveApply = canSubmit && confirmText === 'CONFIRM';
 
   const openUsage = (env: CodeEnv) => {
     setUsageEnv(env);
@@ -699,7 +699,7 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
             <div className="text-xs text-[var(--text-muted)]">Total</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-mono text-amber-400">{unusedCount}</div>
+            <div className="text-2xl font-mono text-[var(--warning)]">{unusedCount}</div>
             <div className="text-xs text-[var(--text-muted)]">Unused</div>
           </div>
           <div className="text-center">
@@ -933,7 +933,7 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
                                 {row.provisional?.statusLabel || 'Skipped'}
                               </span>
                             ) : isUnused ? (
-                              <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-amber-400/20 text-amber-400">
+                              <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-[var(--neon-amber)]/20 text-[var(--warning)]">
                                 Unused
                               </span>
                             ) : (
@@ -943,7 +943,7 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
                               </span>
                             )
                           ) : isUnused ? (
-                            <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-amber-400/20 text-amber-400">
+                            <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-[var(--neon-amber)]/20 text-[var(--warning)]">
                               Unused
                             </span>
                           ) : (
@@ -1098,13 +1098,13 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
         <div className="space-y-4">
           <div className="rounded-lg border border-[var(--neon-red)]/30 bg-[var(--neon-red)]/10 px-3 py-2 text-sm text-[var(--text-primary)]">
             This will replace usages from <span className="font-mono">{sourceEnv?.name || sourceName}</span> to{' '}
-            <span className="font-mono">{targetName}</span>. Type <span className="font-mono">do it</span> to
+            <span className="font-mono">{targetName}</span>. Type <span className="font-mono">CONFIRM</span> to
             enable the live apply.
           </div>
           <input
             value={confirmText}
             onChange={(e) => setConfirmText(e.target.value)}
-            placeholder="do it"
+            placeholder="CONFIRM"
             className="w-full rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-2 py-2 text-[var(--text-primary)]"
           />
           <div className="flex justify-end gap-2">

@@ -6,6 +6,7 @@ import { useDataParser } from '../../hooks/useDataParser';
 import { calculateHealthScore } from '../../hooks/useHealthScore';
 import { PacmanLoader } from '../PacmanLoader';
 import { computeFullComparison } from '../../utils/compareData';
+import { formatBytes as formatBytesValue } from '../../utils/formatters';
 import type { DiagFile } from '../../types';
 
 interface UploadSlotProps {
@@ -237,10 +238,7 @@ function UploadSlot({ slot, file, isProcessing, onFileSelect, onClear, accept }:
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  return formatBytesValue(bytes);
 }
 
 // Parse date from diagnostic filename like dku_diagnosis_2025-02-12-15-11-44.zip

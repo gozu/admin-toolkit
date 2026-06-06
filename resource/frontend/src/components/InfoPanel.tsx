@@ -169,8 +169,9 @@ function CopyableValue({ value, label }: { value: string; label: string }) {
   };
 
   return (
-    <span
-      className="cursor-pointer hover:text-[var(--neon-cyan)] transition-colors group flex items-center gap-1"
+    <button
+      type="button"
+      className="appearance-none bg-transparent border-0 p-0 text-left cursor-pointer hover:text-[var(--neon-cyan)] transition-colors group flex items-center gap-1"
       onClick={handleCopy}
       title={`Click to copy ${label}`}
     >
@@ -183,7 +184,7 @@ function CopyableValue({ value, label }: { value: string; label: string }) {
       >
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
       </svg>
-    </span>
+    </button>
   );
 }
 

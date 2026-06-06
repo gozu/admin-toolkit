@@ -143,7 +143,19 @@ export function DataGrid<R>({
                 )}
                 style={Object.keys(style).length ? style : undefined}
                 title={col.headerTooltip}
+                role={sortable ? 'button' : undefined}
+                tabIndex={sortable ? 0 : undefined}
                 onClick={sortable ? () => handleSort(col.id) : undefined}
+                onKeyDown={
+                  sortable
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          if (e.key === ' ') e.preventDefault();
+                          handleSort(col.id);
+                        }
+                      }
+                    : undefined
+                }
               >
                 {col.label}
                 {col.headerTooltipMarker && (

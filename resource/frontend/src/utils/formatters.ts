@@ -146,3 +146,10 @@ export function getRelativeSizeColor(bytes: number, maxBytes: number): string {
   if (ratio > 0.05) return 'text-[var(--neon-green)]';
   return 'text-[var(--text-muted)]';
 }
+
+/**
+ * Format a byte value to a fixed "X.XX GB" string
+ */
+export function formatGb(bytes: number): string {
+  return `${((bytes || 0) / 1024 ** 3).toFixed(2)} GB`;
+}

@@ -482,7 +482,7 @@ export function ImageCleaner() {
                   disabled={!cutoffDate || scanLoading}
                   className="px-4 py-1.5 rounded-md text-sm font-medium bg-[var(--accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {scanLoading ? 'Scanning...' : `Scan ${PROVIDER_LABELS[provider]}`}
+                  {scanLoading ? 'Scanning…' : `Scan ${PROVIDER_LABELS[provider]}`}
                 </button>
               </div>
             </>
@@ -496,7 +496,7 @@ export function ImageCleaner() {
                 <span className="inline-block w-4 h-4 border-2 border-[var(--text-tertiary)] border-t-transparent rounded-full animate-spin" />
                 {scanTotal !== null
                   ? `Scanning repositories... ${scanRepos.length} / ${scanTotal}`
-                  : 'Discovering repositories...'}
+                  : 'Discovering repositories…'}
               </div>
               <button
                 onClick={abortScan}
@@ -531,7 +531,7 @@ export function ImageCleaner() {
                   <div className="text-xs text-[var(--text-muted)]">Total Images</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-mono text-amber-400">{deletableRows.length}</div>
+                  <div className="text-2xl font-mono text-[var(--warning)]">{deletableRows.length}</div>
                   <div className="text-xs text-[var(--text-muted)]">Deletable</div>
                 </div>
                 <div className="text-center">
@@ -656,7 +656,7 @@ export function ImageCleaner() {
                         </td>
                         <td>
                           {row.image.deletable ? (
-                            <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-amber-400/20 text-amber-400">
+                            <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-[var(--neon-amber)]/20 text-[var(--warning)]">
                               Deletable
                             </span>
                           ) : (
@@ -700,7 +700,7 @@ export function ImageCleaner() {
               disabled={deleteLoading || deleteInput !== `delete ${selectedDeletableRows.length} images`}
               className="px-4 py-1.5 rounded bg-[var(--neon-red)]/20 text-[var(--neon-red)] hover:bg-[var(--neon-red)]/30 disabled:opacity-50 transition-colors"
             >
-              {deleteLoading ? 'Deleting...' : `Delete ${selectedDeletableRows.length} Images`}
+              {deleteLoading ? 'Deleting…' : `Delete ${selectedDeletableRows.length} Images`}
             </button>
           </div>
         }

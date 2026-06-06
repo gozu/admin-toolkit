@@ -130,6 +130,14 @@ function TreeRow({
       exit={{ opacity: 0, x: -10 }}
       transition={{ duration: 0.15 }}
       onClick={hasChildren ? onToggle : undefined}
+      role={hasChildren ? 'button' : undefined}
+      tabIndex={hasChildren ? 0 : undefined}
+      onKeyDown={hasChildren ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          if (e.key === ' ') e.preventDefault();
+          onToggle();
+        }
+      } : undefined}
       className={`hover:bg-[var(--bg-glass-hover)] transition-colors group${hasChildren ? ' cursor-pointer' : ''}`}
     >
       <td className="py-2 px-3">
@@ -233,6 +241,14 @@ function SortHeader({
     <th
       className="py-2 px-3 text-left text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider cursor-pointer hover:text-[var(--text-primary)] transition-colors select-none"
       onClick={() => onSort(field)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          if (e.key === ' ') e.preventDefault();
+          onSort(field);
+        }
+      }}
     >
       <div className="flex items-center gap-1">
         {label}

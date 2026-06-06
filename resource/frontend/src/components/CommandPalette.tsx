@@ -156,6 +156,7 @@ function CommandPaletteContent({ onClose }: { onClose: () => void }) {
           <input
             ref={inputRef}
             type="text"
+            aria-label="Search commands and modules"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search pages..."

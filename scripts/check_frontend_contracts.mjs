@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = process.cwd();
+// Frontend sources live under resource/frontend/src. Resolve paths against the
+// frontend root derived from this script's location so the checker works no
+// matter where it is invoked from (project root per CLAUDE.md, or the frontend
+// dir via the package.json `check:contracts` script).
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'resource', 'frontend');
 const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const fail = (msg) => {
   console.error(`[contracts] ${msg}`);

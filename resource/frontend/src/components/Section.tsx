@@ -28,7 +28,7 @@ export function Section({
     persist: collapsible,
   });
 
-  const headerColorClass = variant === 'alert' ? 'text-red-800' : 'text-slate-800';
+  const headerColorClass = variant === 'alert' ? 'text-[var(--neon-red)]' : 'text-[var(--text-primary)]';
   const shouldShow = !collapsible || isOpen;
 
   return (

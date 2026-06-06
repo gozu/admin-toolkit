@@ -95,8 +95,8 @@ export function ClustersTable() {
 
 function ClusterCard({ cluster }: { cluster: Cluster }) {
   const statusColors: Record<string, string> = {
-    ON: 'bg-green-500',
-    OFF: 'bg-red-500',
+    ON: 'bg-[var(--success)]',
+    OFF: 'bg-[var(--neon-red)]',
     UNKNOWN: 'bg-gray-500',
   };
 

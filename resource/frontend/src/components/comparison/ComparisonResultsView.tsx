@@ -3,7 +3,6 @@ import { useDiag } from '../../context/DiagContext';
 import { useUltraWideLayout } from '../../hooks/useUltraWideLayout';
 import { Header } from '../Header';
 import { Container } from '../Container';
-import { Footer } from '../Footer';
 import { ComparisonHealthSection } from './ComparisonHealthSection';
 import { ComparisonSystemSection } from './ComparisonSystemSection';
 import { ComparisonSettingsSection } from './ComparisonSettingsSection';
@@ -95,8 +94,8 @@ export function ComparisonResultsView({ onBack }: ComparisonResultsViewProps) {
                 </svg>
                 {healthChange !== 0 && (
                   <span className={`text-sm font-bold mt-1 ${
-                    healthDirection === 'improvement' ? 'text-green-400' :
-                    healthDirection === 'regression' ? 'text-red-400' : 'text-[var(--text-muted)]'
+                    healthDirection === 'improvement' ? 'text-[var(--success)]' :
+                    healthDirection === 'regression' ? 'text-[var(--neon-red)]' : 'text-[var(--text-muted)]'
                   }`}>
                     {healthChange > 0 ? '+' : ''}{healthChange}
                   </span>
@@ -106,8 +105,8 @@ export function ComparisonResultsView({ onBack }: ComparisonResultsViewProps) {
               <div className="sm:hidden text-center py-2">
                 {healthChange !== 0 && (
                   <span className={`text-lg font-bold ${
-                    healthDirection === 'improvement' ? 'text-green-400' :
-                    healthDirection === 'regression' ? 'text-red-400' : 'text-[var(--text-muted)]'
+                    healthDirection === 'improvement' ? 'text-[var(--success)]' :
+                    healthDirection === 'regression' ? 'text-[var(--neon-red)]' : 'text-[var(--text-muted)]'
                   }`}>
                     {healthChange > 0 ? '+' : ''}{healthChange}
                   </span>
@@ -129,8 +128,8 @@ export function ComparisonResultsView({ onBack }: ComparisonResultsViewProps) {
                     {after.parsedData.dssVersion || 'Unknown version'}
                   </span>
                   <span className={`font-bold ${
-                    healthDirection === 'improvement' ? 'text-green-400' :
-                    healthDirection === 'regression' ? 'text-red-400' : 'text-[var(--text-primary)]'
+                    healthDirection === 'improvement' ? 'text-[var(--success)]' :
+                    healthDirection === 'regression' ? 'text-[var(--neon-red)]' : 'text-[var(--text-primary)]'
                   }`}>
                     {after.healthScore?.overall ?? '—'}
                   </span>
@@ -153,14 +152,14 @@ export function ComparisonResultsView({ onBack }: ComparisonResultsViewProps) {
               </div>
               <div className="hidden sm:block w-px h-10 bg-[var(--border-glass)]" />
               <div className="text-center min-w-[80px] group relative">
-                <div className="text-2xl font-bold text-green-400">{result.summary.improvements}</div>
+                <div className="text-2xl font-bold text-[var(--success)]">{result.summary.improvements}</div>
                 <div className="text-[var(--text-muted)]">Improvements</div>
                 {result.summary.improvementDeltas.length > 0 && (
                   <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-50 hidden group-hover:block">
                     <div className="bg-[var(--bg-surface)] border border-[var(--border-glass)] rounded-lg p-3 shadow-xl min-w-[220px] max-w-[320px] max-h-[400px] overflow-y-auto">
                       <div className="text-xs text-[var(--text-muted)] mb-2">Improvements:</div>
                       {result.summary.improvementDeltas.slice(0, 30).map((d, i) => (
-                        <div key={i} className="text-xs text-green-400 truncate">
+                        <div key={i} className="text-xs text-[var(--success)] truncate">
                           <span className="text-[var(--text-muted)]">{d.category}:</span> {d.label}
                         </div>
                       ))}
@@ -173,14 +172,14 @@ export function ComparisonResultsView({ onBack }: ComparisonResultsViewProps) {
               </div>
               <div className="hidden sm:block w-px h-10 bg-[var(--border-glass)]" />
               <div className="text-center min-w-[80px] group relative">
-                <div className="text-2xl font-bold text-red-400">{result.summary.regressions}</div>
+                <div className="text-2xl font-bold text-[var(--neon-red)]">{result.summary.regressions}</div>
                 <div className="text-[var(--text-muted)]">Regressions</div>
                 {result.summary.regressionDeltas.length > 0 && (
                   <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-50 hidden group-hover:block">
                     <div className="bg-[var(--bg-surface)] border border-[var(--border-glass)] rounded-lg p-3 shadow-xl min-w-[220px] max-w-[320px] max-h-[400px] overflow-y-auto">
                       <div className="text-xs text-[var(--text-muted)] mb-2">Regressions:</div>
                       {result.summary.regressionDeltas.slice(0, 30).map((d, i) => (
-                        <div key={i} className="text-xs text-red-400 truncate">
+                        <div key={i} className="text-xs text-[var(--neon-red)] truncate">
                           <span className="text-[var(--text-muted)]">{d.category}:</span> {d.label}
                         </div>
                       ))}
@@ -270,7 +269,6 @@ export function ComparisonResultsView({ onBack }: ComparisonResultsViewProps) {
           )}
         </Container>
       </main>
-      <Footer />
     </div>
   );
 }

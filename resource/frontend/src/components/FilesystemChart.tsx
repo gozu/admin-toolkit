@@ -13,7 +13,7 @@ import {
 } from 'chart.js';
 import { useDiag } from '../context/DiagContext';
 import { useTableFilter } from '../hooks/useTableFilter';
-import { parseNumericValue } from '../utils/formatters';
+import { parseSizeToGB } from '../utils/formatters';
 import { CHART_PALETTE } from '../utils/chartColors';
 import { BASE_TOOLTIP_STYLE, baseLegendLabels } from '../utils/chartConfig';
 
@@ -47,26 +47,16 @@ export function FilesystemChart() {
       .filter((fs) => parseInt(fs['Use%']) > 0 && fs['Size'])
       .sort((a, b) => parseInt(b['Use%']) - parseInt(a['Use%']));
 
-    const parseSize = (sizeStr: string): number => {
-      if (!sizeStr) return 0;
-      const value = parseNumericValue(sizeStr);
-      if (sizeStr.includes('T')) return value * 1024;
-      if (sizeStr.includes('G')) return value;
-      if (sizeStr.includes('M')) return value / 1024;
-      if (sizeStr.includes('K')) return value / (1024 * 1024);
-      return value;
-    };
-
     const labels: string[] = [];
     const usedData: number[] = [];
     const availableData: number[] = [];
 
     for (const fs of sortedFilesystems) {
-      const sizeGB = parseSize(fs['Size']);
+      const sizeGB = parseSizeToGB(fs['Size']);
       if (sizeGB < 0.1) continue;
 
-      const usedGB = parseSize(fs['Used']);
-      const availableGB = parseSize(fs['Available']);
+      const usedGB = parseSizeToGB(fs['Used']);
+      const availableGB = parseSizeToGB(fs['Available']);
 
       labels.push(`${fs['Mounted on'] || fs['Filesystem']} (${fs['Use%']})`);
       usedData.push(usedGB);

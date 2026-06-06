@@ -68,7 +68,8 @@ DEPLOY_COMMIT_PATHS := \
 	resource/frontend/tsconfig.node.json \
 	resource/frontend/eslint.config.js \
 	scripts \
-	Makefile
+	Makefile \
+	.gitattributes
 
 # ----------------------------
 # Frontend incremental build
@@ -137,6 +138,9 @@ dev: dist-clean build-frontend
 		--exclude "webapps.html" \
 		--exclude ".dss-url" \
 		--exclude ".dss-api-key" \
+		--exclude ".dss-*" \
+		--exclude ".airtable-token" \
+		--exclude "bestofboth/*" \
 		--exclude ".gitignore"
 	@echo "[SUCCESS] Dev archive: dist/$(archive_file_name)"
 

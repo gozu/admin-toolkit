@@ -479,7 +479,7 @@ export function ContainerExecs() {
     && (targetConfig === INHERIT_TARGET || validConfigSet.has(targetConfig))
     && !replaceLoading,
   );
-  const canLiveApply = canSubmitReplace && confirmText === 'do it';
+  const canLiveApply = canSubmitReplace && confirmText === 'CONFIRM';
 
   return (
     <div className="w-full py-4 space-y-4">
@@ -563,7 +563,7 @@ export function ContainerExecs() {
             disabled={!canSubmitReplace}
             className="min-h-10 rounded bg-[var(--accent)] px-4 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60 lg:w-auto"
           >
-            {replaceLoading ? 'Running...' : 'Apply'}
+            {replaceLoading ? 'Running…' : 'Apply'}
           </button>
         </div>
         {replaceError && <div className="mt-3 text-sm text-[var(--neon-red)]">{replaceError}</div>}
@@ -695,12 +695,12 @@ export function ContainerExecs() {
         <div className="space-y-4">
           <div className="rounded-lg border border-[var(--neon-red)]/30 bg-[var(--neon-red)]/10 px-3 py-2 text-sm text-[var(--text-primary)]">
             This will replace explicit visible overrides from <span className="font-mono">{sourceConfig}</span> to{' '}
-            <span className="font-mono">{targetConfig}</span>. Type <span className="font-mono">do it</span> to enable the live apply.
+            <span className="font-mono">{targetConfig}</span>. Type <span className="font-mono">CONFIRM</span> to enable the live apply.
           </div>
           <input
             value={confirmText}
             onChange={(e) => setConfirmText(e.target.value)}
-            placeholder="do it"
+            placeholder="CONFIRM"
             className="w-full rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-2 py-2 text-[var(--text-primary)]"
           />
           <div className="flex justify-end gap-2">
@@ -715,7 +715,7 @@ export function ContainerExecs() {
               disabled={!canLiveApply}
               className="rounded bg-[var(--neon-red)] px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
             >
-              {replaceLoading ? 'Applying...' : 'Apply Replacement'}
+              {replaceLoading ? 'Applying…' : 'Apply Replacement'}
             </button>
           </div>
         </div>

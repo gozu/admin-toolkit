@@ -117,7 +117,7 @@ export function MemoryAnalysisCard() {
     if (userCodeContainer || visualRecipesContainer) {
       return 'One workload type is local — set a default container exec config for the other to fully offload.';
     }
-    return 'Protip: default a container exec config for user code + visual recipes to offload from the local JEK.';
+    return 'Tip: default a container exec config for user code + visual recipes to offload from the local JEK.';
   })();
 
   return (
@@ -185,7 +185,7 @@ export function MemoryAnalysisCard() {
         {/* Advisor block: always shown. Names the FM baseline, the scenario,
             and the containerized-execution option that offloads local memory. */}
         <div className="mt-3 p-2 rounded text-xs" style={{ border: '1px solid var(--border-color)' }}>
-          <div className="font-medium text-[var(--text-primary)] mb-1">Memory sizing vs. FM baseline</div>
+          <div className="font-medium text-[var(--text-primary)] mb-1">Memory sizing vs. Fleet Manager (FM) baseline</div>
           <div className="space-y-0.5 font-mono">
             <div>
               FM baseline for {totalVm} GB instance: backend{' '}
@@ -245,7 +245,7 @@ export function MemoryAnalysisCard() {
 
         {status === 'info' && jekHeadroom < 0 && bothContainerized && !isAtOrAboveFM && (
           <div className="mt-2 p-2 rounded text-xs" style={{ backgroundColor: 'color-mix(in srgb, var(--neon-yellow) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--neon-yellow) 30%, transparent)', color: 'var(--neon-yellow)' }}>
-            Worst-case local JEK allocation is {jekOver}GB over the instance budget. Because both workload types default to containerized execution, this only materialises if projects override the default to run locally.
+            Worst-case local JEK allocation is {jekOver}GB over the instance budget. Because both workload types default to containerized execution, this only materializes if projects override the default to run locally.
           </div>
         )}
 

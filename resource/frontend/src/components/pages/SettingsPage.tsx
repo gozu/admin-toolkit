@@ -68,7 +68,7 @@ export function SettingsPage() {
             </select>
           ) : (
             <p className="text-xs text-[var(--text-muted)] italic mt-1">
-              No mail channels available. They load during Phase 2 of the main loader.
+              No mail channels available. They load shortly after the page opens.
             </p>
           )}
         </label>
@@ -139,7 +139,7 @@ export function SettingsPage() {
 
       <section className="glass-card p-4 space-y-3">
         <div>
-          <h3 className="text-lg font-semibold text-[var(--text-primary)]">Experimental features</h3>
+          <h3 className="text-lg font-semibold text-[var(--text-primary)]">Experimental Features</h3>
           <p className="text-sm text-[var(--text-muted)]">
             Reveals in-progress tools that are still rough: Docker Images and Model Audit.
           </p>
@@ -159,7 +159,7 @@ export function SettingsPage() {
 
       <section className="glass-card p-4 space-y-3">
         <div>
-          <h3 className="text-lg font-semibold text-[var(--text-primary)]">Deprecated features</h3>
+          <h3 className="text-lg font-semibold text-[var(--text-primary)]">Deprecated Features</h3>
           <p className="text-sm text-[var(--text-muted)]">
             Reveals modules slated for removal.
           </p>

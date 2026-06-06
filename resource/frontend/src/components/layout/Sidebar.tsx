@@ -735,6 +735,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
         data-page-id={pageId}
         onClick={() => handleNavClick(pageId, label)}
         title={collapsed ? label : undefined}
+        aria-label={label}
         className={`relative flex items-center gap-3 w-full rounded-md px-2.5 py-1.5 text-sm transition-colors duration-200 ${baseClasses} ${collapsed ? 'justify-center px-0' : ''}`}
       >
         {/* Active indicator bar */}
@@ -778,6 +779,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
           type="button"
           onClick={onBackToHosts}
           title="Back to host picker"
+          aria-label="Back"
           className={`flex items-center gap-2 rounded-md px-2 py-1 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors ${collapsed ? 'justify-center' : ''}`}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
@@ -790,6 +792,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
           type="button"
           onClick={onToggleCollapse}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           className={`flex items-center justify-center w-6 h-6 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors`}
         >
           <svg

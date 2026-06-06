@@ -83,7 +83,7 @@ export function LogErrorsSection() {
           <>
             <div className="mb-4">
               <p className="text-sm text-[var(--text-muted)]">
-                <strong>Pro Tip:</strong> These are the most recent errors from
+                <strong>Tip:</strong> These are the most recent errors from
                 the backend.log file. Each error block includes context lines
                 before and after the error to help with debugging.
               </p>

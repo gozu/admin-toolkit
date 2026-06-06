@@ -11,6 +11,7 @@ import { ProjectCodeStudiosModal } from './ProjectCodeStudiosModal';
 import { ProjectFolderBreakdownModal } from './ProjectFolderBreakdownModal';
 import { ScanIncompleteNotice } from './ScanIncompleteNotice';
 import { dssUrls } from '../utils/codeEnvUsageLinks';
+import { formatGb } from '../utils/formatters';
 import { normalizeModelValue } from '../utils/modelKind';
 import type { ColumnDef } from '../utils/dataGridTypes';
 import type { ProjectFootprintHealth, ProjectFootprintRow } from '../types';
@@ -32,11 +33,6 @@ type ModelFilter =
   | 'timeseries'
   | 'clustering'
   | 'unknown';
-
-function formatGb(bytes: number | undefined): string {
-  const gb = (bytes || 0) / (1024 * 1024 * 1024);
-  return `${gb.toFixed(2)} GB`;
-}
 
 function healthCellClass(value: ProjectFootprintHealth | undefined): string {
   if (!value) return 'text-[var(--text-secondary)]';

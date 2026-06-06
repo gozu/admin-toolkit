@@ -8,6 +8,7 @@ import type {
   ProjectSavedModelRef,
 } from '../types';
 import { dssUrls } from './codeEnvUsageLinks';
+import { formatGb } from './formatters';
 import type { UserMatrixCtx } from './userMatrix';
 import type { ColumnDef } from './dataGridTypes';
 
@@ -48,11 +49,6 @@ function PlainText(value: string | number | undefined | null): ReactNode {
     return createElement('span', { className: 'text-[var(--text-muted)]' }, '—');
   }
   return createElement('span', null, String(value));
-}
-
-function formatGb(bytes: number | undefined): string {
-  const gb = (bytes || 0) / (1024 * 1024 * 1024);
-  return `${gb.toFixed(2)} GB`;
 }
 
 // =============================================================================

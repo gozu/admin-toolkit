@@ -7,7 +7,6 @@ import { fetchRaw } from './utils/api';
 import { HostGate } from './components/HostGate';
 import {
   Header,
-  Footer,
   PacmanLoader,
   DebugPanel,
 } from './components';
@@ -132,7 +131,7 @@ function AppContent() {
     <main className="flex-1 flex items-center justify-center">
       <div className="flex flex-col items-center justify-center py-20">
         <PacmanLoader />
-        <p className="text-lg text-[var(--text-primary)] mt-6">Loading...</p>
+        <p className="text-lg text-[var(--text-primary)] mt-6">Loading…</p>
       </div>
     </main>
   );
@@ -169,7 +168,6 @@ function AppContent() {
             <ComparisonUpload />
           </Suspense>
         </main>
-        <Footer />
       </div>
     );
   } else if (!hasResults) {
@@ -187,7 +185,6 @@ function AppContent() {
             </div>
           ) : null}
         </main>
-        <Footer />
         {error && (
           <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 p-4 card-alert-critical rounded-lg max-w-2xl mx-auto">
             {error}

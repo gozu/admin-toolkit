@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { pctTone, ratioTone, TONE_TEXT } from '../utils/k8sTone';
+import { formatBytes as formatBytesValue } from '../utils/formatters';
 
 interface Props {
   evidence: Record<string, unknown>;
@@ -398,12 +399,5 @@ function asNum(v: unknown): number {
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '—';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let i = 0;
-  let n = bytes;
-  while (n >= 1024 && i < units.length - 1) {
-    n /= 1024;
-    i++;
-  }
-  return `${n.toFixed(n >= 100 ? 0 : 1)} ${units[i]}`;
+  return formatBytesValue(bytes);
 }

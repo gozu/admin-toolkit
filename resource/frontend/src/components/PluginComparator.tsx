@@ -32,10 +32,10 @@ function compareVersions(local: string | null, remote: string | null): RowStatus
 }
 
 const STATUS_COLORS: Record<RowStatus, string> = {
-  match: 'bg-emerald-500/10 text-emerald-400',
+  match: 'bg-[var(--success)]/10 text-[var(--success)]',
   minor: 'bg-yellow-500/10 text-yellow-400',
-  major: 'bg-red-500/10 text-red-400',
-  missing: 'bg-red-500/10 text-red-400',
+  major: 'bg-[var(--neon-red)]/10 text-[var(--neon-red)]',
+  missing: 'bg-[var(--neon-red)]/10 text-[var(--neon-red)]',
   'remote-only': 'bg-orange-500/10 text-orange-400',
 };
 
@@ -374,7 +374,7 @@ export function PluginComparator() {
                   {deploying ? (
                     <button
                       onClick={() => { abortRef.current = true; }}
-                      className="px-3 py-1 rounded text-xs font-medium bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                      className="px-3 py-1 rounded text-xs font-medium bg-[var(--neon-red)]/20 text-[var(--neon-red)] hover:bg-[var(--neon-red)]/30 transition-colors"
                     >
                       Abort
                     </button>
@@ -413,7 +413,7 @@ export function PluginComparator() {
                 const failCount = deployProgress.results.length - okCount;
                 return (
                   <div className="space-y-1.5">
-                    <div className={`text-sm font-medium ${failCount > 0 ? 'text-[var(--neon-red)]' : 'text-emerald-400'}`}>
+                    <div className={`text-sm font-medium ${failCount > 0 ? 'text-[var(--neon-red)]' : 'text-[var(--success)]'}`}>
                       Deployed {okCount}/{deployProgress.results.length} plugins successfully
                       {failCount > 0 && ` (${failCount} failed)`}
                     </div>

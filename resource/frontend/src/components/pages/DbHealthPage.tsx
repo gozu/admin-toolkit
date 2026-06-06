@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchJson } from '../../utils/api';
+import { formatBytes } from '../../utils/formatters';
 import { useDiag } from '../../context/DiagContext';
 import type { Lifecycle } from '../../types';
 import {
@@ -34,18 +35,10 @@ function relativeTime(iso: string | null): string {
   return d.toLocaleDateString();
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'kB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
-
 function bloatColor(ratio: number): string {
   if (ratio >= 0.5) return 'var(--neon-red, #ef4444)';
   if (ratio >= 0.2) return 'var(--neon-yellow, #eab308)';
-  return 'var(--neon-green, #22c55e)';
+  return 'var(--success)';
 }
 
 function vacuumAgeColor(iso: string | null): string {
@@ -476,7 +469,7 @@ export function DbHealthPage() {
 
       {/* Loading / Error states */}
       {dataLoading && (
-        <div className="flex items-center justify-center py-12">
+        <div className="flex items-center justify-center py-12 min-h-[400px]">
           <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
           <span className="ml-3 text-[var(--text-secondary)] text-sm">Querying database...</span>
         </div>
@@ -574,7 +567,18 @@ export function DbHealthPage() {
                 {/* System tables folder */}
                 {tableGroups.system.length > 0 && (
                   <>
-                    <tr className="cursor-pointer hover:bg-[var(--bg-glass-hover)]" onClick={() => toggleGroup('system')}>
+                    <tr
+                      className="cursor-pointer hover:bg-[var(--bg-glass-hover)]"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => toggleGroup('system')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          if (e.key === ' ') e.preventDefault();
+                          toggleGroup('system');
+                        }
+                      }}
+                    >
                       <td colSpan={9} className="py-2 text-xs font-medium text-[var(--text-secondary)]">
                         <span className="mr-1">{collapsedGroups.system ? '\u25B6' : '\u25BC'}</span>
                         System Tables ({tableGroups.system.length})
@@ -588,7 +592,18 @@ export function DbHealthPage() {
                 {/* Small tables folder */}
                 {tableGroups.small.length > 0 && (
                   <>
-                    <tr className="cursor-pointer hover:bg-[var(--bg-glass-hover)]" onClick={() => toggleGroup('small')}>
+                    <tr
+                      className="cursor-pointer hover:bg-[var(--bg-glass-hover)]"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => toggleGroup('small')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          if (e.key === ' ') e.preventDefault();
+                          toggleGroup('small');
+                        }
+                      }}
+                    >
                       <td colSpan={9} className="py-2 text-xs font-medium text-[var(--text-secondary)]">
                         <span className="mr-1">{collapsedGroups.small ? '\u25B6' : '\u25BC'}</span>
                         Small Tables &lt;5k rows ({tableGroups.small.length})

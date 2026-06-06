@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fetchJson } from '../utils/api';
 import { hostStore, setHosts, setActiveHost } from '../state/hostStore';
 import type { DssHost, DssHostStatus } from '../types';
@@ -14,7 +14,7 @@ function dotColor(s: ProbeState): string {
   if (s === undefined || s === 'loading') return 'bg-[var(--text-tertiary)]';
   if (!s.ok || s.pluginInstalled === false) return 'bg-[var(--neon-red)]';
   if (s.pluginVersion && s.adminToolkitProjectExists === false) return 'bg-[var(--neon-yellow)]';
-  return 'bg-emerald-400';
+  return 'bg-[var(--success)]';
 }
 
 function dotLabel(s: ProbeState): string {
@@ -32,6 +32,17 @@ export function HostGate({ onEnter }: HostGateProps) {
   const [setupHost, setSetupHost] = useState<DssHost | null>(null);
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!setupHost) return;
+    cancelButtonRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSetupHost(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [setupHost]);
 
   useEffect(() => {
     let cancelled = false;
@@ -200,8 +211,8 @@ export function HostGate({ onEnter }: HostGateProps) {
           <div className="w-full max-w-lg rounded-lg border border-[var(--border-glass)] bg-[var(--bg-surface)] p-5 shadow-xl">
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">Create remote support project</h2>
             <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
-              {setupHost.label} has the plugin installed, but it is missing the ADMINTOOLKIT project used for
-              host macros and backups. Create it once, then the scan can continue.
+              {setupHost.label} has the plugin installed, but it is missing the support project this toolkit
+              needs on that host. Create it once and the scan can continue.
             </p>
             {setupError && (
               <div className="mt-3 rounded border border-[var(--neon-red)]/40 bg-[var(--neon-red)]/10 px-3 py-2 text-sm text-[var(--neon-red)]">
@@ -210,6 +221,7 @@ export function HostGate({ onEnter }: HostGateProps) {
             )}
             <div className="mt-5 flex justify-end gap-2">
               <button
+                ref={cancelButtonRef}
                 type="button"
                 onClick={() => setSetupHost(null)}
                 disabled={setupLoading}

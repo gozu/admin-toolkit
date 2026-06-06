@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useDiag } from '../context/DiagContext';
 import type { CodeEnv } from '../types';
 import { useTableFilter } from '../hooks/useTableFilter';
-import { getRelativeSizeColor } from '../utils/formatters';
+import { formatGb, getRelativeSizeColor } from '../utils/formatters';
 import { ProgressIndicator } from './common/ProgressIndicator';
 import { dssUrls } from '../utils/codeEnvUsageLinks';
 
@@ -12,8 +12,7 @@ type ViewMode = 'summary' | 'details';
 
 function formatSizeGb(sizeBytes: number | undefined): string {
   if (!sizeBytes) return '\u2014';
-  const gb = sizeBytes / (1024 * 1024 * 1024);
-  return `${gb.toFixed(2)} GB`;
+  return formatGb(sizeBytes);
 }
 
 export function CodeEnvsTable() {

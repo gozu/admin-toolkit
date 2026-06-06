@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { DirEntry, DirTreeData, FootprintScope } from '../types';
 import { fetchJson } from '../utils/api';
+import { formatBytes as formatBytesValue } from '../utils/formatters';
 import { useDiag } from '../context/DiagContext';
 
 function _readDirTreeDepth(): number {
@@ -92,14 +93,7 @@ function buildScopeQuery(scope: FootprintScope, projectKey: string): string {
 
 function formatBytes(bytes: number | undefined): string {
   if (!bytes || bytes <= 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-  let size = bytes;
-  let idx = 0;
-  while (size >= 1024 && idx < units.length - 1) {
-    size /= 1024;
-    idx += 1;
-  }
-  return `${size.toFixed(2)} ${units[idx]}`;
+  return formatBytesValue(bytes);
 }
 
 export function useApiDirTree() {

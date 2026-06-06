@@ -88,7 +88,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         <Breadcrumb />
 
         {/* Center branding */}
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-2">
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden lg:flex items-center gap-2">
           <button
             type="button"
             onClick={onBackToHosts}
@@ -246,26 +246,6 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
                 </div>
                 <div className="flex items-center gap-2 text-[var(--text-tertiary)]">
                   <span className="text-[11px]">by Alex Kaos</span>
-                  <a
-                    href="mailto:alex.kaos@dataiku.com?subject=DiagParser Feedback"
-                    className="p-1 rounded hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
-                    title="Email"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                  </a>
-                  <a
-                    href="https://dataiku.enterprise.slack.com/archives/C08QQHCP4MD"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-1 rounded hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
-                    title="Slack"
-                  >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z" />
-                    </svg>
-                  </a>
                 </div>
               </div>
             )}
@@ -276,29 +256,6 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
       {/* Main content area — scrollable */}
       <main className="overflow-y-auto bg-[var(--bg-app)] flex flex-col relative">
         {children}
-
-        {/* Floating bug report button */}
-        <a
-          href="mailto:alex.kaos@dataiku.com?subject=Admin%20Toolkit%20feedback"
-          className="fixed bottom-6 right-3 z-50 flex items-center justify-center w-9 h-9 rounded-full bg-[var(--neon-cyan)]/15 text-[var(--neon-cyan)] border border-[var(--neon-cyan)]/40 hover:bg-[var(--neon-cyan)]/25 hover:border-[var(--neon-cyan)]/60 transition-colors shadow-lg backdrop-blur-sm"
-          title="Report a bug"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M8 2l1.88 1.88" />
-            <path d="M14.12 3.88L16 2" />
-            <path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" />
-            <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6" />
-            <path d="M12 20v-9" />
-            <path d="M6.53 9C4.6 8.8 3 7.1 3 5" />
-            <path d="M6 13H2" />
-            <path d="M3 21c0-2.1 1.7-3.9 3.8-4" />
-            <path d="M20.97 5c0 2.1-1.6 3.8-3.5 4" />
-            <path d="M22 13h-4" />
-            <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" />
-          </svg>
-        </a>
-
-
       </main>
 
       <RedUnlockModal isOpen={showUnlock} onClose={() => setShowUnlock(false)} />

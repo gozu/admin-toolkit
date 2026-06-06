@@ -64,7 +64,7 @@ const PAGE_LABELS: Record<PageId, string> = {
   'image-cleaner': 'Docker Images',
   'cs-template-replacement': 'Replace CS Template',
   'llm-audit': 'Model Audit',
-  'k8s-insights': 'K8S Insights',
+  'k8s-insights': 'K8s Insights',
   settings: 'Settings',
 };
 

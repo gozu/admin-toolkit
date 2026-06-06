@@ -1,0 +1,17 @@
+# Internal/dev material — kept tracked in the repo but excluded from the
+# shipped plugin ZIP. `make plugin`/`make deploy` build via `git archive HEAD`,
+# which honors `export-ignore`. Do NOT add anything that must ship in the plugin
+# (resource/, webapps/, python-lib/, python-runnables/, parameter-sets/,
+# code-env/, plugin.json, README.md, CHANGELOG.md).
+_archive/ export-ignore
+_archive/** export-ignore
+AGENTS.md export-ignore
+plugins/admin-toolkit-consistency/ export-ignore
+plugins/admin-toolkit-consistency/** export-ignore
+docs/ export-ignore
+docs/** export-ignore
+tests/ export-ignore
+tests/** export-ignore
+.claude/ export-ignore
+.claude/** export-ignore
+CLAUDE.md export-ignore

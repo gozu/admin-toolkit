@@ -122,7 +122,7 @@ export function ReportPage() {
     setPayloadSize(size);
     addLog(`Selected LLM: ${selectedLlmId}`);
     addLog(`Data payload: ${size.toLocaleString()} chars`);
-    addLog('Starting generation...');
+    addLog('Starting generation…');
     generate(parsedData);
   }, [selectedLlmId, parsedData, generate, addLog]);
 
@@ -316,7 +316,7 @@ export function ReportPage() {
               <span className="inline-block w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
             )}
             {status === 'ready' && (
-              <span className="inline-block w-2 h-2 rounded-full bg-green-400" />
+              <span className="inline-block w-2 h-2 rounded-full bg-white" />
             )}
             {error && (
               <span className="inline-block w-2 h-2 rounded-full bg-red-400" />
@@ -366,7 +366,7 @@ export function ReportPage() {
                     line.includes('ERROR')
                       ? 'text-red-400'
                       : line.includes('Complete')
-                        ? 'text-green-400'
+                        ? 'text-[var(--success)]'
                         : ''
                   }
                 >

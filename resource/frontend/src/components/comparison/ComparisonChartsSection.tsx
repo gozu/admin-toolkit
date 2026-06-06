@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import type { ParsedData, FilesystemInfo, MemoryInfo, ConnectionCounts } from '../../types';
+import { parseSizeToGB } from '../../utils/formatters';
 
 interface ComparisonChartsSectionProps {
   beforeData: ParsedData;
@@ -11,22 +12,13 @@ interface ComparisonChartsSectionProps {
 function MemoryComparisonChart({ before, after }: { before?: MemoryInfo; after?: MemoryInfo }) {
   if (!before && !after) return null;
 
-  const parseMemory = (str: string | undefined): number => {
-    if (!str) return 0;
-    const value = parseFloat(str.replace(/[^\d.]/g, ''));
-    if (str.includes('T')) return value * 1024;
-    if (str.includes('G')) return value;
-    if (str.includes('M')) return value / 1024;
-    return value;
-  };
-
-  const beforeTotal = parseMemory(before?.total);
-  const beforeUsed = parseMemory(before?.used);
+  const beforeTotal = parseSizeToGB(before?.total ?? '');
+  const beforeUsed = parseSizeToGB(before?.used ?? '');
   const beforePct = beforeTotal > 0 ? (beforeUsed / beforeTotal) * 100 : 0;
 
-  const afterTotal = parseMemory(after?.total);
-  const afterUsed = parseMemory(after?.used);
-  const afterFree = parseMemory(after?.available || after?.free);
+  const afterTotal = parseSizeToGB(after?.total ?? '');
+  const afterUsed = parseSizeToGB(after?.used ?? '');
+  const afterFree = parseSizeToGB(after?.available || after?.free || '');
   const afterPct = afterTotal > 0 ? (afterUsed / afterTotal) * 100 : 0;
 
   const usedDelta = afterUsed - beforeUsed;

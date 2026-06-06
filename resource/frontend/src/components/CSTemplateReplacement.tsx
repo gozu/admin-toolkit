@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal } from './Modal';
 import { useModal } from '../hooks/useModal';
 import { fetchJson, getBackendUrl } from '../utils/api';
+import { formatBytes } from '../utils/formatters';
 import { csTemplateScan } from '../state/csTemplateStore';
 
 interface MigrateStep {
@@ -62,18 +63,6 @@ function getDssBaseUrl(): string {
   const backendUrl = getBackendUrl('/');
   const parsed = new URL(backendUrl, window.location.origin);
   return `${parsed.protocol}//${parsed.host}`;
-}
-
-function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let n = bytes;
-  let unit = 0;
-  while (n >= 1024 && unit < units.length - 1) {
-    n /= 1024;
-    unit += 1;
-  }
-  return `${n.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
 function StateChip({ state }: { state: string | null | undefined }) {
@@ -343,7 +332,7 @@ export function CSTemplateReplacement() {
     selectedProjectKey && selectedCsId && targetTemplateId && !busy && selectedCs && selectedCs.templateId !== targetTemplateId,
   );
   const previewOk = Boolean(result && result.status === 'planned');
-  const canApply = canPreview && previewOk && confirmText === 'do it';
+  const canApply = canPreview && previewOk && confirmText === 'CONFIRM';
 
   const projectChoices = useMemo(
     () => projects.filter((p) => p.codeStudios.length > 0),
@@ -356,19 +345,19 @@ export function CSTemplateReplacement() {
         <div>
           <h2 className="text-xl font-semibold text-[var(--text-primary)]">Replace CS Template</h2>
           <p className="text-sm text-[var(--text-muted)]">
-            Migrate a code studio to a different template. The original code studio is left untouched;
+            Migrate a Code Studio to a different template. The original Code Studio is left untouched;
             a new one is created with the target template and your resource files are copied across.
           </p>
         </div>
         <div className="text-xs text-[var(--text-muted)]">
-          {projectChoices.length} project{projectChoices.length === 1 ? '' : 's'} with code studios,{' '}
+          {projectChoices.length} project{projectChoices.length === 1 ? '' : 's'} with Code Studios,{' '}
           {templates.length} template{templates.length === 1 ? '' : 's'}
         </div>
       </div>
 
       {loadError && (
         <div className="rounded-lg border border-[var(--neon-red)]/30 bg-[var(--neon-red)]/10 px-3 py-2 text-sm text-[var(--neon-red)]">
-          Failed to load code studios: {loadError}
+          Failed to load Code Studios: {loadError}
         </div>
       )}
 
@@ -383,7 +372,7 @@ export function CSTemplateReplacement() {
               className="min-h-10 rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-2 py-2 text-[var(--text-primary)]"
             >
               {projectChoices.length === 0 ? (
-                <option value="">{listLoading ? 'Loading...' : 'No projects with code studios'}</option>
+                <option value="">{listLoading ? 'Loading…' : 'No projects with Code Studios'}</option>
               ) : (
                 projectChoices.map((p) => (
                   <option key={p.projectKey} value={p.projectKey}>
@@ -440,7 +429,7 @@ export function CSTemplateReplacement() {
             disabled={!canPreview}
             className="min-h-10 rounded bg-[var(--accent)] px-4 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
           >
-            {busy && !result ? 'Previewing...' : 'Preview'}
+            {busy && !result ? 'Previewing…' : 'Preview'}
           </button>
           <button
             onClick={() => {
@@ -497,16 +486,16 @@ export function CSTemplateReplacement() {
         </ul>
       </div>
 
-      <Modal isOpen={confirmModal.isOpen} onClose={confirmModal.close} title="Migrate code studio">
+      <Modal isOpen={confirmModal.isOpen} onClose={confirmModal.close} title="Migrate Code Studio">
         <div className="space-y-4">
           <div className="rounded-lg border border-[var(--neon-red)]/30 bg-[var(--neon-red)]/10 px-3 py-2 text-sm text-[var(--text-primary)]">
-            This will create a new code studio{' '}
+            This will create a new Code Studio{' '}
             <span className="font-mono">
               {selectedCs?.name}-{targetTemplateId}
             </span>{' '}
             in <span className="font-mono">{selectedProjectKey}</span> and copy resource files from{' '}
             <span className="font-mono">{selectedCs?.name}</span>. Type{' '}
-            <span className="font-mono">do it</span> to confirm.
+            <span className="font-mono">CONFIRM</span> to confirm.
           </div>
           <div className="rounded-lg border border-[var(--border-glass)] bg-[var(--bg-glass)] px-3 py-2 text-sm text-[var(--text-secondary)]">
             File ops run via the plugin macro{' '}
@@ -520,7 +509,7 @@ export function CSTemplateReplacement() {
           <input
             value={confirmText}
             onChange={(e) => setConfirmText(e.target.value)}
-            placeholder="do it"
+            placeholder="CONFIRM"
             className="w-full rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-2 py-2 text-[var(--text-primary)]"
           />
           <div className="flex justify-end gap-2">
@@ -535,7 +524,7 @@ export function CSTemplateReplacement() {
               disabled={!canApply}
               className="rounded bg-[var(--neon-red)] px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
             >
-              {busy ? 'Migrating...' : 'Migrate'}
+              {busy ? 'Migrating…' : 'Migrate'}
             </button>
           </div>
         </div>

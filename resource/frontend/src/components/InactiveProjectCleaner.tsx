@@ -238,7 +238,7 @@ export function InactiveProjectCleaner() {
       <div className="space-y-4">
         <section className="glass-card p-4">
           <h3 className="text-lg font-semibold text-[var(--text-primary)]">Inactive Project Cleaner</h3>
-          <p className="text-sm text-[var(--text-muted)] mt-1">Loading inactive project data...</p>
+          <p className="text-sm text-[var(--text-muted)] mt-1">Loading inactive project data…</p>
         </section>
       </div>
     );
@@ -289,7 +289,7 @@ export function InactiveProjectCleaner() {
               className="input-glass text-sm py-1 px-2 rounded min-w-[200px]"
             >
               {foldersLoading ? (
-                <option value="">Loading...</option>
+                <option value="">Loading…</option>
               ) : folders.length === 0 ? (
                 <option value="">No managed folders in project</option>
               ) : (
@@ -393,7 +393,7 @@ export function InactiveProjectCleaner() {
                         className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
                           row.daysInactive >= 365
                             ? 'bg-[var(--neon-red)]/20 text-[var(--neon-red)]'
-                            : 'bg-amber-400/20 text-amber-400'
+                            : 'bg-[var(--warning)]/20 text-[var(--warning)]'
                         }`}
                       >
                         {row.daysInactive}d
@@ -435,7 +435,7 @@ export function InactiveProjectCleaner() {
               disabled={bulkDeleteLoading || bulkDeleteInput !== `delete ${selectedRows.length} projects`}
               className="px-4 py-1.5 rounded bg-[var(--neon-red)]/20 text-[var(--neon-red)] hover:bg-[var(--neon-red)]/30 disabled:opacity-50 transition-colors"
             >
-              {bulkDeleteLoading ? 'Deleting...' : `Delete ${selectedRows.length} Projects`}
+              {bulkDeleteLoading ? 'Deleting…' : `Delete ${selectedRows.length} Projects`}
             </button>
           </div>
         }

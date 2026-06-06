@@ -110,6 +110,7 @@ export function ProjectsTable({ onViewPermissions }: ProjectsTableProps) {
           </svg>
           <input
             type="text"
+            aria-label="Search projects"
             placeholder="Search projects..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}

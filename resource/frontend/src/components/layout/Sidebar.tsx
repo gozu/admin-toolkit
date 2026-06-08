@@ -660,6 +660,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
   // titles and pages in collapsed sections. No focus moves — the only feedback
   // is the existing active highlight + blue bar. ←/→ are intentionally ignored.
   const navRef = useRef<HTMLElement>(null);
+  const [keyboardNav, setKeyboardNav] = useState(false);
   const activePageRef = useRef(activePage);
   activePageRef.current = activePage;
   useEffect(() => {
@@ -682,6 +683,8 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
       const next = i === -1 ? (dir === 1 ? 0 : ids.length - 1) : i + dir;
       if (next < 0 || next >= ids.length) return;
       e.preventDefault();
+      if (nav.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+      setKeyboardNav(true);
       setActivePage(ids[next]);
     }
     window.addEventListener('keydown', onKey);
@@ -720,13 +723,16 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
     const isTool = item.tool === true;
     const badgeCount = getBadgeCount(item.badge);
 
+    const hover = keyboardNav ? '' : isTool
+      ? 'hover:text-red-200 hover:bg-red-500/10'
+      : 'hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]';
     const baseClasses = isTool
       ? (isActive
         ? 'bg-red-500/15 text-red-300 ring-1 ring-inset ring-red-400/25'
-        : 'text-red-300/90 hover:text-red-200 hover:bg-red-500/10')
+        : `text-red-300/90 ${hover}`)
       : (isActive
         ? 'bg-[var(--accent-muted)] text-[var(--accent)]'
-        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]');
+        : `text-[var(--text-secondary)] ${hover}`);
 
     return (
       <button
@@ -826,7 +832,11 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
       <div className="mx-3 border-t border-[var(--border-default)]" />
 
       {/* Navigation — collapsible sections over the classic icon+label rows. */}
-      <nav ref={navRef} className="flex-1 overflow-y-auto px-2 py-3 space-y-0">
+      <nav
+        ref={navRef}
+        onMouseMove={() => setKeyboardNav((v) => (v ? false : v))}
+        className="flex-1 overflow-y-auto px-2 py-3 space-y-0"
+      >
         {visibleSections.map((section, idx) => (
           <SidebarSection
             key={section.title}

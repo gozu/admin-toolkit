@@ -8,7 +8,9 @@ import { exportAllTablesToZip } from '../../utils/exportTables';
 import { exportDataToZip } from '../../utils/exportData';
 import { useDiag } from '../../context/DiagContext';
 import { RedUnlockModal } from '../RedUnlockModal';
+import { DatasetExportModal } from '../DatasetExportModal';
 import { useRedState, toggleShowRed, hydrateRedStatus } from '../../state/redUnlockStore';
+import { datasetExportConfigStore } from '../../state/datasetExportConfigStore';
 
 const COLLAPSE_BREAKPOINT = 1280;
 const SIDEBAR_COLLAPSED = 56;
@@ -32,10 +34,18 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
   const { state: { parsedData } } = useDiag();
   const { authed, showRed } = useRedState();
   const [showUnlock, setShowUnlock] = useState(false);
+  const [showDatasetExport, setShowDatasetExport] = useState(false);
+  const { configuredConnection, loaded: datasetExportLoaded } = datasetExportConfigStore.use();
+  const datasetExportEnabled = datasetExportLoaded && !!configuredConnection;
 
   // Reconcile the unlock UI with the HttpOnly cookie once on boot.
   useEffect(() => {
     hydrateRedStatus();
+  }, []);
+
+  // Resolve whether "Save Tables as Datasets" is enabled (admin-picked connection).
+  useEffect(() => {
+    datasetExportConfigStore.loadConfig();
   }, []);
 
   const handleRefresh = async () => {
@@ -191,6 +201,25 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
             </svg>
           </button>
 
+          {/* Save all tables as Dataiku datasets (local-scoped; admin enables via plugin settings) */}
+          <button
+            type="button"
+            onClick={() => setShowDatasetExport(true)}
+            disabled={!datasetExportEnabled}
+            title={
+              datasetExportEnabled
+                ? `Save all tables as Dataiku datasets (→ ${configuredConnection})`
+                : 'Save tables as datasets — disabled until an admin selects a connection in the Admin Toolkit plugin settings'
+            }
+            className={`${toolbarButtonClass} ${!datasetExportEnabled ? 'opacity-30 cursor-not-allowed' : ''}`}
+          >
+            <svg className={toolbarIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+              <ellipse cx="12" cy="5" rx="8" ry="3" />
+              <path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
+              <path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" />
+            </svg>
+          </button>
+
           {/* Theme toggle */}
           <button
             type="button"
@@ -259,6 +288,11 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
       </main>
 
       <RedUnlockModal isOpen={showUnlock} onClose={() => setShowUnlock(false)} />
+      <DatasetExportModal
+        isOpen={showDatasetExport}
+        onClose={() => setShowDatasetExport(false)}
+        connection={configuredConnection ?? ''}
+      />
     </div>
   );
 }

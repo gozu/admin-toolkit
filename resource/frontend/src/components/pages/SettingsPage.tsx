@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useDiag } from '../../context/DiagContext';
 import { loadFromStorage, saveToStorage } from '../../utils/storage';
 import { useToggleFlag } from '../../hooks/useToggleFlag';
 import { useRedState, forgetRed } from '../../state/redUnlockStore';
 import { RedUnlockModal } from '../RedUnlockModal';
 import { AlgorithmReviewCard } from '../AlgorithmReviewCard';
+import { datasetExportConfigStore } from '../../state/datasetExportConfigStore';
 
 export const SELECTED_MAIL_CHANNEL_STORAGE_KEY = 'selectedMailChannel';
 export const SHOW_EXPERIMENTAL_STORAGE_KEY = 'showExperimental';
@@ -34,6 +35,15 @@ export function SettingsPage() {
 
   const { authed: unlocked, expiresAt } = useRedState();
   const [showUnlock, setShowUnlock] = useState(false);
+
+  const {
+    configuredConnection: datasetExportConnection,
+    project: datasetExportProject,
+    loaded: datasetExportLoaded,
+  } = datasetExportConfigStore.use();
+  useEffect(() => {
+    datasetExportConfigStore.loadConfig();
+  }, []);
 
   const isStoredValid = !!stored && mailChannels.some((c) => c.id === stored);
   const selectedChannel = isStoredValid ? stored : mailChannels[0]?.id ?? '';
@@ -136,6 +146,44 @@ export function SettingsPage() {
       </section>
 
       <AlgorithmReviewCard />
+
+      <section className="glass-card p-4 space-y-3">
+        <div>
+          <h3 className="text-lg font-semibold text-[var(--text-primary)]">Save Tables as Datasets</h3>
+          <p className="text-sm text-[var(--text-muted)]">
+            The toolbar “Save tables as datasets” button persists every table on the current page as a
+            managed Dataiku dataset (one per table) in the Admin Toolkit’s own project. All columns are
+            stored as text; re-running overwrites the datasets in place.
+          </p>
+        </div>
+        {datasetExportLoaded && datasetExportConnection ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="px-2 py-0.5 text-xs font-medium rounded border bg-white/10 text-[var(--text-primary)] border-[var(--border-default)]">
+              Enabled
+            </span>
+            <span className="text-[var(--text-secondary)]">
+              saving to connection{' '}
+              <span className="font-mono text-[var(--text-primary)]">{datasetExportConnection}</span>
+              {datasetExportProject && (
+                <>
+                  {' '}in project{' '}
+                  <span className="font-mono text-[var(--text-primary)]">{datasetExportProject}</span>
+                </>
+              )}
+            </span>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="px-2 py-0.5 text-xs font-medium rounded border bg-[var(--bg-glass)] text-[var(--text-secondary)] border-[var(--border-default)]">
+              Not configured
+            </span>
+            <span className="text-[var(--text-muted)]">
+              An administrator must select a target connection in Plugin settings → “Save Tables as
+              Datasets” to enable the toolbar button.
+            </span>
+          </div>
+        )}
+      </section>
 
       <section className="glass-card p-4 space-y-3">
         <div>

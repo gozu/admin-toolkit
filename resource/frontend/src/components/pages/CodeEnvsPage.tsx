@@ -708,7 +708,10 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
           </div>
           <div className="text-center">
             <div className="text-2xl font-mono text-[var(--neon-red)]">{deletedKeys.size}</div>
-            <div className="text-xs text-[var(--text-muted)]">Backed Up &amp; Deleted</div>
+            <div className="text-xs text-[var(--text-muted)]">
+              Backed Up &amp; Deleted
+              <span className="block text-[10px] opacity-70">this session</span>
+            </div>
           </div>
         </div>
       </section>

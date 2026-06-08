@@ -522,6 +522,12 @@ function SidebarItemStatus({ module, data }: SidebarItemStatusProps) {
   const { addDebugLog } = useDiag();
   const lc = resolveLifecycle(module, data);
   const kind = glyphKindOf(lc);
+  // Replay the dust only for a completion observed live: the row must have shown
+  // a non-done phase this mount. Mounting into done (Advanced-Actions off→on, nav,
+  // a scan that finished while hidden) settles glyph-free instead of replaying.
+  // (||= only ever flips false→true, so it's StrictMode/concurrent-safe.)
+  const sawPendingRef = useRef(false);
+  sawPendingRef.current ||= kind !== 'done';
   // Track previous kind so we can fire a debug-log entry the moment the
   // checkmark first appears (idle/queued/running → done). Errors don't count
   // as "checkmark"; they get their own ✕ glyph and a separate log line.
@@ -544,12 +550,18 @@ function SidebarItemStatus({ module, data }: SidebarItemStatusProps) {
       className={`inline-flex items-center justify-center transition-opacity ease-out motion-reduce:transition-none opacity-100`}
       style={{ transitionDuration: `${CROSSFADE_MS}ms` }}
     >
-      {kind === 'done' ? (
-        // Keyed on finishedAt so a fresh done-episode (e.g. after a session
-        // reset) remounts and replays the dust instead of staying gone.
+      {kind !== 'done' ? (
+        renderGlyph(kind)
+      ) : sawPendingRef.current ? (
+        // Completion observed live this mount → celebrate. Keyed on finishedAt
+        // so a fresh done-episode (e.g. after a session reset) remounts and
+        // replays the dust instead of staying gone.
         <PixelDustCheck key={lc.phase === 'done' ? lc.finishedAt : 'done'} />
       ) : (
-        renderGlyph(kind)
+        // Mounted straight into done (Advanced-Actions off→on, nav, or a scan
+        // that finished while hidden) → settle glyph-free, same 3.5×3.5 box as
+        // PixelDustCheck's 'gone' stage so there's no layout jump.
+        <span aria-hidden className="flex-shrink-0 inline-block w-3.5 h-3.5" />
       )}
     </span>
   );

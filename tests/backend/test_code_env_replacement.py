@@ -8,6 +8,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, os.path.join(ROOT, 'webapps', 'admin-toolkit'))
 
 import backend  # noqa: E402
+from adk_backend.routes import code_env_replace  # noqa: E402
 
 
 class FakeSettings:
@@ -134,7 +135,7 @@ def test_code_env_replace_dry_run_returns_matches_without_mutation():
     fake = FakeClient()
     flask_client = backend.app.test_client()
     with mock.patch.object(backend.dataiku, 'api_client', return_value=fake), \
-            mock.patch.object(backend, '_build_project_info', return_value={'P1': {'name': 'Project One', 'owner': 'owner'}}):
+            mock.patch.object(code_env_replace, '_build_project_info', return_value={'P1': {'name': 'Project One', 'owner': 'owner'}}):
         resp = post_replace(flask_client, {})
 
     data = resp.get_json()
@@ -170,7 +171,7 @@ def test_code_env_replace_updates_all_supported_surfaces():
     fake = FakeClient()
     flask_client = backend.app.test_client()
     with mock.patch.object(backend.dataiku, 'api_client', return_value=fake), \
-            mock.patch.object(backend, '_build_project_info', return_value={'P1': {'name': 'Project One', 'owner': 'owner'}}):
+            mock.patch.object(code_env_replace, '_build_project_info', return_value={'P1': {'name': 'Project One', 'owner': 'owner'}}):
         resp = post_replace(flask_client, {'dryRun': False})
 
     data = resp.get_json()
@@ -191,7 +192,7 @@ def test_code_env_replace_skips_stale_rows():
     fake.recipe['recipe']['params']['envSelection']['envName'] = 'other_py'
     flask_client = backend.app.test_client()
     with mock.patch.object(backend.dataiku, 'api_client', return_value=fake), \
-            mock.patch.object(backend, '_build_project_info', return_value={'P1': {'name': 'Project One', 'owner': 'owner'}}):
+            mock.patch.object(code_env_replace, '_build_project_info', return_value={'P1': {'name': 'Project One', 'owner': 'owner'}}):
         resp = post_replace(flask_client, {'dryRun': False})
 
     data = resp.get_json()

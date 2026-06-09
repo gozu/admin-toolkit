@@ -115,7 +115,7 @@ def test_thread_pool_propagates_remote_host_to_thread_client():
         with backend.app.test_request_context('/api/project-footprint', headers={'X-DSS-Host-Id': 'tam-global'}):
             backend.g.host_id = 'tam-global'
             with backend.ThreadPoolExecutor(max_workers=1) as pool:
-                assert pool.submit(lambda: backend._thread_client().name).result(timeout=5) == 'remote'
+                assert pool.submit(lambda: adk_clients._thread_client().name).result(timeout=5) == 'remote'
 
 
 def test_local_toolkit_client_ignores_remote_thread_context():

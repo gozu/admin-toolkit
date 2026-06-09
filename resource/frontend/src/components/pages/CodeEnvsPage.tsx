@@ -10,7 +10,7 @@ import {
   objectUrl,
   projectUrl,
 } from '../../utils/codeEnvUsageLinks';
-import { getRelativeSizeColor } from '../../utils/formatters';
+import { formatSizeGb, getRelativeSizeColor } from '../../utils/formatters';
 import { managedFoldersScan } from '../../state/managedFoldersStore';
 import { Modal } from '../Modal';
 import { ProgressIndicator } from '../common/ProgressIndicator';
@@ -39,12 +39,6 @@ type RealEnvRow = EnvRow & { env: CodeEnv; isProvisional: false };
 
 function codeEnvKey(env: CodeEnv): string {
   return `${env.language}:${env.name}`;
-}
-
-function formatSizeGb(sizeBytes: number | undefined): string {
-  if (!sizeBytes) return '—';
-  const gb = sizeBytes / (1024 * 1024 * 1024);
-  return `${gb.toFixed(2)} GB`;
 }
 
 function sortRows(rows: EnvRow[], field: SortField | null, dir: SortDir): EnvRow[] {
@@ -105,17 +99,32 @@ function ReplacementResultPanel({ result }: { result: CodeEnvReplaceResult }) {
   return (
     <div className="rounded-lg border border-[var(--border-glass)] bg-[var(--bg-elevated)] p-3 text-sm">
       <div className="text-[var(--text-primary)]">
-        {result.dryRun ? 'Planned' : 'Applied'} rows: <span className="font-mono">{result.matchedRows}</span>
-        {result.updatedRows > 0 && <span>, updated: <span className="font-mono">{result.updatedRows}</span></span>}
-        {result.skippedRows > 0 && <span>, skipped: <span className="font-mono">{result.skippedRows}</span></span>}
+        {result.dryRun ? 'Planned' : 'Applied'} rows:{' '}
+        <span className="font-mono">{result.matchedRows}</span>
+        {result.updatedRows > 0 && (
+          <span>
+            , updated: <span className="font-mono">{result.updatedRows}</span>
+          </span>
+        )}
+        {result.skippedRows > 0 && (
+          <span>
+            , skipped: <span className="font-mono">{result.skippedRows}</span>
+          </span>
+        )}
         {result.failedRows > 0 && (
-          <span className="text-[var(--neon-red)]">, failed: <span className="font-mono">{result.failedRows}</span></span>
+          <span className="text-[var(--neon-red)]">
+            , failed: <span className="font-mono">{result.failedRows}</span>
+          </span>
         )}
       </div>
       <div className="mt-2 max-h-48 space-y-1 overflow-auto">
         {result.results.slice(0, 100).map((row, idx) => (
-          <div key={`${row.rowId || row.objectId || 'row'}-${idx}`} className="font-mono text-xs text-[var(--text-muted)]">
-            {row.status}: {row.projectKey || '*'} / {row.objectType || 'OBJECT'} / {row.objectName || row.objectId || '—'}
+          <div
+            key={`${row.rowId || row.objectId || 'row'}-${idx}`}
+            className="font-mono text-xs text-[var(--text-muted)]"
+          >
+            {row.status}: {row.projectKey || '*'} / {row.objectType || 'OBJECT'} /{' '}
+            {row.objectName || row.objectId || '—'}
             {row.error ? ` - ${row.error}` : ''}
           </div>
         ))}
@@ -140,7 +149,10 @@ function UsageModal({
     for (const usage of env?.usageDetails || []) {
       const projectKey = usage.projectKey || '';
       if (!projectKey) continue;
-      const group = groups.get(projectKey) || { projectName: usage.projectName || projectKey, rows: [] };
+      const group = groups.get(projectKey) || {
+        projectName: usage.projectName || projectKey,
+        rows: [],
+      };
       group.rows.push(usage);
       groups.set(projectKey, group);
     }
@@ -155,7 +167,10 @@ function UsageModal({
         ) : (
           <div className="space-y-4">
             {grouped.map(([projectKey, group]) => (
-              <div key={projectKey} className="rounded-lg border border-[var(--border-glass)] bg-[var(--bg-surface)]">
+              <div
+                key={projectKey}
+                className="rounded-lg border border-[var(--border-glass)] bg-[var(--bg-surface)]"
+              >
                 <div className="flex min-h-11 items-center justify-between gap-3 border-b border-[var(--border-glass)] px-3 py-2">
                   <a
                     href={projectUrl(baseUrl, projectKey)}
@@ -165,7 +180,9 @@ function UsageModal({
                   >
                     {projectKey}
                   </a>
-                  <span className="truncate text-xs text-[var(--text-muted)]">{group.projectName}</span>
+                  <span className="truncate text-xs text-[var(--text-muted)]">
+                    {group.projectName}
+                  </span>
                 </div>
                 <div className="divide-y divide-[var(--border-glass)]/70">
                   {group.rows.map((usage, idx) => (
@@ -325,8 +342,14 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
     () => visibleRows.filter((r) => r.env?.language === 'r').length,
     [visibleRows],
   );
-  const unusedCount = useMemo(() => visibleRows.filter((r) => r.usageCount === 0).length, [visibleRows]);
-  const inUseCount = useMemo(() => visibleRows.filter((r) => r.usageCount > 0).length, [visibleRows]);
+  const unusedCount = useMemo(
+    () => visibleRows.filter((r) => r.usageCount === 0).length,
+    [visibleRows],
+  );
+  const inUseCount = useMemo(
+    () => visibleRows.filter((r) => r.usageCount > 0).length,
+    [visibleRows],
+  );
 
   // Source/Target selects
   const sortedRealEnvs = useMemo(
@@ -345,7 +368,9 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
     () =>
       sortedRealEnvs.filter(
         (env) =>
-          sourceEnv && env.language === sourceEnv.language && codeEnvKey(env) !== codeEnvKey(sourceEnv),
+          sourceEnv &&
+          env.language === sourceEnv.language &&
+          codeEnvKey(env) !== codeEnvKey(sourceEnv),
       ),
     [sortedRealEnvs, sourceEnv],
   );
@@ -355,7 +380,11 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
       setSourceName(codeEnvKey(inUseEnvs[0]));
       return;
     }
-    if (sourceName && inUseEnvs.length > 0 && !inUseEnvs.some((env) => codeEnvKey(env) === sourceName)) {
+    if (
+      sourceName &&
+      inUseEnvs.length > 0 &&
+      !inUseEnvs.some((env) => codeEnvKey(env) === sourceName)
+    ) {
       setSourceName(codeEnvKey(inUseEnvs[0]));
     }
   }, [inUseEnvs, sourceName]);
@@ -390,9 +419,7 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
 
   const selectableUnusedRows = useMemo(
     () =>
-      visibleRows.filter(
-        (r): r is RealEnvRow => !r.isProvisional && r.usageCount === 0 && !!r.env,
-      ),
+      visibleRows.filter((r): r is RealEnvRow => !r.isProvisional && r.usageCount === 0 && !!r.env),
     [visibleRows],
   );
 
@@ -528,10 +555,10 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
 
   const canSubmit = Boolean(
     sourceEnv &&
-      targetName &&
-      sourceEnv.name !== targetName &&
-      targetChoices.some((env) => env.name === targetName) &&
-      !replaceLoading,
+    targetName &&
+    sourceEnv.name !== targetName &&
+    targetChoices.some((env) => env.name === targetName) &&
+    !replaceLoading,
   );
   const canLiveApply = canSubmit && confirmText === 'CONFIRM';
 
@@ -600,90 +627,92 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
 
         {/* Action toolbar — Backup / Source / Target / Dry run / Apply / Language */}
         {!readOnly && (
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-            <span className="whitespace-nowrap">Backup</span>
-            <select
-              value={folderId}
-              onChange={(e) => setFolderId(e.target.value)}
-              disabled={foldersLoading || folders.length === 0}
-              className="input-glass text-sm py-1 px-2 rounded min-w-[180px]"
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+              <span className="whitespace-nowrap">Backup</span>
+              <select
+                value={folderId}
+                onChange={(e) => setFolderId(e.target.value)}
+                disabled={foldersLoading || folders.length === 0}
+                className="input-glass text-sm py-1 px-2 rounded min-w-[180px]"
+              >
+                {foldersLoading ? (
+                  <option value="">Loading...</option>
+                ) : folders.length === 0 ? (
+                  <option value="">No managed folders in project</option>
+                ) : (
+                  folders.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+              <span className="whitespace-nowrap">Source</span>
+              <select
+                value={sourceName}
+                onChange={(e) => setSourceName(e.target.value)}
+                disabled={inUseEnvs.length === 0}
+                className="input-glass text-sm py-1 px-2 rounded min-w-[200px]"
+              >
+                {inUseEnvs.length === 0 ? (
+                  <option value="">No in-use envs</option>
+                ) : (
+                  inUseEnvs.map((env) => (
+                    <option key={codeEnvKey(env)} value={codeEnvKey(env)}>
+                      {env.name} ({env.language})
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+              <span className="whitespace-nowrap">Target</span>
+              <select
+                value={targetName}
+                onChange={(e) => setTargetName(e.target.value)}
+                disabled={targetChoices.length === 0}
+                className="input-glass text-sm py-1 px-2 rounded min-w-[200px]"
+              >
+                {targetChoices.length === 0 ? (
+                  <option value="">No same-language target</option>
+                ) : (
+                  targetChoices.map((env) => (
+                    <option key={env.name} value={env.name}>
+                      {env.name}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)] rounded border border-[var(--border-glass)] bg-[var(--bg-glass)] px-3 py-1">
+              <input
+                type="checkbox"
+                checked={dryRun}
+                onChange={(e) => setDryRun(e.target.checked)}
+                className="h-4 w-4 accent-[var(--neon-cyan)]"
+              />
+              Dry run
+            </label>
+
+            <button
+              onClick={requestReplace}
+              disabled={!canSubmit}
+              className="rounded bg-[var(--accent)] px-4 py-1 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
             >
-              {foldersLoading ? (
-                <option value="">Loading...</option>
-              ) : folders.length === 0 ? (
-                <option value="">No managed folders in project</option>
-              ) : (
-                folders.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-            <span className="whitespace-nowrap">Source</span>
-            <select
-              value={sourceName}
-              onChange={(e) => setSourceName(e.target.value)}
-              disabled={inUseEnvs.length === 0}
-              className="input-glass text-sm py-1 px-2 rounded min-w-[200px]"
-            >
-              {inUseEnvs.length === 0 ? (
-                <option value="">No in-use envs</option>
-              ) : (
-                inUseEnvs.map((env) => (
-                  <option key={codeEnvKey(env)} value={codeEnvKey(env)}>
-                    {env.name} ({env.language})
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-            <span className="whitespace-nowrap">Target</span>
-            <select
-              value={targetName}
-              onChange={(e) => setTargetName(e.target.value)}
-              disabled={targetChoices.length === 0}
-              className="input-glass text-sm py-1 px-2 rounded min-w-[200px]"
-            >
-              {targetChoices.length === 0 ? (
-                <option value="">No same-language target</option>
-              ) : (
-                targetChoices.map((env) => (
-                  <option key={env.name} value={env.name}>
-                    {env.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)] rounded border border-[var(--border-glass)] bg-[var(--bg-glass)] px-3 py-1">
-            <input
-              type="checkbox"
-              checked={dryRun}
-              onChange={(e) => setDryRun(e.target.checked)}
-              className="h-4 w-4 accent-[var(--neon-cyan)]"
-            />
-            Dry run
-          </label>
-
-          <button
-            onClick={requestReplace}
-            disabled={!canSubmit}
-            className="rounded bg-[var(--accent)] px-4 py-1 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
-          >
-            {replaceLoading ? 'Running...' : 'Replace'}
-          </button>
-        </div>
+              {replaceLoading ? 'Running...' : 'Replace'}
+            </button>
+          </div>
         )}
 
-        {!readOnly && replaceError && <div className="text-sm text-[var(--neon-red)]">{replaceError}</div>}
+        {!readOnly && replaceError && (
+          <div className="text-sm text-[var(--neon-red)]">{replaceError}</div>
+        )}
         {!readOnly && replaceResult && <ReplacementResultPanel result={replaceResult} />}
       </section>
 
@@ -753,10 +782,7 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
       )}
 
       {/* Unified table */}
-      <section
-        className="rounded-xl overflow-hidden"
-        id="code-envs-table"
-      >
+      <section className="rounded-xl overflow-hidden" id="code-envs-table">
         {isLoading && rows.length === 0 ? (
           <div className="px-4 py-3">
             <ProgressIndicator lifecycle={loading} />
@@ -827,7 +853,10 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
               <tbody className="divide-y divide-[var(--border-glass)]">
                 {sortedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={readOnly ? 8 : 10} className="py-6 text-center text-sm text-[var(--text-muted)]">
+                    <td
+                      colSpan={readOnly ? 8 : 10}
+                      className="py-6 text-center text-sm text-[var(--text-muted)]"
+                    >
                       {showAnalysisProgress
                         ? 'Scanning usages. Rows will appear as usage checks and env details stream in.'
                         : 'No code environments match the current filter.'}
@@ -899,7 +928,9 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
                           {env?.language === 'python' ? (
                             <PythonVersionBadge version={env.version} />
                           ) : env?.language === 'r' ? (
-                            <span className="text-[var(--neon-purple)] font-medium">{env.version || '—'}</span>
+                            <span className="text-[var(--neon-purple)] font-medium">
+                              {env.version || '—'}
+                            </span>
                           ) : (
                             <span className="text-[var(--text-muted)]">—</span>
                           )}
@@ -977,153 +1008,169 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
       </section>
 
       {/* Usage modal */}
-      <UsageModal env={usageEnv} baseUrl={baseUrl} isOpen={usageModal.isOpen} onClose={usageModal.close} />
+      <UsageModal
+        env={usageEnv}
+        baseUrl={baseUrl}
+        isOpen={usageModal.isOpen}
+        onClose={usageModal.close}
+      />
 
       {!readOnly && (
         <>
-      {/* Bulk Delete Confirmation Modal */}
-      <Modal
-        isOpen={bulkDeleteModal.isOpen}
-        onClose={bulkDeleteModal.close}
-        title="Confirm Bulk Deletion"
-        footer={
-          <div className="flex items-center justify-end gap-2">
-            <button
-              onClick={bulkDeleteModal.close}
-              className="px-3 py-1.5 rounded bg-[var(--bg-glass)] hover:bg-[var(--bg-glass-hover)] text-[var(--text-secondary)]"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={confirmBulkDelete}
-              disabled={bulkDeleteLoading || bulkDeleteInput !== `delete ${selectedRows.length} envs`}
-              className="px-4 py-1.5 rounded bg-[var(--neon-red)]/20 text-[var(--neon-red)] hover:bg-[var(--neon-red)]/30 disabled:opacity-50 transition-colors"
-            >
-              {bulkDeleteLoading ? 'Deleting...' : `Delete ${selectedRows.length} Envs`}
-            </button>
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          <p className="text-[var(--text-secondary)]">
-            Are you sure you want to delete {selectedRows.length} code environment
-            {selectedRows.length !== 1 ? 's' : ''}?
-          </p>
-          <div className="max-h-32 overflow-y-auto rounded bg-[var(--bg-glass)] p-2">
-            {selectedRows.map((r) => (
-              <div key={r.envKey} className="text-xs font-mono text-[var(--neon-red)] py-0.5">
-                {r.env.name}
+          {/* Bulk Delete Confirmation Modal */}
+          <Modal
+            isOpen={bulkDeleteModal.isOpen}
+            onClose={bulkDeleteModal.close}
+            title="Confirm Bulk Deletion"
+            footer={
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={bulkDeleteModal.close}
+                  className="px-3 py-1.5 rounded bg-[var(--bg-glass)] hover:bg-[var(--bg-glass-hover)] text-[var(--text-secondary)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmBulkDelete}
+                  disabled={
+                    bulkDeleteLoading || bulkDeleteInput !== `delete ${selectedRows.length} envs`
+                  }
+                  className="px-4 py-1.5 rounded bg-[var(--neon-red)]/20 text-[var(--neon-red)] hover:bg-[var(--neon-red)]/30 disabled:opacity-50 transition-colors"
+                >
+                  {bulkDeleteLoading ? 'Deleting...' : `Delete ${selectedRows.length} Envs`}
+                </button>
               </div>
-            ))}
-          </div>
-          <p className="text-sm text-[var(--text-muted)]">
-            A backup will be uploaded to the selected managed folder before each deletion.
-          </p>
-          <p className="text-sm text-[var(--text-muted)]">
-            Type{' '}
-            <code className="px-1.5 py-0.5 rounded bg-[var(--bg-glass)] text-[var(--text-primary)]">
-              delete {selectedRows.length} envs
-            </code>{' '}
-            to confirm.
-          </p>
-          <input
-            type="text"
-            value={bulkDeleteInput}
-            onChange={(e) => setBulkDeleteInput(e.target.value)}
-            placeholder={`delete ${selectedRows.length} envs`}
-            className="w-full input-glass font-mono text-sm"
-            autoFocus
-          />
-          {bulkDeleteProgress && (
-            <div className="text-sm text-[var(--text-secondary)]">{bulkDeleteProgress}</div>
-          )}
-          {bulkDeleteError && <div className="text-sm text-[var(--neon-red)]">{bulkDeleteError}</div>}
-        </div>
-      </Modal>
+            }
+          >
+            <div className="space-y-4">
+              <p className="text-[var(--text-secondary)]">
+                Are you sure you want to delete {selectedRows.length} code environment
+                {selectedRows.length !== 1 ? 's' : ''}?
+              </p>
+              <div className="max-h-32 overflow-y-auto rounded bg-[var(--bg-glass)] p-2">
+                {selectedRows.map((r) => (
+                  <div key={r.envKey} className="text-xs font-mono text-[var(--neon-red)] py-0.5">
+                    {r.env.name}
+                  </div>
+                ))}
+              </div>
+              <p className="text-sm text-[var(--text-muted)]">
+                A backup will be uploaded to the selected managed folder before each deletion.
+              </p>
+              <p className="text-sm text-[var(--text-muted)]">
+                Type{' '}
+                <code className="px-1.5 py-0.5 rounded bg-[var(--bg-glass)] text-[var(--text-primary)]">
+                  delete {selectedRows.length} envs
+                </code>{' '}
+                to confirm.
+              </p>
+              <input
+                type="text"
+                value={bulkDeleteInput}
+                onChange={(e) => setBulkDeleteInput(e.target.value)}
+                placeholder={`delete ${selectedRows.length} envs`}
+                className="w-full input-glass font-mono text-sm"
+                autoFocus
+              />
+              {bulkDeleteProgress && (
+                <div className="text-sm text-[var(--text-secondary)]">{bulkDeleteProgress}</div>
+              )}
+              {bulkDeleteError && (
+                <div className="text-sm text-[var(--neon-red)]">{bulkDeleteError}</div>
+              )}
+            </div>
+          </Modal>
 
-      {/* Single Delete Confirmation Modal */}
-      <Modal
-        isOpen={deleteModal.isOpen}
-        onClose={deleteModal.close}
-        title="Confirm Deletion"
-        footer={
-          <div className="flex items-center justify-end gap-2">
-            <button
-              onClick={deleteModal.close}
-              className="px-3 py-1.5 rounded bg-[var(--bg-glass)] hover:bg-[var(--bg-glass-hover)] text-[var(--text-secondary)]"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={confirmDelete}
-              disabled={deleteLoading || deleteInput !== `delete ${deleteTarget?.env.name || ''}`}
-              className="px-4 py-1.5 rounded bg-[var(--neon-red)]/20 text-[var(--neon-red)] hover:bg-[var(--neon-red)]/30 disabled:opacity-50 transition-colors"
-            >
-              {deleteLoading ? 'Backing up & deleting...' : 'Delete'}
-            </button>
-          </div>
-        }
-      >
-        {deleteTarget && (
-          <div className="space-y-4">
-            <p className="text-[var(--text-secondary)]">
-              Are you sure you want to delete code environment{' '}
-              <span className="font-mono text-[var(--neon-red)]">{deleteTarget.env.name}</span>?
-            </p>
-            <p className="text-sm text-[var(--text-muted)]">
-              A backup will be uploaded to the selected managed folder before deletion.
-            </p>
-            <p className="text-sm text-[var(--text-muted)]">
-              Type{' '}
-              <code className="px-1.5 py-0.5 rounded bg-[var(--bg-glass)] text-[var(--text-primary)]">
-                delete {deleteTarget.env.name}
-              </code>{' '}
-              to confirm.
-            </p>
-            <input
-              type="text"
-              value={deleteInput}
-              onChange={(e) => setDeleteInput(e.target.value)}
-              placeholder={`delete ${deleteTarget.env.name}`}
-              className="w-full input-glass font-mono text-sm"
-              autoFocus
-            />
-            {deleteError && <div className="text-sm text-[var(--neon-red)]">{deleteError}</div>}
-          </div>
-        )}
-      </Modal>
+          {/* Single Delete Confirmation Modal */}
+          <Modal
+            isOpen={deleteModal.isOpen}
+            onClose={deleteModal.close}
+            title="Confirm Deletion"
+            footer={
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={deleteModal.close}
+                  className="px-3 py-1.5 rounded bg-[var(--bg-glass)] hover:bg-[var(--bg-glass-hover)] text-[var(--text-secondary)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  disabled={
+                    deleteLoading || deleteInput !== `delete ${deleteTarget?.env.name || ''}`
+                  }
+                  className="px-4 py-1.5 rounded bg-[var(--neon-red)]/20 text-[var(--neon-red)] hover:bg-[var(--neon-red)]/30 disabled:opacity-50 transition-colors"
+                >
+                  {deleteLoading ? 'Backing up & deleting...' : 'Delete'}
+                </button>
+              </div>
+            }
+          >
+            {deleteTarget && (
+              <div className="space-y-4">
+                <p className="text-[var(--text-secondary)]">
+                  Are you sure you want to delete code environment{' '}
+                  <span className="font-mono text-[var(--neon-red)]">{deleteTarget.env.name}</span>?
+                </p>
+                <p className="text-sm text-[var(--text-muted)]">
+                  A backup will be uploaded to the selected managed folder before deletion.
+                </p>
+                <p className="text-sm text-[var(--text-muted)]">
+                  Type{' '}
+                  <code className="px-1.5 py-0.5 rounded bg-[var(--bg-glass)] text-[var(--text-primary)]">
+                    delete {deleteTarget.env.name}
+                  </code>{' '}
+                  to confirm.
+                </p>
+                <input
+                  type="text"
+                  value={deleteInput}
+                  onChange={(e) => setDeleteInput(e.target.value)}
+                  placeholder={`delete ${deleteTarget.env.name}`}
+                  className="w-full input-glass font-mono text-sm"
+                  autoFocus
+                />
+                {deleteError && <div className="text-sm text-[var(--neon-red)]">{deleteError}</div>}
+              </div>
+            )}
+          </Modal>
 
-      {/* Live-apply replacement confirmation */}
-      <Modal isOpen={confirmModal.isOpen} onClose={confirmModal.close} title="Apply Code Env Replacement">
-        <div className="space-y-4">
-          <div className="rounded-lg border border-[var(--neon-red)]/30 bg-[var(--neon-red)]/10 px-3 py-2 text-sm text-[var(--text-primary)]">
-            This will replace usages from <span className="font-mono">{sourceEnv?.name || sourceName}</span> to{' '}
-            <span className="font-mono">{targetName}</span>. Type <span className="font-mono">CONFIRM</span> to
-            enable the live apply.
-          </div>
-          <input
-            value={confirmText}
-            onChange={(e) => setConfirmText(e.target.value)}
-            placeholder="CONFIRM"
-            className="w-full rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-2 py-2 text-[var(--text-primary)]"
-          />
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={confirmModal.close}
-              className="rounded border border-[var(--border-glass)] px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-glass-hover)] hover:text-[var(--text-primary)]"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => void runReplace(false)}
-              disabled={!canLiveApply}
-              className="rounded bg-[var(--neon-red)] px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-            >
-              {replaceLoading ? 'Replacing...' : 'Replace'}
-            </button>
-          </div>
-        </div>
-      </Modal>
+          {/* Live-apply replacement confirmation */}
+          <Modal
+            isOpen={confirmModal.isOpen}
+            onClose={confirmModal.close}
+            title="Apply Code Env Replacement"
+          >
+            <div className="space-y-4">
+              <div className="rounded-lg border border-[var(--neon-red)]/30 bg-[var(--neon-red)]/10 px-3 py-2 text-sm text-[var(--text-primary)]">
+                This will replace usages from{' '}
+                <span className="font-mono">{sourceEnv?.name || sourceName}</span> to{' '}
+                <span className="font-mono">{targetName}</span>. Type{' '}
+                <span className="font-mono">CONFIRM</span> to enable the live apply.
+              </div>
+              <input
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                placeholder="CONFIRM"
+                className="w-full rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-2 py-2 text-[var(--text-primary)]"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={confirmModal.close}
+                  className="rounded border border-[var(--border-glass)] px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-glass-hover)] hover:text-[var(--text-primary)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => void runReplace(false)}
+                  disabled={!canLiveApply}
+                  className="rounded bg-[var(--neon-red)] px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  {replaceLoading ? 'Replacing...' : 'Replace'}
+                </button>
+              </div>
+            </div>
+          </Modal>
         </>
       )}
     </div>

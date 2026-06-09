@@ -2,18 +2,13 @@ import { useState, useMemo } from 'react';
 import { useDiag } from '../context/DiagContext';
 import type { CodeEnv } from '../types';
 import { useTableFilter } from '../hooks/useTableFilter';
-import { formatGb, getRelativeSizeColor } from '../utils/formatters';
+import { formatSizeGb, getRelativeSizeColor } from '../utils/formatters';
 import { ProgressIndicator } from './common/ProgressIndicator';
 import { dssUrls } from '../utils/codeEnvUsageLinks';
 
 const EMPTY_ARR: never[] = [];
 
 type ViewMode = 'summary' | 'details';
-
-function formatSizeGb(sizeBytes: number | undefined): string {
-  if (!sizeBytes) return '\u2014';
-  return formatGb(sizeBytes);
-}
 
 export function CodeEnvsTable() {
   const { state } = useDiag();
@@ -96,10 +91,7 @@ export function CodeEnvsTable() {
   const rCount = rEnvs.length;
 
   return (
-    <div
-      className="rounded-xl overflow-hidden md:col-span-2"
-      id="code-envs-table"
-    >
+    <div className="rounded-xl overflow-hidden md:col-span-2" id="code-envs-table">
       <div className="px-4 py-3 border-b border-[var(--border-glass)]">
         <div className="flex items-center justify-between">
           <h4 className="text-lg font-semibold text-[var(--text-primary)]">

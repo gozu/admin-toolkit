@@ -15,11 +15,9 @@ export function formatBytes(bytes: number, decimals = 2): string {
  */
 export function formatCamelCase(
   str: string,
-  options: { replaceDots?: boolean; expandAbbreviations?: boolean } = {}
+  options: { replaceDots?: boolean; expandAbbreviations?: boolean } = {},
 ): string {
-  let result = str
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/^./, (s) => s.toUpperCase());
+  let result = str.replace(/([A-Z])/g, ' $1').replace(/^./, (s) => s.toUpperCase());
 
   if (options.replaceDots) {
     result = result.replace(/\./g, ' ');
@@ -111,14 +109,6 @@ export function formatDateString(dateString: string): string {
 }
 
 /**
- * Truncate string with ellipsis
- */
-export function truncateString(str: string, maxLength: number): string {
-  if (str.length <= maxLength) return str;
-  return str.substring(0, maxLength) + '...';
-}
-
-/**
  * Format bytes with an auto-selected unit (B/KB/MB/GB/TB) and adaptive precision.
  */
 export function formatAuto(bytes: number | undefined): string {
@@ -152,4 +142,12 @@ export function getRelativeSizeColor(bytes: number, maxBytes: number): string {
  */
 export function formatGb(bytes: number): string {
   return `${((bytes || 0) / 1024 ** 3).toFixed(2)} GB`;
+}
+
+/**
+ * Format an optional byte count as "X.XX GB", em-dash when missing
+ */
+export function formatSizeGb(sizeBytes: number | undefined): string {
+  if (!sizeBytes) return '—';
+  return formatGb(sizeBytes);
 }

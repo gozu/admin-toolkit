@@ -4,6 +4,7 @@ import type { Lifecycle } from '../types';
 import { Modal } from './Modal';
 import { useModal } from '../hooks/useModal';
 import { fetchJson, fetchRaw } from '../utils/api';
+import { parseSseStream } from '../utils/sseStream';
 import {
   imageCleanerDetectScan,
   imageCleanerReleaseDates,
@@ -209,40 +210,16 @@ export function ImageCleaner() {
         throw e;
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() || '';
-
-        for (const part of parts) {
-          const eventMatch = part.match(/^event:\s*(\S+)/m);
-          const dataMatch = part.match(/^data:\s*(.*)/m);
-          if (!eventMatch || !dataMatch) continue;
-
-          const eventType = eventMatch[1];
-          let payload: Record<string, unknown>;
-          try {
-            payload = JSON.parse(dataMatch[1]) as Record<string, unknown>;
-          } catch {
-            continue;
-          }
-
-          if (eventType === 'error') {
-            const e = new Error(String(payload.error || 'Scan error')) as Error & { hint?: string };
-            if (typeof payload.hint === 'string') e.hint = payload.hint;
-            throw e;
-          } else if (eventType === 'init') {
-            setScanTotal(Number(payload.total));
-          } else if (eventType === 'repo') {
-            setScanRepos((prev) => [...prev, payload as unknown as RegistryRepo]);
-          }
+      for await (const frame of parseSseStream(response.body)) {
+        const payload = frame.payload as Record<string, unknown>;
+        if (frame.event === 'error') {
+          const e = new Error(String(payload.error || 'Scan error')) as Error & { hint?: string };
+          if (typeof payload.hint === 'string') e.hint = payload.hint;
+          throw e;
+        } else if (frame.event === 'init') {
+          setScanTotal(Number(payload.total));
+        } else if (frame.event === 'repo') {
+          setScanRepos((prev) => [...prev, payload as unknown as RegistryRepo]);
         }
       }
       setLifecycle({
@@ -399,7 +376,8 @@ export function ImageCleaner() {
         <section className="glass-card p-4">
           <h3 className="text-lg font-semibold text-[var(--text-primary)]">Docker Image Cleanup</h3>
           <p className="text-sm text-[var(--text-muted)] mt-1">
-            Find and remove stale container images pushed before the current DSS version was released.
+            Find and remove stale container images pushed before the current DSS version was
+            released.
           </p>
           {registryUrl && (
             <p className="text-xs text-[var(--text-muted)] mt-1 font-mono">
@@ -450,16 +428,28 @@ export function ImageCleaner() {
             <>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <div className="text-xs text-[var(--text-muted)] uppercase tracking-wide">DSS Version</div>
-                  <div className="text-lg font-mono text-[var(--text-primary)]">{releaseInfo.version}</div>
+                  <div className="text-xs text-[var(--text-muted)] uppercase tracking-wide">
+                    DSS Version
+                  </div>
+                  <div className="text-lg font-mono text-[var(--text-primary)]">
+                    {releaseInfo.version}
+                  </div>
                 </div>
                 <div>
-                  <div className="text-xs text-[var(--text-muted)] uppercase tracking-wide">Released</div>
-                  <div className="text-lg font-mono text-[var(--text-primary)]">{releaseInfo.releaseDate}</div>
+                  <div className="text-xs text-[var(--text-muted)] uppercase tracking-wide">
+                    Released
+                  </div>
+                  <div className="text-lg font-mono text-[var(--text-primary)]">
+                    {releaseInfo.releaseDate}
+                  </div>
                 </div>
                 <div>
-                  <div className="text-xs text-[var(--text-muted)] uppercase tracking-wide">Max Cutoff</div>
-                  <div className="text-lg font-mono text-[var(--text-primary)]">{releaseInfo.maxCutoffDate}</div>
+                  <div className="text-xs text-[var(--text-muted)] uppercase tracking-wide">
+                    Max Cutoff
+                  </div>
+                  <div className="text-lg font-mono text-[var(--text-primary)]">
+                    {releaseInfo.maxCutoffDate}
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -523,19 +513,27 @@ export function ImageCleaner() {
             <section className="glass-card p-4">
               <div className="grid grid-cols-4 gap-4">
                 <div className="text-center">
-                  <div className="text-2xl font-mono text-[var(--text-primary)]">{scanRepos.length}</div>
+                  <div className="text-2xl font-mono text-[var(--text-primary)]">
+                    {scanRepos.length}
+                  </div>
                   <div className="text-xs text-[var(--text-muted)]">Repositories</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-mono text-[var(--text-primary)]">{visibleRows.length}</div>
+                  <div className="text-2xl font-mono text-[var(--text-primary)]">
+                    {visibleRows.length}
+                  </div>
                   <div className="text-xs text-[var(--text-muted)]">Total Images</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-mono text-[var(--warning)]">{deletableRows.length}</div>
+                  <div className="text-2xl font-mono text-[var(--warning)]">
+                    {deletableRows.length}
+                  </div>
                   <div className="text-xs text-[var(--text-muted)]">Deletable</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-mono text-[var(--neon-green)]">{keptRows.length}</div>
+                  <div className="text-2xl font-mono text-[var(--neon-green)]">
+                    {keptRows.length}
+                  </div>
                   <div className="text-xs text-[var(--text-muted)]">Kept</div>
                 </div>
               </div>
@@ -586,7 +584,10 @@ export function ImageCleaner() {
                         <th className="w-10">
                           <input
                             type="checkbox"
-                            checked={deletableRows.length > 0 && deletableRows.every((r) => selectedKeys.has(r.key))}
+                            checked={
+                              deletableRows.length > 0 &&
+                              deletableRows.every((r) => selectedKeys.has(r.key))
+                            }
                             onChange={toggleSelectAll}
                             className="accent-[var(--neon-cyan)]"
                             title="Select all deletable images"
@@ -600,10 +601,16 @@ export function ImageCleaner() {
                         Tags{sortIndicator('tags')}
                       </th>
                       <th>Digest</th>
-                      <th className="cursor-pointer select-none" onClick={() => toggleSort('pushedAt')}>
+                      <th
+                        className="cursor-pointer select-none"
+                        onClick={() => toggleSort('pushedAt')}
+                      >
                         Pushed At{sortIndicator('pushedAt')}
                       </th>
-                      <th className="cursor-pointer select-none" onClick={() => toggleSort('status')}>
+                      <th
+                        className="cursor-pointer select-none"
+                        onClick={() => toggleSort('status')}
+                      >
                         Status{sortIndicator('status')}
                       </th>
                     </tr>
@@ -646,11 +653,15 @@ export function ImageCleaner() {
                                 </span>
                               ))
                             ) : (
-                              <span className="text-xs text-[var(--text-muted)]">&lt;untagged&gt;</span>
+                              <span className="text-xs text-[var(--text-muted)]">
+                                &lt;untagged&gt;
+                              </span>
                             )}
                           </div>
                         </td>
-                        <td className="font-mono text-xs text-[var(--text-muted)]">{shortDigest(row.image.digest)}</td>
+                        <td className="font-mono text-xs text-[var(--text-muted)]">
+                          {shortDigest(row.image.digest)}
+                        </td>
                         <td className="font-mono text-xs text-[var(--text-secondary)]">
                           {row.image.pushedAt.slice(0, 10)}
                         </td>
@@ -697,7 +708,9 @@ export function ImageCleaner() {
             </button>
             <button
               onClick={confirmDelete}
-              disabled={deleteLoading || deleteInput !== `delete ${selectedDeletableRows.length} images`}
+              disabled={
+                deleteLoading || deleteInput !== `delete ${selectedDeletableRows.length} images`
+              }
               className="px-4 py-1.5 rounded bg-[var(--neon-red)]/20 text-[var(--neon-red)] hover:bg-[var(--neon-red)]/30 disabled:opacity-50 transition-colors"
             >
               {deleteLoading ? 'Deleting…' : `Delete ${selectedDeletableRows.length} Images`}
@@ -712,10 +725,15 @@ export function ImageCleaner() {
           </p>
           <div className="max-h-40 overflow-y-auto rounded bg-[var(--bg-glass)] p-2 space-y-1">
             {selectedDeletableRows.map((r) => (
-              <div key={r.key} className="text-xs font-mono text-[var(--neon-red)] flex items-center gap-2">
+              <div
+                key={r.key}
+                className="text-xs font-mono text-[var(--neon-red)] flex items-center gap-2"
+              >
                 <span>{r.repo}</span>
                 <span className="text-[var(--text-muted)]">{shortDigest(r.image.digest)}</span>
-                <span className="text-[var(--text-muted)]">{r.image.tags.join(', ') || '<untagged>'}</span>
+                <span className="text-[var(--text-muted)]">
+                  {r.image.tags.join(', ') || '<untagged>'}
+                </span>
                 <span className="text-[var(--text-muted)]">{r.image.pushedAt.slice(0, 10)}</span>
               </div>
             ))}

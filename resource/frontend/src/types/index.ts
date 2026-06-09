@@ -405,15 +405,6 @@ export interface OutreachRecipient {
   details?: Record<string, unknown>;
 }
 
-export interface CampaignExemption {
-  exemption_id: number;
-  campaign_id: CampaignId;
-  entity_type: string;
-  entity_key: string;
-  reason: string | null;
-  created_at: string;
-}
-
 export interface EmailTemplate {
   subject: string;
   body: string;
@@ -1087,8 +1078,6 @@ export interface CodeEnvCompareResult {
   analyzedCount: number;
 }
 
-export type ToolsTab = 'project-cleaner' | 'plugins';
-
 export type LlmAuditStatus = 'current' | 'obsolete' | 'ripoff' | 'unknown' | 'not_applicable';
 
 export interface LlmAuditUsageAsset {
@@ -1518,135 +1507,3 @@ export type ComparisonAction =
 
 // Combined action type
 export type DiagActionWithComparison = DiagAction | ComparisonAction;
-
-// =============================================================================
-// EXHAUSTIVE TRENDS COMPARISON TYPES
-// =============================================================================
-
-export type DatasetSupport = 'full' | 'lifecycle' | 'current_only';
-export type DatasetKind = 'scalar' | 'json' | 'text' | 'keyed_table' | 'interval_events' | 'metadata';
-export type DatasetCategory = 'run_summary' | 'health_metrics' | 'snapshot_entities' | 'lifecycle' | 'metadata';
-export type CompareRowStatus = 'added' | 'removed' | 'changed' | 'unchanged';
-export type LifecycleStatus =
-  | 'opened_between_runs'
-  | 'resolved_between_runs'
-  | 'regressed_between_runs'
-  | 'existed_in_both'
-  | 'visible_only_in_run1'
-  | 'visible_only_in_run2'
-  | 'event_between_runs'
-  | 'before_run2'
-  | 'after_run1'
-  | 'created_between_runs'
-  | 'visible_at_run1'
-  | 'visible_at_run2';
-
-export interface CompareDatasetSummary {
-  datasetId: string;
-  label: string;
-  category: DatasetCategory;
-  kind: DatasetKind;
-  support: DatasetSupport;
-  availableInRun1: boolean;
-  availableInRun2: boolean;
-  run1Count: number;
-  run2Count: number;
-  added: number;
-  removed: number;
-  changed: number;
-  unchanged: number;
-  notes: string | null;
-}
-
-export interface CompareSummaryDelta {
-  run1: number | null;
-  run2: number | null;
-  delta: number | null;
-  pctDelta: number | null;
-}
-
-export interface CompareSummaryStats {
-  healthScore: CompareSummaryDelta;
-  userCount: CompareSummaryDelta;
-  enabledUserCount: CompareSummaryDelta;
-  projectCount: CompareSummaryDelta;
-  pluginCount: CompareSummaryDelta;
-  connectionCount: CompareSummaryDelta;
-  codeEnvCount: CompareSummaryDelta;
-  clusterCount: CompareSummaryDelta;
-  coverageStatus: { run1: string | null; run2: string | null };
-}
-
-export interface CompareCoverageWarning {
-  run: string;
-  runId: number;
-  type: string;
-  section?: string;
-  message: string;
-}
-
-export interface CompareRunHeader {
-  run_id: number;
-  run_at: string;
-  instance_id: string;
-  dss_version: string | null;
-  python_version: string | null;
-  health_score: number | null;
-  health_status: string | null;
-  user_count: number | null;
-  enabled_user_count: number | null;
-  project_count: number | null;
-  code_env_count: number | null;
-  plugin_count: number | null;
-  connection_count: number | null;
-  cluster_count: number | null;
-  coverage_status: string;
-  notes: string | null;
-}
-
-export interface CompareManifest {
-  run1: CompareRunHeader;
-  run2: CompareRunHeader;
-  swapped?: boolean;
-  summary: CompareSummaryStats;
-  datasets: CompareDatasetSummary[];
-  coverageWarnings: CompareCoverageWarning[];
-}
-
-export interface CompareScalarField {
-  field: string;
-  kind: 'numeric' | 'string' | 'json' | 'text';
-  run1Value: unknown;
-  run2Value: unknown;
-  status: 'same' | 'changed';
-  delta?: number;
-  pctDelta?: number;
-}
-
-export interface CompareRowDiff {
-  status: CompareRowStatus;
-  key: Record<string, string>;
-  run1: Record<string, unknown> | null;
-  run2: Record<string, unknown> | null;
-  changes: string[];
-  _lifecycle?: LifecycleStatus;
-}
-
-export interface CompareDatasetDetail {
-  datasetId: string;
-  columns: string[];
-  keyFields: string[];
-  support: DatasetSupport;
-  kind: DatasetKind;
-  notes: string | null;
-  // Scalar datasets
-  fields?: CompareScalarField[];
-  changed?: number;
-  unchanged?: number;
-  // Keyed / lifecycle / metadata datasets
-  rows?: CompareRowDiff[];
-  page?: number;
-  pageSize?: number;
-  totalRows?: number;
-  changeType?: string;
-}

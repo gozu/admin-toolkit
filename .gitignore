@@ -130,3 +130,8 @@ README.old.md
 
 # Dual-LLM pre-push security review reports (can be large / contain finding detail)
 security-reviews/
+
+# Local per-checkout DSS pointers / scratch
+.dss-base-url
+bestofboth/
+docs/security-gate.html

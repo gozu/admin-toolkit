@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { fetchJson, fetchRaw } from '../utils/api';
+import { parseSseStream } from '../utils/sseStream';
 import { loadFromStorage } from '../utils/storage';
 import { SearchableCombobox } from './SearchableCombobox';
 import type { LlmOption, LogError } from '../types';
@@ -46,7 +47,7 @@ interface AnalysisState {
 type LogMode = 'curated' | 'raw';
 
 function buildCuratedLogData(rawLogErrors: LogError[]): string {
-  return rawLogErrors.map(block => block.data.join('\n')).join('\n---\n');
+  return rawLogErrors.map((block) => block.data.join('\n')).join('\n---\n');
 }
 
 export function AiLogAnalysis({ rawLogErrors }: AiLogAnalysisProps) {
@@ -100,18 +101,21 @@ export function AiLogAnalysis({ rawLogErrors }: AiLogAnalysisProps) {
       })
       .catch((err) => setError(`Failed to load raw log: ${err}`))
       .finally(() => setIsLoadingRawLog(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // When log mode changes, rebuild the content
-  const switchLogMode = useCallback((mode: LogMode) => {
-    setLogMode(mode);
-    if (mode === 'curated') {
-      setEditableContent(buildFullMessage(editableSystemPrompt, curatedLogData));
-    } else if (mode === 'raw' && rawLogTail !== null) {
-      setEditableContent(buildFullMessage(editableSystemPrompt, rawLogTail));
-    }
-  }, [editableSystemPrompt, curatedLogData, rawLogTail, buildFullMessage]);
+  const switchLogMode = useCallback(
+    (mode: LogMode) => {
+      setLogMode(mode);
+      if (mode === 'curated') {
+        setEditableContent(buildFullMessage(editableSystemPrompt, curatedLogData));
+      } else if (mode === 'raw' && rawLogTail !== null) {
+        setEditableContent(buildFullMessage(editableSystemPrompt, rawLogTail));
+      }
+    },
+    [editableSystemPrompt, curatedLogData, rawLogTail, buildFullMessage],
+  );
 
   // Update content when rawLogErrors changes (for curated mode)
   const isFirstRender = useRef(true);
@@ -153,9 +157,12 @@ export function AiLogAnalysis({ rawLogErrors }: AiLogAnalysisProps) {
   }, [unlocked]);
 
   useEffect(() => {
-    fetchJson<{ current: Record<string, number>; defaults: Record<string, number> }>('/api/settings')
+    fetchJson<{ current: Record<string, number>; defaults: Record<string, number> }>(
+      '/api/settings',
+    )
       .then((data) => {
-        if (data.current.fe_timeout_llm_analysis) setLlmTimeout(data.current.fe_timeout_llm_analysis);
+        if (data.current.fe_timeout_llm_analysis)
+          setLlmTimeout(data.current.fe_timeout_llm_analysis);
       })
       .catch(() => {});
   }, []);
@@ -217,70 +224,59 @@ export function AiLogAnalysis({ rawLogErrors }: AiLogAnalysisProps) {
 
       if (!response.ok || !response.body) {
         const body = await response.text();
-        throw new Error(`Request failed: ${response.status} ${response.statusText} - ${body.slice(0, 240)}`);
+        throw new Error(
+          `Request failed: ${response.status} ${response.statusText} - ${body.slice(0, 240)}`,
+        );
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+      for await (const frame of parseSseStream(response.body)) {
+        const eventType = frame.event;
+        const payload = frame.payload as Record<string, unknown>;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() || '';
-
-        for (const part of parts) {
-          const eventMatch = part.match(/^event:\s*(\S+)/m);
-          const dataMatch = part.match(/^data:\s*(.*)/m);
-          if (!eventMatch || !dataMatch) continue;
-
-          const eventType = eventMatch[1];
-          let payload: Record<string, unknown>;
-          try {
-            payload = JSON.parse(dataMatch[1]);
-          } catch {
-            continue;
-          }
-
-          if (eventType === 'phase') {
-            setAnalysis((prev) =>
-              prev ? { ...prev, phase: String(payload.phase || '') } : prev,
-            );
-          } else if (eventType === 'chunk') {
-            setAnalysis((prev) =>
-              prev ? { ...prev, text: prev.text + String(payload.text || ''), phase: 'Generating analysis' } : prev,
-            );
-          } else if (eventType === 'done') {
-            setAnalysis((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    done: true,
-                    phase: 'Complete',
-                    llmId: String(payload.llmId || prev.llmId),
-                    logCharsAnalyzed: Number(payload.logCharsAnalyzed) || prev.logCharsAnalyzed,
-                    ...(payload.analysis ? { text: String(payload.analysis) } : {}),
-                  }
-                : prev,
-            );
-          } else if (eventType === 'error') {
-            setError(String(payload.error || 'Unknown error'));
-          }
+        if (eventType === 'phase') {
+          setAnalysis((prev) => (prev ? { ...prev, phase: String(payload.phase || '') } : prev));
+        } else if (eventType === 'chunk') {
+          setAnalysis((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  text: prev.text + String(payload.text || ''),
+                  phase: 'Generating analysis',
+                }
+              : prev,
+          );
+        } else if (eventType === 'done') {
+          setAnalysis((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  done: true,
+                  phase: 'Complete',
+                  llmId: String(payload.llmId || prev.llmId),
+                  logCharsAnalyzed: Number(payload.logCharsAnalyzed) || prev.logCharsAnalyzed,
+                  ...(payload.analysis ? { text: String(payload.analysis) } : {}),
+                }
+              : prev,
+          );
+        } else if (eventType === 'error') {
+          setError(String(payload.error || 'Unknown error'));
         }
       }
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
-        setError(timedOutRef.current
-          ? 'LLM response timed out. You can increase the timeout in Settings > Backend Settings > Frontend API Timeouts.'
-          : 'Analysis aborted.');
+        setError(
+          timedOutRef.current
+            ? 'LLM response timed out. You can increase the timeout in Settings > Backend Settings > Frontend API Timeouts.'
+            : 'Analysis aborted.',
+        );
       } else {
         setError(String(err));
       }
     } finally {
-      if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       setIsAnalyzing(false);
     }
   }, [selectedLlmLabel, llmLabelToId, llmTimeout, editableContent]);
@@ -331,8 +327,12 @@ export function AiLogAnalysis({ rawLogErrors }: AiLogAnalysisProps) {
                            disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                  />
                 </svg>
                 AI Log Analysis
               </button>
@@ -401,14 +401,27 @@ export function AiLogAnalysis({ rawLogErrors }: AiLogAnalysisProps) {
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-[var(--accent)]">AI Analysis</span>
               {!analysis.done && (
-                <svg className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="32" strokeLinecap="round" />
+                <svg
+                  className="w-3.5 h-3.5 animate-spin text-[var(--accent)]"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeDasharray="32"
+                    strokeLinecap="round"
+                  />
                 </svg>
               )}
             </div>
             {analysis.done && analysis.llmId && (
               <span className="text-xs text-[var(--text-tertiary)]">
-                {analysis.llmId} &middot; {(analysis.logCharsAnalyzed / 1000).toFixed(1)}K chars analyzed
+                {analysis.llmId} &middot; {(analysis.logCharsAnalyzed / 1000).toFixed(1)}K chars
+                analyzed
               </span>
             )}
           </div>
@@ -418,25 +431,42 @@ export function AiLogAnalysis({ rawLogErrors }: AiLogAnalysisProps) {
         </div>
       )}
       {showDisclaimer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowDisclaimer(false)}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setShowDisclaimer(false)}
+        >
           <div
             className="mx-4 max-w-md rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-default)] shadow-2xl p-6 space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3">
               <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[var(--status-warning-bg)] border border-[var(--status-warning-border)] flex items-center justify-center">
-                <svg className="w-5 h-5 text-[var(--neon-amber)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                <svg
+                  className="w-5 h-5 text-[var(--neon-amber)]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"
+                  />
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-[var(--text-primary)]">AI Disclaimer</h3>
             </div>
             <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-              AI-generated analysis may be <strong className="text-[var(--text-primary)]">inaccurate, incomplete, or misleading</strong>.
-              LLMs can hallucinate error causes and suggest incorrect remediation steps.
+              AI-generated analysis may be{' '}
+              <strong className="text-[var(--text-primary)]">
+                inaccurate, incomplete, or misleading
+              </strong>
+              . LLMs can hallucinate error causes and suggest incorrect remediation steps.
             </p>
             <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-              Always verify findings against official Dataiku documentation and your own system knowledge before taking any action.
+              Always verify findings against official Dataiku documentation and your own system
+              knowledge before taking any action.
             </p>
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
@@ -446,7 +476,10 @@ export function AiLogAnalysis({ rawLogErrors }: AiLogAnalysisProps) {
                 Cancel
               </button>
               <button
-                onClick={() => { setShowDisclaimer(false); runAnalysis(); }}
+                onClick={() => {
+                  setShowDisclaimer(false);
+                  runAnalysis();
+                }}
                 className="px-4 py-2 text-sm font-medium rounded-lg bg-[var(--accent)] text-white hover:opacity-90 transition-opacity"
               >
                 I understand, proceed

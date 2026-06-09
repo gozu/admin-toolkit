@@ -131,10 +131,6 @@ export const DEPRECATED_PAGES: ReadonlySet<PageId> = new Set(
   MODULES.filter((mod) => mod.deprecated).map((mod) => mod.id),
 );
 
-export const TOOL_PAGES: ReadonlySet<PageId> = new Set(
-  MODULES.filter((mod) => mod.tool).map((mod) => mod.id),
-);
-
 export const COMMAND_PALETTE_MODULES = MODULES.map((mod) => ({
   id: mod.id,
   label: mod.commandLabel || mod.label,

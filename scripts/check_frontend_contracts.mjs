@@ -14,7 +14,13 @@ const fail = (msg) => {
   process.exitCode = 1;
 };
 
-const types = read('src/types/index.ts');
+// types/ is split into domain files behind a barrel index.ts — concatenate
+// them all so symbol checks (e.g. the PageId union) survive future moves.
+const types = fs
+  .readdirSync(path.join(root, 'src/types'))
+  .filter((f) => f.endsWith('.ts'))
+  .map((f) => read(path.join('src/types', f)))
+  .join('\n');
 const registry = read('src/utils/moduleRegistry.ts');
 const sidebar = read('src/components/layout/Sidebar.tsx');
 const palette = read('src/components/CommandPalette.tsx');

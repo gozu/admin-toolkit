@@ -7,6 +7,17 @@ from typing import Any
 from adk_backend.context import _THREAD_LOCAL
 from adk_backend.settings import _BACKEND_SETTINGS
 
+def local_only(view_func):
+    """Mark a Flask route as local-only: it reads local-DSS-only state and
+    must not be 502'd by _check_host_ready when a remote host is unreachable.
+
+    Used for tracking endpoints that read from the local SQL tracking DB and
+    have no dependency on the active host's DSS API client. Add between
+    @app.route(...) and `def api_*(...)`."""
+    view_func._admin_toolkit_local_only = True
+    return view_func
+
+
 def _coerce_int(value: Any, default: int = 0) -> int:
     try:
         return int(value)

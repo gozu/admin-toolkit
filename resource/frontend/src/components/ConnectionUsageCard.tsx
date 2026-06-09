@@ -5,24 +5,36 @@ import { ScanIncompleteNotice } from './ScanIncompleteNotice';
 import { Modal } from './Modal';
 import { useModal } from '../hooks/useModal';
 import { DataGrid } from './common/DataGrid';
+import { Spinner } from './common/Spinner';
 import { dssUrls } from '../utils/codeEnvUsageLinks';
 import type { ColumnDef } from '../utils/dataGridTypes';
-import type {
-  ConnectionDatasetUsage,
-  ConnectionLlmUsage,
-  ConnectionUsageItem,
-} from '../types';
+import type { ConnectionDatasetUsage, ConnectionLlmUsage, ConnectionUsageItem } from '../types';
 
 const DEEP_LINK_CLASS =
   'hover:text-[var(--neon-cyan)] hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--neon-cyan)] rounded-sm';
 
 const LLM_MESH_TYPES = new Set([
-  'OpenAI', 'AzureOpenAI', 'Anthropic', 'Bedrock', 'CustomLLM',
-  'SnowflakeCortex', 'VertexAILLM', 'HuggingFaceLocal', 'RemoteMCP',
-  'Pinecone', 'AzureAISearch', 'ElasticSearch',
+  'OpenAI',
+  'AzureOpenAI',
+  'Anthropic',
+  'Bedrock',
+  'CustomLLM',
+  'SnowflakeCortex',
+  'VertexAILLM',
+  'HuggingFaceLocal',
+  'RemoteMCP',
+  'Pinecone',
+  'AzureAISearch',
+  'ElasticSearch',
   // Types not on every instance but part of LLM mesh
-  'Cohere', 'MistralAI', 'StabilityAI', 'SageMakerLLM', 'Milvus',
-  'NVIDIANIMLLM', 'AzureAIFoundry', 'AzureLLM',
+  'Cohere',
+  'MistralAI',
+  'StabilityAI',
+  'SageMakerLLM',
+  'Milvus',
+  'NVIDIANIMLLM',
+  'AzureAIFoundry',
+  'AzureLLM',
 ]);
 
 export function ConnectionUsageCard() {
@@ -32,8 +44,14 @@ export function ConnectionUsageCard() {
   const { scanning, scanned, total, error, failedProjectCount, scannedProjectCount, scan, abort } =
     useConnectionUsageScan();
 
-  const datasetUsages = useMemo(() => parsedData.connectionDatasetUsages || [], [parsedData.connectionDatasetUsages]);
-  const llmUsages = useMemo(() => parsedData.connectionLlmUsages || [], [parsedData.connectionLlmUsages]);
+  const datasetUsages = useMemo(
+    () => parsedData.connectionDatasetUsages || [],
+    [parsedData.connectionDatasetUsages],
+  );
+  const llmUsages = useMemo(
+    () => parsedData.connectionLlmUsages || [],
+    [parsedData.connectionLlmUsages],
+  );
   const hasResults = datasetUsages.length > 0 || llmUsages.length > 0;
   const isLoading = scanning && total !== null && (scanned === null || scanned < total);
 
@@ -60,8 +78,8 @@ export function ConnectionUsageCard() {
       <section className="glass-card p-4">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">Connection Usage</h3>
         <p className="text-sm text-[var(--text-muted)]">
-          Scans all projects to find which connections are in use via datasets and LLM recipes.
-          The scan auto-runs at session start.
+          Scans all projects to find which connections are in use via datasets and LLM recipes. The
+          scan auto-runs at session start.
         </p>
         <div className="mt-3 flex items-center gap-3">
           {/* Rescan / abort are kept as re-triggers only — deemphasized. */}
@@ -93,7 +111,7 @@ export function ConnectionUsageCard() {
       {isLoading && (
         <section className="glass-card p-4">
           <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-            <span className="inline-block w-4 h-4 border-2 border-[var(--text-tertiary)] border-t-transparent rounded-full animate-spin" />
+            <Spinner />
             {total !== null && scanned !== null
               ? `Scanning projects… ${scanned} / ${total}`
               : 'Discovering projects…'}
@@ -115,15 +133,21 @@ export function ConnectionUsageCard() {
         <section className="glass-card p-4">
           <div className="grid grid-cols-4 gap-4">
             <div className="text-center">
-              <div className="text-2xl font-mono tabular-nums text-[var(--text-primary)]">{totalLlmConns + totalDatasetConns}</div>
+              <div className="text-2xl font-mono tabular-nums text-[var(--text-primary)]">
+                {totalLlmConns + totalDatasetConns}
+              </div>
               <div className="text-xs text-[var(--text-muted)]">Connections Used</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-mono tabular-nums text-[var(--neon-cyan)]">{totalLlmConns}</div>
+              <div className="text-2xl font-mono tabular-nums text-[var(--neon-cyan)]">
+                {totalLlmConns}
+              </div>
               <div className="text-xs text-[var(--text-muted)]">LLM Mesh</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-mono tabular-nums text-[#7fb3ea]">{totalDatasetConns}</div>
+              <div className="text-2xl font-mono tabular-nums text-[#7fb3ea]">
+                {totalDatasetConns}
+              </div>
               <div className="text-xs text-[var(--text-muted)]">Regular</div>
             </div>
             <div className="text-center">
@@ -148,10 +172,7 @@ export function ConnectionUsageCard() {
               No LLM mesh connections in use.
             </div>
           ) : (
-            <ConnectionUsageTable
-              items={[...llmUsages, ...meshDataset]}
-              mode="llm"
-            />
+            <ConnectionUsageTable items={[...llmUsages, ...meshDataset]} mode="llm" />
           )}
         </section>
       )}
@@ -161,24 +182,22 @@ export function ConnectionUsageCard() {
         <section className="glass-card p-4">
           <div className="flex items-center gap-2 mb-3">
             <h4 className="text-sm font-semibold text-[#7fb3ea]">Regular Connections</h4>
-            <span className="text-xs font-mono text-[var(--text-muted)]">({totalDatasetConns})</span>
+            <span className="text-xs font-mono text-[var(--text-muted)]">
+              ({totalDatasetConns})
+            </span>
           </div>
           {totalDatasetConns === 0 ? (
             <div className="py-4 text-center text-sm text-[var(--text-muted)]">
               No regular connections in use.
             </div>
           ) : (
-            <ConnectionUsageTable
-              items={regularDataset}
-              mode="dataset"
-            />
+            <ConnectionUsageTable items={regularDataset} mode="dataset" />
           )}
         </section>
       )}
     </div>
   );
 }
-
 
 function ConnectionUsageTable({
   items,

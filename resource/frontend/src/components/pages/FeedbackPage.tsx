@@ -4,6 +4,7 @@ import { getActiveHost } from '../../state/hostStore';
 import { feedbackFromPageStore } from '../../state/feedbackFromPage';
 import { getModuleLabel } from '../../utils/moduleRegistry';
 import { formatBytes } from '../../utils/formatters';
+import { Spinner } from '../common/Spinner';
 
 type FeedbackType = 'bug' | 'idea' | 'other';
 type SubmitStatus = 'idle' | 'submitting' | 'success' | 'error';
@@ -18,8 +19,16 @@ const MAX_FILES = 5;
 const MAX_FILE_MB = 8;
 const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
 const ALLOWED_EXT = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg',
-  '.pdf', '.txt', '.log',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.svg',
+  '.pdf',
+  '.txt',
+  '.log',
 ]);
 const ACCEPT_ATTR = 'image/*,.pdf,.txt,.log';
 
@@ -50,7 +59,10 @@ export function FeedbackPage() {
       ['Host', `${host.label} (${host.id})`],
       ['From page', fromPageId ? getModuleLabel(fromPageId) : 'direct'],
       ['User agent', typeof navigator !== 'undefined' ? navigator.userAgent : ''],
-      ['Viewport', typeof window !== 'undefined' ? `${window.innerWidth}x${window.innerHeight}` : ''],
+      [
+        'Viewport',
+        typeof window !== 'undefined' ? `${window.innerWidth}x${window.innerHeight}` : '',
+      ],
       ['Time', new Date().toISOString()],
     ];
     return { rows, text: rows.map(([k, v]) => `${k}: ${v}`).join('\n') };
@@ -166,7 +178,8 @@ export function FeedbackPage() {
         <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">Send Feedback</h1>
         <p className="text-sm text-[var(--text-secondary)] max-w-2xl">
           Found a bug, have an idea, or anything else? This goes straight to the toolkit author.
-          While the Admin Toolkit is in Early Access Preview, your feedback is the #1 way it gets better.
+          While the Admin Toolkit is in Early Access Preview, your feedback is the #1 way it gets
+          better.
         </p>
       </div>
 
@@ -201,7 +214,10 @@ export function FeedbackPage() {
 
           {/* Message */}
           <div>
-            <label htmlFor="feedback-message" className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+            <label
+              htmlFor="feedback-message"
+              className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-tertiary)] mb-2"
+            >
               Message
             </label>
             <textarea
@@ -216,8 +232,14 @@ export function FeedbackPage() {
 
           {/* Optional reply email */}
           <div>
-            <label htmlFor="feedback-email" className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
-              Your email <span className="font-normal normal-case text-[var(--text-tertiary)]">(optional — for a reply)</span>
+            <label
+              htmlFor="feedback-email"
+              className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-tertiary)] mb-2"
+            >
+              Your email{' '}
+              <span className="font-normal normal-case text-[var(--text-tertiary)]">
+                (optional — for a reply)
+              </span>
             </label>
             <input
               id="feedback-email"
@@ -233,7 +255,10 @@ export function FeedbackPage() {
           {/* Attachments */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
-              Attachments <span className="font-normal normal-case text-[var(--text-tertiary)]">(optional — images, pdf, txt, log · up to {MAX_FILES} · {MAX_FILE_MB} MB each)</span>
+              Attachments{' '}
+              <span className="font-normal normal-case text-[var(--text-tertiary)]">
+                (optional — images, pdf, txt, log · up to {MAX_FILES} · {MAX_FILE_MB} MB each)
+              </span>
             </label>
             <div
               onDrop={handleDrop}
@@ -275,18 +300,33 @@ export function FeedbackPage() {
                     key={`${f.name}-${f.size}-${i}`}
                     className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border-glass)] bg-[var(--bg-surface)] px-3 py-2"
                   >
-                    <span className="min-w-0 flex-1 truncate text-sm text-[var(--text-primary)]" title={f.name}>
+                    <span
+                      className="min-w-0 flex-1 truncate text-sm text-[var(--text-primary)]"
+                      title={f.name}
+                    >
                       {f.name}
                     </span>
-                    <span className="flex-shrink-0 text-xs text-[var(--text-muted)]">{formatBytes(f.size)}</span>
+                    <span className="flex-shrink-0 text-xs text-[var(--text-muted)]">
+                      {formatBytes(f.size)}
+                    </span>
                     <button
                       type="button"
                       onClick={() => removeFile(i)}
                       className="flex-shrink-0 p-1 rounded text-[var(--text-muted)] hover:text-red-400 hover:bg-red-400/10 transition-colors"
                       aria-label={`Remove ${f.name}`}
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
                       </svg>
                     </button>
                   </li>
@@ -335,7 +375,7 @@ export function FeedbackPage() {
             >
               {status === 'submitting' ? (
                 <>
-                  <span className="inline-block w-4 h-4 border-2 border-[var(--text-tertiary)] border-t-transparent rounded-full animate-spin" />
+                  <Spinner />
                   Sending…
                 </>
               ) : (
@@ -351,7 +391,9 @@ export function FeedbackPage() {
             )}
             {errorMsg && status !== 'success' && (
               <p className="flex items-center gap-2 text-sm text-[var(--neon-red)]">
-                {status === 'error' && <span className="inline-block w-2 h-2 rounded-full bg-[var(--neon-red)]" />}
+                {status === 'error' && (
+                  <span className="inline-block w-2 h-2 rounded-full bg-[var(--neon-red)]" />
+                )}
                 {errorMsg}
               </p>
             )}

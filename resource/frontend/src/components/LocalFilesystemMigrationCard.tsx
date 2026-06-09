@@ -5,6 +5,7 @@ import { useModal } from '../hooks/useModal';
 import { useConnectionUsageScan } from '../hooks/useConnectionUsageScan';
 import { ScanIncompleteNotice } from './ScanIncompleteNotice';
 import { DataGrid } from './common/DataGrid';
+import { Spinner } from './common/Spinner';
 import { fetchJson } from '../utils/api';
 import type { ColumnDef } from '../utils/dataGridTypes';
 import type {
@@ -66,9 +67,12 @@ export function LocalFilesystemMigrationCard() {
     <div className="space-y-4">
       {/* Header */}
       <section className="glass-card p-4">
-        <h3 className="text-lg font-semibold text-[var(--text-primary)]">Local Filesystem Migration</h3>
+        <h3 className="text-lg font-semibold text-[var(--text-primary)]">
+          Local Filesystem Migration
+        </h3>
         <p className="text-sm text-[var(--text-muted)]">
-          Scans all projects to find datasets and managed folders stored on the local filesystem, and helps reach out to their owners.
+          Scans all projects to find datasets and managed folders stored on the local filesystem,
+          and helps reach out to their owners.
         </p>
         <div className="mt-3 flex items-center gap-3">
           <button
@@ -99,7 +103,7 @@ export function LocalFilesystemMigrationCard() {
       {isLoading && (
         <section className="glass-card p-4">
           <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-            <span className="inline-block w-4 h-4 border-2 border-[var(--text-tertiary)] border-t-transparent rounded-full animate-spin" />
+            <Spinner />
             {total !== null && scanned !== null
               ? `Scanning projects… ${scanned} / ${total}`
               : 'Discovering projects…'}
@@ -120,15 +124,14 @@ export function LocalFilesystemMigrationCard() {
       {!hasResults && !isLoading && !error && (
         <section className="glass-card p-6 text-center">
           <p className="text-sm text-[var(--text-muted)]">
-            Click <span className="font-medium text-[var(--text-secondary)]">Scan Usage</span> to discover datasets and folders stored on the local filesystem.
+            Click <span className="font-medium text-[var(--text-secondary)]">Scan Usage</span> to
+            discover datasets and folders stored on the local filesystem.
           </p>
         </section>
       )}
 
       {/* Outreach panel */}
-      {hasResults && !isLoading && (
-        <LocalFilesystemOutreachPanel usages={usages} />
-      )}
+      {hasResults && !isLoading && <LocalFilesystemOutreachPanel usages={usages} />}
     </div>
   );
 }
@@ -147,14 +150,14 @@ function LocalFilesystemOutreachPanel({ usages }: { usages: ConnectionLocalFiles
   const [emailError, setEmailError] = useState<string | null>(null);
 
   const groups = useMemo(() => groupLocalFilesystemUsages(usages), [usages]);
-  const selectedChannel = state.parsedData.configuredMailChannel
-    || state.parsedData.mailChannels?.[0]?.id
-    || '';
+  const selectedChannel =
+    state.parsedData.configuredMailChannel || state.parsedData.mailChannels?.[0]?.id || '';
   const selectedCount = selectedOwners.size;
   const selectedObjectCount = useMemo(
-    () => groups
-      .filter((group) => selectedOwners.has(group.owner))
-      .reduce((sum, group) => sum + group.objectCount, 0),
+    () =>
+      groups
+        .filter((group) => selectedOwners.has(group.owner))
+        .reduce((sum, group) => sum + group.objectCount, 0),
     [groups, selectedOwners],
   );
 
@@ -181,9 +184,8 @@ function LocalFilesystemOutreachPanel({ usages }: { usages: ConnectionLocalFiles
   };
 
   const openPreview = async (scope: 'selected' | 'all') => {
-    const targetGroups = scope === 'all'
-      ? groups
-      : groups.filter((group) => selectedOwners.has(group.owner));
+    const targetGroups =
+      scope === 'all' ? groups : groups.filter((group) => selectedOwners.has(group.owner));
     if (targetGroups.length === 0) return;
 
     setPreviewLoading(true);
@@ -293,8 +295,12 @@ function LocalFilesystemOutreachPanel({ usages }: { usages: ConnectionLocalFiles
     <section className="glass-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2">
-          <h4 className="text-sm font-semibold text-[var(--neon-yellow)]">Local Filesystem Migration</h4>
-          <span className="text-xs font-mono text-[var(--text-muted)]">({groups.length} owners)</span>
+          <h4 className="text-sm font-semibold text-[var(--neon-yellow)]">
+            Local Filesystem Migration
+          </h4>
+          <span className="text-xs font-mono text-[var(--text-muted)]">
+            ({groups.length} owners)
+          </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-[var(--text-muted)]">
@@ -455,19 +461,28 @@ function LocalFilesystemObjectsTable({ projects }: { projects: LocalFilesystemPr
                     {index === 0 ? (
                       <>
                         <div className="font-mono">{project.projectKey}</div>
-                        <div className="text-[10px] text-[var(--text-muted)]">{project.projectName}</div>
+                        <div className="text-[10px] text-[var(--text-muted)]">
+                          {project.projectName}
+                        </div>
                       </>
                     ) : null}
                   </td>
                   <td className="py-1 px-2 align-top">
-                    <div className="text-[var(--text-secondary)]">{object.objectName || object.objectId}</div>
+                    <div className="text-[var(--text-secondary)]">
+                      {object.objectName || object.objectId}
+                    </div>
                     <div className="text-[10px] text-[var(--text-muted)]">
                       {object.objectType}
                       {object.objectSubtype ? ` - ${object.objectSubtype}` : ''}
                     </div>
                   </td>
-                  <td className="py-1 px-2 align-top font-mono text-[var(--text-primary)]">{object.connection}</td>
-                  <td className="py-1 px-2 align-top font-mono text-[var(--text-muted)] max-w-[260px] truncate" title={typeof object.path === 'string' ? object.path : ''}>
+                  <td className="py-1 px-2 align-top font-mono text-[var(--text-primary)]">
+                    {object.connection}
+                  </td>
+                  <td
+                    className="py-1 px-2 align-top font-mono text-[var(--text-muted)] max-w-[260px] truncate"
+                    title={typeof object.path === 'string' ? object.path : ''}
+                  >
                     {typeof object.path === 'string' && object.path ? object.path : '-'}
                   </td>
                 </tr>
@@ -480,11 +495,16 @@ function LocalFilesystemObjectsTable({ projects }: { projects: LocalFilesystemPr
   );
 }
 
-function groupLocalFilesystemUsages(usages: ConnectionLocalFilesystemUsage[]): LocalFilesystemOwnerGroup[] {
-  const owners = new Map<string, {
-    ownerEmail: string;
-    projects: Map<string, LocalFilesystemProjectGroup>;
-  }>();
+function groupLocalFilesystemUsages(
+  usages: ConnectionLocalFilesystemUsage[],
+): LocalFilesystemOwnerGroup[] {
+  const owners = new Map<
+    string,
+    {
+      ownerEmail: string;
+      projects: Map<string, LocalFilesystemProjectGroup>;
+    }
+  >();
 
   for (const usage of usages) {
     const owner = usage.owner || 'Unknown';
@@ -577,8 +597,12 @@ function localFilesystemGroupToRecipient(group: LocalFilesystemOwnerGroup): Outr
     projects: group.projects.map((project) => ({
       projectKey: project.projectKey,
       name: project.projectName,
-      codeEnvCount: new Set(project.objects.map((object) => object.connection || 'Local filesystem')).size,
-      codeEnvNames: Array.from(new Set(project.objects.map((object) => object.connection || 'Local filesystem'))).sort(),
+      codeEnvCount: new Set(
+        project.objects.map((object) => object.connection || 'Local filesystem'),
+      ).size,
+      codeEnvNames: Array.from(
+        new Set(project.objects.map((object) => object.connection || 'Local filesystem')),
+      ).sort(),
       totalObjects: project.objects.length,
     })),
   };

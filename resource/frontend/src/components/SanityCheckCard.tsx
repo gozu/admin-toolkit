@@ -2,6 +2,8 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useDiag } from '../context/DiagContext';
 import { getBackendUrl } from '../utils/api';
 import { runSanityCheck } from '../state/sanityCheckScan';
+import { Spinner } from './common/Spinner';
+import { StatTile } from './common/StatTile';
 import type { SanityCheckMessage } from '../types';
 
 type Severity = 'ERROR' | 'WARNING' | 'INFO' | 'SUCCESS';
@@ -370,61 +372,64 @@ export function SanityCheckCard() {
     }
   }, []);
 
-  const rescan = useCallback(async (opts: { force?: boolean } = {}) => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+  const rescan = useCallback(
+    async (opts: { force?: boolean } = {}) => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
 
-    setScanning(true);
-    setError(null);
-    const startedAt = new Date().toISOString();
-    setParsedData({
-      sanityCheckLoading: {
-        phase: 'running',
-        startedAt,
-        progressPct: 0,
-        message: 'Running sanity check',
-        updatedAt: startedAt,
-      },
-    });
-    if (opts.force) {
-      setParsedData({ sanityCheck: [], sanityCheckMaxSeverity: null });
-    }
-
-    try {
-      const result = await runSanityCheck({ force: opts.force, signal: controller.signal });
-      setParsedData({
-        sanityCheck: result.messages,
-        sanityCheckMaxSeverity: result.maxSeverity,
-        sanityCheckLoading: {
-          phase: 'done',
-          startedAt,
-          finishedAt: new Date().toISOString(),
-          isEmpty: result.messages.length === 0,
-          message: `${result.messages.length} message(s)`,
-        },
-      });
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') {
-        setParsedData({ sanityCheckLoading: { phase: 'queued' } });
-        return;
-      }
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
+      setScanning(true);
+      setError(null);
+      const startedAt = new Date().toISOString();
       setParsedData({
         sanityCheckLoading: {
-          phase: 'error',
+          phase: 'running',
           startedAt,
-          finishedAt: new Date().toISOString(),
-          error: msg,
           progressPct: 0,
+          message: 'Running sanity check',
+          updatedAt: startedAt,
         },
       });
-    } finally {
-      setScanning(false);
-      abortRef.current = null;
-    }
-  }, [setParsedData]);
+      if (opts.force) {
+        setParsedData({ sanityCheck: [], sanityCheckMaxSeverity: null });
+      }
+
+      try {
+        const result = await runSanityCheck({ force: opts.force, signal: controller.signal });
+        setParsedData({
+          sanityCheck: result.messages,
+          sanityCheckMaxSeverity: result.maxSeverity,
+          sanityCheckLoading: {
+            phase: 'done',
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            isEmpty: result.messages.length === 0,
+            message: `${result.messages.length} message(s)`,
+          },
+        });
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') {
+          setParsedData({ sanityCheckLoading: { phase: 'queued' } });
+          return;
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+        setParsedData({
+          sanityCheckLoading: {
+            phase: 'error',
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            error: msg,
+            progressPct: 0,
+          },
+        });
+      } finally {
+        setScanning(false);
+        abortRef.current = null;
+      }
+    },
+    [setParsedData],
+  );
 
   useEffect(() => {
     if (autoRanRef.current) return;
@@ -450,7 +455,8 @@ export function SanityCheckCard() {
       <section className="glass-card p-4">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">Instance Sanity Check</h3>
         <p className="text-sm text-[var(--text-muted)]">
-          Runs a fresh DSS instance sanity check — connections, clusters, code envs, security, etc. Results are always live.
+          Runs a fresh DSS instance sanity check — connections, clusters, code envs, security, etc.
+          Results are always live.
         </p>
         <div className="mt-3 flex items-center gap-3">
           <button
@@ -467,7 +473,7 @@ export function SanityCheckCard() {
       {scanning && (
         <section className="glass-card p-4">
           <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-            <span className="inline-block w-4 h-4 border-2 border-[var(--text-tertiary)] border-t-transparent rounded-full animate-spin" />
+            <Spinner />
             Running sanity check&hellip;
           </div>
         </section>
@@ -486,22 +492,14 @@ export function SanityCheckCard() {
       {hasResults && (
         <section className="glass-card p-4">
           <div className="grid grid-cols-4 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-mono text-[var(--text-primary)]">{results.length}</div>
-              <div className="text-xs text-[var(--text-muted)]">Total</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-mono text-[var(--neon-red)]">{counts.ERROR}</div>
-              <div className="text-xs text-[var(--text-muted)]">Errors</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-mono text-[var(--neon-yellow)]">{counts.WARNING}</div>
-              <div className="text-xs text-[var(--text-muted)]">Warnings</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-mono text-[var(--neon-cyan)]">{counts.INFO}</div>
-              <div className="text-xs text-[var(--text-muted)]">Info</div>
-            </div>
+            <StatTile value={results.length} label="Total" />
+            <StatTile value={counts.ERROR} label="Errors" valueClassName="text-[var(--neon-red)]" />
+            <StatTile
+              value={counts.WARNING}
+              label="Warnings"
+              valueClassName="text-[var(--neon-yellow)]"
+            />
+            <StatTile value={counts.INFO} label="Info" valueClassName="text-[var(--neon-cyan)]" />
           </div>
         </section>
       )}
@@ -524,9 +522,7 @@ export function SanityCheckCard() {
                     className="hover:bg-[var(--bg-glass)] align-top"
                     style={{ borderLeft: `3px solid ${SEVERITY_COLORS[row.severity]}` }}
                   >
-                    <td className="text-[var(--text-primary)] text-sm align-top">
-                      {row.title}
-                    </td>
+                    <td className="text-[var(--text-primary)] text-sm align-top">{row.title}</td>
                     <td className="text-[var(--text-secondary)] text-sm leading-relaxed align-top">
                       {renderDetails(row, projectNameToKey, projectKeys, dssBaseUrl)}
                     </td>
@@ -542,7 +538,8 @@ export function SanityCheckCard() {
       {!scanning && !error && !hasResults && (
         <section className="glass-card p-4">
           <div className="py-6 text-center text-sm text-[var(--text-muted)]">
-            Click <span className="text-[var(--text-secondary)] font-medium">Rerun</span> to run a sanity check.
+            Click <span className="text-[var(--text-secondary)] font-medium">Rerun</span> to run a
+            sanity check.
           </div>
         </section>
       )}

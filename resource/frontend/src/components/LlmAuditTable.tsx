@@ -3,6 +3,7 @@ import { useDiag } from '../context/DiagContext';
 import { getBackendUrl } from '../utils/api';
 import { ScanIncompleteNotice } from './ScanIncompleteNotice';
 import { DataGrid } from './common/DataGrid';
+import { Spinner } from './common/Spinner';
 import type { ColumnDef } from '../utils/dataGridTypes';
 import type { LlmAuditRow, LlmAuditStatus, LlmAuditUsageAsset } from '../types';
 
@@ -122,7 +123,10 @@ function statusBadgeClass(status: DisplayStatus): string {
   }
 }
 
-function priceDeltaClass(model: number | null | undefined, current: number | null | undefined): string {
+function priceDeltaClass(
+  model: number | null | undefined,
+  current: number | null | undefined,
+): string {
   if (model == null || current == null) return 'text-[var(--text-secondary)]';
   if (model > current) return 'text-[var(--neon-red)]';
   if (model < current) return 'text-[var(--neon-green)]';
@@ -458,10 +462,7 @@ export function LlmAuditTable() {
         loading={isLoading}
       />
 
-      <div
-        className="rounded-xl overflow-hidden"
-        id="llm-audit-table"
-      >
+      <div className="rounded-xl overflow-hidden" id="llm-audit-table">
         <div className="px-4 py-3 border-b border-[var(--border-glass)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h4 className="text-lg font-semibold text-[var(--text-primary)]">
@@ -528,8 +529,8 @@ export function LlmAuditTable() {
 
         {grouped.length === 0 && !isLoading ? (
           <div className="p-6 text-sm text-[var(--text-secondary)]">
-            No LLMs found. Either this instance has no LLM Mesh connections configured, or the
-            scan failed — see the page logs for details.
+            No LLMs found. Either this instance has no LLM Mesh connections configured, or the scan
+            failed — see the page logs for details.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -554,7 +555,15 @@ export function LlmAuditTable() {
   );
 }
 
-function ProjectsModal({ row, onClose, dssBaseUrl }: { row: GroupedRow; onClose: () => void; dssBaseUrl: string }) {
+function ProjectsModal({
+  row,
+  onClose,
+  dssBaseUrl,
+}: {
+  row: GroupedRow;
+  onClose: () => void;
+  dssBaseUrl: string;
+}) {
   const projects = row.referencingProjects;
   return (
     <div
@@ -609,9 +618,9 @@ function ProjectsModal({ row, onClose, dssBaseUrl }: { row: GroupedRow; onClose:
           )}
         </div>
         <div className="px-4 py-2 border-t border-[var(--border-glass)] text-[11px] text-[var(--text-tertiary)]">
-          References found in prompt/LLM recipes, knowledge banks, agents, and code recipes
-          (Python / R / Scala / PySpark / SparkScala). Notebooks and dynamically-built llmIds
-          are not scanned.
+          References found in prompt/LLM recipes, knowledge banks, agents, and code recipes (Python
+          / R / Scala / PySpark / SparkScala). Notebooks and dynamically-built llmIds are not
+          scanned.
         </div>
       </div>
     </div>
@@ -674,7 +683,7 @@ function SummaryCard({
         </div>
         {loading && (
           <span className="text-xs text-[var(--neon-cyan)] flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 border-2 border-[var(--neon-cyan)] border-t-transparent rounded-full animate-spin" />
+            <Spinner size="w-3 h-3" color="border-[var(--neon-cyan)]" />
             scanning
           </span>
         )}

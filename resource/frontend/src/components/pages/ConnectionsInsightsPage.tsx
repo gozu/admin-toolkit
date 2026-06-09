@@ -2,6 +2,7 @@ import { ConnectionsInsightsTable } from '../connections/ConnectionsInsightsTabl
 import { useDiag } from '../../context/DiagContext';
 import { useConnectionUsageScan } from '../../hooks/useConnectionUsageScan';
 import { resolveLifecycleById } from '../../utils/pageLifecycle';
+import { Spinner } from '../common/Spinner';
 
 export function ConnectionsInsightsPage() {
   // The scan is auto-triggered by useApiDataLoader at session start.
@@ -29,9 +30,7 @@ export function ConnectionsInsightsPage() {
       {showBanner && (
         <div className="rounded-lg px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-            {pageLifecycle.phase === 'running' && (
-              <span className="inline-block w-4 h-4 border-2 border-[var(--text-tertiary)] border-t-transparent rounded-full animate-spin" />
-            )}
+            {pageLifecycle.phase === 'running' && <Spinner />}
             {pageLifecycle.phase === 'error' ? (
               <span className="text-[var(--neon-red)]">
                 <span className="font-medium">Insights error:</span> {bannerMessage}

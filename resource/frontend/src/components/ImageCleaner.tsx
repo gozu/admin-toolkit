@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDiag } from '../context/DiagContext';
 import type { Lifecycle } from '../types';
-import { Modal } from './Modal';
 import { useModal } from '../hooks/useModal';
+import { useRowSelection } from '../hooks/useRowSelection';
+import { useSortableTable } from '../hooks/useSortableTable';
+import { Button } from './common/Button';
+import { ConfirmDeleteDialog } from './common/ConfirmDeleteDialog';
+import { Spinner } from './common/Spinner';
+import { StatTile } from './common/StatTile';
 import { fetchJson, fetchRaw } from '../utils/api';
 import { parseSseStream } from '../utils/sseStream';
 import {
@@ -122,15 +127,13 @@ export function ImageCleaner() {
   const [scanError, setScanError] = useState<ErrorWithHint | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const [sortField, setSortField] = useState<SortField | null>(null);
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const { sortField, sortDir, toggleSort, sortIndicator } = useSortableTable<SortField>();
 
   const [deletionEnabled, setDeletionEnabled] = useState(false);
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const { selectedKeys, toggleSelect, toggleSelectAll, clear: clearSelection } = useRowSelection();
   const [deletedKeys, setDeletedKeys] = useState<Set<string>>(new Set());
 
   const deleteModal = useModal();
-  const [deleteInput, setDeleteInput] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteProgress, setDeleteProgress] = useState('');
@@ -157,10 +160,10 @@ export function ImageCleaner() {
     setScanRepos([]);
     setScanTotal(null);
     setScanError(null);
-    setSelectedKeys(new Set());
+    clearSelection();
     setDeletedKeys(new Set());
     setDeletionEnabled(false);
-  }, [detectStarted, provider]);
+  }, [detectStarted, provider, clearSelection]);
 
   // Phase 2: Scan (SSE streaming)
   const runScan = useCallback(async () => {
@@ -174,7 +177,7 @@ export function ImageCleaner() {
     setScanError(null);
     setScanRepos([]);
     setScanTotal(null);
-    setSelectedKeys(new Set());
+    clearSelection();
     setDeletedKeys(new Set());
     setDeletionEnabled(false);
 
@@ -247,7 +250,7 @@ export function ImageCleaner() {
       setScanLoading(false);
       abortRef.current = null;
     }
-  }, [cutoffDate, provider, setLifecycle]);
+  }, [cutoffDate, provider, setLifecycle, clearSelection]);
 
   const abortScan = useCallback(() => {
     abortRef.current?.abort();
@@ -281,42 +284,7 @@ export function ImageCleaner() {
     [deletableRows, selectedKeys],
   );
 
-  const toggleSort = useCallback(
-    (field: SortField) => {
-      if (sortField === field) {
-        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-      } else {
-        setSortField(field);
-        setSortDir('asc');
-      }
-    },
-    [sortField],
-  );
-
-  const sortIndicator = (field: SortField) => {
-    if (sortField !== field) return '';
-    return sortDir === 'asc' ? ' ▲' : ' ▼';
-  };
-
-  const toggleSelect = useCallback((key: string) => {
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
-
-  const toggleSelectAll = useCallback(() => {
-    setSelectedKeys((prev) => {
-      const allKeys = deletableRows.map((r) => r.key);
-      const allSelected = allKeys.length > 0 && allKeys.every((k) => prev.has(k));
-      return allSelected ? new Set() : new Set(allKeys);
-    });
-  }, [deletableRows]);
-
   const openDeleteConfirm = useCallback(() => {
-    setDeleteInput('');
     setDeleteError(null);
     setDeleteProgress('');
     deleteModal.open();
@@ -325,7 +293,6 @@ export function ImageCleaner() {
   const confirmDelete = useCallback(async () => {
     const count = selectedDeletableRows.length;
     if (count === 0) return;
-    if (deleteInput !== `delete ${count} images`) return;
     if (!cutoffDate) return;
 
     setDeleteLoading(true);
@@ -350,7 +317,7 @@ export function ImageCleaner() {
       });
       const deletedDigests = new Set(resp.deleted.map((d) => `${d.repo}:${d.digest}`));
       setDeletedKeys((prev) => new Set([...prev, ...deletedDigests]));
-      setSelectedKeys(new Set());
+      clearSelection();
 
       if (resp.failed.length > 0) {
         setDeleteProgress(
@@ -364,7 +331,7 @@ export function ImageCleaner() {
     } finally {
       setDeleteLoading(false);
     }
-  }, [selectedDeletableRows, deleteInput, cutoffDate, provider, deleteModal]);
+  }, [selectedDeletableRows, cutoffDate, provider, deleteModal, clearSelection]);
 
   const shortDigest = (d: string) => d.replace('sha256:', '').slice(0, 12);
 
@@ -412,7 +379,7 @@ export function ImageCleaner() {
 
           {releaseLoading && (
             <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-              <span className="inline-block w-4 h-4 border-2 border-[var(--text-tertiary)] border-t-transparent rounded-full animate-spin" />
+              <Spinner />
               Detecting DSS version and release date...
             </div>
           )}
@@ -483,7 +450,7 @@ export function ImageCleaner() {
           <section className="glass-card p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-                <span className="inline-block w-4 h-4 border-2 border-[var(--text-tertiary)] border-t-transparent rounded-full animate-spin" />
+                <Spinner />
                 {scanTotal !== null
                   ? `Scanning repositories... ${scanRepos.length} / ${scanTotal}`
                   : 'Discovering repositories…'}
@@ -512,30 +479,18 @@ export function ImageCleaner() {
           <>
             <section className="glass-card p-4">
               <div className="grid grid-cols-4 gap-4">
-                <div className="text-center">
-                  <div className="text-2xl font-mono text-[var(--text-primary)]">
-                    {scanRepos.length}
-                  </div>
-                  <div className="text-xs text-[var(--text-muted)]">Repositories</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-mono text-[var(--text-primary)]">
-                    {visibleRows.length}
-                  </div>
-                  <div className="text-xs text-[var(--text-muted)]">Total Images</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-mono text-[var(--warning)]">
-                    {deletableRows.length}
-                  </div>
-                  <div className="text-xs text-[var(--text-muted)]">Deletable</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-mono text-[var(--neon-green)]">
-                    {keptRows.length}
-                  </div>
-                  <div className="text-xs text-[var(--text-muted)]">Kept</div>
-                </div>
+                <StatTile value={scanRepos.length} label="Repositories" />
+                <StatTile value={visibleRows.length} label="Total Images" />
+                <StatTile
+                  value={deletableRows.length}
+                  label="Deletable"
+                  valueClassName="text-[var(--warning)]"
+                />
+                <StatTile
+                  value={keptRows.length}
+                  label="Kept"
+                  valueClassName="text-[var(--neon-green)]"
+                />
               </div>
             </section>
 
@@ -547,7 +502,7 @@ export function ImageCleaner() {
                     checked={deletionEnabled}
                     onChange={(e) => {
                       setDeletionEnabled(e.target.checked);
-                      if (!e.target.checked) setSelectedKeys(new Set());
+                      if (!e.target.checked) clearSelection();
                     }}
                     className="accent-[var(--neon-red)]"
                   />
@@ -558,18 +513,12 @@ export function ImageCleaner() {
                     <span className="text-sm text-[var(--text-secondary)]">
                       {selectedKeys.size} selected
                     </span>
-                    <button
-                      onClick={() => setSelectedKeys(new Set())}
-                      className="px-3 py-1 rounded-md text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-glass-hover)] transition-colors"
-                    >
+                    <Button variant="ghost" onClick={clearSelection}>
                       Clear
-                    </button>
-                    <button
-                      onClick={openDeleteConfirm}
-                      className="px-3 py-1 rounded-md text-xs font-medium border border-[var(--neon-red)]/30 bg-[var(--neon-red)]/10 text-[var(--neon-red)] hover:bg-[var(--neon-red)]/20 hover:border-[var(--neon-red)]/50 transition-colors"
-                    >
+                    </Button>
+                    <Button variant="danger" onClick={openDeleteConfirm}>
                       Delete Selected
-                    </button>
+                    </Button>
                   </div>
                 )}
               </section>
@@ -588,7 +537,7 @@ export function ImageCleaner() {
                               deletableRows.length > 0 &&
                               deletableRows.every((r) => selectedKeys.has(r.key))
                             }
-                            onChange={toggleSelectAll}
+                            onChange={() => toggleSelectAll(deletableRows.map((r) => r.key))}
                             className="accent-[var(--neon-cyan)]"
                             title="Select all deletable images"
                           />
@@ -694,71 +643,38 @@ export function ImageCleaner() {
         )}
       </div>
 
-      <Modal
+      <ConfirmDeleteDialog
         isOpen={deleteModal.isOpen}
         onClose={deleteModal.close}
         title="Confirm Image Deletion"
-        footer={
-          <div className="flex items-center justify-end gap-2">
-            <button
-              onClick={deleteModal.close}
-              className="px-3 py-1.5 rounded bg-[var(--bg-glass)] hover:bg-[var(--bg-glass-hover)] text-[var(--text-secondary)]"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={confirmDelete}
-              disabled={
-                deleteLoading || deleteInput !== `delete ${selectedDeletableRows.length} images`
-              }
-              className="px-4 py-1.5 rounded bg-[var(--neon-red)]/20 text-[var(--neon-red)] hover:bg-[var(--neon-red)]/30 disabled:opacity-50 transition-colors"
-            >
-              {deleteLoading ? 'Deleting…' : `Delete ${selectedDeletableRows.length} Images`}
-            </button>
-          </div>
-        }
+        confirmPhrase={`delete ${selectedDeletableRows.length} images`}
+        confirmLabel={`Delete ${selectedDeletableRows.length} Images`}
+        loadingLabel="Deleting…"
+        loading={deleteLoading}
+        error={deleteError}
+        progress={deleteProgress}
+        onConfirm={() => void confirmDelete()}
       >
-        <div className="space-y-4">
-          <p className="text-[var(--text-secondary)]">
-            Are you sure you want to delete {selectedDeletableRows.length} image
-            {selectedDeletableRows.length !== 1 ? 's' : ''}? This action cannot be undone.
-          </p>
-          <div className="max-h-40 overflow-y-auto rounded bg-[var(--bg-glass)] p-2 space-y-1">
-            {selectedDeletableRows.map((r) => (
-              <div
-                key={r.key}
-                className="text-xs font-mono text-[var(--neon-red)] flex items-center gap-2"
-              >
-                <span>{r.repo}</span>
-                <span className="text-[var(--text-muted)]">{shortDigest(r.image.digest)}</span>
-                <span className="text-[var(--text-muted)]">
-                  {r.image.tags.join(', ') || '<untagged>'}
-                </span>
-                <span className="text-[var(--text-muted)]">{r.image.pushedAt.slice(0, 10)}</span>
-              </div>
-            ))}
-          </div>
-          <p className="text-sm text-[var(--text-muted)]">
-            Type{' '}
-            <code className="px-1.5 py-0.5 rounded bg-[var(--bg-glass)] text-[var(--text-primary)]">
-              delete {selectedDeletableRows.length} images
-            </code>{' '}
-            to confirm.
-          </p>
-          <input
-            type="text"
-            value={deleteInput}
-            onChange={(e) => setDeleteInput(e.target.value)}
-            placeholder={`delete ${selectedDeletableRows.length} images`}
-            className="w-full input-glass font-mono text-sm"
-            autoFocus
-          />
-          {deleteProgress && !deleteError && (
-            <div className="text-sm text-[var(--text-secondary)]">{deleteProgress}</div>
-          )}
-          {deleteError && <div className="text-sm text-[var(--neon-red)]">{deleteError}</div>}
+        <p className="text-[var(--text-secondary)]">
+          Are you sure you want to delete {selectedDeletableRows.length} image
+          {selectedDeletableRows.length !== 1 ? 's' : ''}? This action cannot be undone.
+        </p>
+        <div className="max-h-40 overflow-y-auto rounded bg-[var(--bg-glass)] p-2 space-y-1">
+          {selectedDeletableRows.map((r) => (
+            <div
+              key={r.key}
+              className="text-xs font-mono text-[var(--neon-red)] flex items-center gap-2"
+            >
+              <span>{r.repo}</span>
+              <span className="text-[var(--text-muted)]">{shortDigest(r.image.digest)}</span>
+              <span className="text-[var(--text-muted)]">
+                {r.image.tags.join(', ') || '<untagged>'}
+              </span>
+              <span className="text-[var(--text-muted)]">{r.image.pushedAt.slice(0, 10)}</span>
+            </div>
+          ))}
         </div>
-      </Modal>
+      </ConfirmDeleteDialog>
     </>
   );
 }

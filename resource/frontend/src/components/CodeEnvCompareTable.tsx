@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { codeEnvComparisonScan } from '../state/codeEnvComparisonStore';
+import { Spinner } from './common/Spinner';
 
 type SectionKey = 'green' | 'purple' | 'blue' | 'yellow';
 
@@ -46,8 +47,7 @@ export function CodeEnvCompareTable() {
     if (!scanStarted) void codeEnvComparisonScan.load();
   }, [scanStarted]);
 
-  const toggle = (key: SectionKey) =>
-    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+  const toggle = (key: SectionKey) => setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
 
   // Compute env counts per category
   const stats = useMemo(() => {
@@ -55,9 +55,7 @@ export function CodeEnvCompareTable() {
     const greenEnvs = new Set(data.green.flatMap((g) => g.envNames));
     const purpleEnvs = new Set(data.purple.flatMap((g) => g.envNames));
     const blueEnvs = new Set(data.blue.flatMap((g) => g.envNames));
-    const yellowEnvs = new Set(
-      data.yellow.flatMap((p) => [p.envA, p.envB]),
-    );
+    const yellowEnvs = new Set(data.yellow.flatMap((p) => [p.envA, p.envB]));
     const allAffected = new Set([...greenEnvs, ...purpleEnvs, ...blueEnvs, ...yellowEnvs]);
     return {
       green: { groups: data.green.length, envs: greenEnvs.size },
@@ -88,7 +86,7 @@ export function CodeEnvCompareTable() {
     return (
       <Shell>
         <div className="p-6 flex items-center gap-3 text-sm text-[var(--text-secondary)]">
-          <span className="inline-block h-4 w-4 rounded-full border-2 border-[var(--neon-cyan)] border-t-transparent animate-spin" />
+          <Spinner size="h-4 w-4" color="border-[var(--neon-cyan)]" />
           Comparing package lists across code environments...
         </div>
       </Shell>
@@ -114,12 +112,10 @@ export function CodeEnvCompareTable() {
     <div className="rounded-xl overflow-hidden">
       {/* Header */}
       <div className="px-5 py-4">
-        <h4 className="text-lg font-semibold text-[var(--text-primary)]">
-          Code Env Comparison
-        </h4>
+        <h4 className="text-lg font-semibold text-[var(--text-primary)]">Code Env Comparison</h4>
         <p className="text-xs text-[var(--text-muted)] mt-0.5">
-          {data.analyzedCount} Python environments analyzed &middot;{' '}
-          {stats!.totalAffected} involved in duplicates or near-duplicates
+          {data.analyzedCount} Python environments analyzed &middot; {stats!.totalAffected} involved
+          in duplicates or near-duplicates
         </p>
       </div>
 
@@ -137,19 +133,13 @@ export function CodeEnvCompareTable() {
               className="text-left rounded-lg p-3 hover:bg-[var(--bg-glass-hover)] transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2 mb-1">
-                <span
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: meta.color }}
-                />
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: meta.color }} />
                 <span className="text-xs font-medium text-[var(--text-secondary)]">
                   {meta.label}
                 </span>
               </div>
               <div className="flex items-baseline gap-1.5">
-                <span
-                  className="text-2xl font-bold tabular-nums"
-                  style={{ color: meta.color }}
-                >
+                <span className="text-2xl font-bold tabular-nums" style={{ color: meta.color }}>
                   {s.groups}
                 </span>
                 <span className="text-xs text-[var(--text-muted)]">
@@ -301,9 +291,7 @@ export function CodeEnvCompareTable() {
                               <tr
                                 key={pkg}
                                 className={
-                                  rowIdx % 2 === 0
-                                    ? 'bg-transparent'
-                                    : 'bg-[var(--bg-elevated)]/30'
+                                  rowIdx % 2 === 0 ? 'bg-transparent' : 'bg-[var(--bg-elevated)]/30'
                                 }
                               >
                                 <td className="px-3 py-1.5 font-mono text-[var(--text-primary)] whitespace-nowrap">
@@ -404,9 +392,7 @@ export function CodeEnvCompareTable() {
                                 <tr
                                   key={d.package}
                                   className={
-                                    di % 2 === 0
-                                      ? 'bg-transparent'
-                                      : 'bg-[var(--bg-elevated)]/30'
+                                    di % 2 === 0 ? 'bg-transparent' : 'bg-[var(--bg-elevated)]/30'
                                   }
                                 >
                                   <td className="px-3 py-1 font-mono text-[var(--text-primary)]">
@@ -450,9 +436,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="rounded-xl overflow-hidden">
       <div className="px-5 py-4">
-        <h4 className="text-lg font-semibold text-[var(--text-primary)]">
-          Code Env Comparison
-        </h4>
+        <h4 className="text-lg font-semibold text-[var(--text-primary)]">Code Env Comparison</h4>
       </div>
       {children}
     </div>
@@ -518,13 +502,7 @@ function CollapsibleSection({
   );
 }
 
-function GroupCard({
-  color,
-  children,
-}: {
-  color: string;
-  children: React.ReactNode;
-}) {
+function GroupCard({ color, children }: { color: string; children: React.ReactNode }) {
   return (
     <div
       className="rounded-lg border border-[var(--border-glass)] bg-[var(--bg-elevated)]/30 p-3 relative"

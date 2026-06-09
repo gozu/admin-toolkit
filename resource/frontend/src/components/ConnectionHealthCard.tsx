@@ -2,9 +2,15 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useDiag } from '../context/DiagContext';
 import { fetchRaw, getBackendUrl } from '../utils/api';
 import { parseSseStream } from '../utils/sseStream';
+import { Spinner } from './common/Spinner';
+import { StatTile } from './common/StatTile';
 import type { ConnectionHealthResult, ConnectionAuditResult } from '../types';
 
-type ErrorCategory = 'missing_config' | 'missing_credentials' | 'invalid_credentials' | 'unreachable';
+type ErrorCategory =
+  | 'missing_config'
+  | 'missing_credentials'
+  | 'invalid_credentials'
+  | 'unreachable';
 
 const CATEGORY_LABELS: Record<ErrorCategory, string> = {
   missing_config: 'Missing Configuration',
@@ -20,13 +26,24 @@ const CATEGORY_COLORS: Record<ErrorCategory, string> = {
   unreachable: 'var(--text-muted)',
 };
 
-const CATEGORY_ORDER: ErrorCategory[] = ['missing_config', 'missing_credentials', 'invalid_credentials', 'unreachable'];
+const CATEGORY_ORDER: ErrorCategory[] = [
+  'missing_config',
+  'missing_credentials',
+  'invalid_credentials',
+  'unreachable',
+];
 
 function classifyError(error: string): ErrorCategory {
   const lower = error.toLowerCase();
   if (/does not have credentials|user .* does not have/.test(lower)) return 'missing_credentials';
-  if (/should not be left blank|missing .* parameter|no models selected|not defined/.test(lower)) return 'missing_config';
-  if (/password authentication failed|incorrect username or password|invalid.*credentials|security token.*invalid|expired|failed to get access token|unauthorized_client|trial has ended|cannot invoke.*null/.test(lower)) return 'invalid_credentials';
+  if (/should not be left blank|missing .* parameter|no models selected|not defined/.test(lower))
+    return 'missing_config';
+  if (
+    /password authentication failed|incorrect username or password|invalid.*credentials|security token.*invalid|expired|failed to get access token|unauthorized_client|trial has ended|cannot invoke.*null/.test(
+      lower,
+    )
+  )
+    return 'invalid_credentials';
   return 'unreachable';
 }
 
@@ -71,7 +88,11 @@ export function ConnectionHealthCard() {
       if (!response.ok || !response.body) {
         const body = await response.text();
         let msg = `Scan failed: ${response.status} ${response.statusText}`;
-        try { msg = (JSON.parse(body) as { error?: string }).error || msg; } catch { /* body not JSON — keep default message */ }
+        try {
+          msg = (JSON.parse(body) as { error?: string }).error || msg;
+        } catch {
+          /* body not JSON — keep default message */
+        }
         throw new Error(msg);
       }
 
@@ -138,7 +159,11 @@ export function ConnectionHealthCard() {
     }
     return groups;
   }, [auditFindings]);
-  const auditSeverityOrder: Array<'critical' | 'warning' | 'info'> = ['critical', 'warning', 'info'];
+  const auditSeverityOrder: Array<'critical' | 'warning' | 'info'> = [
+    'critical',
+    'warning',
+    'info',
+  ];
   const auditSeverityLabels: Record<'critical' | 'warning' | 'info', string> = {
     critical: 'Critical',
     warning: 'Warning',
@@ -173,7 +198,7 @@ export function ConnectionHealthCard() {
         <section className="glass-card p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-              <span className="inline-block w-4 h-4 border-2 border-[var(--text-tertiary)] border-t-transparent rounded-full animate-spin" />
+              <Spinner />
               {total !== null
                 ? `Testing connections\u2026 ${results.length} / ${total}`
                 : 'Discovering connections\u2026'}
@@ -201,24 +226,26 @@ export function ConnectionHealthCard() {
       {hasResults && (
         <section className="glass-card p-4">
           <div className="grid grid-cols-4 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-mono tabular-nums text-[var(--text-primary)]">
-                {total !== null && isLoading ? `${results.length} / ${total}` : results.length}
-              </div>
-              <div className="text-xs text-[var(--text-muted)]">Tested</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-mono tabular-nums text-[var(--neon-green)]">{okCount}</div>
-              <div className="text-xs text-[var(--text-muted)]">Healthy</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-mono tabular-nums text-[var(--neon-red)]">{failedConnections.length}</div>
-              <div className="text-xs text-[var(--text-muted)]">Failed</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-mono tabular-nums text-[var(--text-muted)]">{skippedCount}</div>
-              <div className="text-xs text-[var(--text-muted)]">Skipped</div>
-            </div>
+            <StatTile
+              value={total !== null && isLoading ? `${results.length} / ${total}` : results.length}
+              label="Tested"
+              valueClassName="tabular-nums text-[var(--text-primary)]"
+            />
+            <StatTile
+              value={okCount}
+              label="Healthy"
+              valueClassName="tabular-nums text-[var(--neon-green)]"
+            />
+            <StatTile
+              value={failedConnections.length}
+              label="Failed"
+              valueClassName="tabular-nums text-[var(--neon-red)]"
+            />
+            <StatTile
+              value={skippedCount}
+              label="Skipped"
+              valueClassName="tabular-nums text-[var(--text-muted)]"
+            />
           </div>
         </section>
       )}
@@ -277,7 +304,9 @@ export function ConnectionHealthCard() {
                               ↗
                             </a>
                           </td>
-                          <td className="text-[var(--text-secondary)] whitespace-nowrap">{c.type}</td>
+                          <td className="text-[var(--text-secondary)] whitespace-nowrap">
+                            {c.type}
+                          </td>
                           <td className="text-[var(--text-muted)] text-xs leading-relaxed max-w-[500px]">
                             {c.error || ''}
                           </td>
@@ -295,9 +324,12 @@ export function ConnectionHealthCard() {
       {/* Configuration Audit */}
       {hasAudit && (
         <section className="glass-card p-4">
-          <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-1">Configuration Audit</h4>
+          <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-1">
+            Configuration Audit
+          </h4>
           <p className="text-xs text-[var(--text-muted)] mb-3">
-            Recommended settings for fast-write, details readability, HDFS interface, and default connections.
+            Recommended settings for fast-write, details readability, HDFS interface, and default
+            connections.
           </p>
           <div className="overflow-auto max-h-[60vh]">
             {auditSeverityOrder
@@ -305,7 +337,10 @@ export function ConnectionHealthCard() {
               .map((sev) => (
                 <div key={sev} className="mb-4 last:mb-0">
                   <div className="flex items-center gap-2 mb-2">
-                    <h4 className="text-sm font-semibold" style={{ color: auditSeverityColors[sev] }}>
+                    <h4
+                      className="text-sm font-semibold"
+                      style={{ color: auditSeverityColors[sev] }}
+                    >
                       {auditSeverityLabels[sev]}
                     </h4>
                     <span className="text-xs font-mono text-[var(--text-muted)]">
@@ -343,7 +378,9 @@ export function ConnectionHealthCard() {
                               ↗
                             </a>
                           </td>
-                          <td className="text-[var(--text-secondary)] whitespace-nowrap">{f.type}</td>
+                          <td className="text-[var(--text-secondary)] whitespace-nowrap">
+                            {f.type}
+                          </td>
                           <td className="text-[var(--text-muted)] text-xs leading-relaxed">
                             <ul className="list-disc list-inside space-y-0.5">
                               {f.configIssues.map((issue, idx) => (

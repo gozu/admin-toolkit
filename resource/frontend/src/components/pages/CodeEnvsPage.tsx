@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDiag } from '../../context/DiagContext';
 import { useModal } from '../../hooks/useModal';
+import { useRowSelection } from '../../hooks/useRowSelection';
+import { useSortableTable } from '../../hooks/useSortableTable';
 import { useTableFilter } from '../../hooks/useTableFilter';
 import { fetchJson } from '../../utils/api';
 import {
@@ -13,7 +15,10 @@ import {
 import { formatSizeGb, getRelativeSizeColor } from '../../utils/formatters';
 import { managedFoldersScan } from '../../state/managedFoldersStore';
 import { Modal } from '../Modal';
+import { Button } from '../common/Button';
+import { ConfirmDeleteDialog } from '../common/ConfirmDeleteDialog';
 import { ProgressIndicator } from '../common/ProgressIndicator';
+import { StatTile } from '../common/StatTile';
 import type {
   CodeEnv,
   CodeEnvReplaceResult,
@@ -257,20 +262,17 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
   const [ownerFilter, setOwnerFilter] = useState<string | null>(null);
 
   // Row state — selection, deletion, sort
-  const [sortField, setSortField] = useState<SortField | null>(null);
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const { sortField, sortDir, toggleSort, sortIndicator } = useSortableTable<SortField>();
   const [deletedKeys, setDeletedKeys] = useState<Set<string>>(new Set());
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const { selectedKeys, toggleSelect, toggleSelectAll, clear: clearSelection } = useRowSelection();
 
   // Delete modals
   const deleteModal = useModal();
   const [deleteTarget, setDeleteTarget] = useState<RealEnvRow | null>(null);
-  const [deleteInput, setDeleteInput] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const bulkDeleteModal = useModal();
-  const [bulkDeleteInput, setBulkDeleteInput] = useState('');
   const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
   const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
   const [bulkDeleteProgress, setBulkDeleteProgress] = useState('');
@@ -401,45 +403,11 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
     }
   }, [sourceEnv?.name, targetChoices, targetName]);
 
-  const toggleSort = useCallback(
-    (field: SortField) => {
-      if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-      else {
-        setSortField(field);
-        setSortDir('asc');
-      }
-    },
-    [sortField],
-  );
-
-  const sortIndicator = (field: SortField) => {
-    if (sortField !== field) return '';
-    return sortDir === 'asc' ? ' ▲' : ' ▼';
-  };
-
   const selectableUnusedRows = useMemo(
     () =>
       visibleRows.filter((r): r is RealEnvRow => !r.isProvisional && r.usageCount === 0 && !!r.env),
     [visibleRows],
   );
-
-  const toggleSelect = useCallback((envKey: string) => {
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(envKey)) next.delete(envKey);
-      else next.add(envKey);
-      return next;
-    });
-  }, []);
-
-  const toggleSelectAll = useCallback(() => {
-    setSelectedKeys((prev) => {
-      const all = selectableUnusedRows.map((r) => r.envKey);
-      const allSelected = all.every((k) => prev.has(k));
-      if (allSelected) return new Set();
-      return new Set(all);
-    });
-  }, [selectableUnusedRows]);
 
   const selectedRows = useMemo(
     () =>
@@ -452,7 +420,6 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
   const openDeleteConfirm = useCallback(
     (row: RealEnvRow) => {
       setDeleteTarget(row);
-      setDeleteInput('');
       setDeleteError(null);
       deleteModal.open();
     },
@@ -460,7 +427,6 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
   );
 
   const openBulkDelete = useCallback(() => {
-    setBulkDeleteInput('');
     setBulkDeleteError(null);
     setBulkDeleteProgress('');
     bulkDeleteModal.open();
@@ -468,8 +434,6 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
-    const expected = `delete ${deleteTarget.env.name}`;
-    if (deleteInput !== expected) return;
     if (!folderId) return;
     setDeleteLoading(true);
     setDeleteError(null);
@@ -485,13 +449,11 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
     } finally {
       setDeleteLoading(false);
     }
-  }, [deleteTarget, deleteInput, deleteModal, folderId]);
+  }, [deleteTarget, deleteModal, folderId]);
 
   const confirmBulkDelete = useCallback(async () => {
     const count = selectedRows.length;
     if (count === 0) return;
-    const expected = `delete ${count} envs`;
-    if (bulkDeleteInput !== expected) return;
     if (!folderId) return;
     setBulkDeleteLoading(true);
     setBulkDeleteError(null);
@@ -505,7 +467,7 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
         );
         setDeletedKeys((prev) => new Set([...prev, row.envKey]));
       }
-      setSelectedKeys(new Set());
+      clearSelection();
       bulkDeleteModal.close();
     } catch (err) {
       setBulkDeleteError(err instanceof Error ? err.message : String(err));
@@ -513,7 +475,7 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
       setBulkDeleteLoading(false);
       setBulkDeleteProgress('');
     }
-  }, [selectedRows, bulkDeleteInput, bulkDeleteModal, folderId]);
+  }, [selectedRows, bulkDeleteModal, folderId, clearSelection]);
 
   const runReplace = async (nextDryRun: boolean) => {
     if (!sourceEnv || !targetName || sourceEnv.name === targetName) return;
@@ -719,26 +681,21 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
       {/* Stats bar */}
       <section className="glass-card p-4">
         <div className="grid grid-cols-4 gap-4">
-          <div className="text-center">
-            <div className="text-2xl font-mono text-[var(--text-primary)]">
-              {totalEnvCount && totalEnvCount > 0
+          <StatTile
+            value={
+              totalEnvCount && totalEnvCount > 0
                 ? `${visibleRows.length}/${totalEnvCount - (skippedEnvCount || 0)}`
-                : visibleRows.length}
-            </div>
-            <div className="text-xs text-[var(--text-muted)]">Total</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-mono text-[var(--warning)]">{unusedCount}</div>
-            <div className="text-xs text-[var(--text-muted)]">Unused</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-mono text-[var(--neon-green)]">{inUseCount}</div>
-            <div className="text-xs text-[var(--text-muted)]">In Use</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-mono text-[var(--neon-red)]">{deletedKeys.size}</div>
-            <div className="text-xs text-[var(--text-muted)]">Deleted This Session</div>
-          </div>
+                : visibleRows.length
+            }
+            label="Total"
+          />
+          <StatTile value={unusedCount} label="Unused" valueClassName="text-[var(--warning)]" />
+          <StatTile value={inUseCount} label="In Use" valueClassName="text-[var(--neon-green)]" />
+          <StatTile
+            value={deletedKeys.size}
+            label="Deleted This Session"
+            valueClassName="text-[var(--neon-red)]"
+          />
         </div>
       </section>
 
@@ -764,19 +721,12 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
             {selectedKeys.size} env{selectedKeys.size !== 1 ? 's' : ''} selected
           </span>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setSelectedKeys(new Set())}
-              className="px-3 py-1 rounded-md text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-glass-hover)] transition-colors"
-            >
+            <Button variant="ghost" onClick={clearSelection}>
               Clear
-            </button>
-            <button
-              onClick={openBulkDelete}
-              disabled={!folderId}
-              className="px-3 py-1 rounded-md text-xs font-medium border border-[var(--neon-red)]/30 bg-[var(--neon-red)]/10 text-[var(--neon-red)] hover:bg-[var(--neon-red)]/20 hover:border-[var(--neon-red)]/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+            </Button>
+            <Button variant="danger" onClick={openBulkDelete} disabled={!folderId}>
               Delete Selected
-            </button>
+            </Button>
           </div>
         </section>
       )}
@@ -804,7 +754,7 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
                           selectableUnusedRows.length > 0 &&
                           selectableUnusedRows.every((r) => selectedKeys.has(r.envKey))
                         }
-                        onChange={toggleSelectAll}
+                        onChange={() => toggleSelectAll(selectableUnusedRows.map((r) => r.envKey))}
                         className="accent-[var(--neon-cyan)]"
                         title="Select all unused envs"
                       />
@@ -986,14 +936,14 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
                         {!readOnly && (
                           <td className="px-4 py-3">
                             {!row.isProvisional && isUnused && env && (
-                              <button
+                              <Button
+                                variant="danger"
                                 onClick={() => openDeleteConfirm(row as RealEnvRow)}
                                 disabled={!folderId}
                                 title={!folderId ? 'Select a backup destination first' : undefined}
-                                className="px-3 py-1 rounded-md text-xs font-medium border border-[var(--neon-red)]/30 bg-[var(--neon-red)]/10 text-[var(--neon-red)] hover:bg-[var(--neon-red)]/20 hover:border-[var(--neon-red)]/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 Delete
-                              </button>
+                              </Button>
                             )}
                           </td>
                         )}
@@ -1018,96 +968,48 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
       {!readOnly && (
         <>
           {/* Bulk Delete Confirmation Modal */}
-          <Modal
+          <ConfirmDeleteDialog
             isOpen={bulkDeleteModal.isOpen}
             onClose={bulkDeleteModal.close}
             title="Confirm Bulk Deletion"
-            footer={
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  onClick={bulkDeleteModal.close}
-                  className="px-3 py-1.5 rounded bg-[var(--bg-glass)] hover:bg-[var(--bg-glass-hover)] text-[var(--text-secondary)]"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmBulkDelete}
-                  disabled={
-                    bulkDeleteLoading || bulkDeleteInput !== `delete ${selectedRows.length} envs`
-                  }
-                  className="px-4 py-1.5 rounded bg-[var(--neon-red)]/20 text-[var(--neon-red)] hover:bg-[var(--neon-red)]/30 disabled:opacity-50 transition-colors"
-                >
-                  {bulkDeleteLoading ? 'Deleting...' : `Delete ${selectedRows.length} Envs`}
-                </button>
-              </div>
-            }
+            confirmPhrase={`delete ${selectedRows.length} envs`}
+            confirmLabel={`Delete ${selectedRows.length} Envs`}
+            loadingLabel="Deleting..."
+            loading={bulkDeleteLoading}
+            error={bulkDeleteError}
+            progress={bulkDeleteProgress}
+            onConfirm={() => void confirmBulkDelete()}
           >
-            <div className="space-y-4">
-              <p className="text-[var(--text-secondary)]">
-                Are you sure you want to delete {selectedRows.length} code environment
-                {selectedRows.length !== 1 ? 's' : ''}?
-              </p>
-              <div className="max-h-32 overflow-y-auto rounded bg-[var(--bg-glass)] p-2">
-                {selectedRows.map((r) => (
-                  <div key={r.envKey} className="text-xs font-mono text-[var(--neon-red)] py-0.5">
-                    {r.env.name}
-                  </div>
-                ))}
-              </div>
-              <p className="text-sm text-[var(--text-muted)]">
-                A backup will be uploaded to the selected managed folder before each deletion.
-              </p>
-              <p className="text-sm text-[var(--text-muted)]">
-                Type{' '}
-                <code className="px-1.5 py-0.5 rounded bg-[var(--bg-glass)] text-[var(--text-primary)]">
-                  delete {selectedRows.length} envs
-                </code>{' '}
-                to confirm.
-              </p>
-              <input
-                type="text"
-                value={bulkDeleteInput}
-                onChange={(e) => setBulkDeleteInput(e.target.value)}
-                placeholder={`delete ${selectedRows.length} envs`}
-                className="w-full input-glass font-mono text-sm"
-                autoFocus
-              />
-              {bulkDeleteProgress && (
-                <div className="text-sm text-[var(--text-secondary)]">{bulkDeleteProgress}</div>
-              )}
-              {bulkDeleteError && (
-                <div className="text-sm text-[var(--neon-red)]">{bulkDeleteError}</div>
-              )}
+            <p className="text-[var(--text-secondary)]">
+              Are you sure you want to delete {selectedRows.length} code environment
+              {selectedRows.length !== 1 ? 's' : ''}?
+            </p>
+            <div className="max-h-32 overflow-y-auto rounded bg-[var(--bg-glass)] p-2">
+              {selectedRows.map((r) => (
+                <div key={r.envKey} className="text-xs font-mono text-[var(--neon-red)] py-0.5">
+                  {r.env.name}
+                </div>
+              ))}
             </div>
-          </Modal>
+            <p className="text-sm text-[var(--text-muted)]">
+              A backup will be uploaded to the selected managed folder before each deletion.
+            </p>
+          </ConfirmDeleteDialog>
 
           {/* Single Delete Confirmation Modal */}
-          <Modal
+          <ConfirmDeleteDialog
             isOpen={deleteModal.isOpen}
             onClose={deleteModal.close}
             title="Confirm Deletion"
-            footer={
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  onClick={deleteModal.close}
-                  className="px-3 py-1.5 rounded bg-[var(--bg-glass)] hover:bg-[var(--bg-glass-hover)] text-[var(--text-secondary)]"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmDelete}
-                  disabled={
-                    deleteLoading || deleteInput !== `delete ${deleteTarget?.env.name || ''}`
-                  }
-                  className="px-4 py-1.5 rounded bg-[var(--neon-red)]/20 text-[var(--neon-red)] hover:bg-[var(--neon-red)]/30 disabled:opacity-50 transition-colors"
-                >
-                  {deleteLoading ? 'Backing up & deleting...' : 'Delete'}
-                </button>
-              </div>
-            }
+            confirmPhrase={`delete ${deleteTarget?.env.name || ''}`}
+            confirmLabel="Delete"
+            loadingLabel="Backing up & deleting..."
+            loading={deleteLoading}
+            error={deleteError}
+            onConfirm={() => void confirmDelete()}
           >
             {deleteTarget && (
-              <div className="space-y-4">
+              <>
                 <p className="text-[var(--text-secondary)]">
                   Are you sure you want to delete code environment{' '}
                   <span className="font-mono text-[var(--neon-red)]">{deleteTarget.env.name}</span>?
@@ -1115,25 +1017,9 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
                 <p className="text-sm text-[var(--text-muted)]">
                   A backup will be uploaded to the selected managed folder before deletion.
                 </p>
-                <p className="text-sm text-[var(--text-muted)]">
-                  Type{' '}
-                  <code className="px-1.5 py-0.5 rounded bg-[var(--bg-glass)] text-[var(--text-primary)]">
-                    delete {deleteTarget.env.name}
-                  </code>{' '}
-                  to confirm.
-                </p>
-                <input
-                  type="text"
-                  value={deleteInput}
-                  onChange={(e) => setDeleteInput(e.target.value)}
-                  placeholder={`delete ${deleteTarget.env.name}`}
-                  className="w-full input-glass font-mono text-sm"
-                  autoFocus
-                />
-                {deleteError && <div className="text-sm text-[var(--neon-red)]">{deleteError}</div>}
-              </div>
+              </>
             )}
-          </Modal>
+          </ConfirmDeleteDialog>
 
           {/* Live-apply replacement confirmation */}
           <Modal

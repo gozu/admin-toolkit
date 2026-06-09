@@ -74,89 +74,97 @@ export function PluginsTable({ onOpenUsage }: PluginsTableProps = {}) {
     setProjectsFilters([]);
   };
 
-  const detailColumns = useMemo<ColumnDef<PluginInfo>[]>(() => [
-    {
-      id: 'name',
-      label: 'Plugin Name',
-      defaultSortDir: 'asc',
-      render: (plugin) => <span>{plugin.label || plugin.id}</span>,
-      sortValue: (plugin) => plugin.label || plugin.id,
-    },
-    {
-      id: 'version',
-      label: 'Installed',
-      mono: true,
-      render: (plugin) => plugin.installedVersion || '--',
-      sortValue: (plugin) => plugin.installedVersion || '',
-    },
-    {
-      id: 'latest',
-      label: 'Latest',
-      mono: true,
-      render: (plugin) => plugin.latestVersion || '--',
-      sortValue: (plugin) => plugin.latestVersion || '',
-    },
-    {
-      id: 'type',
-      label: 'Type',
-      render: (plugin) =>
-        plugin.isDev ? (
-          <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-xs font-medium text-purple-400">
-            DEV
-          </span>
-        ) : (
-          <span className="text-[var(--text-muted)]">Installed</span>
-        ),
-      sortValue: (plugin) => (plugin.isDev ? 1 : 0),
-    },
-    {
-      id: 'projectsUsing',
-      label: 'Projects',
-      align: 'right',
-      mono: true,
-      sortValue: (row) => row.projectsUsingCount ?? -1,
-      render: (row) => {
-        if (row.projectsUsingCount == null) {
-          if (usagesPending && !row.usagesError) {
+  const detailColumns = useMemo<ColumnDef<PluginInfo>[]>(
+    () => [
+      {
+        id: 'name',
+        label: 'Plugin Name',
+        defaultSortDir: 'asc',
+        render: (plugin) => <span>{plugin.label || plugin.id}</span>,
+        sortValue: (plugin) => plugin.label || plugin.id,
+      },
+      {
+        id: 'version',
+        label: 'Installed',
+        mono: true,
+        render: (plugin) => plugin.installedVersion || '--',
+        sortValue: (plugin) => plugin.installedVersion || '',
+      },
+      {
+        id: 'latest',
+        label: 'Latest',
+        mono: true,
+        render: (plugin) => plugin.latestVersion || '--',
+        sortValue: (plugin) => plugin.latestVersion || '',
+      },
+      {
+        id: 'type',
+        label: 'Type',
+        render: (plugin) =>
+          plugin.isDev ? (
+            <span className="rounded bg-[var(--neon-purple)]/20 px-1.5 py-0.5 text-xs font-medium text-[var(--neon-purple)]">
+              DEV
+            </span>
+          ) : (
+            <span className="text-[var(--text-muted)]">Installed</span>
+          ),
+        sortValue: (plugin) => (plugin.isDev ? 1 : 0),
+      },
+      {
+        id: 'projectsUsing',
+        label: 'Projects',
+        align: 'right',
+        mono: true,
+        sortValue: (row) => row.projectsUsingCount ?? -1,
+        render: (row) => {
+          if (row.projectsUsingCount == null) {
+            if (usagesPending && !row.usagesError) {
+              return (
+                <span className="text-[var(--text-muted)]" title="Scanning plugin usages…">
+                  …
+                </span>
+              );
+            }
             return (
-              <span className="text-[var(--text-muted)]" title="Scanning plugin usages…">
-                …
+              <span
+                className="text-[var(--text-muted)]"
+                title={
+                  row.usagesError
+                    ? `Usage scan failed: ${row.usagesError}`
+                    : 'Usage scan unavailable'
+                }
+              >
+                ?
               </span>
             );
           }
+          const count = row.projectsUsingCount;
+          if (count === 0) {
+            return <span className="text-[var(--text-muted)]">0</span>;
+          }
+          if (!onOpenUsage) {
+            return <span>{count}</span>;
+          }
           return (
-            <span
-              className="text-[var(--text-muted)]"
-              title={row.usagesError ? `Usage scan failed: ${row.usagesError}` : 'Usage scan unavailable'}
+            <button
+              type="button"
+              onClick={() => onOpenUsage(row)}
+              className={COUNT_BUTTON_CLASS}
+              aria-label={`Show ${count} project${count === 1 ? '' : 's'} using ${row.label || row.id}`}
             >
-              ?
-            </span>
+              {count}
+            </button>
           );
-        }
-        const count = row.projectsUsingCount;
-        if (count === 0) {
-          return <span className="text-[var(--text-muted)]">0</span>;
-        }
-        if (!onOpenUsage) {
-          return <span>{count}</span>;
-        }
-        return (
-          <button
-            type="button"
-            onClick={() => onOpenUsage(row)}
-            className={COUNT_BUTTON_CLASS}
-            aria-label={`Show ${count} project${count === 1 ? '' : 's'} using ${row.label || row.id}`}
-          >
-            {count}
-          </button>
-        );
+        },
       },
-    },
-  ], [onOpenUsage, usagesPending]);
+    ],
+    [onOpenUsage, usagesPending],
+  );
 
-  const nameOnlyColumns = useMemo<ColumnDef<string>[]>(() => [
-    { id: 'name', label: 'Plugin Name', render: (name) => name },
-  ], []);
+  const nameOnlyColumns = useMemo<ColumnDef<string>[]>(
+    () => [{ id: 'name', label: 'Plugin Name', render: (name) => name }],
+    [],
+  );
 
   if (plugins.length === 0) {
     return null;
@@ -166,9 +174,27 @@ export function PluginsTable({ onOpenUsage }: PluginsTableProps = {}) {
   if (details && details.length > 0) {
     const headerExtra = (
       <div className="px-4 py-3 border-b border-[var(--border-glass)] grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-        <FilterField label="Plugin" options={pluginOptions} value={pluginFilters} onChange={setPluginFilters} placeholder="All plugins" />
-        <FilterField label="Type" options={TYPE_OPTIONS} value={typeFilters} onChange={setTypeFilters} placeholder="All types" />
-        <FilterField label="# Projects" options={projectsOptions} value={projectsFilters} onChange={setProjectsFilters} placeholder="Any count" />
+        <FilterField
+          label="Plugin"
+          options={pluginOptions}
+          value={pluginFilters}
+          onChange={setPluginFilters}
+          placeholder="All plugins"
+        />
+        <FilterField
+          label="Type"
+          options={TYPE_OPTIONS}
+          value={typeFilters}
+          onChange={setTypeFilters}
+          placeholder="All types"
+        />
+        <FilterField
+          label="# Projects"
+          options={projectsOptions}
+          value={projectsFilters}
+          onChange={setProjectsFilters}
+          placeholder="Any count"
+        />
         {hasAnyFilter && (
           <div className="md:col-span-2 xl:col-span-3 flex justify-end">
             <button

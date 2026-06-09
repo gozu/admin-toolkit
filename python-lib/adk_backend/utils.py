@@ -2,7 +2,7 @@
 
 import os
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from adk_backend.context import _THREAD_LOCAL
 from adk_backend.settings import _BACKEND_SETTINGS
@@ -15,6 +15,13 @@ def local_only(view_func):
     have no dependency on the active host's DSS API client. Add between
     @app.route(...) and `def api_*(...)`."""
     view_func._admin_toolkit_local_only = True
+    return view_func
+
+
+def advanced(view_func):
+    """Mark a Flask route as advanced: it is 403'd unless the request carries
+    a valid unlock cookie. Add between @app.route(...) and `def api_*(...)`."""
+    view_func._admin_toolkit_advanced = True
     return view_func
 
 
@@ -89,3 +96,28 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(k): _json_safe(v) for k, v in value.items()}
     return str(value)
+
+
+_SENTINEL = object()
+
+
+def _resolve_nested_path(payload: dict, path: str) -> Any:
+    current: Any = payload
+    for part in path.split('.'):
+        if isinstance(current, dict):
+            current = current.get(part)
+        else:
+            return _SENTINEL
+    return current
+
+
+def _extract_nested_text(payload: Any, *paths: str) -> Optional[str]:
+    if not isinstance(payload, dict):
+        return None
+    for path in paths:
+        value = _resolve_nested_path(payload, path)
+        if value is _SENTINEL:
+            continue
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None

@@ -3,11 +3,12 @@
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor as _BaseThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor as _BaseThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
 import dataiku
 import dataikuapi
+from dateutil import parser as dtparser
 from flask import abort, g, request
 
 from adk_backend.caching import _cache_get
@@ -426,3 +427,107 @@ def _remote_backup_project_key(client: Any, host_id: str) -> str:
 
     return _cache_get(f'remote_backup_project:{host_id}', 300, discover)
 
+
+
+def _client_perform_json(client: Any, method: str, path: str) -> Optional[Any]:
+    if not hasattr(client, '_perform_json'):
+        return None
+
+    # Different DSS client variants expose different signatures.
+    for attempt in (
+        lambda: client._perform_json(method, path),
+        lambda: client._perform_json(path),
+    ):
+        try:
+            response = attempt()
+            if isinstance(response, (dict, list)):
+                return response
+        except Exception:
+            continue
+    return None
+
+
+def _list_projects_catalog(client: Any) -> List[Dict[str, str]]:
+    t_total = time.time()
+    projects = _sdk_fetch(
+        'list_projects',
+        _BACKEND_SETTINGS['cache_ttl_projects'],
+        lambda: _bench_call('list_projects', client.list_projects) or [],
+    )
+    _LOGGER.debug("[perf:catalog] list_projects elapsed=%.0fms count=%d", (time.time() - t_total) * 1000, len(projects))
+    out: List[Dict[str, str]] = []
+    keys: List[str] = []
+    for project in projects:
+        if not isinstance(project, dict):
+            continue
+        key = str(project.get('projectKey') or project.get('key') or project.get('id') or '').strip()
+        if not key:
+            continue
+        entry: Dict[str, Any] = {
+            'key': key,
+            'name': str(project.get('name') or key),
+            'owner': str(project.get('ownerLogin') or project.get('owner') or project.get('ownerName') or 'Unknown'),
+        }
+        out.append(entry)
+        keys.append(key)
+
+    # Fetch last-modified timestamps from git log in parallel (replaces versionTag
+    # which does not reflect webapp edits).
+    # Uses batch cache reads + batch writes to minimize SQL round-trips.
+    if keys:
+        cache = _get_sdk_cache()
+        iid = _sdk_cache_instance_id()
+        ttl = _BACKEND_SETTINGS['cache_ttl_projects']
+
+        # Phase A: L1-only cache check (no SQL — avoids 418 SQL SELECTs on cold cache)
+        cached_logs: Dict[str, Any] = {}
+        uncached_keys: List[str] = []
+        _get_mem = cache.get_mem if hasattr(cache, 'get_mem') else cache.get
+        for key in keys:
+            cached = _get_mem(iid, f'project_git_log:{key}', ttl)
+            if cached is not None:
+                cached_logs[key] = cached
+            else:
+                uncached_keys.append(key)
+        _LOGGER.debug("[perf:catalog] git_log cache hit=%d miss=%d", len(cached_logs), len(uncached_keys))
+
+        # Phase B: fetch uncached git logs from API in parallel
+        fetched_logs: Dict[str, Any] = {}
+        if uncached_keys:
+            def _fetch_git_log(project_key: str) -> Tuple[str, Optional[Any]]:
+                try:
+                    local_client = _thread_client()
+                    return (project_key, local_client.get_project(project_key).get_project_git().log())
+                except Exception:
+                    return (project_key, None)
+
+            workers = min(8, len(uncached_keys))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(_fetch_git_log, k): k for k in uncached_keys}
+                for future in as_completed(futures):
+                    pk, log = future.result()
+                    if log is not None:
+                        fetched_logs[pk] = log
+
+            # Phase C: batch-write to cache
+            if fetched_logs:
+                cache.set_many(iid, {f'project_git_log:{k}': v for k, v in fetched_logs.items()}, ttl)
+
+        # Extract timestamps from all logs
+        all_logs = {**cached_logs, **fetched_logs}
+        ts_map: Dict[str, Optional[int]] = {}
+        for key, log in all_logs.items():
+            try:
+                ts_str = log['entries'][0]['timestamp']
+                ts_map[key] = int(dtparser.isoparse(ts_str).timestamp() * 1000)
+            except Exception:
+                ts_map[key] = None
+        for entry in out:
+            ts = ts_map.get(entry['key'])
+            if ts is not None:
+                entry['lastModifiedOn'] = ts
+        _LOGGER.debug("[perf:catalog] git_log_batch elapsed=%.0fms projects=%d workers=%d cached=%d fetched=%d", (time.time() - t_total) * 1000, len(keys), min(8, len(uncached_keys)) if uncached_keys else 0, len(cached_logs), len(fetched_logs))
+
+    _LOGGER.debug("[perf:catalog] total elapsed=%.0fms", (time.time() - t_total) * 1000)
+    out.sort(key=lambda item: item.get('key') or '')
+    return out

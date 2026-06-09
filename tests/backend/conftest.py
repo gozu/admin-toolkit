@@ -63,12 +63,12 @@ def _reset_backend_singletons_between_tests():
         return
     try:
         from adk_backend import caching as _adk_caching
+        from adk_backend import footprint as _adk_footprint
         backend._CACHE.clear()
         _adk_caching._CACHE_INFLIGHT.clear()
         _adk_caching._CACHE_INFLIGHT_ERRORS.clear()
-        if hasattr(backend, '_FOOTPRINT_STATES'):
-            backend._FOOTPRINT_STATES.clear()
-            backend._FOOTPRINT_STATES['local'] = backend._new_footprint_state()
+        _adk_footprint._FOOTPRINT_STATES.clear()
+        _adk_footprint._FOOTPRINT_STATES['local'] = _adk_footprint._new_footprint_state()
         backend._THREAD_LOCAL.__dict__.clear()
     except Exception:
         pass

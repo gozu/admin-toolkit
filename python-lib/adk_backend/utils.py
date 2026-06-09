@@ -2,7 +2,7 @@
 
 import os
 import time
-from typing import Any
+from typing import Any, Dict
 
 from adk_backend.context import _THREAD_LOCAL
 from adk_backend.settings import _BACKEND_SETTINGS
@@ -59,6 +59,24 @@ def _bench_call(name: str, fn, *args, **kwargs):
     finally:
         _record_benchmark_operation(name, (time.time() - started) * 1000.0, 1)
 
+
+
+def _cex_item_raw(item: Any) -> Dict[str, Any]:
+    raw = getattr(item, '_data', item)
+    return raw if isinstance(raw, dict) else {}
+
+
+def _find_llm_ids(d: Any):
+    """Recursively find all llmId values in a dict/list."""
+    if isinstance(d, dict):
+        for k, v in d.items():
+            if k == 'llmId' and isinstance(v, str) and v:
+                yield v
+            else:
+                yield from _find_llm_ids(v)
+    elif isinstance(d, list):
+        for item in d:
+            yield from _find_llm_ids(item)
 
 
 def _json_safe(value: Any) -> Any:

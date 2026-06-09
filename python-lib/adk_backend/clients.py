@@ -12,7 +12,9 @@ from flask import abort, g, request
 
 from adk_backend.caching import _cache_get
 from adk_backend.context import _THREAD_LOCAL
+from adk_backend.settings import _BACKEND_SETTINGS
 from adk_backend.sysinfo import _dip_home, _safe_read_text
+from adk_backend.utils import _bench_call
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,6 +73,35 @@ def _sdk_fetch(cache_key: str, ttl_seconds: int, fetch_fn, deadline_ts=None):
     result = _get_sdk_cache().get_or_fetch(_sdk_cache_instance_id(), cache_key, ttl_seconds, fetch_fn, deadline_ts)
     _LOGGER.debug("[perf:sdk_cache] GET key=%s elapsed=%.1fms", cache_key, (time.time() - t0) * 1000.0)
     return result
+
+
+def _list_projects_catalog_cheap(client: Any) -> List[Dict[str, str]]:
+    """Cheap catalog: list_projects only, no git-log enrichment.
+
+    Use this when callers only need {key, name, owner}. On large instances
+    this avoids the ~130s per-project git-log walk.
+    """
+    t_total = time.time()
+    projects = _sdk_fetch(
+        'list_projects',
+        _BACKEND_SETTINGS['cache_ttl_projects'],
+        lambda: _bench_call('list_projects', client.list_projects) or [],
+    )
+    out: List[Dict[str, str]] = []
+    for project in projects:
+        if not isinstance(project, dict):
+            continue
+        key = str(project.get('projectKey') or project.get('key') or project.get('id') or '').strip()
+        if not key:
+            continue
+        out.append({
+            'key': key,
+            'name': str(project.get('name') or key),
+            'owner': str(project.get('ownerLogin') or project.get('owner') or project.get('ownerName') or 'Unknown'),
+        })
+    out.sort(key=lambda item: item.get('key') or '')
+    _LOGGER.debug("[perf:catalog_cheap] elapsed=%.0fms count=%d", (time.time() - t_total) * 1000, len(out))
+    return out
 
 
 def _local_thread_client() -> Any:

@@ -1,9 +1,15 @@
 """Stub out DSS-only modules so backend.py can be imported in a plain pytest env."""
 
+import os
 import sys
 import types
 
 import pytest
+
+# python-lib must resolve before (and alongside) the webapps path the test
+# modules add, so `import adk_backend` works under pytest like it does in DSS.
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, os.path.join(_ROOT, 'python-lib'))
 
 
 def _install_dataiku_stub():
@@ -56,9 +62,10 @@ def _reset_backend_singletons_between_tests():
     if backend is None:
         return
     try:
+        from adk_backend import caching as _adk_caching
         backend._CACHE.clear()
-        backend._CACHE_INFLIGHT.clear()
-        backend._CACHE_INFLIGHT_ERRORS.clear()
+        _adk_caching._CACHE_INFLIGHT.clear()
+        _adk_caching._CACHE_INFLIGHT_ERRORS.clear()
         if hasattr(backend, '_FOOTPRINT_STATES'):
             backend._FOOTPRINT_STATES.clear()
             backend._FOOTPRINT_STATES['local'] = backend._new_footprint_state()

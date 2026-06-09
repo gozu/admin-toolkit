@@ -9,6 +9,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, os.path.join(ROOT, 'webapps', 'admin-toolkit'))
 
 import backend  # noqa: E402
+from adk_backend import clients as adk_clients  # noqa: E402
 
 
 class FakeFolderProject:
@@ -62,7 +63,7 @@ def test_managed_folders_use_remote_support_project():
     fake = FakeRemoteClient()
 
     with mock.patch.object(backend, '_resolve_client', return_value=fake), \
-            mock.patch.object(backend, '_remote_host_config', return_value={}):
+            mock.patch.object(adk_clients, '_remote_host_config', return_value={}):
         resp = backend.app.test_client().get(
             '/api/managed-folders',
             headers={'X-DSS-Host-Id': 'tam-global'},
@@ -105,12 +106,12 @@ def test_cache_get_is_scoped_by_active_host():
 def test_thread_pool_propagates_remote_host_to_thread_client():
     remote = NamedClient('remote')
 
-    with mock.patch.object(backend, '_remote_host_config', return_value={
+    with mock.patch.object(adk_clients, '_remote_host_config', return_value={
         'id': 'tam-global',
         'url': 'https://tam-global.example',
         'apiKey': 'secret',
         'verifyTls': True,
-    }), mock.patch.object(backend, '_build_remote_client', return_value=remote):
+    }), mock.patch.object(adk_clients, '_build_remote_client', return_value=remote):
         with backend.app.test_request_context('/api/project-footprint', headers={'X-DSS-Host-Id': 'tam-global'}):
             backend.g.host_id = 'tam-global'
             with backend.ThreadPoolExecutor(max_workers=1) as pool:

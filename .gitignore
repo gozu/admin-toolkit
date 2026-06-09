@@ -135,3 +135,4 @@ security-reviews/
 .dss-base-url
 bestofboth/
 docs/security-gate.html
+.venv

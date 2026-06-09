@@ -46,6 +46,7 @@ import { LogsPage } from '../pages/LogsPage';
 import { SanityCheckPage } from '../pages/SanityCheckPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { InstalledPluginsPage } from '../pages/InstalledPluginsPage';
+import { FeedbackPage } from '../pages/FeedbackPage';
 
 // Lazy-load only the heavy views
 const ToolsContainer = lazy(() =>
@@ -149,6 +150,8 @@ function renderPage(activePage: PageId): React.ReactNode {
       return <K8sInsightsLazy />;
     case 'settings':
       return <SettingsPage />;
+    case 'feedback':
+      return <FeedbackPage />;
     default:
       return <SummaryPage />;
   }

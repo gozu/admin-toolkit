@@ -102,6 +102,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   { id: 'sanity-check', label: 'Sanity Check', section: 'Misc', navSection: 'MISC', keywords: ['sanity', 'check', 'diagnostics', 'api'], reachability: 'always', lifecycle: { fields: ['sanityCheckLoading'] } },
   { id: 'db-health', label: 'DB Health', section: 'Misc', navSection: 'MISC', keywords: ['postgres', 'database', 'vacuum', 'tables', 'runtimedb', 'bloat'], trends: true, tool: true, reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['dbHealthLoading'] } },
   { id: 'report', label: 'Report', section: 'Misc', navSection: 'MISC', keywords: ['report', 'export', 'download'], tool: true, reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['reportLoading'] } },
+  { id: 'feedback', label: 'Feedback', section: 'Misc', navSection: 'MISC', keywords: ['feedback', 'bug', 'idea', 'report', 'suggestion'], reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['feedbackLoading'] } },
 ] as const;
 
 export const MODULE_BY_ID: Readonly<Record<PageId, ModuleDefinition>> = Object.freeze(
@@ -119,7 +120,7 @@ export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'PLUGINS', items: ['plugins-installed', 'plugins'] },
   { title: 'CODE ENVS', items: ['code-envs', 'code-envs-cleaner', 'code-envs-comparison'] },
   { title: 'AI COMPUTE', items: ['container-execs', 'image-cleaner', 'cs-template-replacement', 'llm-audit', 'k8s-insights'] },
-  { title: 'MISC', items: ['settings', 'logs', 'sanity-check', 'db-health', 'report'] },
+  { title: 'MISC', items: ['settings', 'logs', 'sanity-check', 'db-health', 'report', 'feedback'] },
 ] as const;
 
 export const EXPERIMENTAL_PAGES: ReadonlySet<PageId> = new Set(

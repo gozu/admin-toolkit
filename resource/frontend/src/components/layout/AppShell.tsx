@@ -11,6 +11,7 @@ import { RedUnlockModal } from '../RedUnlockModal';
 import { DatasetExportModal } from '../DatasetExportModal';
 import { useRedState, toggleShowRed, hydrateRedStatus } from '../../state/redUnlockStore';
 import { datasetExportConfigStore } from '../../state/datasetExportConfigStore';
+import { feedbackFromPageStore } from '../../state/feedbackFromPage';
 
 const COLLAPSE_BREAKPOINT = 1280;
 const SIDEBAR_COLLAPSED = 56;
@@ -31,7 +32,8 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
   const [showAbout, setShowAbout] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { theme, toggle: toggleTheme } = useTheme();
-  const { state: { parsedData } } = useDiag();
+  const { state, setActivePage } = useDiag();
+  const { parsedData } = state;
   const { authed, showRed } = useRedState();
   const [showUnlock, setShowUnlock] = useState(false);
   const [showDatasetExport, setShowDatasetExport] = useState(false);
@@ -157,6 +159,23 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Feedback — always-visible cyan-outline button (EAP). Distinct from
+              the icon-only toolbar actions; navigates to the Feedback page. */}
+          <button
+            type="button"
+            onClick={() => {
+              if (state.activePage !== 'feedback') feedbackFromPageStore.set(state.activePage);
+              setActivePage('feedback');
+            }}
+            title="Send feedback (bug, idea, or anything else)"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border border-[var(--neon-cyan)] text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)] hover:text-white transition-colors"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            <span className="hidden sm:inline">Feedback</span>
+          </button>
+
           <button
             type="button"
             onClick={handleRefresh}

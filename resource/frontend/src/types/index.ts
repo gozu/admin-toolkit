@@ -763,6 +763,9 @@ export interface ParsedData {
   sanityCheckLoading?: Lifecycle;
   dbHealthLoading?: Lifecycle;
   reportLoading?: Lifecycle;
+  // Static action page — never driven through a load ritual; declared only to
+  // satisfy the registry/lifecycle contract (mirrors reportLoading/dbHealthLoading).
+  feedbackLoading?: Lifecycle;
   pythonVersionCounts?: Record<string, number>;
   rVersionCounts?: Record<string, number>;
   totalEnvCount?: number;
@@ -1385,7 +1388,8 @@ export type PageId =
   | 'image-cleaner'
   | 'llm-audit'
   | 'k8s-insights'
-  | 'settings';
+  | 'settings'
+  | 'feedback';
 
 export type AppMode = 'landing' | 'single' | 'comparison' | 'tools' | 'settings';
 export type ComparisonViewMode = 'delta' | 'side-by-side' | 'tabbed';

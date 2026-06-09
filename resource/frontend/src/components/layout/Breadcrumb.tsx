@@ -35,6 +35,7 @@ const PAGE_SECTION_MAP: Record<PageId, SectionInfo> = {
   'sanity-check': { label: 'Misc', firstPage: 'settings' },
   'db-health': { label: 'Misc', firstPage: 'settings' },
   report: { label: 'Misc', firstPage: 'settings' },
+  feedback: { label: 'Misc', firstPage: 'settings' },
 };
 
 const PAGE_LABELS: Record<PageId, string> = {
@@ -66,6 +67,7 @@ const PAGE_LABELS: Record<PageId, string> = {
   'llm-audit': 'Model Audit',
   'k8s-insights': 'K8s Insights',
   settings: 'Settings',
+  feedback: 'Feedback',
 };
 
 export function Breadcrumb() {

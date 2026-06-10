@@ -147,13 +147,13 @@ export function useApiDataLoader(enabled: boolean, reloadKey = 0) {
         let codeEnvSizesTracked: Promise<PromiseSettledResult<unknown>> | null = null;
 
         log(
-          'Phase 3 strategy: launch code-envs + project-footprint + connection-health in parallel; defer dir-tree until Directory page is opened',
+          'Phase 3 strategy: launch code-envs + project-footprint + connection-health in parallel; stage llm-audit + plugin-usages behind them; defer dir-tree until Directory page is opened',
         );
         const phase3Start = nowMs();
         const heavyStart = nowMs();
         const lowStart = nowMs();
         projectFootprintStarted = true;
-        const heavyGate = Promise.allSettled([
+        const priorityGate = Promise.allSettled([
           runCodeEnvs(ctx, tracker, beSettings, {
             markCodeEnvsDone: () => {
               codeEnvsDone = true;
@@ -167,9 +167,16 @@ export function useApiDataLoader(enabled: boolean, reloadKey = 0) {
               projectFootprintDone = true;
             },
           }),
-          runLlmAudit(ctx, tracker, beSettings),
-          runPluginUsages(ctx, tracker),
         ]);
+        // The DSS API saturates around ~40 concurrent calls (tam-global, 443
+        // projects): llm-audit + plugin-usages running alongside the two
+        // page-gating scans above slows all four. Staging them here unblocks
+        // the Projects/Code Envs pages ~2x sooner and llm-audit itself runs
+        // uncontended.
+        const heavyGate = priorityGate.then(() => {
+          log('Phase 3 stage 2: launching llm-audit + plugin-usages');
+          return Promise.allSettled([runLlmAudit(ctx, tracker, beSettings), runPluginUsages(ctx, tracker)]);
+        });
         const connectionHealthGate = runConnectionHealth(ctx, tracker);
         log('Deferring /api/dir-tree root load until after Phase 3 (background autostart)');
         const lowGate = Promise.allSettled([

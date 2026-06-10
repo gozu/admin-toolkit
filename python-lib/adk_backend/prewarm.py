@@ -1,9 +1,12 @@
 """Startup cache pre-warm: replays the frontend's staged load order against
 the backend itself so the heavy caches are hot before the first page load.
 
-The webapp backend is launched as `python -m dataiku.webapps.backend
-<run-dir>/start_command.json`; that JSON carries the HTTP port the Flask app
-binds, so we self-GET over 127.0.0.1. Self-requests go through the normal
+The webapp backend is launched as `python .../dataiku/webapps/backend.py
+<run-dir>/start_command.json`; that JSON does NOT carry the bound HTTP port
+(only projectKey/webAppId/code/...), so self-requests can't go to
+127.0.0.1:<port>. Instead they ride the DSS server's own
+`/web-apps-backends/<projectKey>/<webAppId>/` proxy, using the local DSS
+client's host + authenticated session. Self-requests go through the normal
 @before_request client resolution (no X-DSS-Host-Id header → local host) and
 _cache_get in-flight coalescing — a user load arriving mid-warm joins the
 in-flight loader instead of triggering a second scan.
@@ -24,7 +27,7 @@ _PREWARM_STARTED = False
 # Introspection for /api/debug/perf: the webapp's own log lines get flooded
 # out of the DSS backend.log tail, so this dict is the only reliable way to
 # see what prewarm did on a live instance.
-_PREWARM_STATUS = {'state': 'not-started', 'port': None, 'stages': {}}
+_PREWARM_STATUS = {'state': 'not-started', 'base': None, 'stages': {}}
 
 # Staged like useApiDataLoader phases 1→3: cheap core data, then the two
 # page-gating scans, then the heavy audits, then the slow sizes tail. The DSS
@@ -40,28 +43,6 @@ _PREWARM_REQUEST_TIMEOUT = 900
 _PREWARM_BOOT_PROBES = 30
 
 
-def _find_port(obj):
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            if 'port' in str(key).lower():
-                try:
-                    port = int(value)
-                except (TypeError, ValueError):
-                    continue
-                if 0 < port < 65536:
-                    return port
-        for value in obj.values():
-            found = _find_port(value)
-            if found:
-                return found
-    elif isinstance(obj, list):
-        for value in obj:
-            found = _find_port(value)
-            if found:
-                return found
-    return None
-
-
 def _shape(obj, depth=0):
     """Compact key:type map for debugging an unrecognized start command."""
     if isinstance(obj, dict):
@@ -73,22 +54,39 @@ def _shape(obj, depth=0):
     return type(obj).__name__
 
 
-def _backend_port():
+def _self_endpoint():
+    """Return (base_url, session) for reaching our own backend through the
+    DSS server's web-apps-backends proxy, or None when undiscoverable."""
+    spec = None
     for arg in reversed(sys.argv):
         if not str(arg).endswith('.json'):
             continue
         try:
             with open(arg, 'r', encoding='utf-8') as fh:
-                payload = json.load(fh)
+                spec = json.load(fh)
+            break
         except Exception as exc:
             _LOGGER.warning("[prewarm] could not read %s: %s", arg, exc)
             _PREWARM_STATUS['readError'] = f'{arg}: {type(exc).__name__}: {str(exc)[:120]}'
-            continue
-        port = _find_port(payload)
-        if port:
-            return port
-        _PREWARM_STATUS['startCommandShape'] = _shape(payload)
-    return None
+    if not isinstance(spec, dict):
+        return None
+    project_key = str(spec.get('projectKey') or '').strip()
+    webapp_id = str(spec.get('webAppId') or '').strip()
+    if not (project_key and webapp_id):
+        _PREWARM_STATUS['startCommandShape'] = _shape(spec)
+        return None
+    try:
+        import dataiku
+        client = dataiku.api_client()
+        host = str(getattr(client, 'host', '') or '').rstrip('/')
+        session = getattr(client, '_session', None)
+    except Exception as exc:
+        _PREWARM_STATUS['clientError'] = f'{type(exc).__name__}: {str(exc)[:120]}'
+        return None
+    if not host or session is None:
+        _PREWARM_STATUS['clientError'] = f'host={host!r} session={session is not None}'
+        return None
+    return f'{host}/web-apps-backends/{project_key}/{webapp_id}', session
 
 
 def _warm_one(session, base, path):
@@ -100,11 +98,8 @@ def _warm_one(session, base, path):
         _LOGGER.warning("[prewarm] %s failed after %.1fs: %s", path, time.time() - started, exc)
 
 
-def _prewarm_worker(port):
+def _prewarm_worker(base, session):
     try:
-        import requests
-        base = f"http://127.0.0.1:{port}"
-        session = requests.Session()
         _PREWARM_STATUS['state'] = 'probing'
         for _ in range(_PREWARM_BOOT_PROBES):
             try:
@@ -114,7 +109,7 @@ def _prewarm_worker(port):
                 _PREWARM_STATUS['lastProbeError'] = f'{type(exc).__name__}: {str(exc)[:120]}'
             time.sleep(2)
         else:
-            _LOGGER.warning("[prewarm] backend never answered /api/mode on port %s — skipping", port)
+            _LOGGER.warning("[prewarm] backend never answered /api/mode via %s — skipping", base)
             _PREWARM_STATUS['state'] = 'backend-unreachable'
             return
 
@@ -147,13 +142,14 @@ def start_cache_prewarm():
         _LOGGER.info("[prewarm] disabled via prewarm_on_start=0")
         _PREWARM_STATUS['state'] = 'disabled'
         return
-    port = _backend_port()
-    _PREWARM_STATUS['port'] = port
-    if not port:
-        _LOGGER.warning("[prewarm] backend port not found in start command — skipping")
-        _PREWARM_STATUS['state'] = 'no-port'
+    endpoint = _self_endpoint()
+    if endpoint is None:
+        _LOGGER.warning("[prewarm] self endpoint not discoverable — skipping")
+        _PREWARM_STATUS['state'] = 'no-endpoint'
         _PREWARM_STATUS['argv'] = [str(a) for a in sys.argv][:12]
         return
-    _LOGGER.info("[prewarm] starting on port %s", port)
+    base, session = endpoint
+    _PREWARM_STATUS['base'] = base
+    _LOGGER.info("[prewarm] starting via %s", base)
     _PREWARM_STATUS['state'] = 'spawned'
-    threading.Thread(target=_prewarm_worker, args=(port,), name='cache-prewarm', daemon=True).start()
+    threading.Thread(target=_prewarm_worker, args=(base, session), name='cache-prewarm', daemon=True).start()

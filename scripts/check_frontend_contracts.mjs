@@ -29,7 +29,18 @@ const containerExecsStore = read('src/state/containerExecsStore.ts');
 const healthScoreCard = read('src/components/HealthScoreCard.tsx');
 const progressIndicator = read('src/components/common/ProgressIndicator.tsx');
 const sseStream = read('src/utils/sseStream.ts');
-const useApiDataLoader = read('src/hooks/useApiDataLoader.ts');
+// The live-mode loader is the orchestrator hook plus its per-domain modules
+// under src/hooks/apiLoader/ — concatenate them so the SSE/track()/aggregate
+// contracts keep covering the whole loader after the god-hook split.
+const useApiDataLoader = [
+  'src/hooks/useApiDataLoader.ts',
+  ...fs
+    .readdirSync(path.join(root, 'src/hooks/apiLoader'))
+    .filter((f) => f.endsWith('.ts'))
+    .map((f) => path.join('src/hooks/apiLoader', f)),
+]
+  .map((f) => read(f))
+  .join('\n');
 
 const pageUnion = types.match(/export type PageId =([\s\S]*?);/);
 const pageIds = pageUnion
@@ -175,6 +186,7 @@ const sseParserCallsites = [
   'src/components/ConnectionHealthCard.tsx',
   'src/components/ConnectionUsageCard.tsx',
   'src/hooks/useApiDataLoader.ts',
+  'src/hooks/apiLoader/secondary.ts',
 ];
 
 for (const file of sseParserCallsites) {

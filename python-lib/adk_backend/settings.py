@@ -46,6 +46,8 @@ _BACKEND_SETTINGS: Dict[str, Any] = {
     'sqlite_connect_timeout': 30,
     # Codenvclean
     'codenvclean_thread_max': 20,
+    # Startup cache pre-warm (adk_backend.prewarm)
+    'prewarm_on_start': 1,
 }
 _BACKEND_SETTINGS_LOCK = threading.Lock()
 

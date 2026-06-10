@@ -44,6 +44,7 @@ _PERF_MAP = {
     'perf_cache_ttl_projects': ('cache_ttl_projects', int),
     'perf_cache_ttl_code_envs': ('cache_ttl_code_envs', int),
     'perf_codenvclean_thread_max': ('codenvclean_thread_max', int),
+    'perf_prewarm_on_start': ('prewarm_on_start', int),
     'perf_cache_ttl_connections': ('cache_ttl_connections', int),
     'perf_cache_ttl_users': ('cache_ttl_users', int),
     'perf_cache_ttl_license': ('cache_ttl_license', int),

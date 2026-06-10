@@ -180,3 +180,8 @@ app.register_blueprint(overview_bp)
 app.register_blueprint(plugins_bp)
 app.register_blueprint(projects_bp)
 app.register_blueprint(settings_bp)
+
+# Warm the heavy caches in the background so the first page load after a
+# backend (re)start hits hot data instead of paying the full scan cost.
+from adk_backend.prewarm import start_cache_prewarm
+start_cache_prewarm()

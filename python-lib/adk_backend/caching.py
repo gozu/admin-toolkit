@@ -44,7 +44,10 @@ class CacheLoaderTimeout(Exception):
         self.timeout = timeout
 
 
-_CACHE_WAIT_TIMEOUT = 45.0
+# With startup pre-warm, a first user request routinely joins an in-flight
+# heavy loader (llm-audit/plugin-usages run ~40-60s on large instances), so
+# the waiter budget must comfortably exceed the slowest warmed endpoint.
+_CACHE_WAIT_TIMEOUT = 120.0
 
 
 def _cache_host_id() -> str:

@@ -42,9 +42,14 @@ _PREWARM_BOOT_PROBES = 30
 
 def _find_port(obj):
     if isinstance(obj, dict):
-        port = obj.get('port')
-        if isinstance(port, int):
-            return port
+        for key, value in obj.items():
+            if 'port' in str(key).lower():
+                try:
+                    port = int(value)
+                except (TypeError, ValueError):
+                    continue
+                if 0 < port < 65536:
+                    return port
         for value in obj.values():
             found = _find_port(value)
             if found:
@@ -57,15 +62,32 @@ def _find_port(obj):
     return None
 
 
+def _shape(obj, depth=0):
+    """Compact key:type map for debugging an unrecognized start command."""
+    if isinstance(obj, dict):
+        if depth >= 2:
+            return {str(k): type(v).__name__ for k, v in obj.items()}
+        return {str(k): _shape(v, depth + 1) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_shape(v, depth + 1) for v in obj[:3]]
+    return type(obj).__name__
+
+
 def _backend_port():
     for arg in reversed(sys.argv):
         if not str(arg).endswith('.json'):
             continue
         try:
             with open(arg, 'r', encoding='utf-8') as fh:
-                return _find_port(json.load(fh))
+                payload = json.load(fh)
         except Exception as exc:
             _LOGGER.warning("[prewarm] could not read %s: %s", arg, exc)
+            _PREWARM_STATUS['readError'] = f'{arg}: {type(exc).__name__}: {str(exc)[:120]}'
+            continue
+        port = _find_port(payload)
+        if port:
+            return port
+        _PREWARM_STATUS['startCommandShape'] = _shape(payload)
     return None
 
 

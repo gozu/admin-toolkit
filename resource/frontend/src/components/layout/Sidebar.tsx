@@ -794,7 +794,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
 
   return (
     <aside
-      className="flex flex-col h-full bg-[var(--bg-sidebar)] border-r border-[var(--border-default)] overflow-hidden"
+      className="flex flex-col h-full fx-sidebar-glass border-r border-[var(--border-default)] overflow-hidden"
     >
       {/* Host picker + collapse toggle */}
       <div className={`flex items-center px-4 ${collapsed ? 'flex-col gap-1.5 px-2 py-3' : 'justify-between h-11'}`}>

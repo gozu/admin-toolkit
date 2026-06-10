@@ -131,11 +131,11 @@ function CommandPaletteContent({ onClose }: { onClose: () => void }) {
       onClick={handleBackdropClick}
     >
       <motion.div
-        className="w-[560px] max-w-[90vw] rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-2xl overflow-hidden"
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
+        className="w-[560px] max-w-[90vw] rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)]/85 backdrop-blur-2xl shadow-2xl overflow-hidden"
+        initial={{ opacity: 0, scale: 0.92, y: -14 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: -8, transition: { duration: 0.1 } }}
+        transition={{ type: 'spring', stiffness: 380, damping: 28 }}
         onKeyDown={handleKeyDown}
       >
         {/* Search input */}

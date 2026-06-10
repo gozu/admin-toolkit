@@ -27,6 +27,7 @@ import { AppShell } from './components/layout/AppShell';
 import { PageRouter } from './components/layout/PageRouter';
 import { CommandPalette } from './components/CommandPalette';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
+import { FxLayer } from './fx/FxLayer';
 
 // Lazy load comparison components
 const ComparisonUpload = lazy(() => import('./components/comparison/ComparisonUpload').then(m => ({ default: m.ComparisonUpload })));
@@ -161,7 +162,7 @@ function AppContent() {
   } else if (mode === 'comparison') {
     viewKey = 'comparison-upload';
     viewContent = (
-      <div className="min-h-screen flex flex-col bg-[var(--bg-app)]">
+      <div className="min-h-screen flex flex-col bg-transparent">
         <Header showBackButton onBack={handleBackFromComparison} />
         <main className="flex-1 flex items-center justify-center">
           <Suspense fallback={null}>
@@ -173,7 +174,7 @@ function AppContent() {
   } else if (!hasResults) {
     viewKey = 'main';
     viewContent = (
-      <div className="min-h-screen flex flex-col bg-[var(--bg-app)]">
+      <div className="min-h-screen flex flex-col bg-transparent">
         <Header />
         <main className="flex-1 flex items-center justify-center">
           {isLoading ? (
@@ -204,6 +205,7 @@ function AppContent() {
 
   return (
     <>
+      <FxLayer />
       <AnimatePresence mode="wait">
         <motion.div
           key={viewKey}

@@ -137,7 +137,7 @@ export function HostGate({ onEnter }: HostGateProps) {
   const remotes = hosts.filter((h) => h.id !== 'local');
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--bg-app)] text-[var(--text-primary)]">
+    <div className="min-h-screen flex flex-col bg-transparent text-[var(--text-primary)]">
       <header className="px-6 py-5 flex items-center justify-center">
         <div className="flex items-center gap-3">
           <img src={dkulogo} alt="Dataiku" className="h-9 w-9 shrink-0" />

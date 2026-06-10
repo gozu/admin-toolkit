@@ -78,7 +78,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
 
   return (
     <div
-      className="h-screen overflow-hidden bg-[var(--bg-app)]"
+      className="h-screen overflow-hidden bg-transparent"
       style={{
         display: 'grid',
         gridTemplateColumns: collapsed ? `${SIDEBAR_COLLAPSED}px 1fr` : 'auto 1fr',
@@ -96,7 +96,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
       </motion.div>
 
       {/* Top bar */}
-      <header className="relative flex items-center justify-between px-5 py-1 border-b border-[var(--border-default)] bg-[var(--bg-surface)]">
+      <header className="relative flex items-center justify-between px-5 py-1 border-b border-[var(--border-default)] fx-header-glass">
         <Breadcrumb />
 
         {/* Center branding */}
@@ -242,7 +242,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
           {/* Theme toggle */}
           <button
             type="button"
-            onClick={toggleTheme}
+            onClick={(e) => toggleTheme(e)}
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             className={toolbarButtonClass}
           >
@@ -302,7 +302,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
       </header>
 
       {/* Main content area — scrollable */}
-      <main className="overflow-y-auto bg-[var(--bg-app)] flex flex-col relative">
+      <main className="overflow-y-auto bg-transparent flex flex-col relative">
         {children}
       </main>
 

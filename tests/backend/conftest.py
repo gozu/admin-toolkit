@@ -64,7 +64,7 @@ def _reset_backend_singletons_between_tests():
     try:
         from adk_backend import caching as _adk_caching
         from adk_backend import footprint as _adk_footprint
-        backend._CACHE.clear()
+        _adk_caching._CACHE.clear()
         _adk_caching._CACHE_INFLIGHT.clear()
         _adk_caching._CACHE_INFLIGHT_ERRORS.clear()
         _adk_footprint._FOOTPRINT_STATES.clear()

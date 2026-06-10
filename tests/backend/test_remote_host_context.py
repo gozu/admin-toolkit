@@ -91,7 +91,8 @@ port = 11200
 
 
 def test_cache_get_is_scoped_by_active_host():
-    backend._CACHE.clear()
+    from adk_backend.caching import _CACHE
+    _CACHE.clear()
     with backend.app.test_request_context('/api/overview', headers={'X-DSS-Host-Id': 'local'}):
         backend.g.host_id = 'local'
         assert backend._cache_get('overview', 60, lambda: {'host': 'local'}) == {'host': 'local'}

@@ -43,7 +43,7 @@ from adk_backend.progress import (
 from adk_backend.settings import _BACKEND_SETTINGS
 from adk_backend.sysinfo import _format_size_human
 from adk_backend.usage_scan import _get_shared_project_code_env_usage
-from adk_backend.utils import _coerce_float, _coerce_int, _parallel_workers
+from adk_backend.utils import _coerce_float, _coerce_int, _coerce_progress_params, _parallel_workers
 
 bp = Blueprint('footprint', __name__)
 
@@ -956,13 +956,6 @@ def api_project_footprint_progress():
     since_raw = request.args.get('since', '0')
     run_id = request.args.get('runId')
     rows_since_raw = request.args.get('rowsSince', '0')
-    try:
-        since = max(0, int(str(since_raw or '0')))
-    except Exception:
-        since = 0
-    try:
-        rows_since = max(0, int(str(rows_since_raw or '0')))
-    except Exception:
-        rows_since = 0
+    since, rows_since = _coerce_progress_params(since_raw, rows_since_raw)
     payload = _read_progress('project_footprint', since=since, run_id=run_id, rows_since=rows_since)
     return jsonify(payload)

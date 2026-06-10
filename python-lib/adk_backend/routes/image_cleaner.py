@@ -13,14 +13,14 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import dataiku
-from flask import Blueprint, Response, g, jsonify, request, stream_with_context
+from flask import Blueprint, g, jsonify, request
 
 from adk_backend.caching import _cache_get
 from adk_backend.clients import ThreadPoolExecutor, _safe_request_host_id
 from adk_backend.macros import _host_metrics_macro, _image_cleaner_macro
 from adk_backend.settings import _BACKEND_SETTINGS
 from adk_backend.sysinfo import _dip_home, _safe_read_json
-from adk_backend.utils import advanced
+from adk_backend.utils import _sse_response, advanced
 
 bp = Blueprint('image_cleaner', __name__)
 _LOGGER = logging.getLogger(__name__)
@@ -876,8 +876,7 @@ def api_image_cleaner_scan():
                 yield "event: repo\ndata: %s\n\n" % json.dumps(repo)
             yield "event: done\ndata: %s\n\n" % json.dumps({"total_ms": int((time.time()-t0)*1000)})
 
-        return Response(stream_with_context(generate_remote()), mimetype='text/event-stream',
-                        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+        return _sse_response(generate_remote)
 
     def generate():
         t0 = time.time()
@@ -925,8 +924,7 @@ def api_image_cleaner_scan():
 
         yield "event: done\ndata: %s\n\n" % json.dumps({"total_ms": int((time.time()-t0)*1000)})
 
-    return Response(stream_with_context(generate()), mimetype='text/event-stream',
-                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+    return _sse_response(generate)
 
 
 @bp.route('/api/tools/image-cleaner/delete', methods=['POST'])

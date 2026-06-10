@@ -13,7 +13,7 @@ import time
 from concurrent.futures import as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Blueprint, Response, g, jsonify, request, stream_with_context
+from flask import Blueprint, g, jsonify, request
 
 from adk_backend.caching import _cache_get, _cache_pop
 from adk_backend.clients import (
@@ -25,7 +25,7 @@ from adk_backend.clients import (
     _thread_client,
 )
 from adk_backend.settings import _BACKEND_SETTINGS, _outreach_thresholds
-from adk_backend.utils import _SENTINEL, _resolve_nested_path, advanced
+from adk_backend.utils import _SENTINEL, _resolve_nested_path, _sse_response, advanced
 
 bp = Blueprint('projects', __name__)
 
@@ -325,10 +325,7 @@ def api_sql_pushdown_audit():
             'scannedProjectCount': len(project_keys),
         })
 
-    return Response(stream_with_context(generate()),
-        mimetype='text/event-stream',
-        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
-    )
+    return _sse_response(generate)
 
 
 @bp.route('/api/users')

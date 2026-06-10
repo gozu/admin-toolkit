@@ -14,7 +14,7 @@ import time
 from concurrent.futures import as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Blueprint, Response, g, jsonify, stream_with_context
+from flask import Blueprint, g, jsonify
 
 from adk_backend.caching import _cache_get, _get_session_epoch
 from adk_backend.clients import (
@@ -25,7 +25,7 @@ from adk_backend.clients import (
     _thread_client,
 )
 from adk_backend.settings import _BACKEND_SETTINGS
-from adk_backend.utils import _cex_item_raw, _find_llm_ids
+from adk_backend.utils import _cex_item_raw, _find_llm_ids, _sse_response
 
 bp = Blueprint('connections', __name__)
 
@@ -312,10 +312,7 @@ def api_connection_health():
             _CONN_HEALTH_MEMO[memo_key] = {'results': collected_results, 'done': done_payload}
         yield "event: done\ndata: %s\n\n" % json.dumps(done_payload)
 
-    return Response(stream_with_context(generate()),
-        mimetype='text/event-stream',
-        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
-    )
+    return _sse_response(generate)
 
 
 @bp.route('/api/connections/usages')
@@ -635,7 +632,4 @@ def api_connection_usages():
             ),
         })
 
-    return Response(stream_with_context(generate()),
-        mimetype='text/event-stream',
-        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
-    )
+    return _sse_response(generate)

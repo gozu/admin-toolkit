@@ -2,7 +2,9 @@
 
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
+
+from flask import Response, stream_with_context
 
 from adk_backend.context import _THREAD_LOCAL
 from adk_backend.settings import _BACKEND_SETTINGS
@@ -37,6 +39,27 @@ def _coerce_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return default
+
+
+def _coerce_progress_params(since_raw: Any, rows_since_raw: Any) -> Tuple[int, int]:
+    """Parse the since/rowsSince progress-poll params (0 on garbage)."""
+    try:
+        since = max(0, int(str(since_raw or '0')))
+    except Exception:
+        since = 0
+    try:
+        rows_since = max(0, int(str(rows_since_raw or '0')))
+    except Exception:
+        rows_since = 0
+    return since, rows_since
+
+
+def _sse_response(generate) -> Response:
+    """Standard SSE Response wrapper (mimetype + no-cache/no-buffer headers)."""
+    return Response(stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+    )
 
 
 def _parallel_workers(default: int = 8) -> int:

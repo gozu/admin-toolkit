@@ -7,7 +7,7 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from flask import Blueprint, Response, g, jsonify, request, stream_with_context
+from flask import Blueprint, g, jsonify, request
 
 from adk_backend.caching import (
     _CACHE,
@@ -20,7 +20,7 @@ from adk_backend.caching import (
 from adk_backend.clients import _list_projects_catalog_cheap
 from adk_backend.context import _THREAD_LOCAL
 from adk_backend.settings import _BACKEND_SETTINGS
-from adk_backend.utils import _cex_item_raw, advanced
+from adk_backend.utils import _cex_item_raw, _sse_response, advanced
 
 bp = Blueprint('container_execs', __name__)
 _LOGGER = logging.getLogger(__name__)
@@ -873,10 +873,7 @@ def api_container_execs_stream():
             if event_name == 'error':
                 break
 
-    return Response(stream_with_context(generate()),
-        mimetype='text/event-stream',
-        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
-    )
+    return _sse_response(generate)
 
 
 @bp.route('/api/container-execs/replace', methods=['POST'])

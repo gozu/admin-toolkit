@@ -17,7 +17,7 @@ import zipfile
 from concurrent.futures import TimeoutError as FuturesTimeoutError, as_completed
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from flask import Blueprint, Response, g, jsonify, request, stream_with_context
+from flask import Blueprint, g, jsonify, request
 
 from adk_backend.caching import _cache_get, _cache_pop, _clear_shared_project_code_env_usage
 from adk_backend.clients import (
@@ -54,8 +54,10 @@ from adk_backend.usage_scan import (
 from adk_backend.utils import (
     _bench_call,
     _coerce_int,
+    _coerce_progress_params,
     _extract_nested_text,
     _parallel_workers,
+    _sse_response,
     advanced,
 )
 
@@ -758,14 +760,7 @@ def api_code_envs_progress():
     since_raw = request.args.get('since', '0')
     run_id = request.args.get('runId')
     rows_since_raw = request.args.get('rowsSince', '0')
-    try:
-        since = max(0, int(str(since_raw or '0')))
-    except Exception:
-        since = 0
-    try:
-        rows_since = max(0, int(str(rows_since_raw or '0')))
-    except Exception:
-        rows_since = 0
+    since, rows_since = _coerce_progress_params(since_raw, rows_since_raw)
     payload = _read_progress('code_envs', since=since, run_id=run_id, rows_since=rows_since)
     return jsonify(payload)
 
@@ -1027,13 +1022,7 @@ def api_code_env_cleaner_scan():
         total_ms = int((time.time() - t0) * 1000)
         yield "event: done\ndata: %s\n\n" % json.dumps({"total_ms": total_ms})
 
-    return Response(stream_with_context(generate()),
-        mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    return _sse_response(generate)
 
 
 @bp.route('/api/tools/code-env-cleaner/<lang>/<name>', methods=['DELETE'])

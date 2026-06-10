@@ -5,11 +5,12 @@ import queue
 import threading
 from typing import Any, Dict, List, Optional
 
-from flask import Blueprint, Response, g, jsonify, request, stream_with_context
+from flask import Blueprint, Response, g, jsonify, request
 
 from adk_backend.clients import MacroProjectMissing
 from adk_backend.context import _THREAD_LOCAL
 from adk_backend.macros import _k8s_insights_macro
+from adk_backend.utils import _sse_response
 
 bp = Blueprint('k8s_insights', __name__)
 _LOGGER = logging.getLogger(__name__)
@@ -210,9 +211,6 @@ def api_k8s_insights_stream():
             if event_name in ('done', 'error'):
                 break
 
-    return Response(stream_with_context(generate()),
-        mimetype='text/event-stream',
-        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
-    )
+    return _sse_response(generate)
 
 

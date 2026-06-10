@@ -9,7 +9,7 @@ from concurrent.futures import as_completed
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from flask import Blueprint, Response, g, jsonify, request, stream_with_context
+from flask import Blueprint, g, jsonify, request
 
 from adk_backend.caching import CacheLoaderTimeout, _cache_get
 from adk_backend.clients import ThreadPoolExecutor, _local_toolkit_project
@@ -24,7 +24,7 @@ from adk_backend.progress import (
 )
 from adk_backend.settings import _BACKEND_SETTINGS
 from adk_backend.sysinfo import _dip_home, _safe_read_text
-from adk_backend.utils import _find_llm_ids
+from adk_backend.utils import _coerce_progress_params, _find_llm_ids, _sse_response
 
 bp = Blueprint('llm_tools', __name__)
 
@@ -488,14 +488,7 @@ def api_llm_audit_progress():
     since_raw = request.args.get('since', '0')
     run_id = request.args.get('runId')
     rows_since_raw = request.args.get('rowsSince', '0')
-    try:
-        since = max(0, int(str(since_raw or '0')))
-    except Exception:
-        since = 0
-    try:
-        rows_since = max(0, int(str(rows_since_raw or '0')))
-    except Exception:
-        rows_since = 0
+    since, rows_since = _coerce_progress_params(since_raw, rows_since_raw)
     payload = _read_progress('llm_audit', since=since, run_id=run_id, rows_since=rows_since)
     return jsonify(payload)
 
@@ -612,13 +605,7 @@ def api_logs_ai_analysis():
         except Exception as e:
             yield "event: error\ndata: %s\n\n" % json.dumps({"error": str(e)})
 
-    return Response(stream_with_context(generate()),
-        mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    return _sse_response(generate)
 
 
 @bp.route('/api/report/generate', methods=['POST'])
@@ -787,10 +774,4 @@ def api_report_generate():
         except Exception as e:
             yield "event: error\ndata: %s\n\n" % json.dumps({"error": str(e)})
 
-    return Response(stream_with_context(generate()),
-        mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    return _sse_response(generate)

@@ -162,7 +162,7 @@ function AppContent() {
   } else if (mode === 'comparison') {
     viewKey = 'comparison-upload';
     viewContent = (
-      <div className="min-h-screen flex flex-col bg-transparent">
+      <div className="min-h-screen flex flex-col bg-[var(--bg-app)]">
         <Header showBackButton onBack={handleBackFromComparison} />
         <main className="flex-1 flex items-center justify-center">
           <Suspense fallback={null}>
@@ -174,7 +174,7 @@ function AppContent() {
   } else if (!hasResults) {
     viewKey = 'main';
     viewContent = (
-      <div className="min-h-screen flex flex-col bg-transparent">
+      <div className="min-h-screen flex flex-col bg-[var(--bg-app)]">
         <Header />
         <main className="flex-1 flex items-center justify-center">
           {isLoading ? (

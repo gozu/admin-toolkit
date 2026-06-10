@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { useTableFilter } from '../hooks/useTableFilter';
 import { useCollapsible } from '../hooks/useCollapsible';
+import { RollingNumber } from './common/RollingNumber';
 
 type CardVariant = 'default' | 'elevated' | 'inset' | 'critical' | 'warning' | 'compact' | 'hero';
 type CardSize = '1x1' | '2x1' | '2x2' | '3x1' | '4x1';
@@ -147,7 +148,7 @@ export function Card({
               </h4>
               {itemCount !== undefined && (
                 <span className={`px-2 py-0.5 text-xs font-mono font-medium rounded-full ${countBadgeStyles[variant]}`}>
-                  {itemCount}
+                  <RollingNumber value={itemCount} />
                 </span>
               )}
             </div>

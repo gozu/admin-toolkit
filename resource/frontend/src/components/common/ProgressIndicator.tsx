@@ -200,7 +200,9 @@ export function ProgressIndicator({
           className={
             indeterminate
               ? `h-full w-full rounded-full ${colors.fill} animate-pulse motion-reduce:animate-none`
-              : `h-full rounded-full ${colors.fill} transition-[width] duration-300 ease-out motion-reduce:transition-none`
+              : `h-full rounded-full ${colors.fill} transition-[width] duration-300 ease-out motion-reduce:transition-none${
+                  tone === 'active' ? ' progress-sheen' : ''
+                }`
           }
           style={indeterminate ? undefined : { width: `${progressPct}%` }}
         />

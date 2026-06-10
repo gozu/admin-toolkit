@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState } from 'react';
+import { RollingNumber } from './common/RollingNumber';
 import type { HealthScore, HealthIssue, HealthSeverity, HealthCategoryScore, HealthCategory } from '../types';
 import { HEALTH_FACTOR_CONTROLS, type HealthFactorKey, type HealthFactorToggles } from '../hooks/useHealthScore';
 
@@ -213,7 +214,7 @@ function ScoreGauge({ score, status, calculating }: { score: number; status: Hea
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5, delay: 0.3 }}
         >
-          {score}
+          <RollingNumber value={score} />
         </motion.span>
         <span className="text-xs text-[var(--text-muted)] uppercase tracking-wider">Score</span>
       </div>

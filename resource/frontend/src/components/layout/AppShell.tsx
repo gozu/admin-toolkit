@@ -78,7 +78,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
 
   return (
     <div
-      className="h-screen overflow-hidden bg-transparent"
+      className="h-screen overflow-hidden bg-[var(--bg-app)]"
       style={{
         display: 'grid',
         gridTemplateColumns: collapsed ? `${SIDEBAR_COLLAPSED}px 1fr` : 'auto 1fr',
@@ -92,11 +92,23 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         transition={{ type: 'spring', stiffness: 400, damping: 35 }}
         style={{ minWidth: collapsed ? SIDEBAR_COLLAPSED : undefined }}
       >
-        <Sidebar collapsed={collapsed} onToggleCollapse={() => setCollapsed((prev) => !prev)} onBackToHosts={onBackToHosts} />
+        {/* One-time entrance: the shell builds itself — sidebar glides in… */}
+        <motion.div
+          className="h-full"
+          initial={{ x: -20, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <Sidebar collapsed={collapsed} onToggleCollapse={() => setCollapsed((prev) => !prev)} onBackToHosts={onBackToHosts} />
+        </motion.div>
       </motion.div>
 
-      {/* Top bar */}
-      <header className="relative flex items-center justify-between px-5 py-1 border-b border-[var(--border-default)] fx-header-glass">
+      {/* Top bar — …and the header drops in just behind it */}
+      <motion.header
+        initial={{ y: -14, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.45, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
+        className="relative flex items-center justify-between px-5 py-1 border-b border-[var(--border-default)] bg-[var(--bg-surface)]">
         <Breadcrumb />
 
         {/* Center branding */}
@@ -299,10 +311,10 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
             )}
           </div>
         </div>
-      </header>
+      </motion.header>
 
       {/* Main content area — scrollable */}
-      <main className="overflow-y-auto bg-transparent flex flex-col relative">
+      <main className="overflow-y-auto bg-[var(--bg-app)] flex flex-col relative">
         {children}
       </main>
 

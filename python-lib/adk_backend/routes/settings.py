@@ -97,7 +97,7 @@ def api_settings_benchmark():
     sample at each of `_BENCH_WORKER_LEVELS`, shuffled per level. Same sample
     ⇒ identical project mix per level — disjoint samples were tried and the
     heavy-tailed project sizes drowned the signal in ±10% noise. The chosen
-    level is the smallest within 92% of peak projects/s and is recommended
+    level is the smallest within 95% of peak projects/s and is recommended
     as-is (no staging discount: the measured ceilings are low enough that
     halving would under-provision solo scans). With `apply: true` the
     recommendation is written to the live settings AND persisted to the saved
@@ -141,35 +141,43 @@ def api_settings_benchmark():
     with ThreadPoolExecutor(max_workers=16) as pool:
         list(pool.map(probe, sample_keys))
 
+    # Two sweeps, second in reverse order, best rate per level wins: a single
+    # pass is ±10-20% noisy (the first-measured level pays residual settling)
+    # and the chosen level sat right on that noise boundary.
     bench_started = time.time()
-    levels = []
-    for workers in worker_levels:
-        if time.time() - bench_started > _BENCH_TIME_BUDGET_S:
-            break
-        batch = list(sample_keys)
-        rng.shuffle(batch)
-        batch_started = time.time()
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            outcomes = list(pool.map(probe, batch))
-        elapsed = max(time.time() - batch_started, 1e-6)
-        errors = [err for _lat, err in outcomes if err]
-        latencies = sorted(lat for lat, err in outcomes if not err)
-        levels.append({
-            'concurrency': workers,
-            'calls': len(batch),
-            'errors': len(errors),
-            'errorSample': errors[0] if errors else None,
-            'seconds': round(elapsed, 2),
-            'callsPerSec': round((len(batch) - len(errors)) / elapsed, 1),
-            'medianMs': round(latencies[len(latencies) // 2] * 1000) if latencies else None,
-        })
+    best_by_level = {}
+    for sweep, order in enumerate((worker_levels, list(reversed(worker_levels)))):
+        for workers in order:
+            if time.time() - bench_started > _BENCH_TIME_BUDGET_S:
+                break
+            batch = list(sample_keys)
+            rng.shuffle(batch)
+            batch_started = time.time()
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                outcomes = list(pool.map(probe, batch))
+            elapsed = max(time.time() - batch_started, 1e-6)
+            errors = [err for _lat, err in outcomes if err]
+            latencies = sorted(lat for lat, err in outcomes if not err)
+            row = {
+                'concurrency': workers,
+                'calls': len(batch),
+                'errors': len(errors),
+                'errorSample': errors[0] if errors else None,
+                'seconds': round(elapsed, 2),
+                'callsPerSec': round((len(batch) - len(errors)) / elapsed, 1),
+                'medianMs': round(latencies[len(latencies) // 2] * 1000) if latencies else None,
+            }
+            prev = best_by_level.get(workers)
+            if prev is None or row['callsPerSec'] > prev['callsPerSec']:
+                best_by_level[workers] = row
+    levels = [best_by_level[w] for w in worker_levels if w in best_by_level]
 
     usable = [lv for lv in levels if lv['calls'] - lv['errors'] > 0]
     if not usable:
         return jsonify({'error': 'all-probes-failed', 'levels': levels}), 502
 
     peak = max(lv['callsPerSec'] for lv in usable)
-    chosen = next(lv['concurrency'] for lv in usable if lv['callsPerSec'] >= 0.92 * peak)
+    chosen = next(lv['concurrency'] for lv in usable if lv['callsPerSec'] >= 0.95 * peak)
     with _BACKEND_SETTINGS_LOCK:
         workers_max = _BACKEND_SETTINGS['parallel_workers_max']
     recommended_workers = max(4, min(workers_max, chosen))

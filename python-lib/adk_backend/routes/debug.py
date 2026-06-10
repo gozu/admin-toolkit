@@ -8,6 +8,7 @@ from flask import Blueprint, jsonify
 
 from adk_backend.caching import _cache_peek
 from adk_backend.clients import _get_sdk_cache
+from adk_backend.prewarm import _PREWARM_STATUS
 from adk_backend.progress import _PROGRESS, _PROGRESS_LOCK
 from adk_backend.settings import _BACKEND_SETTINGS, _BACKEND_SETTINGS_LOCK
 
@@ -57,6 +58,7 @@ def api_debug_perf():
         'last_code_envs_benchmark': ce_benchmark,
         'last_project_footprint_benchmark': pf_benchmark,
         'progress_summaries': progress_summaries,
+        'prewarm': dict(_PREWARM_STATUS),
     })
 
 

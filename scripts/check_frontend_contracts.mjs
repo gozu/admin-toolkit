@@ -177,30 +177,37 @@ if (!sidebar.includes('SidebarItemStatus')) {
   fail('Sidebar must render SidebarItemStatus to surface per-row load state via a trailing glyph.');
 }
 
-// SSE parser uniqueness — buffer.split('\n\n') and ^event: regex must only live in sseStream.ts
-const sseParserCallsites = [
-  'src/state/containerExecsStore.ts',
-  'src/state/sqlPushdownScan.ts',
-  'src/state/createModuleScanStore.ts',
-  'src/components/ContainerExecs.tsx',
-  'src/components/ConnectionHealthCard.tsx',
-  'src/components/ConnectionUsageCard.tsx',
-  'src/hooks/useApiDataLoader.ts',
-  'src/hooks/apiLoader/secondary.ts',
-];
-
-for (const file of sseParserCallsites) {
-  let body;
-  try {
-    body = read(file);
-  } catch {
-    continue;
+// SSE parser uniqueness — buffer.split('\n\n') and ^event: regex must only
+// live in sseStream.ts. Scan EVERY source file: the old fixed whitelist let
+// three hand-rolled parsers (ImageCleaner, AiLogAnalysis, useReportGenerator)
+// slip through for months.
+const walkSources = (dir) => {
+  const out = [];
+  for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+    const rel = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...walkSources(rel));
+    else if (/\.(ts|tsx)$/.test(entry.name)) out.push(rel);
   }
+  return out;
+};
+for (const file of walkSources('src')) {
+  if (file.endsWith(path.join('utils', 'sseStream.ts'))) continue;
+  const body = read(file);
   if (body.includes("buffer.split('\\n\\n')")) {
     fail(`${file} must use parseSseStream() — raw SSE parser leaked.`);
   }
-  if (/(^|[^\w])\/\^event:/m.test(body) && !file.endsWith('sseStream.ts')) {
+  if (/(^|[^\w])\/\^event:/m.test(body)) {
     fail(`${file} must not parse SSE 'event:' lines directly; use parseSseStream().`);
+  }
+  // Byte-size formatting must come from utils/formatters.ts — no local
+  // formatBytes/formatGb/formatSizeGb re-implementations (thin local
+  // wrappers that delegate to the canonical util are fine: they contain
+  // no 1024-math of their own).
+  if (
+    !file.endsWith(path.join('utils', 'formatters.ts')) &&
+    /function\s+format(Bytes|Gb|SizeGb)\b[\s\S]{0,200}?1024/.test(body)
+  ) {
+    fail(`${file} re-implements byte-size formatting; import it from utils/formatters.ts.`);
   }
 }
 

@@ -395,3 +395,56 @@ def _find_spark_version(settings: Any) -> Optional[str]:
             if found:
                 return found
     return None
+
+
+def _instance_info_from_install_map(install: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not isinstance(install, dict):
+        return {}
+    normalized = {str(k).strip().lower(): v for k, v in install.items()}
+
+    def pick(*keys: str) -> Any:
+        for key in keys:
+            value = normalized.get(key.lower())
+            if value not in (None, ''):
+                return value
+        return None
+
+    info: Dict[str, Any] = {}
+    node_id = pick('general.nodeid', 'nodeid', 'general.nodeId')
+    install_id = pick('general.installid', 'installid', 'general.installId')
+    instance_url = pick('general.instanceurl', 'instanceurl', 'general.instanceUrl')
+    ssl = pick('server.ssl', 'ssl')
+    port = pick('server.port', 'port')
+    if node_id:
+        info['nodeId'] = node_id
+    if install_id:
+        info['installId'] = install_id
+    if instance_url:
+        info['instanceUrl'] = instance_url
+    if ssl is not None:
+        info['https'] = str(ssl).lower() in ('true', '1', 'yes')
+    if port:
+        info['port'] = port
+    return info
+
+
+def _parse_install_ini_map(text: Optional[str]) -> Dict[str, str]:
+    if not text:
+        return {}
+    out: Dict[str, str] = {}
+    current_section = None
+    for raw in text.split('\n'):
+        line = raw.strip()
+        if not line or line.startswith('#') or line.startswith(';'):
+            continue
+        if line.startswith('[') and line.endswith(']'):
+            current_section = line[1:-1].strip().lower()
+            continue
+        if '=' not in line:
+            continue
+        key, value = [part.strip() for part in line.split('=', 1)]
+        key_l = key.lower()
+        out[key_l] = value
+        if current_section:
+            out[f'{current_section}.{key_l}'] = value
+    return out

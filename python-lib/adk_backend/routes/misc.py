@@ -1,4 +1,4 @@
-"""Misc small routes — mode probe, cache clear, managed-folder listing."""
+"""Misc small routes — mode probe, cache clear, managed-folder + mail-channel listing."""
 from flask import Blueprint, g, jsonify
 
 from adk_backend.caching import (
@@ -7,6 +7,7 @@ from adk_backend.caching import (
 )
 from adk_backend.clients import _active_support_project, _get_sdk_cache, _instance_id
 from adk_backend.footprint import _footprint_reset_negative_cache
+from adk_backend.mail import _get_configured_mail_channel, _list_mail_channels
 
 bp = Blueprint('misc', __name__)
 
@@ -40,4 +41,14 @@ def api_managed_folders():
             {'id': f['id'], 'name': f.get('name') or f['id']}
             for f in folders
         ]
+    })
+
+
+@bp.route('/api/mail-channels')
+def api_mail_channels():
+    client = g.client
+    channels = _list_mail_channels(client)
+    return jsonify({
+        'channels': channels,
+        'configuredMailChannel': _get_configured_mail_channel(),
     })

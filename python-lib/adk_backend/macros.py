@@ -1,0 +1,100 @@
+"""Macro invocation wrappers — run python-runnables/ macros on the active host."""
+from typing import Any, Dict
+
+from adk_backend.clients import _resolve_macro_project
+
+
+# Phase 2: macro invocation IDs. The runnables themselves live at
+# python-runnables/host-metrics/ and python-runnables/dbhealth-query/.
+_HOST_METRICS_MACRO_ID = 'pyrunnable_admin-toolkit_host-metrics'
+_PROCESS_METRICS_MACRO_ID = 'pyrunnable_admin-toolkit_process-metrics'
+_DBHEALTH_MACRO_ID = 'pyrunnable_admin-toolkit_dbhealth-query'
+_IMAGE_CLEANER_MACRO_ID = 'pyrunnable_admin-toolkit_image-cleaner'
+_K8S_INSIGHTS_MACRO_ID = 'pyrunnable_admin-toolkit_k8s-insights'
+
+
+def _host_metrics_macro(client: Any) -> Dict[str, Any]:
+    """Invoke host-metrics macro on the active host. Returns the raw JSON
+    result dict (see python-runnables/host-metrics/runnable.py for shape).
+
+    Raises MacroProjectMissing if ADMINTOOLKIT doesn't exist on the host —
+    the @errorhandler converts that to a 409 the frontend can react to.
+    """
+    project = _resolve_macro_project(client)
+    macro = project.get_macro(_HOST_METRICS_MACRO_ID)
+    run_id = macro.run(params={}, wait=True)
+    result = macro.get_result(run_id, as_type='json')
+    if not isinstance(result, dict):
+        return {'error': f'macro returned non-dict: {type(result).__name__}'}
+    return result
+
+
+def _process_metrics_macro(client: Any) -> Dict[str, Any]:
+    """Invoke process-metrics macro on the active host. Returns the raw JSON
+    result dict (see python-runnables/process-metrics/runnable.py for shape:
+    {ok, processes:[{pid,user,cpuPercent,memPercent,rssKb,vszKb,command}], ...}).
+
+    Raises MacroProjectMissing if ADMINTOOLKIT doesn't exist on the host —
+    the @errorhandler converts that to a 409 the frontend can react to.
+    """
+    project = _resolve_macro_project(client)
+    macro = project.get_macro(_PROCESS_METRICS_MACRO_ID)
+    run_id = macro.run(params={}, wait=True)
+    result = macro.get_result(run_id, as_type='json')
+    if not isinstance(result, dict):
+        return {'ok': False, 'error': f'macro returned non-dict: {type(result).__name__}'}
+    return result
+
+
+def _dbhealth_macro(client: Any, operation: str, **params: Any) -> Dict[str, Any]:
+    """Invoke dbhealth-query macro on the active host.
+
+    operation ∈ {test-password, run-query, list-tables}. Extra params:
+    sql, connection, password — included only when not None.
+    """
+    project = _resolve_macro_project(client)
+    macro = project.get_macro(_DBHEALTH_MACRO_ID)
+    macro_params: Dict[str, Any] = {'operation': operation}
+    for k in ('sql', 'connection', 'password'):
+        v = params.get(k)
+        if v is not None and v != '':
+            macro_params[k] = v
+    run_id = macro.run(params=macro_params, wait=True)
+    result = macro.get_result(run_id, as_type='json')
+    if not isinstance(result, dict):
+        return {'ok': False, 'error': f'macro returned non-dict: {type(result).__name__}'}
+    return result
+
+
+def _image_cleaner_macro(client: Any, operation: str, **params: Any) -> Dict[str, Any]:
+    """Invoke the target-host image-cleaner macro."""
+    project = _resolve_macro_project(client)
+    macro = project.get_macro(_IMAGE_CLEANER_MACRO_ID)
+    macro_params: Dict[str, Any] = {'operation': operation}
+    for key, value in params.items():
+        if value is not None:
+            macro_params[key] = value
+    run_id = macro.run(params=macro_params, wait=True)
+    result = macro.get_result(run_id, as_type='json')
+    if not isinstance(result, dict):
+        return {'ok': False, 'error': f'macro returned non-dict: {type(result).__name__}'}
+    return result
+
+
+def _k8s_insights_macro(client: Any, operation: str = 'audit', **params: Any) -> Dict[str, Any]:
+    """Invoke the K8S Insights macro on the active host.
+
+    operation = 'audit' | 'list-clusters'. For 'audit', pass cluster_id and
+    optional rules_filter via **params.
+    """
+    project = _resolve_macro_project(client)
+    macro = project.get_macro(_K8S_INSIGHTS_MACRO_ID)
+    macro_params: Dict[str, Any] = {'operation': operation}
+    for key, value in params.items():
+        if value is not None and value != '':
+            macro_params[key] = value
+    run_id = macro.run(params=macro_params, wait=True)
+    result = macro.get_result(run_id, as_type='json')
+    if not isinstance(result, dict):
+        return {'ok': False, 'error': f'macro returned non-dict: {type(result).__name__}'}
+    return result

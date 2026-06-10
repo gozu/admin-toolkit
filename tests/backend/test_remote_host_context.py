@@ -120,8 +120,8 @@ def test_thread_pool_propagates_remote_host_to_thread_client():
 
 def test_local_toolkit_client_ignores_remote_thread_context():
     local = NamedClient('local')
-    backend._THREAD_LOCAL.__dict__.clear()
-    backend._THREAD_LOCAL.host_id = 'tam-global'
+    adk_clients._THREAD_LOCAL.__dict__.clear()
+    adk_clients._THREAD_LOCAL.host_id = 'tam-global'
 
     with mock.patch.object(backend.dataiku, 'api_client', return_value=local):
         assert backend._local_toolkit_client().name == 'local'

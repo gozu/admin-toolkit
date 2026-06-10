@@ -113,9 +113,6 @@
   --glass-sidebar: rgba(13, 14, 18, 0.66);
   --glass-header: rgba(11, 12, 16, 0.55);
   --glass-card-bg: rgba(17, 19, 25, 0.55);
-  --glass-card-border: rgba(255, 255, 255, 0.065);
-  --spot-glow: rgba(120, 165, 255, 0.55);
-  --spot-fill: rgba(96, 165, 250, 0.07);
   --grain-opacity: 0.032;
 
   /* -------------------------------------------------------------------------
@@ -304,9 +301,6 @@
   --glass-sidebar: rgba(255, 255, 255, 0.74);
   --glass-header: rgba(255, 255, 255, 0.62);
   --glass-card-bg: rgba(255, 255, 255, 0.68);
-  --glass-card-border: rgba(17, 17, 20, 0.08);
-  --spot-glow: rgba(37, 99, 235, 0.4);
-  --spot-fill: rgba(37, 99, 235, 0.05);
   --grain-opacity: 0.018;
 }
 
@@ -443,11 +437,13 @@ pre,
    Glass Card Effect (Refined)
    ============================================================================= */
 
+/* Frosted glass surface, deliberately borderless — the translucent fill over
+   the aurora defines the card shape; no visible edge at rest (matches the
+   pre-existing no-borders decision). */
 .glass-card,
 .glass-card-elevated {
-  position: relative;
   background: var(--glass-card-bg);
-  border: 1px solid var(--glass-card-border);
+  border: 1px solid transparent;
   border-radius: var(--radius-xl);
   backdrop-filter: blur(14px) saturate(1.25);
   -webkit-backdrop-filter: blur(14px) saturate(1.25);
@@ -455,74 +451,9 @@ pre,
   box-shadow: none;
 }
 
-/* =============================================================================
-   Cursor Spotlight — mouse-tracking interior sheen + border glow.
-   fx/spotlight.ts feeds --spot-x/--spot-y/--spot-o on the hovered surface.
-   ============================================================================= */
-
-.glass-card,
-.glass-card-elevated,
-.metric-card,
-.chart-container,
-.card-alert-critical,
-.card-alert-warning,
-.card-alert-success,
-.card-alert-info {
-  position: relative;
-}
-
-.glass-card::before,
-.glass-card-elevated::before,
-.metric-card::before,
-.chart-container::before,
-.card-alert-critical::before,
-.card-alert-warning::before,
-.card-alert-success::before,
-.card-alert-info::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(
-    420px circle at var(--spot-x, 50%) var(--spot-y, 50%),
-    var(--spot-fill),
-    transparent 65%
-  );
-  opacity: var(--spot-o, 0);
-  transition: opacity 350ms var(--ease-out);
-  pointer-events: none;
-}
-
-.glass-card::after,
-.glass-card-elevated::after,
-.metric-card::after,
-.chart-container::after,
-.card-alert-critical::after,
-.card-alert-warning::after,
-.card-alert-success::after,
-.card-alert-info::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: radial-gradient(
-    300px circle at var(--spot-x, 50%) var(--spot-y, 50%),
-    var(--spot-glow),
-    transparent 70%
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  opacity: var(--spot-o, 0);
-  transition: opacity 250ms var(--ease-out);
-  pointer-events: none;
-  z-index: 1;
+.glass-card:hover,
+.glass-card-elevated:hover {
+  border-color: transparent;
 }
 
 /* =============================================================================
@@ -1422,7 +1353,7 @@ h1, h2, h3, h4 {
 
 .chart-container {
   background: var(--glass-card-bg);
-  border: 1px solid var(--glass-card-border);
+  border: 1px solid transparent;
   border-radius: var(--radius-xl);
   backdrop-filter: blur(14px) saturate(1.25);
   -webkit-backdrop-filter: blur(14px) saturate(1.25);

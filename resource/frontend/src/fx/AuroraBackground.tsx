@@ -20,6 +20,7 @@ uniform vec2 uRes;
 uniform float uTime;
 uniform vec2 uMouse;
 uniform float uFlare;
+uniform float uEnergy;
 uniform float uLight;
 
 float hash(vec2 p) {
@@ -78,7 +79,7 @@ void main() {
   float vfade = smoothstep(-0.1, 0.75, uv.y) * 0.75 + 0.25;
   float vig = 1.0 - 0.45 * length(uv - vec2(0.5, 0.62));
   float glow = (band + wisp * 0.8 * band) * vfade * vig;
-  float amp = 0.055 + uFlare * 0.16;
+  float amp = 0.055 + uFlare * 0.16 + uEnergy * 0.05;
 
   vec3 dark = vec3(0.027, 0.029, 0.038);
   vec3 outDark = dark + col * glow * amp;
@@ -140,6 +141,7 @@ export function AuroraBackground() {
     const uTime = gl.getUniformLocation(prog, 'uTime');
     const uMouse = gl.getUniformLocation(prog, 'uMouse');
     const uFlare = gl.getUniformLocation(prog, 'uFlare');
+    const uEnergy = gl.getUniformLocation(prog, 'uEnergy');
     const uLight = gl.getUniformLocation(prog, 'uLight');
 
     const reduced = prefersReducedMotion();
@@ -153,6 +155,9 @@ export function AuroraBackground() {
     const mouse = { x: 0.5, y: 0.5, tx: 0.5, ty: 0.5 };
     let flare = 0;
     let flareTarget = 0;
+    let energy = 0;
+    let energyTarget = 0;
+    let simTime = 0; // integrated in JS so energy can speed up drift without time jumps
     let light = document.documentElement.getAttribute('data-theme') === 'light' ? 1 : 0;
     let lightTarget = light;
 
@@ -175,6 +180,7 @@ export function AuroraBackground() {
       gl.uniform1f(uTime, timeSec);
       gl.uniform2f(uMouse, mouse.x, 1 - mouse.y);
       gl.uniform1f(uFlare, flare);
+      gl.uniform1f(uEnergy, energy);
       gl.uniform1f(uLight, light);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
@@ -189,8 +195,10 @@ export function AuroraBackground() {
       // Quick attack, slow release.
       flare += (flareTarget - flare) * Math.min(1, dt * (flareTarget > flare ? 10 : 0.55));
       flareTarget = Math.max(0, flareTarget - dt * 0.6);
+      energy += (energyTarget - energy) * Math.min(1, dt * 1.5);
       light += (lightTarget - light) * Math.min(1, dt * 6);
-      draw((now - start) / 1000);
+      simTime += dt * (1 + energy * 0.9);
+      draw(simTime);
       raf = requestAnimationFrame(frame);
     };
 
@@ -212,7 +220,11 @@ export function AuroraBackground() {
     };
     const onFlare = () => {
       flareTarget = 1.25;
-      if (reduced) draw((performance.now() - start) / 1000);
+      if (reduced) draw(137);
+    };
+    const onEnergy = (e: Event) => {
+      const level = (e as CustomEvent<{ level?: number }>).detail?.level;
+      energyTarget = Math.max(0, Math.min(1, typeof level === 'number' ? level : 0));
     };
     const onVisibility = () => {
       if (document.hidden) stopLoop();
@@ -241,6 +253,7 @@ export function AuroraBackground() {
 
     window.addEventListener('pointermove', onPointer, { passive: true });
     window.addEventListener(FX_EVENTS.flare, onFlare);
+    window.addEventListener(FX_EVENTS.energy, onEnergy);
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('resize', onResize);
     canvas.addEventListener('webglcontextlost', onContextLost);
@@ -257,6 +270,7 @@ export function AuroraBackground() {
       themeObserver.disconnect();
       window.removeEventListener('pointermove', onPointer);
       window.removeEventListener(FX_EVENTS.flare, onFlare);
+      window.removeEventListener(FX_EVENTS.energy, onEnergy);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('resize', onResize);
       canvas.removeEventListener('webglcontextlost', onContextLost);

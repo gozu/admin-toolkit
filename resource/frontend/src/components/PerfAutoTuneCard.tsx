@@ -26,9 +26,9 @@ interface BenchResult {
 }
 
 const LEVEL_COLUMNS: ColumnDef<BenchLevel>[] = [
-  { id: 'concurrency', label: 'Concurrency', render: (lv) => lv.concurrency, align: 'right', mono: true },
-  { id: 'callsPerSec', label: 'Calls/s', render: (lv) => lv.callsPerSec, align: 'right', mono: true },
-  { id: 'medianMs', label: 'Median probe ms', render: (lv) => lv.medianMs ?? '—', align: 'right', mono: true },
+  { id: 'concurrency', label: 'Workers', render: (lv) => lv.concurrency, align: 'right', mono: true },
+  { id: 'callsPerSec', label: 'Projects/s', render: (lv) => lv.callsPerSec, align: 'right', mono: true },
+  { id: 'medianMs', label: 'Median project ms', render: (lv) => lv.medianMs ?? '—', align: 'right', mono: true },
   {
     id: 'errors',
     label: 'Errors',
@@ -106,9 +106,9 @@ export function PerfAutoTuneCard() {
       <div>
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">Performance Auto-Tune</h3>
         <p className="text-sm text-[var(--text-muted)]">
-          Benchmarks how many concurrent API calls the active DSS host can serve before throughput
-          flattens, then sizes the scan worker pools from that measurement. Takes ~15–45 seconds and
-          runs read-only, scan-shaped probes (recipe/dataset/scenario lists and recipe payloads).
+          Runs the real footprint scan over disjoint samples of projects at several worker-pool
+          sizes and sizes the scan pools from the measured throughput. Read-only; takes ~15–45
+          seconds on a mid-size instance.
         </p>
       </div>
 
@@ -139,11 +139,11 @@ export function PerfAutoTuneCard() {
       {result && (
         <div className="space-y-2">
           <p className="text-sm text-[var(--text-secondary)]">
-            Throughput flattens at{' '}
+            Scan throughput tops out at{' '}
             <span className="font-mono text-[var(--text-primary)]">{result.kneeConcurrency}</span>{' '}
-            concurrent calls (peak{' '}
+            concurrent project fetches (peak{' '}
             <span className="font-mono text-[var(--text-primary)]">{result.peakCallsPerSec}</span>{' '}
-            calls/s) → recommended{' '}
+            projects/s) → recommended{' '}
             <span className="font-mono text-[var(--text-primary)]">{recommendedWorkers}</span>{' '}
             workers per scan (two heavy scans run at a time).
           </p>

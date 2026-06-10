@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.546",
+    "version": "0.4.547",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit with diagnostics, visualizations, and management tools. Supports multi-instance scanning: configure remote DSS hosts as plugin presets and switch between them from the top-bar dropdown. The toolkit will offer to create an ADMINTOOLKIT project on each host the first time a macro-using module is opened.",

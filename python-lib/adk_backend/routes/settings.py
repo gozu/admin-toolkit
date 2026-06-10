@@ -102,7 +102,7 @@ def api_settings_benchmark():
     halving would under-provision solo scans). With `apply: true` the
     recommendation is written to the live settings AND persisted to the saved
     plugin config."""
-    from adk_backend.routes.footprint import _fetch_project_footprint
+    from adk_backend.clients import _client_perform_json
 
     payload = request.get_json(silent=True) or {}
     do_apply = bool(payload.get('apply'))
@@ -114,9 +114,17 @@ def api_settings_benchmark():
     rng.shuffle(keys)
 
     def probe(project_key):
+        """The footprint scan's per-project DSS call, made directly — NOT via
+        _fetch_project_footprint, whose _sdk_fetch cache layer turns repeat
+        probes into ~0ms local reads and voids the measurement."""
+        client = _thread_client()
         started = time.time()
         try:
-            _fetch_project_footprint(project_key)
+            if hasattr(client, 'get_data_directories_footprint'):
+                client.get_data_directories_footprint().compute_project_footprint(project_key, wait=True)
+            else:
+                _client_perform_json(client, 'GET',
+                                     f'/directories-footprint/projects/{project_key}?summaryOnly=false')
             return time.time() - started, None
         except Exception as exc:
             return time.time() - started, f'{type(exc).__name__}: {str(exc)[:120]}'

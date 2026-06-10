@@ -145,7 +145,7 @@ export function PerfAutoTuneCard() {
             <span className="font-mono text-[var(--text-primary)]">{result.peakCallsPerSec}</span>{' '}
             projects/s) → recommended{' '}
             <span className="font-mono text-[var(--text-primary)]">{recommendedWorkers}</span>{' '}
-            workers per scan (two heavy scans run at a time).
+            workers per scan.
           </p>
           <details className="text-xs text-[var(--text-muted)]">
             <summary className="cursor-pointer select-none">Sweep detail</summary>

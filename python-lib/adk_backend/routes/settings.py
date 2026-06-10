@@ -83,7 +83,6 @@ def api_settings_update():
 # samples at each pool size.
 _BENCH_WORKER_LEVELS = [8, 16, 32]
 _BENCH_TIME_BUDGET_S = 120.0
-_BENCH_WARMUP_PROJECTS = 8
 _BENCH_MAX_PROJECTS_PER_LEVEL = 150
 
 
@@ -93,10 +92,14 @@ def api_settings_benchmark():
     worker settings.
 
     Runs the footprint scan's own per-project fetcher (the heaviest, most
-    representative call mix) over a disjoint random sample of projects at each
-    of `_BENCH_WORKER_LEVELS`. The chosen level is the smallest within 92% of
-    peak projects/s; recommended per-endpoint workers = chosen / 2, because
-    phase-3 staging runs two heavy endpoints at a time. With `apply: true` the
+    representative call mix) over ONE random project sample: a warm pass
+    first (so DSS-side config caches don't bias later levels), then the same
+    sample at each of `_BENCH_WORKER_LEVELS`, shuffled per level. Same sample
+    ⇒ identical project mix per level — disjoint samples were tried and the
+    heavy-tailed project sizes drowned the signal in ±10% noise. The chosen
+    level is the smallest within 92% of peak projects/s and is recommended
+    as-is (no staging discount: the measured ceilings are low enough that
+    halving would under-provision solo scans). With `apply: true` the
     recommendation is written to the live settings AND persisted to the saved
     plugin config."""
     from adk_backend.routes.footprint import _fetch_project_footprint
@@ -118,28 +121,25 @@ def api_settings_benchmark():
         except Exception as exc:
             return time.time() - started, f'{type(exc).__name__}: {str(exc)[:120]}'
 
-    # Warm-up batch (connection setup, server-side caches for shared state) on
-    # projects excluded from the measured samples.
-    warm_keys = keys[:_BENCH_WARMUP_PROJECTS]
-    sample_keys = keys[_BENCH_WARMUP_PROJECTS:]
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        list(pool.map(probe, warm_keys))
-
-    # Disjoint, equal-size samples per level: comparable project mixes without
-    # warm-cache bias between levels. Levels a small instance can't feed
-    # meaningfully (fewer than 3 projects per worker) are dropped.
-    worker_levels = [w for w in _BENCH_WORKER_LEVELS
-                     if len(sample_keys) // len(_BENCH_WORKER_LEVELS) >= w * 3]
+    # One shared sample. Levels a small instance can't feed meaningfully
+    # (fewer than 3 projects per worker) are dropped.
+    sample_keys = keys[:_BENCH_MAX_PROJECTS_PER_LEVEL]
+    worker_levels = [w for w in _BENCH_WORKER_LEVELS if len(sample_keys) >= w * 3]
     worker_levels = worker_levels or [_BENCH_WORKER_LEVELS[0]]
-    per_level = min(len(sample_keys) // len(worker_levels), _BENCH_MAX_PROJECTS_PER_LEVEL)
-    per_level = max(per_level, 1)
+    per_level = len(sample_keys)
+
+    # Warm pass: loads DSS-side project/config caches for the whole sample so
+    # every measured level runs against equally-warm state.
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        list(pool.map(probe, sample_keys))
 
     bench_started = time.time()
     levels = []
-    for index, workers in enumerate(worker_levels):
+    for workers in worker_levels:
         if time.time() - bench_started > _BENCH_TIME_BUDGET_S:
             break
-        batch = sample_keys[index * per_level:(index + 1) * per_level]
+        batch = list(sample_keys)
+        rng.shuffle(batch)
         batch_started = time.time()
         with ThreadPoolExecutor(max_workers=workers) as pool:
             outcomes = list(pool.map(probe, batch))
@@ -164,7 +164,7 @@ def api_settings_benchmark():
     chosen = next(lv['concurrency'] for lv in usable if lv['callsPerSec'] >= 0.92 * peak)
     with _BACKEND_SETTINGS_LOCK:
         workers_max = _BACKEND_SETTINGS['parallel_workers_max']
-    recommended_workers = max(4, min(workers_max, chosen // 2))
+    recommended_workers = max(4, min(workers_max, chosen))
     recommendation = {
         'parallel_workers_default': recommended_workers,
         'code_env_detail_workers': recommended_workers,
@@ -191,7 +191,7 @@ def api_settings_benchmark():
         'applied': applied,
         'persisted': persisted,
         'persistError': persist_error,
-        'projectsProbed': len(warm_keys) + len(worker_levels) * per_level,
+        'projectsProbed': per_level,
         'elapsedSeconds': round(time.time() - bench_started, 1),
     })
 

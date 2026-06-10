@@ -54,9 +54,13 @@ def _shape(obj, depth=0):
     return type(obj).__name__
 
 
-def _self_endpoint():
-    """Return (base_url, session) for reaching our own backend through the
-    DSS server's web-apps-backends proxy, or None when undiscoverable."""
+def _self_candidates():
+    """Return (candidate_base_urls, session) for reaching our own backend
+    through a DSS web-apps-backends proxy, or None when undiscoverable.
+
+    Candidates, in order: the local DSS client's host (internal backend port —
+    may not serve the proxy path on all versions) and the instance's external
+    URL from general settings (provably serves it; it's what browsers use)."""
     spec = None
     for arg in reversed(sys.argv):
         if not str(arg).endswith('.json'):
@@ -83,35 +87,59 @@ def _self_endpoint():
     except Exception as exc:
         _PREWARM_STATUS['clientError'] = f'{type(exc).__name__}: {str(exc)[:120]}'
         return None
-    if not host or session is None:
-        _PREWARM_STATUS['clientError'] = f'host={host!r} session={session is not None}'
+    if session is None:
+        _PREWARM_STATUS['clientError'] = 'no client session'
         return None
-    return f'{host}/web-apps-backends/{project_key}/{webapp_id}', session
+    hosts = [host] if host else []
+    try:
+        external = str((client.get_general_settings().get_raw() or {}).get('studioExternalUrl') or '').rstrip('/')
+        if external and external not in hosts:
+            hosts.append(external)
+    except Exception as exc:
+        _PREWARM_STATUS['generalSettingsError'] = f'{type(exc).__name__}: {str(exc)[:120]}'
+    if not hosts:
+        _PREWARM_STATUS['clientError'] = 'no candidate hosts'
+        return None
+    return [f'{h}/web-apps-backends/{project_key}/{webapp_id}' for h in hosts], session
 
 
 def _warm_one(session, base, path):
     started = time.time()
     try:
-        resp = session.get(base + path, timeout=_PREWARM_REQUEST_TIMEOUT)
+        resp = session.get(base + path, timeout=_PREWARM_REQUEST_TIMEOUT, verify=False)
         _LOGGER.info("[prewarm] %s status=%s elapsed=%.1fs", path, resp.status_code, time.time() - started)
     except Exception as exc:
         _LOGGER.warning("[prewarm] %s failed after %.1fs: %s", path, time.time() - started, exc)
 
 
-def _prewarm_worker(base, session):
+def _prewarm_worker(candidates, session):
     try:
+        try:
+            import urllib3
+            urllib3.disable_warnings()
+        except Exception:
+            pass
         _PREWARM_STATUS['state'] = 'probing'
+        base = None
+        probes = {}
         for _ in range(_PREWARM_BOOT_PROBES):
-            try:
-                if session.get(base + '/api/mode', timeout=5).status_code == 200:
+            for candidate in candidates:
+                try:
+                    probes[candidate] = session.get(candidate + '/api/mode', timeout=5, verify=False).status_code
+                except Exception as exc:
+                    probes[candidate] = f'{type(exc).__name__}: {str(exc)[:80]}'
+                if probes[candidate] == 200:
+                    base = candidate
                     break
-            except Exception as exc:
-                _PREWARM_STATUS['lastProbeError'] = f'{type(exc).__name__}: {str(exc)[:120]}'
+            _PREWARM_STATUS['probes'] = dict(probes)
+            if base:
+                break
             time.sleep(2)
-        else:
-            _LOGGER.warning("[prewarm] backend never answered /api/mode via %s — skipping", base)
+        if not base:
+            _LOGGER.warning("[prewarm] no candidate answered /api/mode (%s) — skipping", probes)
             _PREWARM_STATUS['state'] = 'backend-unreachable'
             return
+        _PREWARM_STATUS['base'] = base
 
         _PREWARM_STATUS['state'] = 'warming'
         total_started = time.time()
@@ -142,14 +170,13 @@ def start_cache_prewarm():
         _LOGGER.info("[prewarm] disabled via prewarm_on_start=0")
         _PREWARM_STATUS['state'] = 'disabled'
         return
-    endpoint = _self_endpoint()
+    endpoint = _self_candidates()
     if endpoint is None:
         _LOGGER.warning("[prewarm] self endpoint not discoverable — skipping")
         _PREWARM_STATUS['state'] = 'no-endpoint'
         _PREWARM_STATUS['argv'] = [str(a) for a in sys.argv][:12]
         return
-    base, session = endpoint
-    _PREWARM_STATUS['base'] = base
-    _LOGGER.info("[prewarm] starting via %s", base)
+    candidates, session = endpoint
+    _LOGGER.info("[prewarm] starting, candidates=%s", candidates)
     _PREWARM_STATUS['state'] = 'spawned'
-    threading.Thread(target=_prewarm_worker, args=(base, session), name='cache-prewarm', daemon=True).start()
+    threading.Thread(target=_prewarm_worker, args=(candidates, session), name='cache-prewarm', daemon=True).start()

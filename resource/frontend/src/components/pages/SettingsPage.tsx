@@ -5,6 +5,7 @@ import { useToggleFlag } from '../../hooks/useToggleFlag';
 import { useRedState, forgetRed } from '../../state/redUnlockStore';
 import { RedUnlockModal } from '../RedUnlockModal';
 import { AlgorithmReviewCard } from '../AlgorithmReviewCard';
+import { PerfAutoTuneCard } from '../PerfAutoTuneCard';
 import { datasetExportConfigStore } from '../../state/datasetExportConfigStore';
 
 export const SELECTED_MAIL_CHANNEL_STORAGE_KEY = 'selectedMailChannel';
@@ -144,6 +145,8 @@ export function SettingsPage() {
           “Advanced Actions secret”. The plaintext never leaves the browser.
         </p>
       </section>
+
+      <PerfAutoTuneCard />
 
       <AlgorithmReviewCard />
 

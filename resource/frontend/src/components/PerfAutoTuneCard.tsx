@@ -28,7 +28,7 @@ interface BenchResult {
 const LEVEL_COLUMNS: ColumnDef<BenchLevel>[] = [
   { id: 'concurrency', label: 'Concurrency', render: (lv) => lv.concurrency, align: 'right', mono: true },
   { id: 'callsPerSec', label: 'Calls/s', render: (lv) => lv.callsPerSec, align: 'right', mono: true },
-  { id: 'medianMs', label: 'Median ms', render: (lv) => lv.medianMs ?? '—', align: 'right', mono: true },
+  { id: 'medianMs', label: 'Median probe ms', render: (lv) => lv.medianMs ?? '—', align: 'right', mono: true },
   {
     id: 'errors',
     label: 'Errors',
@@ -107,8 +107,8 @@ export function PerfAutoTuneCard() {
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">Performance Auto-Tune</h3>
         <p className="text-sm text-[var(--text-muted)]">
           Benchmarks how many concurrent API calls the active DSS host can serve before throughput
-          flattens, then sizes the scan worker pools from that measurement. Takes ~15–30 seconds and
-          fires a few hundred lightweight metadata reads.
+          flattens, then sizes the scan worker pools from that measurement. Takes ~15–45 seconds and
+          runs read-only, scan-shaped probes (recipe/dataset/scenario lists and recipe payloads).
         </p>
       </div>
 

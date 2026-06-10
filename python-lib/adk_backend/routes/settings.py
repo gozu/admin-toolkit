@@ -81,7 +81,7 @@ _BENCH_LEVELS = [4, 8, 16, 24, 32, 48, 64]
 _BENCH_TIME_BUDGET_S = 60.0
 # Each level must sustain load long enough that timing noise doesn't dominate.
 _BENCH_MIN_LEVEL_S = 1.5
-_BENCH_MAX_CALLS_PER_LEVEL = 1200
+_BENCH_MAX_BUNDLES_PER_LEVEL = 300
 
 
 @bp.route('/api/settings/benchmark', methods=['POST'])
@@ -89,13 +89,14 @@ def api_settings_benchmark():
     """Measure the active host's DSS API concurrency ceiling and recommend
     worker-pool sizes.
 
-    Sweeps `_BENCH_LEVELS` pool sizes, each firing per-project recipe-list
-    reads (the call class the heavy scans actually saturate on — metadata GETs
-    are server-cached at ~5ms and never stress the API), and finds the knee:
-    the smallest concurrency reaching ≥90% of peak throughput. Recommended
-    per-endpoint workers = knee / 2, because phase-3 staging runs two heavy
-    endpoints at a time. With `apply: true` the recommendation is written to
-    the live settings AND persisted to the saved plugin config."""
+    Sweeps `_BENCH_LEVELS` pool sizes, each running per-project "scan bundles"
+    — the call mix the heavy scans actually issue (recipe list + recipe
+    payloads + dataset/scenario lists). Cheap single GETs are useless probes:
+    they're served at ~5-20ms from localhost and the curve stays flat. The
+    knee is the smallest concurrency reaching ≥90% of peak API-calls/s.
+    Recommended per-endpoint workers = knee / 2, because phase-3 staging runs
+    two heavy endpoints at a time. With `apply: true` the recommendation is
+    written to the live settings AND persisted to the saved plugin config."""
     payload = request.get_json(silent=True) or {}
     do_apply = bool(payload.get('apply'))
 
@@ -106,20 +107,32 @@ def api_settings_benchmark():
     rng.shuffle(keys)
 
     def probe(project_key):
+        """One scan-shaped work unit. Returns (elapsed, api_calls, error)."""
         client = _thread_client()
+        project = client.get_project(project_key)
         started = time.time()
+        calls = 0
         try:
-            client.get_project(project_key).list_recipes()
-            return time.time() - started, None
+            recipes = project.list_recipes() or []
+            calls += 1
+            names = [r.get('name') for r in recipes if isinstance(r, dict) and r.get('name')]
+            for rname in names[:2]:
+                project.get_recipe(rname).get_settings()
+                calls += 1
+            project.list_datasets()
+            calls += 1
+            project.list_scenarios()
+            calls += 1
+            return time.time() - started, calls, None
         except Exception as exc:
-            return time.time() - started, f'{type(exc).__name__}: {str(exc)[:120]}'
+            return time.time() - started, max(calls, 1), f'{type(exc).__name__}: {str(exc)[:120]}'
 
     # Warm-up batch: pays connection setup outside the measurements and yields
-    # the per-call latency used to size each level's batch.
+    # the per-bundle latency used to size each level's batch.
     with ThreadPoolExecutor(max_workers=4) as pool:
         warm = list(pool.map(probe, keys[:8]))
-    warm_lat = sorted(lat for lat, err in warm if not err)
-    median_lat = max(warm_lat[len(warm_lat) // 2] if warm_lat else 0.1, 0.002)
+    warm_lat = sorted(lat for lat, _calls, err in warm if not err)
+    median_lat = max(warm_lat[len(warm_lat) // 2] if warm_lat else 0.2, 0.005)
 
     bench_started = time.time()
     levels = []
@@ -127,23 +140,24 @@ def api_settings_benchmark():
     for concurrency in _BENCH_LEVELS:
         if time.time() - bench_started > _BENCH_TIME_BUDGET_S:
             break
-        calls = min(max(concurrency * 3, int(_BENCH_MIN_LEVEL_S / median_lat)),
-                    _BENCH_MAX_CALLS_PER_LEVEL)
-        batch = [keys[(key_cursor + i) % len(keys)] for i in range(calls)]
-        key_cursor += calls
+        bundles = min(max(concurrency * 2, int(_BENCH_MIN_LEVEL_S / median_lat)),
+                      _BENCH_MAX_BUNDLES_PER_LEVEL)
+        batch = [keys[(key_cursor + i) % len(keys)] for i in range(bundles)]
+        key_cursor += bundles
         batch_started = time.time()
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
             outcomes = list(pool.map(probe, batch))
         elapsed = max(time.time() - batch_started, 1e-6)
-        errors = [err for _, err in outcomes if err]
-        latencies = sorted(lat for lat, err in outcomes if not err)
+        errors = [err for _lat, _calls, err in outcomes if err]
+        api_calls = sum(calls for _lat, calls, err in outcomes if not err)
+        latencies = sorted(lat for lat, _calls, err in outcomes if not err)
         levels.append({
             'concurrency': concurrency,
-            'calls': calls,
+            'calls': api_calls,
             'errors': len(errors),
             'errorSample': errors[0] if errors else None,
             'seconds': round(elapsed, 2),
-            'callsPerSec': round((calls - len(errors)) / elapsed, 1),
+            'callsPerSec': round(api_calls / elapsed, 1),
             'medianMs': round(latencies[len(latencies) // 2] * 1000) if latencies else None,
         })
 

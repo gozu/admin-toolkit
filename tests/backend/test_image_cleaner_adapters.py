@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(ROOT, 'python-lib'))
 
 import conftest  # noqa: F401  (applies dataiku/dateutil stubs)
 import backend
+from adk_backend.routes import image_cleaner
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -31,20 +32,20 @@ import backend
 
 class MatchesDataikuTest(unittest.TestCase):
     def test_case_insensitive_dataiku(self):
-        self.assertTrue(backend._matches_dataiku('dataiku'))
-        self.assertTrue(backend._matches_dataiku('Dataiku'))
-        self.assertTrue(backend._matches_dataiku('DATAIKU'))
-        self.assertTrue(backend._matches_dataiku('my-dataiku-base'))
+        self.assertTrue(image_cleaner._matches_dataiku('dataiku'))
+        self.assertTrue(image_cleaner._matches_dataiku('Dataiku'))
+        self.assertTrue(image_cleaner._matches_dataiku('DATAIKU'))
+        self.assertTrue(image_cleaner._matches_dataiku('my-dataiku-base'))
 
     def test_case_insensitive_dku(self):
-        self.assertTrue(backend._matches_dataiku('dku'))
-        self.assertTrue(backend._matches_dataiku('DKU-exec'))
-        self.assertTrue(backend._matches_dataiku('env-with-dku-prefix'))
+        self.assertTrue(image_cleaner._matches_dataiku('dku'))
+        self.assertTrue(image_cleaner._matches_dataiku('DKU-exec'))
+        self.assertTrue(image_cleaner._matches_dataiku('env-with-dku-prefix'))
 
     def test_unrelated(self):
-        self.assertFalse(backend._matches_dataiku('nginx'))
-        self.assertFalse(backend._matches_dataiku('my-app'))
-        self.assertFalse(backend._matches_dataiku(''))
+        self.assertFalse(image_cleaner._matches_dataiku('nginx'))
+        self.assertFalse(image_cleaner._matches_dataiku('my-app'))
+        self.assertFalse(image_cleaner._matches_dataiku(''))
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -82,7 +83,7 @@ class WalkContainerSettingsTest(unittest.TestCase):
                 fake_client = mock.MagicMock()
                 fake_client.get_general_settings.return_value.get_raw.return_value = self._fake_settings(url)
                 with mock.patch.object(backend.dataiku, 'api_client', return_value=fake_client):
-                    result = backend._image_cleaner_walk_container_settings()
+                    result = image_cleaner._image_cleaner_walk_container_settings()
                 if expected is None:
                     self.assertIsNone(result, msg='url=%s' % url)
                 else:
@@ -102,14 +103,14 @@ class WalkContainerSettingsTest(unittest.TestCase):
             }
         }
         with mock.patch.object(backend.dataiku, 'api_client', return_value=fake_client):
-            result = backend._image_cleaner_walk_container_settings()
+            result = image_cleaner._image_cleaner_walk_container_settings()
         self.assertEqual(result['provider'], 'ecr')
 
     def test_never_raises_on_bad_settings(self):
         fake_client = mock.MagicMock()
         fake_client.get_general_settings.side_effect = RuntimeError('boom')
         with mock.patch.object(backend.dataiku, 'api_client', return_value=fake_client):
-            self.assertIsNone(backend._image_cleaner_walk_container_settings())
+            self.assertIsNone(image_cleaner._image_cleaner_walk_container_settings())
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -139,28 +140,28 @@ class ImdsProbeTest(unittest.TestCase):
             '/placement/region': b'us-west-2',
         })
         with mock.patch('urllib.request.urlopen', side_effect=fake):
-            self.assertEqual(backend._imds_probe_aws(timeout=1), 'us-west-2')
+            self.assertEqual(image_cleaner._imds_probe_aws(timeout=1), 'us-west-2')
 
     def test_azure(self):
         fake = self._fake_urlopen({
             '/metadata/instance': json.dumps({'compute': {'location': 'westeurope'}}),
         })
         with mock.patch('urllib.request.urlopen', side_effect=fake):
-            self.assertEqual(backend._imds_probe_azure(timeout=1), 'westeurope')
+            self.assertEqual(image_cleaner._imds_probe_azure(timeout=1), 'westeurope')
 
     def test_gcp(self):
         fake = self._fake_urlopen({
             '/project-id': b'my-gcp-project',
         })
         with mock.patch('urllib.request.urlopen', side_effect=fake):
-            self.assertEqual(backend._imds_probe_gcp(timeout=1), 'my-gcp-project')
+            self.assertEqual(image_cleaner._imds_probe_gcp(timeout=1), 'my-gcp-project')
 
     def test_all_miss(self):
         fake = self._fake_urlopen({})  # everything raises OSError
         with mock.patch('urllib.request.urlopen', side_effect=fake):
-            self.assertIsNone(backend._imds_probe_aws(timeout=0.1))
-            self.assertIsNone(backend._imds_probe_azure(timeout=0.1))
-            self.assertIsNone(backend._imds_probe_gcp(timeout=0.1))
+            self.assertIsNone(image_cleaner._imds_probe_aws(timeout=0.1))
+            self.assertIsNone(image_cleaner._imds_probe_azure(timeout=0.1))
+            self.assertIsNone(image_cleaner._imds_probe_gcp(timeout=0.1))
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -200,7 +201,7 @@ class IpnetProbeTest(unittest.TestCase):
         for cloud, expected in self.CLOUD_TO_PROVIDER:
             with self.subTest(cloud=cloud):
                 with mock.patch('urllib.request.urlopen', side_effect=self._mock(cloud)):
-                    self.assertEqual(backend._ipnet_probe(), expected)
+                    self.assertEqual(image_cleaner._ipnet_probe(), expected)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -249,8 +250,8 @@ def _make_fake_ecr(repos_by_name, pushed_for_digest=None, fail_batch_delete=Fals
 
 class EcrAdapterTest(unittest.TestCase):
     def _adapter(self, client):
-        with mock.patch.object(backend, '_ensure_boto3', return_value=mock.MagicMock(client=lambda *a, **k: client)):
-            return backend.EcrAdapter(region='us-west-2')
+        with mock.patch.object(image_cleaner, '_ensure_boto3', return_value=mock.MagicMock(client=lambda *a, **k: client)):
+            return image_cleaner.EcrAdapter(region='us-west-2')
 
     def test_list_repositories_filters_dataiku(self):
         fake = _make_fake_ecr({'dataiku-exec-base': [], 'nginx': [], 'DKU-custom': [], 'app': []})
@@ -307,7 +308,7 @@ class EcrAdapterTest(unittest.TestCase):
 # SSE shape — inject a fake adapter, assert init → repo* → done
 # ──────────────────────────────────────────────────────────────────────
 
-class _FakeAdapter(backend.RegistryAdapter):
+class _FakeAdapter(image_cleaner.RegistryAdapter):
     provider = 'fake'
 
     def list_repositories(self):
@@ -333,8 +334,8 @@ class SseShapeTest(unittest.TestCase):
         self.client = backend.app.test_client()
 
     def test_scan_emits_init_repo_done(self):
-        with mock.patch.object(backend, '_image_cleaner_adapter', return_value=_FakeAdapter()), \
-             mock.patch.object(backend, '_image_cleaner_validate_cutoff',
+        with mock.patch.object(image_cleaner, '_image_cleaner_adapter', return_value=_FakeAdapter()), \
+             mock.patch.object(image_cleaner, '_image_cleaner_validate_cutoff',
                                return_value=(datetime(2030, 1, 1).date(),
                                              {'maxCutoffDate': '2030-01-01', 'version': 'x', 'releaseDate': '2030-01-03'})):
             resp = self.client.get('/api/tools/image-cleaner/scan?provider=fake&cutoff=2030-01-01')
@@ -366,10 +367,10 @@ class DetectProviderEndpointTest(unittest.TestCase):
         self.client = backend.app.test_client()
 
     def test_dss_config_first(self):
-        with mock.patch.object(backend, '_image_cleaner_walk_container_settings',
+        with mock.patch.object(image_cleaner, '_image_cleaner_walk_container_settings',
                                return_value={'provider': 'ecr', 'registryUrl': 'x.dkr.ecr.us-west-2.amazonaws.com'}), \
-             mock.patch.object(backend, '_imds_probe_parallel') as imds, \
-             mock.patch.object(backend, '_ipnet_probe') as ipnet:
+             mock.patch.object(image_cleaner, '_imds_probe_parallel') as imds, \
+             mock.patch.object(image_cleaner, '_ipnet_probe') as ipnet:
             r = self.client.get('/api/tools/image-cleaner/detect-provider').get_json()
         self.assertEqual(r['source'], 'dss-config')
         self.assertEqual(r['provider'], 'ecr')
@@ -377,27 +378,27 @@ class DetectProviderEndpointTest(unittest.TestCase):
         ipnet.assert_not_called()
 
     def test_imds_second(self):
-        with mock.patch.object(backend, '_image_cleaner_walk_container_settings', return_value=None), \
-             mock.patch.object(backend, '_imds_probe_parallel',
+        with mock.patch.object(image_cleaner, '_image_cleaner_walk_container_settings', return_value=None), \
+             mock.patch.object(image_cleaner, '_imds_probe_parallel',
                                return_value={'provider': 'gar', 'hint': 'my-project'}), \
-             mock.patch.object(backend, '_ipnet_probe') as ipnet:
+             mock.patch.object(image_cleaner, '_ipnet_probe') as ipnet:
             r = self.client.get('/api/tools/image-cleaner/detect-provider').get_json()
         self.assertEqual(r['source'], 'imds')
         self.assertEqual(r['provider'], 'gar')
         ipnet.assert_not_called()
 
     def test_ipnet_third(self):
-        with mock.patch.object(backend, '_image_cleaner_walk_container_settings', return_value=None), \
-             mock.patch.object(backend, '_imds_probe_parallel', return_value=None), \
-             mock.patch.object(backend, '_ipnet_probe', return_value='acr'):
+        with mock.patch.object(image_cleaner, '_image_cleaner_walk_container_settings', return_value=None), \
+             mock.patch.object(image_cleaner, '_imds_probe_parallel', return_value=None), \
+             mock.patch.object(image_cleaner, '_ipnet_probe', return_value='acr'):
             r = self.client.get('/api/tools/image-cleaner/detect-provider').get_json()
         self.assertEqual(r['source'], 'ipnet')
         self.assertEqual(r['provider'], 'acr')
 
     def test_total_miss(self):
-        with mock.patch.object(backend, '_image_cleaner_walk_container_settings', return_value=None), \
-             mock.patch.object(backend, '_imds_probe_parallel', return_value=None), \
-             mock.patch.object(backend, '_ipnet_probe', return_value=None):
+        with mock.patch.object(image_cleaner, '_image_cleaner_walk_container_settings', return_value=None), \
+             mock.patch.object(image_cleaner, '_imds_probe_parallel', return_value=None), \
+             mock.patch.object(image_cleaner, '_ipnet_probe', return_value=None):
             r = self.client.get('/api/tools/image-cleaner/detect-provider').get_json()
         self.assertEqual(r['source'], 'none')
         self.assertIsNone(r['provider'])

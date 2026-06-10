@@ -7,7 +7,7 @@ import re
 import time
 from concurrent.futures import as_completed
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, g, jsonify, request
 
@@ -65,15 +65,20 @@ _LLM_AUDIT_CODE_RECIPE_TYPES = frozenset({
 def _llm_audit_scan_project_references(
     client: Any,
     project_key: str,
-    llm_id_regex: Optional[Any],
-) -> List[Dict[str, Any]]:
-    """Return per-asset llmId hits in one project.
+) -> Dict[str, Any]:
+    """Collect per-asset llmId references in one project.
 
-    Each hit: {llmId, assetType: 'recipe'|'notebook'|'knowledge_bank'|'agent',
-               assetName, recipeType}. Deduped by (assetType, assetName, llmId).
-    Scans prompt/LLM recipes, knowledge banks, agents (structured walk), code
-    recipes and Jupyter notebooks (literal llmId regex match). Per-asset try/
-    except — one bad asset can't take out the project scan.
+    Structured assets (prompt/LLM recipes, knowledge banks, agents) produce
+    hits directly. Code recipes and Jupyter notebooks need the full llmId
+    universe (built by the list_llms pass that runs concurrently), so their
+    payload texts are returned for deferred matching via
+    _llm_audit_match_deferred_texts.
+
+    Returns {'hits': [...], 'seen': set, 'texts': [(assetType, assetName,
+    recipeType, text)]}. Each hit: {llmId, assetType: 'recipe'|'notebook'|
+    'knowledge_bank'|'agent', assetName, recipeType}. Deduped by (assetType,
+    assetName, llmId). Per-asset try/except — one bad asset can't take out
+    the project scan.
     """
     hits: List[Dict[str, Any]] = []
     seen_hits: set = set()
@@ -166,48 +171,71 @@ def _llm_audit_scan_project_references(
             _LOGGER.debug("[llm_audit_usage] agent %s/%s failed: %s",
                              project_key, ag_id, exc)
 
-    if llm_id_regex is not None:
-        for r in code_recipes:
-            rtype = r.get('type', '') or ''
-            rname = r.get('name') or ''
-            try:
-                recipe = project.get_recipe(rname)
-                settings = recipe.get_settings()
-                payload_str = settings.get_payload() if hasattr(settings, 'get_payload') else ''
-                if not payload_str:
-                    continue
-                for match in llm_id_regex.findall(payload_str):
-                    add_hit(match, 'recipe', rname, rtype)
-            except Exception as exc:
-                _LOGGER.debug("[llm_audit_usage] code_recipe %s/%s failed: %s",
-                                 project_key, rname, exc)
-
+    deferred_texts: List[Tuple[str, str, Optional[str], str]] = []
+    for r in code_recipes:
+        rtype = r.get('type', '') or ''
+        rname = r.get('name') or ''
         try:
-            notebooks = project.list_jupyter_notebooks() or []
-        except Exception as exc:
-            _LOGGER.debug("[llm_audit_usage] list_jupyter_notebooks failed for %s: %s",
-                             project_key, exc)
-            notebooks = []
-        for nb in notebooks:
-            nb_name = getattr(nb, 'notebook_name', None)
-            if not nb_name:
+            recipe = project.get_recipe(rname)
+            settings = recipe.get_settings()
+            payload_str = settings.get_payload() if hasattr(settings, 'get_payload') else ''
+            if not payload_str:
                 continue
-            try:
-                raw = nb.get_content().get_raw()
-                if isinstance(raw, str):
-                    source_text = raw
-                else:
-                    try:
-                        source_text = json.dumps(raw)
-                    except Exception:
-                        source_text = str(raw)
-                for match in llm_id_regex.findall(source_text):
-                    add_hit(match, 'notebook', nb_name, None)
-            except Exception as exc:
-                _LOGGER.debug("[llm_audit_usage] notebook %s/%s failed: %s",
-                                 project_key, nb_name, exc)
+            deferred_texts.append(('recipe', rname, rtype, payload_str))
+        except Exception as exc:
+            _LOGGER.debug("[llm_audit_usage] code_recipe %s/%s failed: %s",
+                             project_key, rname, exc)
 
-    return hits
+    try:
+        notebooks = project.list_jupyter_notebooks() or []
+    except Exception as exc:
+        _LOGGER.debug("[llm_audit_usage] list_jupyter_notebooks failed for %s: %s",
+                         project_key, exc)
+        notebooks = []
+    for nb in notebooks:
+        nb_name = getattr(nb, 'notebook_name', None)
+        if not nb_name:
+            continue
+        try:
+            raw = nb.get_content().get_raw()
+            if isinstance(raw, str):
+                source_text = raw
+            else:
+                try:
+                    source_text = json.dumps(raw)
+                except Exception:
+                    source_text = str(raw)
+            deferred_texts.append(('notebook', nb_name, None, source_text))
+        except Exception as exc:
+            _LOGGER.debug("[llm_audit_usage] notebook %s/%s failed: %s",
+                             project_key, nb_name, exc)
+
+    return {'hits': hits, 'seen': seen_hits, 'texts': deferred_texts}
+
+
+def _llm_audit_match_deferred_texts(scan_result: Dict[str, Any], llm_id_regex: Optional[Any]) -> None:
+    """Regex-match the deferred asset texts (code recipes, notebooks) collected
+    by _llm_audit_scan_project_references, folding matches into its hits with
+    the same (assetType, assetName, llmId) dedup. Texts are dropped after
+    matching so large notebook payloads don't outlive this call."""
+    texts = scan_result.get('texts') or []
+    scan_result['texts'] = []
+    if llm_id_regex is None:
+        return
+    hits: List[Dict[str, Any]] = scan_result['hits']
+    seen_hits: set = scan_result['seen']
+    for asset_type, asset_name, recipe_type, text in texts:
+        for match in llm_id_regex.findall(text):
+            k = (asset_type, asset_name, match)
+            if k in seen_hits:
+                continue
+            seen_hits.add(k)
+            hits.append({
+                'llmId': match,
+                'assetType': asset_type,
+                'assetName': asset_name,
+                'recipeType': recipe_type,
+            })
 
 
 def _llm_audit_scan_project(client: Any, project_key: str) -> List[Dict[str, Any]]:
@@ -315,8 +343,20 @@ def api_llm_audit():
             for _p in projects:
                 if isinstance(_p, dict) and _p.get('projectKey'):
                     project_name_lookup[_p['projectKey']] = _p.get('name') or _p['projectKey']
+            projects_using_by_llm_id: Dict[str, set] = {}
+            assets_by_project_llm: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
+            llm_id_regex = None
             if total_projects > 0:
-                with ThreadPoolExecutor(max_workers=workers) as ex:
+                # The phase-4b asset fetch (recipes/notebooks per project) does not
+                # depend on this pass's output — only its regex matching does — so
+                # both sweeps run concurrently and matching is deferred until the
+                # llmId universe is known.
+                with ThreadPoolExecutor(max_workers=workers) as ex, \
+                        ThreadPoolExecutor(max_workers=workers) as ref_pool:
+                    ref_futures = {
+                        ref_pool.submit(_llm_audit_scan_project_references, client, pk): pk
+                        for pk in project_keys
+                    }
                     futures = {ex.submit(_llm_audit_scan_project, client, pk): pk for pk in project_keys}
                     done = 0
                     for fut in as_completed(futures):
@@ -347,32 +387,25 @@ def api_llm_audit():
                                     projectsTotal=total_projects, projectsDone=done,
                                     llmRowsTotal=len(llm_rows))
 
-            add_event('scan_done', f'collected {len(llm_rows)} LLM profile rows across {total_projects} project(s)')
+                    add_event('scan_done', f'collected {len(llm_rows)} LLM profile rows across {total_projects} project(s)')
 
-            # Phase 4b: per-project asset scan for actual llmId references.
-            set_summary(50, 'usage_scan', projectsTotal=total_projects, projectsDone=0)
-            llm_id_universe = sorted({row.get('llmId') for row in llm_rows if row.get('llmId')})
-            llm_id_regex = None
-            if llm_id_universe:
-                try:
-                    llm_id_regex = re.compile('|'.join(re.escape(i) for i in llm_id_universe))
-                except Exception as exc:
-                    add_event('usage_regex_failed', f'failed to compile llmId regex: {exc}', 'warn')
-
-            projects_using_by_llm_id: Dict[str, set] = {}
-            assets_by_project_llm: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
-            if total_projects > 0:
-                with ThreadPoolExecutor(max_workers=workers) as ex:
-                    futures = {
-                        ex.submit(_llm_audit_scan_project_references, client, pk, llm_id_regex): pk
-                        for pk in project_keys
-                    }
-                    done = 0
-                    for fut in as_completed(futures):
-                        pk = futures[fut]
+                    # Phase 4b: build the llmId regex from the universe, then drain
+                    # the overlapped asset-fetch futures and run deferred matching.
+                    set_summary(50, 'usage_scan', projectsTotal=total_projects, projectsDone=0)
+                    llm_id_universe = sorted({row.get('llmId') for row in llm_rows if row.get('llmId')})
+                    if llm_id_universe:
                         try:
-                            referenced = fut.result()
-                            for hit in referenced:
+                            llm_id_regex = re.compile('|'.join(re.escape(i) for i in llm_id_universe))
+                        except Exception as exc:
+                            add_event('usage_regex_failed', f'failed to compile llmId regex: {exc}', 'warn')
+
+                    done = 0
+                    for fut in as_completed(ref_futures):
+                        pk = ref_futures[fut]
+                        try:
+                            scan_result = fut.result()
+                            _llm_audit_match_deferred_texts(scan_result, llm_id_regex)
+                            for hit in scan_result['hits']:
                                 llm_id = hit.get('llmId')
                                 if not llm_id:
                                     continue
@@ -389,6 +422,9 @@ def api_llm_audit():
                         set_summary(usage_pct, 'usage_scan',
                                     projectsTotal=total_projects, projectsDone=done,
                                     llmRowsTotal=len(llm_rows))
+            else:
+                add_event('scan_done', 'collected 0 LLM profile rows across 0 project(s)')
+                set_summary(50, 'usage_scan', projectsTotal=0, projectsDone=0)
 
             add_event('usage_scan_done',
                       f'{sum(len(v) for v in projects_using_by_llm_id.values())} project-references '

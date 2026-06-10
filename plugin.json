@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.537",
+    "version": "0.4.538",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit with diagnostics, visualizations, and management tools. Supports multi-instance scanning: configure remote DSS hosts as plugin presets and switch between them from the top-bar dropdown. The toolkit will offer to create an ADMINTOOLKIT project on each host the first time a macro-using module is opened.",
@@ -387,7 +387,7 @@
             "description": "Default thread pool size for parallel API calls.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 8
+            "defaultValue": 16
         },
         {
             "name": "perf_parallel_workers_max",
@@ -403,7 +403,7 @@
             "description": "Workers for fetching code env details.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 8
+            "defaultValue": 16
         },
         {
             "name": "perf_code_env_timeout_ms",

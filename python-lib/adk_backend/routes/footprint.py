@@ -121,7 +121,7 @@ def _build_project_footprint_map_with_deadline(
         return footprint_map
 
     # Run direct per-project footprint calls with a fixed parallelism budget.
-    max_workers = min(8, len(wanted_keys))
+    max_workers = min(_parallel_workers(_BACKEND_SETTINGS['parallel_workers_default']), len(wanted_keys))
     _LOGGER.info("[footprint-map] mode=per-project wanted=%s workers=%s", len(wanted_keys), max_workers)
     _notify_progress(
         progress_cb,
@@ -445,7 +445,7 @@ def _task_pf_saved_models(
     if not project_keys:
         return saved_models_by_project
     add_event('collect_project_saved_models', f"collecting saved models for {len(project_keys)} projects")
-    max_workers = min(_parallel_workers(8), len(project_keys))
+    max_workers = min(_parallel_workers(_BACKEND_SETTINGS['parallel_workers_default']), len(project_keys))
     with ThreadPoolExecutor(max_workers=max(1, max_workers)) as pool:
         futures = {}
         for project_key in project_keys:

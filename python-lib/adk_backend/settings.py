@@ -10,9 +10,9 @@ from typing import Any, Dict
 # ── Configurable backend settings (updated via /api/settings) ──
 _BACKEND_SETTINGS: Dict[str, Any] = {
     # Concurrency
-    'parallel_workers_default': 8,
+    'parallel_workers_default': 16,
     'parallel_workers_max': 32,
-    'code_env_detail_workers': 8,
+    'code_env_detail_workers': 16,
     # Timeouts
     'code_env_timeout_ms': 600000,
     'project_footprint_timeout_ms': 600000,

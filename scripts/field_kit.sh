@@ -69,6 +69,12 @@ fi
 # Sanitized override copies replace/supplement the originals
 cp "$REPO_ROOT/scripts/field-kit-overrides/"*.md "$KIT/memory/"
 
+# --- the repo itself ---------------------------------------------------------
+# Embedded as a git bundle (committed content only - no node_modules/.venv/
+# dist junk) so the kit is self-sufficient: the installer clones it when the
+# target checkout doesn't exist yet. Full history keeps make deploy working.
+git -C "$REPO_ROOT" bundle create "$KIT/repo.bundle" HEAD main
+
 cp "$REPO_ROOT/scripts/field_kit_install.sh" "$KIT/install.sh"
 chmod +x "$KIT/install.sh"
 
@@ -85,6 +91,6 @@ echo "[field-kit] NEW memory files ship by default - review any added since the"
 echo "[field-kit] sanitize list was last curated (2026-06-11)."
 echo
 echo "[field-kit] On the customer machine (AlmaLinux 8/9/10 or any Linux):"
-echo "  1. git clone <repo> /data/<dir>/dss-admin-toolkit && cd into it"
-echo "  2. tar -xzf $KIT_NAME.tar.gz"
-echo "  3. bash $KIT_NAME/install.sh /path/to/dss-admin-toolkit"
+echo "  1. tar -xzf $KIT_NAME.tar.gz   (or unzip the .zip variant)"
+echo "  2. bash $KIT_NAME/install.sh /data/<dir>/admin-toolkit"
+echo "     (clones the embedded repo there and installs the Claude context)"

@@ -3,10 +3,13 @@
 # is AlmaLinux 8/9/10; needs only bash, sed, cp and - for the optional Claude
 # Code install - curl with outbound HTTPS).
 #
-#   usage: bash install.sh [path-to-dss-admin-toolkit-checkout]
-#          (defaults to the current directory)
+#   usage: bash install.sh [target-dir]
+#          (default target: ./dss-admin-toolkit)
 #
-# It restores everything the repo gitignores:
+# Self-sufficient: the kit carries the repo as repo.bundle. If the target is
+# missing or an empty dir, it is git-cloned from the bundle; if it is already
+# a dss-admin-toolkit checkout, it is reused as-is. Then the kit restores
+# everything the repo gitignores:
 #   project/CLAUDE.md + .claude/   -> into the checkout
 #   global/CLAUDE.md               -> ~/.claude/CLAUDE.md (never clobbers)
 #   memory/*.md                    -> ~/.claude/projects/<derived-key>/memory/
@@ -15,16 +18,25 @@ set -euo pipefail
 
 KIT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 
-TARGET=${1:-$PWD}
-if [ ! -d "$TARGET" ]; then
-  echo "error: target directory not found: $TARGET" >&2
-  exit 1
-fi
-TARGET=$(cd "$TARGET" && pwd -P)
-
-if [ ! -f "$TARGET/plugin.json" ] || [ ! -f "$TARGET/webapps/admin-toolkit/backend.py" ]; then
-  echo "error: $TARGET does not look like a dss-admin-toolkit checkout" >&2
-  echo "usage: bash install.sh [path-to-dss-admin-toolkit-checkout]" >&2
+TARGET=${1:-dss-admin-toolkit}
+if [ -f "$TARGET/plugin.json" ] && [ -f "$TARGET/webapps/admin-toolkit/backend.py" ]; then
+  TARGET=$(cd "$TARGET" && pwd -P)
+  echo "==> Using existing checkout: $TARGET"
+elif [ ! -e "$TARGET" ] || { [ -d "$TARGET" ] && [ -z "$(ls -A "$TARGET" 2>/dev/null)" ]; }; then
+  if ! command -v git >/dev/null 2>&1; then
+    echo "error: git is required to unpack the embedded repo (e.g. dnf install git)" >&2
+    exit 1
+  fi
+  if [ ! -f "$KIT_DIR/repo.bundle" ]; then
+    echo "error: kit is missing repo.bundle - rebuild it with 'make field-kit'" >&2
+    exit 1
+  fi
+  echo "==> Cloning embedded repo -> $TARGET"
+  git clone "$KIT_DIR/repo.bundle" "$TARGET"
+  TARGET=$(cd "$TARGET" && pwd -P)
+else
+  echo "error: $TARGET exists but is neither empty nor a dss-admin-toolkit checkout" >&2
+  echo "usage: bash install.sh [target-dir]" >&2
   exit 1
 fi
 

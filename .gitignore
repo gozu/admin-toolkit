@@ -2,6 +2,11 @@
 .dss-url
 .dss-api-key
 
+# Google Drive service-account upload
+.gdrive-sa.json
+.gdrive-folder-id
+fe-us-host-*.json
+
 # Build outputs
 /dist/
 

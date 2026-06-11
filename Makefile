@@ -243,6 +243,15 @@ deploy:
 	@git commit -m "$(COMMIT_MSG)" -- $(DEPLOY_COMMIT_PATHS) || echo "[INFO] Nothing deploy-relevant to commit"
 	@$(MAKE) plugin
 	@$(MAKE) deploy-all
+	@$(MAKE) drive-upload
+
+# ----------------------------
+# Upload built ZIP to Google Drive (Shared Drive) — soft no-op if unconfigured
+# ----------------------------
+.PHONY: drive-upload
+drive-upload:
+	@PY=$$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python3); \
+	$$PY scripts/upload_to_drive.py "dist/$(archive_file_name)"
 
 # ----------------------------
 # Dual-LLM pre-push security gate (all logic lives in scripts/secure-push.sh)

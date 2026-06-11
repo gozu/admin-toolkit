@@ -26,15 +26,16 @@ interface BenchResult {
 }
 
 const LEVEL_COLUMNS: ColumnDef<BenchLevel>[] = [
-  { id: 'concurrency', label: 'Workers', render: (lv) => lv.concurrency, align: 'right', mono: true },
-  { id: 'callsPerSec', label: 'Projects/s', render: (lv) => lv.callsPerSec, align: 'right', mono: true },
-  { id: 'medianMs', label: 'Median project ms', render: (lv) => lv.medianMs ?? '—', align: 'right', mono: true },
+  { id: 'concurrency', label: 'Workers', render: (lv) => lv.concurrency, align: 'right', mono: true, sortValue: (lv) => lv.concurrency },
+  { id: 'callsPerSec', label: 'Projects/s', render: (lv) => lv.callsPerSec, align: 'right', mono: true, sortValue: (lv) => lv.callsPerSec },
+  { id: 'medianMs', label: 'Median project ms', render: (lv) => lv.medianMs ?? '—', align: 'right', mono: true, sortValue: (lv) => lv.medianMs ?? -1 },
   {
     id: 'errors',
     label: 'Errors',
     render: (lv) => (lv.errors > 0 ? `${lv.errors} (${lv.errorSample ?? ''})` : 0),
     align: 'right',
     mono: true,
+    sortValue: (lv) => lv.errors,
   },
 ];
 

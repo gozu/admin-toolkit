@@ -162,7 +162,15 @@ export function PluginsTable({ onOpenUsage }: PluginsTableProps = {}) {
   );
 
   const nameOnlyColumns = useMemo<ColumnDef<string>[]>(
-    () => [{ id: 'name', label: 'Plugin Name', render: (name) => name }],
+    () => [
+      {
+        id: 'name',
+        label: 'Plugin Name',
+        defaultSortDir: 'asc',
+        render: (name) => name,
+        sortValue: (name) => name,
+      },
+    ],
     [],
   );
 

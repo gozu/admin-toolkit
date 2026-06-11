@@ -430,28 +430,47 @@ def api_llm_audit():
                       f'{sum(len(v) for v in projects_using_by_llm_id.values())} project-references '
                       f'across {len(projects_using_by_llm_id)} distinct llmId(s)')
 
-            # Phase 5: classify and dedupe by (projectKey, llmId).
+            # Phase 5: classify and dedupe by llmId — project.list_llms() returns the
+            # whole visible catalog per project, so the same LLM repeats across projects
+            # and a per-(projectKey, llmId) payload balloons to tens of MB. One row per
+            # distinct llmId carries `projectKeys` (all exposing projects) instead.
             set_summary(88, 'classify', llmRowsTotal=len(llm_rows))
             project_names: Dict[str, str] = {}
             for p in projects:
                 if isinstance(p, dict) and p.get('projectKey'):
                     project_names[p['projectKey']] = p.get('name') or p['projectKey']
 
-            seen: set = set()
-            classified_rows: List[Dict[str, Any]] = []
+            first_row_by_llm: Dict[str, Dict[str, Any]] = {}
+            exposing_by_llm: Dict[str, set] = {}
             for row in llm_rows:
-                key = (row.get('projectKey'), row.get('llmId'))
-                if key in seen:
-                    continue
-                seen.add(key)
-                verdict = llm_audit.classify_llm(row, lookup, connections_by_name=connections_by_name)
                 llm_id = row.get('llmId') or ''
+                if not llm_id:
+                    continue
+                if llm_id not in first_row_by_llm:
+                    first_row_by_llm[llm_id] = row
+                pk = row.get('projectKey')
+                if pk:
+                    exposing_by_llm.setdefault(llm_id, set()).add(pk)
+
+            # Merge usage assets across referencing projects, tagging each asset
+            # with the project it lives in.
+            assets_by_llm: Dict[str, List[Dict[str, Any]]] = {}
+            for pk, by_llm in assets_by_project_llm.items():
+                for llm_id, assets in by_llm.items():
+                    bucket = assets_by_llm.setdefault(llm_id, [])
+                    for asset in assets:
+                        bucket.append(dict(asset, projectKey=pk))
+
+            classified_rows: List[Dict[str, Any]] = []
+            for llm_id, row in first_row_by_llm.items():
+                verdict = llm_audit.classify_llm(row, lookup, connections_by_name=connections_by_name)
                 using_set = projects_using_by_llm_id.get(llm_id, set())
-                referencing_sorted = sorted(using_set)
+                first_pk = row.get('projectKey')
                 merged = {
-                    'projectKey': row.get('projectKey'),
-                    'projectName': project_names.get(row.get('projectKey') or '', row.get('projectKey') or ''),
-                    'llmId': row.get('llmId'),
+                    'projectKey': first_pk,
+                    'projectName': project_names.get(first_pk or '', first_pk or ''),
+                    'projectKeys': sorted(exposing_by_llm.get(llm_id, set())),
+                    'llmId': llm_id,
                     'friendlyName': row.get('friendlyName'),
                     'friendlyNameShort': row.get('friendlyNameShort'),
                     'type': row.get('type'),
@@ -460,10 +479,8 @@ def api_llm_audit():
                 }
                 merged.update(verdict)
                 merged['projectsUsing'] = len(using_set)
-                merged['referencingProjects'] = referencing_sorted[:50]
-                merged['usageAssets'] = assets_by_project_llm.get(
-                    row.get('projectKey') or '', {}
-                ).get(llm_id, [])
+                merged['referencingProjects'] = sorted(using_set)[:50]
+                merged['usageAssets'] = assets_by_llm.get(llm_id, [])
                 classified_rows.append(merged)
 
             summary = llm_audit.summarize_rows(classified_rows)

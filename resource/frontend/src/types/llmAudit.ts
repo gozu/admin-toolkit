@@ -4,11 +4,15 @@ export interface LlmAuditUsageAsset {
   assetType: 'recipe' | 'notebook' | 'knowledge_bank' | 'agent';
   assetName: string;
   recipeType?: string | null;
+  /** Project the asset lives in (rows are deduped by llmId, so assets span projects). */
+  projectKey?: string;
 }
 
 export interface LlmAuditRow {
   projectKey: string;
   projectName?: string;
+  /** All projects whose catalog exposes this LLM (rows are deduped by llmId). */
+  projectKeys?: string[];
   llmId: string;
   friendlyName?: string;
   friendlyNameShort?: string;

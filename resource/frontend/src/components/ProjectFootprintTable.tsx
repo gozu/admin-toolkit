@@ -227,6 +227,7 @@ export function ProjectFootprintTable() {
       {
         id: 'owner',
         label: 'Owner',
+        defaultSortDir: 'asc',
         cellClassName: 'text-sm whitespace-nowrap',
         render: (row) =>
           row.owner ? (
@@ -236,6 +237,7 @@ export function ProjectFootprintTable() {
           ) : (
             <span className="text-[var(--text-muted)]">Unknown</span>
           ),
+        sortValue: (row) => row.owner || '',
       },
       {
         id: 'codeEnvCount',

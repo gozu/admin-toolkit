@@ -31,6 +31,7 @@ export function ProjectsTable({ onViewPermissions }: ProjectsTableProps) {
       {
         id: 'name',
         label: 'Project Name',
+        defaultSortDir: 'asc',
         width: '70%',
         headerClassName: 'min-w-[300px]',
         cellClassName: 'max-w-[400px]',
@@ -47,6 +48,7 @@ export function ProjectsTable({ onViewPermissions }: ProjectsTableProps) {
             </div>
           </>
         ),
+        sortValue: (project) => project.name,
       },
       {
         id: 'versions',

@@ -2,8 +2,10 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useDiag } from '../context/DiagContext';
 import { fetchRaw, getBackendUrl } from '../utils/api';
 import { parseSseStream } from '../utils/sseStream';
+import { DataGrid } from './common/DataGrid';
 import { Spinner } from './common/Spinner';
 import { StatTile } from './common/StatTile';
+import type { ColumnDef } from '../utils/dataGridTypes';
 import type { ConnectionHealthResult, ConnectionAuditResult } from '../types';
 
 type ErrorCategory =
@@ -33,6 +35,36 @@ const CATEGORY_ORDER: ErrorCategory[] = [
   'unreachable',
 ];
 
+type AuditSeverity = 'critical' | 'warning' | 'info';
+
+const AUDIT_SEVERITY_ORDER: AuditSeverity[] = ['critical', 'warning', 'info'];
+
+const AUDIT_SEVERITY_LABELS: Record<AuditSeverity, string> = {
+  critical: 'Critical',
+  warning: 'Warning',
+  info: 'Info',
+};
+
+const AUDIT_SEVERITY_COLORS: Record<AuditSeverity, string> = {
+  critical: 'var(--neon-red)',
+  warning: 'amber-400',
+  info: 'var(--text-muted)',
+};
+
+/** One row of the merged issues table: a health-test failure or an audit finding. */
+interface HealthIssueRow {
+  name: string;
+  type: string;
+  source: 'Health test' | 'Config audit';
+  category: string;
+  categoryColor: string;
+  categoryRank: number;
+  /** Error text (health) or joined findings (audit) — sort/search value. */
+  details: string;
+  /** Audit findings rendered as a bullet list; empty for health failures. */
+  issues: string[];
+}
+
 function classifyError(error: string): ErrorCategory {
   const lower = error.toLowerCase();
   if (/does not have credentials|user .* does not have/.test(lower)) return 'missing_credentials';
@@ -51,16 +83,19 @@ export function ConnectionHealthCard() {
   const { state, setParsedData, setFocusedConnectionFilter, setActivePage } = useDiag();
   const { parsedData } = state;
 
-  const navigateToInsights = (name: string) => {
-    setFocusedConnectionFilter({ name });
-    setActivePage('connections-insights');
-  };
+  const navigateToInsights = useCallback(
+    (name: string) => {
+      setFocusedConnectionFilter({ name });
+      setActivePage('connections-insights');
+    },
+    [setFocusedConnectionFilter, setActivePage],
+  );
 
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const results = parsedData.connectionHealth || [];
+  const results = useMemo(() => parsedData.connectionHealth || [], [parsedData.connectionHealth]);
   const total = parsedData.connectionHealthTotal ?? null;
 
   const dssBaseUrl = useMemo(() => {
@@ -128,53 +163,128 @@ export function ConnectionHealthCard() {
   const hasResults = results.length > 0;
   const isLoading = scanning || (hasResults && total !== null && results.length < total);
 
-  // Group failures by category
-  const groupedFailures = useMemo(() => {
-    const groups: Record<ErrorCategory, ConnectionHealthResult[]> = {
-      missing_config: [],
-      missing_credentials: [],
-      invalid_credentials: [],
-      unreachable: [],
-    };
-    for (const c of failedConnections) {
-      const cat = classifyError(c.error || '');
-      groups[cat].push(c);
-    }
-    return groups;
-  }, [failedConnections]);
-
   const auditFindings: ConnectionAuditResult[] = useMemo(
     () => parsedData.connectionAudit || [],
     [parsedData.connectionAudit],
   );
-  const auditBySeverity = useMemo(() => {
-    const groups: Record<'critical' | 'warning' | 'info', ConnectionAuditResult[]> = {
-      critical: [],
-      warning: [],
-      info: [],
-    };
+  const hasAudit = auditFindings.some((f) => f.configIssues.length > 0);
+
+  // One merged table: health-test failures ∪ config-audit findings.
+  const issueRows = useMemo<HealthIssueRow[]>(() => {
+    const rows: HealthIssueRow[] = [];
+    for (const c of results) {
+      if (c.status !== 'fail') continue;
+      const cat = classifyError(c.error || '');
+      rows.push({
+        name: c.name,
+        type: c.type,
+        source: 'Health test',
+        category: CATEGORY_LABELS[cat],
+        categoryColor: CATEGORY_COLORS[cat],
+        categoryRank: CATEGORY_ORDER.indexOf(cat),
+        details: c.error || '',
+        issues: [],
+      });
+    }
     for (const f of auditFindings) {
       if (f.configIssues.length === 0) continue;
-      groups[f.severity].push(f);
+      rows.push({
+        name: f.name,
+        type: f.type,
+        source: 'Config audit',
+        category: AUDIT_SEVERITY_LABELS[f.severity],
+        categoryColor: AUDIT_SEVERITY_COLORS[f.severity],
+        categoryRank: CATEGORY_ORDER.length + AUDIT_SEVERITY_ORDER.indexOf(f.severity),
+        details: f.configIssues.join('; '),
+        issues: f.configIssues,
+      });
     }
-    return groups;
-  }, [auditFindings]);
-  const auditSeverityOrder: Array<'critical' | 'warning' | 'info'> = [
-    'critical',
-    'warning',
-    'info',
-  ];
-  const auditSeverityLabels: Record<'critical' | 'warning' | 'info', string> = {
-    critical: 'Critical',
-    warning: 'Warning',
-    info: 'Info',
-  };
-  const auditSeverityColors: Record<'critical' | 'warning' | 'info', string> = {
-    critical: 'var(--neon-red)',
-    warning: 'amber-400',
-    info: 'var(--text-muted)',
-  };
-  const hasAudit = auditFindings.some((f) => f.configIssues.length > 0);
+    return rows;
+  }, [results, auditFindings]);
+
+  const issueColumns = useMemo<ColumnDef<HealthIssueRow>[]>(
+    () => [
+      {
+        id: 'name',
+        label: 'Connection',
+        defaultSortDir: 'asc',
+        render: (r) => (
+          <span className="whitespace-nowrap">
+            <button
+              type="button"
+              onClick={() => navigateToInsights(r.name)}
+              className="bg-transparent p-0 text-[var(--neon-cyan)] hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--neon-cyan)] rounded-sm"
+              title={`Open ${r.name} in Insights`}
+            >
+              {r.name}
+            </button>
+            <a
+              href={`${dssBaseUrl}/admin/connections/${encodeURIComponent(r.name)}/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open in DSS"
+              aria-label={`Open ${r.name} in DSS`}
+              className="ml-1 text-[var(--text-muted)] hover:text-[var(--neon-cyan)]"
+            >
+              ↗
+            </a>
+          </span>
+        ),
+        sortValue: (r) => r.name.toLowerCase(),
+      },
+      {
+        id: 'type',
+        label: 'Type',
+        defaultSortDir: 'asc',
+        render: (r) => (
+          <span className="text-[var(--text-secondary)] whitespace-nowrap">{r.type}</span>
+        ),
+        sortValue: (r) => r.type,
+      },
+      {
+        id: 'source',
+        label: 'Source',
+        defaultSortDir: 'asc',
+        render: (r) => (
+          <span className="text-xs text-[var(--text-secondary)] whitespace-nowrap">{r.source}</span>
+        ),
+        sortValue: (r) => r.source,
+      },
+      {
+        id: 'category',
+        label: 'Category',
+        defaultSortDir: 'asc',
+        render: (r) => (
+          <span
+            className="text-sm font-semibold whitespace-nowrap"
+            style={{ color: r.categoryColor }}
+          >
+            {r.category}
+          </span>
+        ),
+        sortValue: (r) => r.categoryRank,
+      },
+      {
+        id: 'details',
+        label: 'Details',
+        defaultSortDir: 'asc',
+        render: (r) =>
+          r.issues.length > 0 ? (
+            <ul className="list-disc list-inside space-y-0.5 text-xs leading-relaxed text-[var(--text-muted)]">
+              {r.issues.map((issue, idx) => (
+                <li key={idx}>{issue}</li>
+              ))}
+            </ul>
+          ) : (
+            <span className="block max-w-[500px] text-xs leading-relaxed text-[var(--text-muted)]">
+              {r.details}
+            </span>
+          ),
+        sortValue: (r) => r.details.toLowerCase(),
+      },
+    ],
+    [dssBaseUrl, navigateToInsights],
+  );
 
   return (
     <div id="connection-health-card" className="space-y-4">
@@ -250,151 +360,31 @@ export function ConnectionHealthCard() {
         </section>
       )}
 
-      {/* Failed connections grouped by category */}
-      {hasResults && (
+      {/* Merged issues table: health-test failures + configuration-audit findings */}
+      {(hasResults || hasAudit) && (
         <section className="glass-card p-4">
-          <div className="overflow-auto max-h-[60vh]">
-            {failedConnections.length === 0 && !isLoading ? (
-              <div className="py-6 text-center text-sm text-[var(--text-muted)]">
-                All testable connections are healthy.
-              </div>
-            ) : failedConnections.length === 0 && isLoading ? (
-              <div className="py-6 text-center text-sm text-[var(--text-muted)]">
-                Scanning. Failed connections will appear here as they are found.
-              </div>
-            ) : (
-              CATEGORY_ORDER.filter((cat) => groupedFailures[cat].length > 0).map((cat) => (
-                <div key={cat} className="mb-4 last:mb-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h4 className="text-sm font-semibold" style={{ color: CATEGORY_COLORS[cat] }}>
-                      {CATEGORY_LABELS[cat]}
-                    </h4>
-                    <span className="text-xs font-mono text-[var(--text-muted)]">
-                      ({groupedFailures[cat].length})
-                    </span>
-                  </div>
-                  <table className="table-dark w-full">
-                    <thead>
-                      <tr>
-                        <th>Connection</th>
-                        <th>Type</th>
-                        <th>Error</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {groupedFailures[cat].map((c) => (
-                        <tr key={c.name} className="hover:bg-[var(--bg-glass)] align-top">
-                          <td className="whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => navigateToInsights(c.name)}
-                              className="bg-transparent p-0 text-[var(--neon-cyan)] hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--neon-cyan)] rounded-sm"
-                              title={`Open ${c.name} in Insights`}
-                            >
-                              {c.name}
-                            </button>
-                            <a
-                              href={`${dssBaseUrl}/admin/connections/${encodeURIComponent(c.name)}/`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="Open in DSS"
-                              aria-label={`Open ${c.name} in DSS`}
-                              className="ml-1 text-[var(--text-muted)] hover:text-[var(--neon-cyan)]"
-                            >
-                              ↗
-                            </a>
-                          </td>
-                          <td className="text-[var(--text-secondary)] whitespace-nowrap">
-                            {c.type}
-                          </td>
-                          <td className="text-[var(--text-muted)] text-xs leading-relaxed max-w-[500px]">
-                            {c.error || ''}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Configuration Audit */}
-      {hasAudit && (
-        <section className="glass-card p-4">
-          <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-1">
-            Configuration Audit
-          </h4>
+          <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-1">Issues</h4>
           <p className="text-xs text-[var(--text-muted)] mb-3">
-            Recommended settings for fast-write, details readability, HDFS interface, and default
-            connections.
+            Health-test failures and configuration-audit findings (recommended settings for
+            fast-write, details readability, HDFS interface, and default connections).
           </p>
-          <div className="overflow-auto max-h-[60vh]">
-            {auditSeverityOrder
-              .filter((sev) => auditBySeverity[sev].length > 0)
-              .map((sev) => (
-                <div key={sev} className="mb-4 last:mb-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h4
-                      className="text-sm font-semibold"
-                      style={{ color: auditSeverityColors[sev] }}
-                    >
-                      {auditSeverityLabels[sev]}
-                    </h4>
-                    <span className="text-xs font-mono text-[var(--text-muted)]">
-                      ({auditBySeverity[sev].length})
-                    </span>
-                  </div>
-                  <table className="table-dark w-full">
-                    <thead>
-                      <tr>
-                        <th>Connection</th>
-                        <th>Type</th>
-                        <th>Findings</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {auditBySeverity[sev].map((f) => (
-                        <tr key={f.name} className="hover:bg-[var(--bg-glass)] align-top">
-                          <td className="whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => navigateToInsights(f.name)}
-                              className="bg-transparent p-0 text-[var(--neon-cyan)] hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--neon-cyan)] rounded-sm"
-                              title={`Open ${f.name} in Insights`}
-                            >
-                              {f.name}
-                            </button>
-                            <a
-                              href={`${dssBaseUrl}/admin/connections/${encodeURIComponent(f.name)}/`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="Open in DSS"
-                              aria-label={`Open ${f.name} in DSS`}
-                              className="ml-1 text-[var(--text-muted)] hover:text-[var(--neon-cyan)]"
-                            >
-                              ↗
-                            </a>
-                          </td>
-                          <td className="text-[var(--text-secondary)] whitespace-nowrap">
-                            {f.type}
-                          </td>
-                          <td className="text-[var(--text-muted)] text-xs leading-relaxed">
-                            <ul className="list-disc list-inside space-y-0.5">
-                              {f.configIssues.map((issue, idx) => (
-                                <li key={idx}>{issue}</li>
-                              ))}
-                            </ul>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
-          </div>
+          {issueRows.length === 0 ? (
+            <div className="py-6 text-center text-sm text-[var(--text-muted)]">
+              {isLoading
+                ? 'Scanning. Failed connections will appear here as they are found.'
+                : 'All testable connections are healthy.'}
+            </div>
+          ) : (
+            <DataGrid
+              rows={issueRows}
+              columns={issueColumns}
+              rowKey={(r) => `${r.source}:${r.name}`}
+              defaultSortColumnId="category"
+              defaultSortDir="asc"
+              rowClassName={() => '[&>td]:align-top'}
+              scroll={{ maxH: '60vh' }}
+            />
+          )}
         </section>
       )}
     </div>

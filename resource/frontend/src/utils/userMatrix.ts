@@ -252,10 +252,17 @@ export function buildUserMatrixContext(
   const llmRowsByOwner = new Map<string, LlmAuditRow[]>();
   for (const row of llmRows) {
     if (row.status === 'not_applicable') continue;
-    const owner = projectOwnerByKey.get(row.projectKey) || 'Unknown';
-    const list = llmRowsByOwner.get(owner) || [];
-    list.push(row);
-    llmRowsByOwner.set(owner, list);
+    // Rows are deduped by llmId server-side; projectKeys lists every exposing project.
+    const owners = new Set(
+      (row.projectKeys?.length ? row.projectKeys : [row.projectKey]).map(
+        (pk) => projectOwnerByKey.get(pk) || 'Unknown',
+      ),
+    );
+    for (const owner of owners) {
+      const list = llmRowsByOwner.get(owner) || [];
+      list.push(row);
+      llmRowsByOwner.set(owner, list);
+    }
   }
 
   const prefixes = options.deprecatedPythonPrefixes

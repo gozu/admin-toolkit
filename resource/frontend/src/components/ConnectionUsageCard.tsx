@@ -37,6 +37,21 @@ const LLM_MESH_TYPES = new Set([
   'AzureLLM',
 ]);
 
+/**
+ * Merged-table row: a usage item tagged with its display category and its
+ * data origin. `origin` (not `category`) picks the detail-modal shape —
+ * LLM-mesh-typed connections found via datasets carry dataset usages.
+ */
+type CategorizedUsageItem = ConnectionUsageItem & {
+  category: 'LLM Mesh' | 'Regular';
+  origin: 'dataset' | 'llm';
+};
+
+const CATEGORY_COLOR: Record<CategorizedUsageItem['category'], string> = {
+  'LLM Mesh': 'var(--neon-cyan)',
+  Regular: '#7fb3ea',
+};
+
 export function ConnectionUsageCard() {
   const { state } = useDiag();
   const { parsedData } = state;
@@ -71,6 +86,23 @@ export function ConnectionUsageCard() {
 
   const totalDatasetConns = regularDataset.length;
   const totalLlmConns = llmUsages.length + meshDataset.length;
+
+  const mergedItems = useMemo<CategorizedUsageItem[]>(
+    () => [
+      ...llmUsages.map((i) => ({ ...i, category: 'LLM Mesh' as const, origin: 'llm' as const })),
+      ...meshDataset.map((i) => ({
+        ...i,
+        category: 'LLM Mesh' as const,
+        origin: 'dataset' as const,
+      })),
+      ...regularDataset.map((i) => ({
+        ...i,
+        category: 'Regular' as const,
+        origin: 'dataset' as const,
+      })),
+    ],
+    [llmUsages, meshDataset, regularDataset],
+  );
 
   return (
     <div className="space-y-4">
@@ -160,38 +192,21 @@ export function ConnectionUsageCard() {
         </section>
       )}
 
-      {/* LLM Mesh Connections */}
-      {hasResults && (totalLlmConns > 0 || !isLoading) && (
+      {/* One merged table: LLM Mesh + Regular connections, categorized per row */}
+      {hasResults && (
         <section className="glass-card p-4">
           <div className="flex items-center gap-2 mb-3">
-            <h4 className="text-sm font-semibold text-[var(--neon-cyan)]">LLM Mesh Connections</h4>
-            <span className="text-xs font-mono text-[var(--text-muted)]">({totalLlmConns})</span>
-          </div>
-          {totalLlmConns === 0 ? (
-            <div className="py-4 text-center text-sm text-[var(--text-muted)]">
-              No LLM mesh connections in use.
-            </div>
-          ) : (
-            <ConnectionUsageTable items={[...llmUsages, ...meshDataset]} mode="llm" />
-          )}
-        </section>
-      )}
-
-      {/* Regular Connections */}
-      {hasResults && (totalDatasetConns > 0 || !isLoading) && (
-        <section className="glass-card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <h4 className="text-sm font-semibold text-[#7fb3ea]">Regular Connections</h4>
+            <h4 className="text-sm font-semibold text-[var(--text-primary)]">Connections in Use</h4>
             <span className="text-xs font-mono text-[var(--text-muted)]">
-              ({totalDatasetConns})
+              ({mergedItems.length})
             </span>
           </div>
-          {totalDatasetConns === 0 ? (
+          {mergedItems.length === 0 ? (
             <div className="py-4 text-center text-sm text-[var(--text-muted)]">
-              No regular connections in use.
+              No connections in use.
             </div>
           ) : (
-            <ConnectionUsageTable items={regularDataset} mode="dataset" />
+            <ConnectionUsageTable items={mergedItems} />
           )}
         </section>
       )}
@@ -199,16 +214,10 @@ export function ConnectionUsageCard() {
   );
 }
 
-function ConnectionUsageTable({
-  items,
-  mode,
-}: {
-  items: ConnectionUsageItem[];
-  mode: 'dataset' | 'llm';
-}) {
+function ConnectionUsageTable({ items }: { items: CategorizedUsageItem[] }) {
   const { state, setFocusedConnectionFilter, setActivePage } = useDiag();
   const [search, setSearch] = useState('');
-  const [detailConn, setDetailConn] = useState<ConnectionUsageItem | null>(null);
+  const [detailConn, setDetailConn] = useState<CategorizedUsageItem | null>(null);
   const detailModal = useModal();
   const { open: openDetail } = detailModal;
 
@@ -230,9 +239,7 @@ function ConnectionUsageTable({
     );
   }, [items, search]);
 
-  const countLabel = mode === 'dataset' ? 'Datasets' : 'Recipes';
-
-  const columns = useMemo<ColumnDef<ConnectionUsageItem>[]>(
+  const columns = useMemo<ColumnDef<CategorizedUsageItem>[]>(
     () => [
       {
         id: 'name',
@@ -264,6 +271,21 @@ function ConnectionUsageTable({
         sortValue: (conn) => conn.type.toLowerCase(),
       },
       {
+        id: 'category',
+        label: 'Category',
+        defaultSortDir: 'asc',
+        cellClassName: 'whitespace-nowrap',
+        render: (conn) => (
+          <span
+            className="text-xs font-semibold"
+            style={{ color: CATEGORY_COLOR[conn.category] }}
+          >
+            {conn.category}
+          </span>
+        ),
+        sortValue: (conn) => conn.category,
+      },
+      {
         id: 'projectCount',
         label: 'Projects',
         align: 'right',
@@ -284,15 +306,23 @@ function ConnectionUsageTable({
         sortValue: (conn) => conn.projectCount,
       },
       {
-        id: 'count',
-        label: countLabel,
+        id: 'datasets',
+        label: 'Datasets',
         align: 'right',
         mono: true,
-        render: (conn) => (mode === 'dataset' ? conn.datasetCount : conn.recipeCount) ?? 0,
-        sortValue: (conn) => (mode === 'dataset' ? conn.datasetCount : conn.recipeCount) ?? 0,
+        render: (conn) => (conn.origin === 'dataset' ? (conn.datasetCount ?? 0) : '—'),
+        sortValue: (conn) => (conn.origin === 'dataset' ? (conn.datasetCount ?? 0) : -1),
+      },
+      {
+        id: 'recipes',
+        label: 'Recipes',
+        align: 'right',
+        mono: true,
+        render: (conn) => (conn.origin === 'llm' ? (conn.recipeCount ?? 0) : '—'),
+        sortValue: (conn) => (conn.origin === 'llm' ? (conn.recipeCount ?? 0) : -1),
       },
     ],
-    [mode, countLabel, openDetail, setFocusedConnectionFilter, setActivePage],
+    [openDetail, setFocusedConnectionFilter, setActivePage],
   );
 
   return (
@@ -311,7 +341,7 @@ function ConnectionUsageTable({
       <DataGrid
         rows={filtered}
         columns={columns}
-        rowKey={(conn) => conn.name}
+        rowKey={(conn) => `${conn.origin}:${conn.name}`}
         defaultSortColumnId="projectCount"
         filtersActive={search.trim().length > 0}
         noMatchMessage="No connections match the current filter."
@@ -324,11 +354,95 @@ function ConnectionUsageTable({
         title={detailConn ? `${detailConn.name} — projects` : 'Projects'}
         sizePreset="large"
       >
-        {detailConn && <ConnectionUsageDetail conn={detailConn} mode={mode} />}
+        {detailConn && <ConnectionUsageDetail conn={detailConn} mode={detailConn.origin} />}
       </Modal>
     </div>
   );
 }
+
+const DATASET_DETAIL_COLUMNS: ColumnDef<ConnectionDatasetUsage>[] = [
+  {
+    id: 'project',
+    label: 'Project',
+    defaultSortDir: 'asc',
+    render: (dp) => (
+      <a
+        href={dssUrls.project(dp.projectKey)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`text-[var(--neon-cyan)] ${DEEP_LINK_CLASS}`}
+      >
+        {dp.projectName || dp.projectKey}
+      </a>
+    ),
+    sortValue: (dp) => (dp.projectName || dp.projectKey).toLowerCase(),
+  },
+  {
+    id: 'dataset',
+    label: 'Dataset',
+    defaultSortDir: 'asc',
+    render: (dp) => (
+      <a
+        href={dssUrls.dataset(dp.projectKey, dp.datasetName)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`text-[var(--text-secondary)] ${DEEP_LINK_CLASS}`}
+      >
+        {dp.datasetName}
+      </a>
+    ),
+    sortValue: (dp) => dp.datasetName.toLowerCase(),
+  },
+  {
+    id: 'type',
+    label: 'Type',
+    defaultSortDir: 'asc',
+    render: (dp) => <span className="text-[var(--text-muted)]">{dp.datasetType}</span>,
+    sortValue: (dp) => dp.datasetType || '',
+  },
+];
+
+const LLM_DETAIL_COLUMNS: ColumnDef<ConnectionLlmUsage>[] = [
+  {
+    id: 'project',
+    label: 'Project',
+    defaultSortDir: 'asc',
+    render: (lp) => (
+      <a
+        href={dssUrls.project(lp.projectKey)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`text-[var(--neon-cyan)] ${DEEP_LINK_CLASS}`}
+      >
+        {lp.projectName || lp.projectKey}
+      </a>
+    ),
+    sortValue: (lp) => (lp.projectName || lp.projectKey).toLowerCase(),
+  },
+  {
+    id: 'recipe',
+    label: 'Recipe',
+    defaultSortDir: 'asc',
+    render: (lp) => (
+      <a
+        href={dssUrls.recipe(lp.projectKey, lp.recipeName)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`text-[var(--text-secondary)] ${DEEP_LINK_CLASS}`}
+      >
+        {lp.recipeName}
+      </a>
+    ),
+    sortValue: (lp) => lp.recipeName.toLowerCase(),
+  },
+  {
+    id: 'llmId',
+    label: 'LLM ID',
+    defaultSortDir: 'asc',
+    render: (lp) => <span className="text-[var(--text-muted)]">{lp.llmId}</span>,
+    sortValue: (lp) => lp.llmId || '',
+  },
+];
 
 function ConnectionUsageDetail({
   conn,
@@ -337,75 +451,26 @@ function ConnectionUsageDetail({
   conn: ConnectionUsageItem;
   mode: 'dataset' | 'llm';
 }) {
+  if (mode === 'dataset') {
+    return (
+      <DataGrid
+        rows={conn.projects as ConnectionDatasetUsage[]}
+        columns={DATASET_DETAIL_COLUMNS}
+        rowKey={(dp, i) => `${dp.projectKey}-${dp.datasetName}-${i}`}
+        defaultSortColumnId="project"
+        defaultSortDir="asc"
+        scroll={{ maxH: '70vh' }}
+      />
+    );
+  }
   return (
-    <div className="overflow-auto max-h-[70vh]">
-      <table className="table-dark w-full text-sm">
-        <thead>
-          <tr>
-            <th>Project</th>
-            <th>{mode === 'dataset' ? 'Dataset' : 'Recipe'}</th>
-            <th>{mode === 'dataset' ? 'Type' : 'LLM ID'}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {conn.projects.map((p, i) => {
-            if (mode === 'dataset') {
-              const dp = p as ConnectionDatasetUsage;
-              return (
-                <tr key={`${dp.projectKey}-${dp.datasetName}-${i}`}>
-                  <td className="text-[var(--neon-cyan)]">
-                    <a
-                      href={dssUrls.project(dp.projectKey)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={DEEP_LINK_CLASS}
-                    >
-                      {dp.projectName || dp.projectKey}
-                    </a>
-                  </td>
-                  <td className="text-[var(--text-secondary)]">
-                    <a
-                      href={dssUrls.dataset(dp.projectKey, dp.datasetName)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={DEEP_LINK_CLASS}
-                    >
-                      {dp.datasetName}
-                    </a>
-                  </td>
-                  <td className="text-[var(--text-muted)]">{dp.datasetType}</td>
-                </tr>
-              );
-            }
-            const lp = p as ConnectionLlmUsage;
-            return (
-              <tr key={`${lp.projectKey}-${lp.recipeName}-${i}`}>
-                <td className="text-[var(--neon-cyan)]">
-                  <a
-                    href={dssUrls.project(lp.projectKey)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={DEEP_LINK_CLASS}
-                  >
-                    {lp.projectName || lp.projectKey}
-                  </a>
-                </td>
-                <td className="text-[var(--text-secondary)]">
-                  <a
-                    href={dssUrls.recipe(lp.projectKey, lp.recipeName)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={DEEP_LINK_CLASS}
-                  >
-                    {lp.recipeName}
-                  </a>
-                </td>
-                <td className="text-[var(--text-muted)]">{lp.llmId}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <DataGrid
+      rows={conn.projects as ConnectionLlmUsage[]}
+      columns={LLM_DETAIL_COLUMNS}
+      rowKey={(lp, i) => `${lp.projectKey}-${lp.recipeName}-${i}`}
+      defaultSortColumnId="project"
+      defaultSortDir="asc"
+      scroll={{ maxH: '70vh' }}
+    />
   );
 }

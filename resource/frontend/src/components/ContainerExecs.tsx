@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal } from './Modal';
 import { useModal } from '../hooks/useModal';
+import { useTableSort } from '../hooks/useTableSort';
 import { fetchJson, getBackendUrl } from '../utils/api';
 import { ProgressIndicator } from './common/ProgressIndicator';
 import { SkeletonRows } from './common/SkeletonRows';
@@ -91,6 +92,30 @@ function groupUsageRows(rows: ContainerExecUsageRow[]): ContainerExecProjectRow[
 
 function uniqueSorted(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b));
+}
+
+type OverrideSortKey = 'project' | 'object' | 'config';
+type ConfigSortKey = 'name' | 'type' | 'namespace';
+
+function firstConfig(rows: ContainerExecUsageRow[]): string {
+  return rows.length > 0 ? rowConfig(rows[0]) : '';
+}
+
+function sortProjectRows(
+  rows: ContainerExecProjectRow[],
+  key: OverrideSortKey,
+  dir: 'asc' | 'desc',
+  overridesOf: (project: ContainerExecProjectRow) => ContainerExecUsageRow[],
+): ContainerExecProjectRow[] {
+  return [...rows].sort((a, b) => {
+    const cmp =
+      key === 'project'
+        ? a.projectKey.localeCompare(b.projectKey)
+        : key === 'object'
+          ? overridesOf(a).length - overridesOf(b).length
+          : firstConfig(overridesOf(a)).localeCompare(firstConfig(overridesOf(b)));
+    return dir === 'asc' ? cmp : -cmp;
+  });
 }
 
 function Stat({ label, value, tone = 'neutral' }: { label: string; value: number | string; tone?: 'neutral' | 'danger' }) {
@@ -245,14 +270,19 @@ function ContainerExecTable({
   count,
   emptyText,
   loading = false,
+  onSort,
+  sortIndicator,
   children,
 }: {
   title: string;
   count: number;
   emptyText: string;
   loading?: boolean;
+  onSort?: (key: OverrideSortKey) => void;
+  sortIndicator?: (key: OverrideSortKey) => string;
   children: ReactNode;
 }) {
+  const sortableClass = onSort ? ' cursor-pointer select-none' : '';
   return (
     <div className="overflow-hidden rounded-xl">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-glass)] px-4 py-3">
@@ -264,9 +294,25 @@ function ContainerExecTable({
         <table className="w-full table-fixed text-sm">
           <thead className="bg-[var(--bg-elevated)] text-[var(--text-secondary)]">
             <tr>
-              <th className="w-[28%] px-4 py-2 text-left">Project</th>
-              <th className="w-[44%] px-4 py-2 text-left">Object</th>
-              <th className="w-[28%] px-4 py-2 text-left">Config</th>
+              <th
+                className={`w-[28%] px-4 py-2 text-left${sortableClass}`}
+                onClick={onSort ? () => onSort('project') : undefined}
+              >
+                Project{sortIndicator?.('project')}
+              </th>
+              <th
+                className={`w-[44%] px-4 py-2 text-left${sortableClass}`}
+                onClick={onSort ? () => onSort('object') : undefined}
+                title={onSort ? 'Sort by number of overrides' : undefined}
+              >
+                Object{sortIndicator?.('object')}
+              </th>
+              <th
+                className={`w-[28%] px-4 py-2 text-left${sortableClass}`}
+                onClick={onSort ? () => onSort('config') : undefined}
+              >
+                Config{sortIndicator?.('config')}
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-glass)]">
@@ -332,6 +378,36 @@ export function ContainerExecs() {
   const [replaceLoading, setReplaceLoading] = useState(false);
   const [replaceError, setReplaceError] = useState<string | null>(null);
   const confirmModal = useModal();
+  const {
+    sortKey: projectSortKey,
+    sortDir: projectSortDir,
+    handleSort: handleProjectTableSort,
+    sortIndicator: projectSortIndicator,
+  } = useTableSort<OverrideSortKey>({
+    defaultKey: 'project',
+    defaultDir: 'asc',
+    ascDefaultKeys: ['project', 'config'],
+  });
+  const {
+    sortKey: objectSortKey,
+    sortDir: objectSortDir,
+    handleSort: handleObjectTableSort,
+    sortIndicator: objectSortIndicator,
+  } = useTableSort<OverrideSortKey>({
+    defaultKey: 'project',
+    defaultDir: 'asc',
+    ascDefaultKeys: ['project', 'config'],
+  });
+  const {
+    sortKey: configSortKey,
+    sortDir: configSortDir,
+    handleSort: handleConfigSort,
+    sortIndicator: configSortIndicator,
+  } = useTableSort<ConfigSortKey>({
+    defaultKey: 'name',
+    defaultDir: 'asc',
+    ascDefaultKeys: ['name', 'type', 'namespace'],
+  });
 
   useEffect(() => {
     if (!scanStarted) {
@@ -372,6 +448,26 @@ export function ContainerExecs() {
     () => projectRows.filter((project) => project.jobOverrides.length > 0),
     [projectRows],
   );
+  const sortedProjectOnlyRows = useMemo(
+    () => sortProjectRows(projectOnlyRows, projectSortKey, projectSortDir, (p) => p.projectOverrides),
+    [projectOnlyRows, projectSortKey, projectSortDir],
+  );
+  const sortedObjectOverrideRows = useMemo(
+    () => sortProjectRows(objectOverrideRows, objectSortKey, objectSortDir, (p) => p.jobOverrides),
+    [objectOverrideRows, objectSortKey, objectSortDir],
+  );
+  const sortedConfigs = useMemo(() => {
+    const valueOf = (cfg: ContainerExecConfig): string =>
+      configSortKey === 'name'
+        ? cfg.name
+        : configSortKey === 'type'
+          ? String(cfg.type ?? '')
+          : String(cfg.kubernetesNamespace ?? '');
+    return [...configs].sort((a, b) => {
+      const cmp = valueOf(a).localeCompare(valueOf(b));
+      return configSortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [configs, configSortKey, configSortDir]);
   const nonCarrierEntries = useMemo(
     () => Object.entries(data?.nonCarrierCounts || {}).filter(([, count]) => count > 0),
     [data?.nonCarrierCounts],
@@ -595,8 +691,10 @@ export function ContainerExecs() {
         count={projectOnlyRows.length}
         emptyText="No projects override the instance default."
         loading={loading}
+        onSort={handleProjectTableSort}
+        sortIndicator={projectSortIndicator}
       >
-        {projectOnlyRows.map((project) => (
+        {sortedProjectOnlyRows.map((project) => (
           <tr key={project.projectKey} className="align-top hover:bg-[var(--bg-glass-hover)]">
             <td className="px-4 py-3">
               <ProjectCell baseUrl={dssBaseUrl} project={project} />
@@ -614,8 +712,10 @@ export function ContainerExecs() {
         count={objectOverrideRows.length}
         emptyText="No object-level overrides differ from their project baseline."
         loading={loading}
+        onSort={handleObjectTableSort}
+        sortIndicator={objectSortIndicator}
       >
-        {objectOverrideRows.map((project) => {
+        {sortedObjectOverrideRows.map((project) => {
           const expanded = expandedProjects.has(project.projectKey);
           return (
             <tr key={project.projectKey} className="align-top hover:bg-[var(--bg-glass-hover)]">
@@ -658,13 +758,28 @@ export function ContainerExecs() {
                 <table className="w-full text-sm">
                   <thead className="bg-[var(--bg-elevated)] text-[var(--text-secondary)]">
                     <tr>
-                      <th className="px-3 py-2 text-left">Name</th>
-                      <th className="px-3 py-2 text-left">Type</th>
-                      <th className="px-3 py-2 text-left">Namespace</th>
+                      <th
+                        className="px-3 py-2 text-left cursor-pointer select-none"
+                        onClick={() => handleConfigSort('name')}
+                      >
+                        Name{configSortIndicator('name')}
+                      </th>
+                      <th
+                        className="px-3 py-2 text-left cursor-pointer select-none"
+                        onClick={() => handleConfigSort('type')}
+                      >
+                        Type{configSortIndicator('type')}
+                      </th>
+                      <th
+                        className="px-3 py-2 text-left cursor-pointer select-none"
+                        onClick={() => handleConfigSort('namespace')}
+                      >
+                        Namespace{configSortIndicator('namespace')}
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-glass)]">
-                    {configs.map((cfg: ContainerExecConfig) => (
+                    {sortedConfigs.map((cfg: ContainerExecConfig) => (
                       <tr key={cfg.name}>
                         <td className="px-3 py-2"><ConfigLink baseUrl={dssBaseUrl} name={cfg.name} validConfigs={validConfigSet} /></td>
                         <td className="px-3 py-2 text-[var(--text-secondary)]">{fmt(cfg.type)}</td>

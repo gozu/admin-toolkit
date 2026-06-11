@@ -64,7 +64,7 @@ export function LocalFilesystemMigrationCard() {
   const hasResults = usages.length > 0;
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4 flex-1 min-h-0">
       {/* Header */}
       <section className="glass-card p-4">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">
@@ -239,6 +239,8 @@ function LocalFilesystemOutreachPanel({ usages }: { usages: ConnectionLocalFiles
       id: 'select',
       label: '',
       headerClassName: 'w-8',
+      defaultSortDir: 'desc',
+      sortValue: (group) => (selectedOwners.has(group.owner) ? 1 : 0),
       render: (group) => (
         <input
           type="checkbox"
@@ -292,7 +294,7 @@ function LocalFilesystemOutreachPanel({ usages }: { usages: ConnectionLocalFiles
   ];
 
   return (
-    <section className="glass-card p-4">
+    <section className="glass-card p-4 flex flex-col flex-1 min-h-0">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex items-center gap-2">
           <h4 className="text-sm font-semibold text-[var(--neon-yellow)]">
@@ -347,7 +349,7 @@ function LocalFilesystemOutreachPanel({ usages }: { usages: ConnectionLocalFiles
         rowKey={(group) => group.owner}
         defaultSortColumnId="objectCount"
         emptyMessage="No local filesystem objects found."
-        scroll={{ maxH: '55vh' }}
+        scroll="card"
         rowClassName={() => '[&>td]:align-top'}
       />
 

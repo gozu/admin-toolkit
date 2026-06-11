@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useDiag } from '../context/DiagContext';
 import type { CodeEnv } from '../types';
 import { useTableFilter } from '../hooks/useTableFilter';
+import { useTableSort } from '../hooks/useTableSort';
 import { formatSizeGb, getRelativeSizeColor } from '../utils/formatters';
 import { ProgressIndicator } from './common/ProgressIndicator';
 import { dssUrls } from '../utils/codeEnvUsageLinks';
@@ -9,6 +10,21 @@ import { dssUrls } from '../utils/codeEnvUsageLinks';
 const EMPTY_ARR: never[] = [];
 
 type ViewMode = 'summary' | 'details';
+
+type DetailSortKey = 'name' | 'owner' | 'version' | 'language' | 'size';
+type SummarySortKey = 'version' | 'count';
+
+function sortVersionCounts(
+  counts: Record<string, number>,
+  key: SummarySortKey,
+  dir: 'asc' | 'desc',
+): Array<[string, number]> {
+  return Object.entries(counts).sort((a, b) => {
+    const cmp =
+      key === 'version' ? a[0].localeCompare(b[0], undefined, { numeric: true }) : a[1] - b[1];
+    return dir === 'asc' ? cmp : -cmp;
+  });
+}
 
 export function CodeEnvsTable() {
   const { state } = useDiag();
@@ -35,6 +51,28 @@ export function CodeEnvsTable() {
   const [viewMode, setViewMode] = useState<ViewMode>('details');
   const [ownerFilter, setOwnerFilter] = useState<string | null>(null);
 
+  const {
+    sortKey: detailSortKey,
+    sortDir: detailSortDir,
+    handleSort: handleDetailSort,
+    sortIndicator: detailSortIndicator,
+  } = useTableSort<DetailSortKey>({
+    defaultKey: 'size',
+    ascDefaultKeys: ['name', 'owner', 'version', 'language'],
+  });
+  const {
+    sortKey: pySortKey,
+    sortDir: pySortDir,
+    handleSort: handlePySort,
+    sortIndicator: pySortIndicator,
+  } = useTableSort<SummarySortKey>({ defaultKey: 'count', ascDefaultKeys: ['version'] });
+  const {
+    sortKey: rSortKey,
+    sortDir: rSortDir,
+    handleSort: handleRSort,
+    sortIndicator: rSortIndicator,
+  } = useTableSort<SummarySortKey>({ defaultKey: 'count', ascDefaultKeys: ['version'] });
+
   const allEnvs = useMemo(() => {
     const realNames = new Set(codeEnvs.map((e) => e.name));
     const provisionalAsEnvs = provisionalCodeEnvs
@@ -57,16 +95,32 @@ export function CodeEnvsTable() {
     return { pythonEnvs: python, rEnvs: r };
   }, [allEnvs]);
 
-  const sortedCodeEnvs = useMemo(
-    () =>
-      [...allEnvs].sort((a, b) => {
-        const sizeA = a.sizeBytes || 0;
-        const sizeB = b.sizeBytes || 0;
-        if (sizeB !== sizeA) return sizeB - sizeA;
-        return a.name.localeCompare(b.name);
-      }),
-    [allEnvs],
-  );
+  const sortedCodeEnvs = useMemo(() => {
+    const value = (env: CodeEnv): string | number => {
+      switch (detailSortKey) {
+        case 'name':
+          return env.name;
+        case 'owner':
+          return env.owner || 'Unknown';
+        case 'version':
+          return env.version || '';
+        case 'language':
+          return env.language || '';
+        case 'size':
+          return env.sizeBytes || 0;
+      }
+    };
+    return [...allEnvs].sort((a, b) => {
+      const av = value(a);
+      const bv = value(b);
+      const cmp =
+        typeof av === 'number' && typeof bv === 'number'
+          ? av - bv
+          : String(av).localeCompare(String(bv));
+      const signed = detailSortDir === 'asc' ? cmp : -cmp;
+      return signed !== 0 ? signed : a.name.localeCompare(b.name);
+    });
+  }, [allEnvs, detailSortKey, detailSortDir]);
   const filteredCodeEnvs = useMemo(
     () =>
       ownerFilter
@@ -84,8 +138,8 @@ export function CodeEnvsTable() {
     return null;
   }
 
-  const sortedPythonVersions = Object.entries(pythonVersionCounts).sort((a, b) => b[1] - a[1]);
-  const sortedRVersions = Object.entries(rVersionCounts).sort((a, b) => b[1] - a[1]);
+  const sortedPythonVersions = sortVersionCounts(pythonVersionCounts, pySortKey, pySortDir);
+  const sortedRVersions = sortVersionCounts(rVersionCounts, rSortKey, rSortDir);
 
   const pythonCount = pythonEnvs.length;
   const rCount = rEnvs.length;
@@ -163,11 +217,17 @@ export function CodeEnvsTable() {
                     <table className="w-full">
                       <thead className="bg-[var(--bg-app)]">
                         <tr>
-                          <th className="px-4 py-2 text-left text-sm font-semibold text-[var(--text-secondary)]">
-                            Version
+                          <th
+                            className="px-4 py-2 text-left text-sm font-semibold text-[var(--text-secondary)] cursor-pointer select-none"
+                            onClick={() => handlePySort('version')}
+                          >
+                            Version{pySortIndicator('version')}
                           </th>
-                          <th className="px-4 py-2 text-left text-sm font-semibold text-[var(--text-secondary)]">
-                            Count
+                          <th
+                            className="px-4 py-2 text-left text-sm font-semibold text-[var(--text-secondary)] cursor-pointer select-none"
+                            onClick={() => handlePySort('count')}
+                          >
+                            Count{pySortIndicator('count')}
                           </th>
                         </tr>
                       </thead>
@@ -197,11 +257,17 @@ export function CodeEnvsTable() {
                     <table className="w-full">
                       <thead className="bg-[var(--bg-app)]">
                         <tr>
-                          <th className="px-4 py-2 text-left text-sm font-semibold text-[var(--text-secondary)]">
-                            Type
+                          <th
+                            className="px-4 py-2 text-left text-sm font-semibold text-[var(--text-secondary)] cursor-pointer select-none"
+                            onClick={() => handleRSort('version')}
+                          >
+                            Type{rSortIndicator('version')}
                           </th>
-                          <th className="px-4 py-2 text-left text-sm font-semibold text-[var(--text-secondary)]">
-                            Count
+                          <th
+                            className="px-4 py-2 text-left text-sm font-semibold text-[var(--text-secondary)] cursor-pointer select-none"
+                            onClick={() => handleRSort('count')}
+                          >
+                            Count{rSortIndicator('count')}
                           </th>
                         </tr>
                       </thead>
@@ -225,20 +291,35 @@ export function CodeEnvsTable() {
               <table className="w-full">
                 <thead className="bg-[var(--bg-app)] sticky top-0">
                   <tr>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-[var(--text-secondary)]">
-                      Name
+                    <th
+                      className="px-4 py-3 text-left text-sm font-semibold text-[var(--text-secondary)] cursor-pointer select-none"
+                      onClick={() => handleDetailSort('name')}
+                    >
+                      Name{detailSortIndicator('name')}
                     </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-[var(--text-secondary)]">
-                      Owner
+                    <th
+                      className="px-4 py-3 text-left text-sm font-semibold text-[var(--text-secondary)] cursor-pointer select-none"
+                      onClick={() => handleDetailSort('owner')}
+                    >
+                      Owner{detailSortIndicator('owner')}
                     </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-[var(--text-secondary)]">
-                      Version
+                    <th
+                      className="px-4 py-3 text-left text-sm font-semibold text-[var(--text-secondary)] cursor-pointer select-none"
+                      onClick={() => handleDetailSort('version')}
+                    >
+                      Version{detailSortIndicator('version')}
                     </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-[var(--text-secondary)]">
-                      Language
+                    <th
+                      className="px-4 py-3 text-left text-sm font-semibold text-[var(--text-secondary)] cursor-pointer select-none"
+                      onClick={() => handleDetailSort('language')}
+                    >
+                      Language{detailSortIndicator('language')}
                     </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-[var(--text-secondary)]">
-                      Size (GB)
+                    <th
+                      className="px-4 py-3 text-left text-sm font-semibold text-[var(--text-secondary)] cursor-pointer select-none"
+                      onClick={() => handleDetailSort('size')}
+                    >
+                      Size (GB){detailSortIndicator('size')}
                     </th>
                   </tr>
                 </thead>

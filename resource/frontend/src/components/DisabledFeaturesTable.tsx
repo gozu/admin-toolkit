@@ -14,6 +14,7 @@ const columns: ColumnDef<Row>[] = [
   {
     id: 'feature',
     label: 'Feature',
+    defaultSortDir: 'asc',
     headerClassName: HEADER_CLASS,
     render: (row) => (
       <a
@@ -26,18 +27,23 @@ const columns: ColumnDef<Row>[] = [
         <ExternalLinkIcon />
       </a>
     ),
+    sortValue: (row) => row.name,
   },
   {
     id: 'status',
     label: 'Status',
+    defaultSortDir: 'asc',
     headerClassName: HEADER_CLASS,
     render: (row) => <span className="badge badge-warning font-mono">{row.status}</span>,
+    sortValue: (row) => row.status,
   },
   {
     id: 'description',
     label: 'Description',
+    defaultSortDir: 'asc',
     headerClassName: HEADER_CLASS,
     render: (row) => row.description,
+    sortValue: (row) => row.description,
   },
 ];
 

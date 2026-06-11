@@ -68,18 +68,22 @@ function formatPct(value: number | null | undefined): string {
 type UnavailableCluster = NonNullable<K8sInsightsClustersResult['unavailable']>[number];
 
 const UNAVAILABLE_CLUSTER_COLUMNS: ColumnDef<UnavailableCluster>[] = [
-  { id: 'id', label: 'id', mono: true, render: (u) => u.id },
+  { id: 'id', label: 'id', defaultSortDir: 'asc', mono: true, render: (u) => u.id, sortValue: (u) => u.id },
   {
     id: 'state',
     label: 'state',
+    defaultSortDir: 'asc',
     cellClassName: 'text-[var(--text-muted)]',
     render: (u) => u.state || '—',
+    sortValue: (u) => u.state || '',
   },
   {
     id: 'type',
     label: 'type',
+    defaultSortDir: 'asc',
     cellClassName: 'text-[var(--text-muted)]',
     render: (u) => u.type || '—',
+    sortValue: (u) => u.type || '',
   },
   {
     id: 'kubeconfig',
@@ -90,12 +94,15 @@ const UNAVAILABLE_CLUSTER_COLUMNS: ColumnDef<UnavailableCluster>[] = [
       ) : (
         <span className="text-[var(--text-muted)]">no</span>
       ),
+    sortValue: (u) => (u.hasKubeconfig ? 1 : 0),
   },
   {
     id: 'dirFiles',
     label: 'files in cluster dir',
+    defaultSortDir: 'asc',
     cellClassName: 'text-[var(--text-muted)]',
     render: (u) => (u.dirFiles || []).join(', ') || '—',
+    sortValue: (u) => (u.dirFiles || []).join(', '),
   },
 ];
 
@@ -725,6 +732,7 @@ function K8sNodeTable({ nodes, clusterId }: { nodes: K8sNodeBreakdown[]; cluster
       {
         id: 'name',
         label: 'Node',
+        defaultSortDir: 'asc',
         render: (row) => (
           <button
             type="button"
@@ -735,10 +743,12 @@ function K8sNodeTable({ nodes, clusterId }: { nodes: K8sNodeBreakdown[]; cluster
             {row.name}
           </button>
         ),
+        sortValue: (row) => row.name,
       },
       {
         id: 'instanceType',
         label: 'Instance',
+        defaultSortDir: 'asc',
         render: (row) => (
           <span className="font-mono text-xs">
             {row.instanceType}
@@ -749,6 +759,7 @@ function K8sNodeTable({ nodes, clusterId }: { nodes: K8sNodeBreakdown[]; cluster
             )}
           </span>
         ),
+        sortValue: (row) => row.instanceType,
       },
       {
         id: 'ready',
@@ -758,6 +769,7 @@ function K8sNodeTable({ nodes, clusterId }: { nodes: K8sNodeBreakdown[]; cluster
             {row.ready ? '✓' : '✗'}
           </span>
         ),
+        sortValue: (row) => (row.ready ? 1 : 0),
       },
       {
         id: 'podCount',
@@ -768,6 +780,7 @@ function K8sNodeTable({ nodes, clusterId }: { nodes: K8sNodeBreakdown[]; cluster
             <span className="text-[var(--text-muted)]">({row.userPodCount} user)</span>
           </span>
         ),
+        sortValue: (row) => row.podCount,
       },
       {
         id: 'cpu',
@@ -777,6 +790,7 @@ function K8sNodeTable({ nodes, clusterId }: { nodes: K8sNodeBreakdown[]; cluster
             {formatPct(row.cpuPct)} <span className="text-[var(--text-muted)]">of {row.allocatableCpu || '—'}</span>
           </span>
         ),
+        sortValue: (row) => row.cpuPct ?? -1,
       },
       {
         id: 'mem',
@@ -786,11 +800,13 @@ function K8sNodeTable({ nodes, clusterId }: { nodes: K8sNodeBreakdown[]; cluster
             {formatPct(row.memPct)} <span className="text-[var(--text-muted)]">of {row.allocatableMemory || '—'}</span>
           </span>
         ),
+        sortValue: (row) => row.memPct ?? -1,
       },
       {
         id: 'hourly',
         label: '$/hr',
         render: (row) => <span className="font-mono text-xs">{formatUsd(row.hourly)}</span>,
+        sortValue: (row) => row.hourly ?? -1,
       },
     ],
     [expanded],

@@ -10,7 +10,9 @@ export type ColumnAlign = 'left' | 'right' | 'center';
  *
  * All rich per-cell behaviour (clickable cells → modals, intra-cell expandable
  * sublists, badges, links) lives inside `render`. The engine never grows a
- * subrow / cell-click feature — those are expressed in `render`.
+ * cell-click feature — those are expressed in `render`. The one structural
+ * exception is the optional expandable child-row support on DataGrid itself
+ * (getRowChildren/renderChildRow), whose expansion state stays in the parent.
  */
 export interface ColumnDef<R> {
   /** Stable id, also used as the sort key. */

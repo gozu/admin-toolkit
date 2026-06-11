@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDiag } from '../context/DiagContext';
 import { getBackendUrl } from '../utils/api';
+import { useTableSort } from '../hooks/useTableSort';
 import { runSanityCheck } from '../state/sanityCheckScan';
 import { Spinner } from './common/Spinner';
 import { StatTile } from './common/StatTile';
@@ -449,6 +450,20 @@ export function SanityCheckCard() {
 
   const rows = useMemo(() => groupByCode(results), [results]);
 
+  // 'order' = the original grouped order (severity-grouped as emitted by DSS);
+  // it is the default and is never offered as a clickable header.
+  const { sortKey, sortDir, handleSort, sortIndicator } = useTableSort<
+    'order' | 'title' | 'details'
+  >({ defaultKey: 'order', ascDefaultKeys: ['title'] });
+
+  const sortedRows = useMemo(() => {
+    if (sortKey === 'order') return rows;
+    return [...rows].sort((a, b) => {
+      const cmp = sortKey === 'title' ? a.title.localeCompare(b.title) : a.count - b.count;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [rows, sortKey, sortDir]);
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -511,12 +526,23 @@ export function SanityCheckCard() {
             <table className="table-dark w-full">
               <thead>
                 <tr>
-                  <th className="w-1/3">Title</th>
-                  <th>Details</th>
+                  <th
+                    className="w-1/3 cursor-pointer select-none"
+                    onClick={() => handleSort('title')}
+                  >
+                    Title{sortIndicator('title')}
+                  </th>
+                  <th
+                    className="cursor-pointer select-none"
+                    onClick={() => handleSort('details')}
+                    title="Sort by number of occurrences"
+                  >
+                    Details{sortIndicator('details')}
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {sortedRows.map((row) => (
                   <tr
                     key={row.code}
                     className="hover:bg-[var(--bg-glass)] align-top"

@@ -10,7 +10,7 @@ export function ConnectionsFsMigrationPage() {
     (parsedData.connectionCounts && Object.keys(parsedData.connectionCounts).length > 0);
 
   return (
-    <div className="w-full py-4 flex flex-col gap-4">
+    <div className="page-fill gap-4">
       {hasConnections ? (
         <LocalFilesystemMigrationCard />
       ) : (

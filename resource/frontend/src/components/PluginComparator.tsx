@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { fetchJson } from '../utils/api';
+import { useTableSort } from '../hooks/useTableSort';
 import { hostStore } from '../state/hostStore';
 import { useDiag } from '../context/DiagContext';
 import type { Lifecycle, PluginCompareRow } from '../types';
@@ -47,7 +48,17 @@ const STATUS_LABELS: Record<RowStatus, string> = {
   'remote-only': 'Remote only',
 };
 
+const STATUS_SORT_ORDER: Record<RowStatus, number> = {
+  match: 0,
+  minor: 1,
+  major: 2,
+  missing: 3,
+  'remote-only': 4,
+};
+
 type DisplayRow = PluginCompareRow & { status?: RowStatus };
+
+type SortKey = 'name' | 'local' | 'remote' | 'status';
 
 export function PluginComparator() {
   const { hosts } = hostStore.use();
@@ -72,6 +83,11 @@ export function PluginComparator() {
   const [concurrency, setConcurrency] = useState(1);
   const [deployingIds, setDeployingIds] = useState<Set<string>>(new Set());
   const abortRef = useRef(false);
+  const { sortKey, sortDir, handleSort, sortIndicator } = useTableSort<SortKey>({
+    defaultKey: 'name',
+    defaultDir: 'asc',
+    ascDefaultKeys: ['name', 'local', 'remote', 'status'],
+  });
 
   useEffect(() => {
     setCompared(false);
@@ -148,6 +164,30 @@ export function PluginComparator() {
     compared && filter !== 'all'
       ? enrichedRows.filter((r) => r.status === filter)
       : enrichedRows;
+
+  const sortM = sortDir === 'asc' ? 1 : -1;
+  const sortedRows = [...filteredRows].sort((a, b) => {
+    switch (sortKey) {
+      case 'name':
+        return sortM * (a.label || a.id).localeCompare(b.label || b.id);
+      case 'local':
+        return (
+          sortM *
+          (a.localVersion || '').localeCompare(b.localVersion || '', undefined, { numeric: true })
+        );
+      case 'remote':
+        return (
+          sortM *
+          (a.remoteVersion || '').localeCompare(b.remoteVersion || '', undefined, { numeric: true })
+        );
+      case 'status':
+        return (
+          sortM *
+          ((a.status ? STATUS_SORT_ORDER[a.status] : -1) -
+            (b.status ? STATUS_SORT_ORDER[b.status] : -1))
+        );
+    }
+  });
 
   const counts = compared
     ? enrichedRows.reduce(
@@ -273,7 +313,7 @@ export function PluginComparator() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="flex-1 min-h-0 flex flex-col space-y-4">
       {/* Host picker */}
       <section className="glass-card p-4 space-y-3">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">Plugin Comparator</h3>
@@ -319,7 +359,7 @@ export function PluginComparator() {
 
       {/* Results */}
       {enrichedRows.length > 0 && (
-        <section className="glass-card p-4 space-y-3">
+        <section className="glass-card p-4 space-y-3 flex-1 min-h-0 flex flex-col">
           {!compared && (
             <p className="text-xs text-[var(--text-tertiary)]">
               Pick a host and click <span className="text-[var(--text-secondary)]">Compare</span> to
@@ -429,18 +469,42 @@ export function PluginComparator() {
           )}
 
           {/* Table */}
-          <div className="overflow-auto max-h-[60vh] border border-[var(--border-glass)] rounded-lg">
+          <div className="flex-1 min-h-0 overflow-auto border border-[var(--border-glass)] rounded-lg">
             <table className="table-dark w-full">
               <thead className="sticky top-0 bg-[var(--bg-surface)] z-10">
                 <tr>
-                  <th className="text-left">Plugin Name</th>
-                  <th className="text-left">Design Node</th>
-                  {compared && <th className="text-left">Automation Node</th>}
-                  {compared && <th className="text-left">Status</th>}
+                  <th
+                    className="text-left cursor-pointer select-none"
+                    onClick={() => handleSort('name')}
+                  >
+                    Plugin Name{sortIndicator('name')}
+                  </th>
+                  <th
+                    className="text-left cursor-pointer select-none"
+                    onClick={() => handleSort('local')}
+                  >
+                    Design Node{sortIndicator('local')}
+                  </th>
+                  {compared && (
+                    <th
+                      className="text-left cursor-pointer select-none"
+                      onClick={() => handleSort('remote')}
+                    >
+                      Automation Node{sortIndicator('remote')}
+                    </th>
+                  )}
+                  {compared && (
+                    <th
+                      className="text-left cursor-pointer select-none"
+                      onClick={() => handleSort('status')}
+                    >
+                      Status{sortIndicator('status')}
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map((row) => {
+                {sortedRows.map((row) => {
                   const isRowDeploying = deployingIds.has(row.id);
                   return (
                     <tr key={row.id} className="hover:bg-[var(--bg-glass)]">

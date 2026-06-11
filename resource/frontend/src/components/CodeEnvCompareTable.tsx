@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { codeEnvComparisonScan } from '../state/codeEnvComparisonStore';
+import { useTableSort } from '../hooks/useTableSort';
 import { Spinner } from './common/Spinner';
+import type { CodeEnvCompareBlue, CodeEnvCompareYellow } from '../types';
 
 type SectionKey = 'green' | 'purple' | 'blue' | 'yellow';
 
@@ -259,70 +261,7 @@ export function CodeEnvCompareTable() {
                       <EnvBadge key={name} name={name} />
                     ))}
                   </div>
-                  <div className="overflow-x-auto rounded-md border border-[var(--border-glass)]">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-[var(--bg-app)]">
-                          <th className="px-3 py-2 text-left font-semibold text-[var(--text-secondary)] whitespace-nowrap">
-                            Package
-                          </th>
-                          {group.envNames.map((name) => (
-                            <th
-                              key={name}
-                              className="px-3 py-2 text-left font-semibold text-[var(--text-secondary)] font-mono whitespace-nowrap"
-                            >
-                              {name}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Object.entries(group.diffs)
-                          .sort(([a], [b]) => a.localeCompare(b))
-                          .map(([pkg, versions], rowIdx) => {
-                            const vals = group.envNames.map((n) => versions[n] || '');
-                            // Find the most common value to dim it
-                            const freq: Record<string, number> = {};
-                            vals.forEach((v) => (freq[v] = (freq[v] || 0) + 1));
-                            const mostCommon = Object.entries(freq).sort(
-                              (a, b) => b[1] - a[1],
-                            )[0]?.[0];
-                            return (
-                              <tr
-                                key={pkg}
-                                className={
-                                  rowIdx % 2 === 0 ? 'bg-transparent' : 'bg-[var(--bg-elevated)]/30'
-                                }
-                              >
-                                <td className="px-3 py-1.5 font-mono text-[var(--text-primary)] whitespace-nowrap">
-                                  {pkg}
-                                </td>
-                                {group.envNames.map((name) => {
-                                  const v = versions[name] || '';
-                                  const isDiff = v !== mostCommon;
-                                  return (
-                                    <td
-                                      key={name}
-                                      className={`px-3 py-1.5 font-mono whitespace-nowrap ${
-                                        isDiff
-                                          ? 'text-[var(--neon-amber)] font-semibold'
-                                          : 'text-[var(--text-muted)]'
-                                      }`}
-                                    >
-                                      {v || (
-                                        <span className="text-[var(--text-muted)]/50 italic">
-                                          none
-                                        </span>
-                                      )}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            );
-                          })}
-                      </tbody>
-                    </table>
-                  </div>
+                  <VersionMatrixTable group={group} />
                 </GroupCard>
               ))}
             </div>
@@ -372,51 +311,7 @@ export function CodeEnvCompareTable() {
                         <div className="text-[0.65rem] uppercase tracking-wider text-[var(--text-muted)] mb-1 font-medium">
                           Version differences
                         </div>
-                        <div className="overflow-x-auto rounded border border-[var(--border-glass)]">
-                          <table className="w-full text-xs">
-                            <thead>
-                              <tr className="bg-[var(--bg-app)]">
-                                <th className="px-3 py-1.5 text-left font-semibold text-[var(--text-secondary)]">
-                                  Package
-                                </th>
-                                <th className="px-3 py-1.5 text-left font-semibold text-[var(--text-secondary)] font-mono">
-                                  {pair.envA}
-                                </th>
-                                <th className="px-3 py-1.5 text-left font-semibold text-[var(--text-secondary)] font-mono">
-                                  {pair.envB}
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {pair.versionDiffs.map((d, di) => (
-                                <tr
-                                  key={d.package}
-                                  className={
-                                    di % 2 === 0 ? 'bg-transparent' : 'bg-[var(--bg-elevated)]/30'
-                                  }
-                                >
-                                  <td className="px-3 py-1 font-mono text-[var(--text-primary)]">
-                                    {d.package}
-                                  </td>
-                                  <td className="px-3 py-1 font-mono text-[var(--neon-amber)]">
-                                    {d.versionA || (
-                                      <span className="text-[var(--text-muted)]/50 italic">
-                                        none
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td className="px-3 py-1 font-mono text-[var(--neon-amber)]">
-                                    {d.versionB || (
-                                      <span className="text-[var(--text-muted)]/50 italic">
-                                        none
-                                      </span>
-                                    )}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                        <PairVersionDiffTable pair={pair} />
                       </div>
                     )}
                   </div>
@@ -431,6 +326,168 @@ export function CodeEnvCompareTable() {
 }
 
 // ── Sub-components ──
+
+function VersionMatrixTable({ group }: { group: CodeEnvCompareBlue }) {
+  const { sortKey, sortDir, handleSort, sortIndicator } = useTableSort<string>({
+    defaultKey: 'package',
+    defaultDir: 'asc',
+    ascDefaultKeys: ['package', ...group.envNames],
+  });
+  const rows = useMemo(() => {
+    return Object.entries(group.diffs).sort(([pkgA, versionsA], [pkgB, versionsB]) => {
+      const cmp =
+        sortKey === 'package'
+          ? pkgA.localeCompare(pkgB)
+          : (versionsA[sortKey] || '').localeCompare(versionsB[sortKey] || '', undefined, {
+              numeric: true,
+            });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [group.diffs, sortKey, sortDir]);
+  return (
+    <div className="overflow-x-auto rounded-md border border-[var(--border-glass)]">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-[var(--bg-app)]">
+            <th
+              className="px-3 py-2 text-left font-semibold text-[var(--text-secondary)] whitespace-nowrap cursor-pointer select-none"
+              onClick={() => handleSort('package')}
+            >
+              Package{sortIndicator('package')}
+            </th>
+            {group.envNames.map((name) => (
+              <th
+                key={name}
+                className="px-3 py-2 text-left font-semibold text-[var(--text-secondary)] font-mono whitespace-nowrap cursor-pointer select-none"
+                onClick={() => handleSort(name)}
+              >
+                {name}
+                {sortIndicator(name)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([pkg, versions], rowIdx) => {
+            const vals = group.envNames.map((n) => versions[n] || '');
+            // Find the most common value to dim it
+            const freq: Record<string, number> = {};
+            vals.forEach((v) => (freq[v] = (freq[v] || 0) + 1));
+            const mostCommon = Object.entries(freq).sort(
+              (a, b) => b[1] - a[1],
+            )[0]?.[0];
+            return (
+              <tr
+                key={pkg}
+                className={
+                  rowIdx % 2 === 0 ? 'bg-transparent' : 'bg-[var(--bg-elevated)]/30'
+                }
+              >
+                <td className="px-3 py-1.5 font-mono text-[var(--text-primary)] whitespace-nowrap">
+                  {pkg}
+                </td>
+                {group.envNames.map((name) => {
+                  const v = versions[name] || '';
+                  const isDiff = v !== mostCommon;
+                  return (
+                    <td
+                      key={name}
+                      className={`px-3 py-1.5 font-mono whitespace-nowrap ${
+                        isDiff
+                          ? 'text-[var(--neon-amber)] font-semibold'
+                          : 'text-[var(--text-muted)]'
+                      }`}
+                    >
+                      {v || (
+                        <span className="text-[var(--text-muted)]/50 italic">
+                          none
+                        </span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function PairVersionDiffTable({ pair }: { pair: CodeEnvCompareYellow }) {
+  const { sortKey, sortDir, handleSort, sortIndicator } = useTableSort<'package' | 'a' | 'b'>({
+    defaultKey: 'package',
+    defaultDir: 'asc',
+    ascDefaultKeys: ['package', 'a', 'b'],
+  });
+  const rows = useMemo(() => {
+    return [...pair.versionDiffs].sort((x, y) => {
+      const vx = sortKey === 'package' ? x.package : sortKey === 'a' ? x.versionA : x.versionB;
+      const vy = sortKey === 'package' ? y.package : sortKey === 'a' ? y.versionA : y.versionB;
+      const cmp = (vx || '').localeCompare(vy || '', undefined, { numeric: true });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [pair.versionDiffs, sortKey, sortDir]);
+  return (
+    <div className="overflow-x-auto rounded border border-[var(--border-glass)]">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-[var(--bg-app)]">
+            <th
+              className="px-3 py-1.5 text-left font-semibold text-[var(--text-secondary)] cursor-pointer select-none"
+              onClick={() => handleSort('package')}
+            >
+              Package{sortIndicator('package')}
+            </th>
+            <th
+              className="px-3 py-1.5 text-left font-semibold text-[var(--text-secondary)] font-mono cursor-pointer select-none"
+              onClick={() => handleSort('a')}
+            >
+              {pair.envA}
+              {sortIndicator('a')}
+            </th>
+            <th
+              className="px-3 py-1.5 text-left font-semibold text-[var(--text-secondary)] font-mono cursor-pointer select-none"
+              onClick={() => handleSort('b')}
+            >
+              {pair.envB}
+              {sortIndicator('b')}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((d, di) => (
+            <tr
+              key={d.package}
+              className={
+                di % 2 === 0 ? 'bg-transparent' : 'bg-[var(--bg-elevated)]/30'
+              }
+            >
+              <td className="px-3 py-1 font-mono text-[var(--text-primary)]">
+                {d.package}
+              </td>
+              <td className="px-3 py-1 font-mono text-[var(--neon-amber)]">
+                {d.versionA || (
+                  <span className="text-[var(--text-muted)]/50 italic">
+                    none
+                  </span>
+                )}
+              </td>
+              <td className="px-3 py-1 font-mono text-[var(--neon-amber)]">
+                {d.versionB || (
+                  <span className="text-[var(--text-muted)]/50 italic">
+                    none
+                  </span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (

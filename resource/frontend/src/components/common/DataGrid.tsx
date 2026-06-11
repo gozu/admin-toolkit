@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useTableSort } from '../../hooks/useTableSort';
 import { ProgressIndicator } from './ProgressIndicator';
 import type { ColumnAlign, ColumnDef } from '../../utils/dataGridTypes';
@@ -16,10 +16,23 @@ import type { Lifecycle } from '../../types';
  * intra-cell expandable lists are expressed entirely inside each column's
  * `render`. The engine drives loading via `lifecycle` (never a `tone` prop).
  */
-interface DataGridProps<R> {
+interface DataGridProps<R, C = never> {
   rows: R[];
   columns: ColumnDef<R>[];
   rowKey: (row: R, i: number) => string;
+  /**
+   * Expandable child rows (optional, additive). When a parent row's key is in
+   * `expandedRowKeys`, its children render as extra `<tr>`s directly after it.
+   * Children are excluded from sorting; cells inherit the matching column's
+   * align/mono classes. The parent component owns the expansion state and the
+   * expand/collapse affordance (rendered inside a column's `render`).
+   */
+  getRowChildren?: (row: R) => readonly C[];
+  /** One ReactNode per visible column for a child row. */
+  renderChildRow?: (child: C, parent: R, childIndex: number) => ReactNode[];
+  childRowKey?: (child: C, parent: R, childIndex: number) => string;
+  expandedRowKeys?: ReadonlySet<string>;
+  childRowClassName?: string;
   defaultSortColumnId?: string;
   defaultSortDir?: 'asc' | 'desc';
   emptyMessage?: ReactNode;
@@ -53,10 +66,15 @@ function cx(...parts: Array<string | false | undefined>): string {
 
 const STICKY_BG = 'bg-[var(--bg-app)]';
 
-export function DataGrid<R>({
+export function DataGrid<R, C = never>({
   rows,
   columns,
   rowKey,
+  getRowChildren,
+  renderChildRow,
+  childRowKey,
+  expandedRowKeys,
+  childRowClassName,
   defaultSortColumnId,
   defaultSortDir = 'desc',
   emptyMessage,
@@ -71,7 +89,7 @@ export function DataGrid<R>({
   scroll = 'none',
   id,
   rowClassName,
-}: DataGridProps<R>) {
+}: DataGridProps<R, C>) {
   // Conditional columns are resolved against the full (filtered) row set.
   const visibleColumns = useMemo(
     () => columns.filter((c) => !c.hidden?.(rows)),
@@ -207,38 +225,76 @@ export function DataGrid<R>({
         </tr>
       </thead>
       <tbody>
-        {sortedRows.map((row, i) => (
-          <tr
-            key={rowKey(row, i)}
-            className={cx(
-              'transition-colors hover:bg-[var(--bg-hover)]',
-              hasSticky && 'group',
-              rowClassName?.(row),
-            )}
-          >
-            {visibleColumns.map((col) => {
-              const extra =
-                typeof col.cellClassName === 'function'
-                  ? col.cellClassName(row)
-                  : col.cellClassName;
-              return (
-                <td
-                  key={col.id}
+        {sortedRows.map((row, i) => {
+          const key = rowKey(row, i);
+          const parentTr = (
+            <tr
+              key={key}
+              className={cx(
+                'transition-colors hover:bg-[var(--bg-hover)]',
+                hasSticky && 'group',
+                rowClassName?.(row),
+              )}
+            >
+              {visibleColumns.map((col) => {
+                const extra =
+                  typeof col.cellClassName === 'function'
+                    ? col.cellClassName(row)
+                    : col.cellClassName;
+                return (
+                  <td
+                    key={col.id}
+                    className={cx(
+                      alignClass(col.align),
+                      col.mono && 'font-mono tabular-nums',
+                      col.sticky &&
+                        cx('sticky z-10', STICKY_BG, 'group-hover:bg-[var(--bg-hover)]'),
+                      extra,
+                    )}
+                    style={col.sticky ? { left: col.sticky.left } : undefined}
+                  >
+                    {col.render(row)}
+                  </td>
+                );
+              })}
+            </tr>
+          );
+          const renderChild = renderChildRow;
+          const children =
+            getRowChildren && renderChild && expandedRowKeys?.has(key)
+              ? getRowChildren(row)
+              : undefined;
+          if (!children || children.length === 0 || !renderChild) return parentTr;
+          return (
+            <Fragment key={key}>
+              {parentTr}
+              {children.map((child, ci) => (
+                <tr
+                  key={childRowKey ? childRowKey(child, row, ci) : `${key}::child::${ci}`}
                   className={cx(
-                    alignClass(col.align),
-                    col.mono && 'font-mono tabular-nums',
-                    col.sticky &&
-                      cx('sticky z-10', STICKY_BG, 'group-hover:bg-[var(--bg-hover)]'),
-                    extra,
+                    'transition-colors hover:bg-[var(--bg-hover)]',
+                    childRowClassName,
                   )}
-                  style={col.sticky ? { left: col.sticky.left } : undefined}
                 >
-                  {col.render(row)}
-                </td>
-              );
-            })}
-          </tr>
-        ))}
+                  {renderChild(child, row, ci).map((cell, colIdx) => {
+                    const col = visibleColumns[colIdx];
+                    return (
+                      <td
+                        key={col?.id ?? colIdx}
+                        className={cx(
+                          alignClass(col?.align),
+                          col?.mono && 'font-mono tabular-nums',
+                        )}
+                      >
+                        {cell}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </Fragment>
+          );
+        })}
       </tbody>
     </table>
   );

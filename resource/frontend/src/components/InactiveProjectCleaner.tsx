@@ -16,13 +16,23 @@ import {
 
 // ── Sort helpers ──
 
-type SortField = 'name' | 'owner' | 'daysInactive';
+type SortField = 'selected' | 'name' | 'owner' | 'daysInactive';
 type SortDir = 'asc' | 'desc';
 
-function sortRows(rows: ProjectRow[], field: SortField, dir: SortDir): ProjectRow[] {
+function sortRows(
+  rows: ProjectRow[],
+  field: SortField,
+  dir: SortDir,
+  selectedKeys: Set<string>,
+): ProjectRow[] {
   const m = dir === 'asc' ? 1 : -1;
   return [...rows].sort((a, b) => {
     switch (field) {
+      case 'selected': {
+        const aS = selectedKeys.has(a.projectKey) ? 0 : 1;
+        const bS = selectedKeys.has(b.projectKey) ? 0 : 1;
+        return m * (aS - bS);
+      }
       case 'name':
         return m * a.name.localeCompare(b.name);
       case 'owner':
@@ -118,8 +128,8 @@ export function InactiveProjectCleaner() {
 
   const sortedRows = useMemo(() => {
     if (!sortField) return defaultSort(visibleRows);
-    return sortRows(visibleRows, sortField, sortDir);
-  }, [visibleRows, sortField, sortDir]);
+    return sortRows(visibleRows, sortField, sortDir, selectedKeys);
+  }, [visibleRows, sortField, sortDir, selectedKeys]);
 
   const openDeleteConfirm = useCallback(
     (row: ProjectRow) => {
@@ -250,7 +260,7 @@ export function InactiveProjectCleaner() {
 
   return (
     <>
-      <div className="space-y-4">
+      <div className="flex-1 min-h-0 flex flex-col space-y-4">
         {/* Header */}
         <section className="glass-card p-4">
           <h3 className="text-lg font-semibold text-[var(--text-primary)]">
@@ -319,22 +329,27 @@ export function InactiveProjectCleaner() {
         )}
 
         {/* Project table */}
-        <section className="glass-card p-4">
-          <div className="overflow-auto max-h-[60vh]">
+        <section className="glass-card p-4 flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0 overflow-auto">
             <table className="table-dark w-full">
               <thead>
                 <tr>
-                  <th className="w-10">
+                  <th
+                    className="w-10 cursor-pointer select-none"
+                    onClick={() => toggleSort('selected')}
+                  >
                     <input
                       type="checkbox"
                       checked={
                         visibleRows.length > 0 &&
                         visibleRows.every((r) => selectedKeys.has(r.projectKey))
                       }
+                      onClick={(e) => e.stopPropagation()}
                       onChange={() => toggleSelectAll(visibleRows.map((r) => r.projectKey))}
                       className="accent-[var(--neon-cyan)]"
                       title="Select all projects"
                     />
+                    {sortIndicator('selected')}
                   </th>
                   <th className="cursor-pointer select-none" onClick={() => toggleSort('name')}>
                     Project Name{sortIndicator('name')}

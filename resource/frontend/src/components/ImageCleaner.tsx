@@ -47,7 +47,7 @@ const PROVIDER_LABELS: Record<Provider, string> = {
 
 // ── Sort helpers ──
 
-type SortField = 'repo' | 'tags' | 'pushedAt' | 'status';
+type SortField = 'selected' | 'repo' | 'tags' | 'digest' | 'pushedAt' | 'status';
 type SortDir = 'asc' | 'desc';
 
 interface FlatRow {
@@ -58,14 +58,26 @@ interface FlatRow {
   idx: number;
 }
 
-function sortRows(rows: FlatRow[], field: SortField, dir: SortDir): FlatRow[] {
+function sortRows(
+  rows: FlatRow[],
+  field: SortField,
+  dir: SortDir,
+  selectedKeys: Set<string>,
+): FlatRow[] {
   const m = dir === 'asc' ? 1 : -1;
   return [...rows].sort((a, b) => {
     switch (field) {
+      case 'selected': {
+        const aS = selectedKeys.has(a.key) ? 0 : 1;
+        const bS = selectedKeys.has(b.key) ? 0 : 1;
+        return m * (aS - bS);
+      }
       case 'repo':
         return m * a.repo.localeCompare(b.repo);
       case 'tags':
         return m * (a.image.tags[0] || '').localeCompare(b.image.tags[0] || '');
+      case 'digest':
+        return m * a.image.digest.localeCompare(b.image.digest);
       case 'pushedAt':
         return m * a.image.pushedAt.localeCompare(b.image.pushedAt);
       case 'status': {
@@ -287,9 +299,9 @@ export function ImageCleaner() {
   );
 
   const sortedRows = useMemo(() => {
-    if (!sortField) return sortRows(visibleRows, 'pushedAt', 'asc');
-    return sortRows(visibleRows, sortField, sortDir);
-  }, [visibleRows, sortField, sortDir]);
+    if (!sortField) return sortRows(visibleRows, 'pushedAt', 'asc', selectedKeys);
+    return sortRows(visibleRows, sortField, sortDir, selectedKeys);
+  }, [visibleRows, sortField, sortDir, selectedKeys]);
 
   const deletableRows = useMemo(() => visibleRows.filter((r) => r.image.deletable), [visibleRows]);
   const keptRows = useMemo(() => visibleRows.filter((r) => !r.image.deletable), [visibleRows]);
@@ -354,7 +366,7 @@ export function ImageCleaner() {
 
   return (
     <>
-      <div className="space-y-4 p-6">
+      <div className="flex-1 min-h-0 flex flex-col space-y-4 p-6">
         <section className="glass-card p-4">
           <h3 className="text-lg font-semibold text-[var(--text-primary)]">Docker Image Cleanup</h3>
           <p className="text-sm text-[var(--text-muted)] mt-1">
@@ -539,23 +551,28 @@ export function ImageCleaner() {
               </section>
             )}
 
-            <section className="glass-card p-4">
-              <div className="overflow-auto max-h-[60vh]">
+            <section className="glass-card p-4 flex-1 min-h-0 flex flex-col">
+              <div className="flex-1 min-h-0 overflow-auto">
                 <table className="table-dark w-full">
                   <thead>
                     <tr>
                       {deletionEnabled && !scanLoading && (
-                        <th className="w-10">
+                        <th
+                          className="w-10 cursor-pointer select-none"
+                          onClick={() => toggleSort('selected')}
+                        >
                           <input
                             type="checkbox"
                             checked={
                               deletableRows.length > 0 &&
                               deletableRows.every((r) => selectedKeys.has(r.key))
                             }
+                            onClick={(e) => e.stopPropagation()}
                             onChange={() => toggleSelectAll(deletableRows.map((r) => r.key))}
                             className="accent-[var(--neon-cyan)]"
                             title="Select all deletable images"
                           />
+                          {sortIndicator('selected')}
                         </th>
                       )}
                       <th className="cursor-pointer select-none" onClick={() => toggleSort('repo')}>
@@ -564,7 +581,12 @@ export function ImageCleaner() {
                       <th className="cursor-pointer select-none" onClick={() => toggleSort('tags')}>
                         Tags{sortIndicator('tags')}
                       </th>
-                      <th>Digest</th>
+                      <th
+                        className="cursor-pointer select-none"
+                        onClick={() => toggleSort('digest')}
+                      >
+                        Digest{sortIndicator('digest')}
+                      </th>
                       <th
                         className="cursor-pointer select-none"
                         onClick={() => toggleSort('pushedAt')}

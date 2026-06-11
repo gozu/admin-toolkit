@@ -56,8 +56,10 @@ export function ConnectionsInsightsTable() {
   if (focusedConnectionFilter !== lastAppliedFilter) {
     setLastAppliedFilter(focusedConnectionFilter);
     if (focusedConnectionFilter) {
-      if (typeof focusedConnectionFilter.name === 'string') setNameFilter(focusedConnectionFilter.name);
-      if (typeof focusedConnectionFilter.type === 'string') setTypeFilter(focusedConnectionFilter.type);
+      if (typeof focusedConnectionFilter.name === 'string')
+        setNameFilter(focusedConnectionFilter.name);
+      if (typeof focusedConnectionFilter.type === 'string')
+        setTypeFilter(focusedConnectionFilter.type);
     }
   }
 
@@ -158,7 +160,9 @@ export function ConnectionsInsightsTable() {
             >
               <span>{row.auditSeverity ?? '—'}</span>
               {row.auditIssues.length > 0 && (
-                <span className="font-mono text-[var(--text-muted)]">({row.auditIssues.length})</span>
+                <span className="font-mono text-[var(--text-muted)]">
+                  ({row.auditIssues.length})
+                </span>
               )}
             </button>
           );
@@ -203,7 +207,7 @@ export function ConnectionsInsightsTable() {
   }
 
   return (
-    <div className="rounded-xl overflow-hidden">
+    <div className="rounded-xl overflow-hidden flex flex-col flex-1 min-h-0">
       {/* Header / filters */}
       <div className="px-4 py-3 border-b border-[var(--border-glass)]">
         <div className="flex items-center justify-between gap-3 mb-3">
@@ -257,7 +261,7 @@ export function ConnectionsInsightsTable() {
         defaultSortColumnId="projectCount"
         filtersActive={hasPrefilter}
         noMatchMessage="No connections match the current filters."
-        scroll={{ maxH: '75vh' }}
+        scroll="card"
       />
     </div>
   );

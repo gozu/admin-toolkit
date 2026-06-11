@@ -26,40 +26,42 @@ export function ConnectionsInsightsPage() {
         : 'Loading insights…';
 
   return (
-    <div className="w-full py-4 space-y-4">
-      {showBanner && (
-        <div className="rounded-lg px-4 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-            {pageLifecycle.phase === 'running' && <Spinner />}
-            {pageLifecycle.phase === 'error' ? (
-              <span className="text-[var(--neon-red)]">
-                <span className="font-medium">Insights error:</span> {bannerMessage}
-              </span>
-            ) : (
-              <span>{bannerMessage}</span>
-            )}
+    <div className="page-fill">
+      <div className="flex flex-col gap-4 flex-1 min-h-0">
+        {showBanner && (
+          <div className="rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+              {pageLifecycle.phase === 'running' && <Spinner />}
+              {pageLifecycle.phase === 'error' ? (
+                <span className="text-[var(--neon-red)]">
+                  <span className="font-medium">Insights error:</span> {bannerMessage}
+                </span>
+              ) : (
+                <span>{bannerMessage}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {scanning && (
+                <button
+                  onClick={abort}
+                  className="px-3 py-1 rounded-md text-xs font-medium text-[var(--text-secondary)] border border-[var(--text-tertiary)]/30 hover:bg-[var(--bg-glass-hover)] transition-colors"
+                >
+                  Abort
+                </button>
+              )}
+              {error && (
+                <button
+                  onClick={scan}
+                  className="px-3 py-1 rounded-md text-xs font-medium text-[var(--text-secondary)] border border-[var(--text-tertiary)]/30 hover:bg-[var(--bg-glass-hover)] transition-colors"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            {scanning && (
-              <button
-                onClick={abort}
-                className="px-3 py-1 rounded-md text-xs font-medium text-[var(--text-secondary)] border border-[var(--text-tertiary)]/30 hover:bg-[var(--bg-glass-hover)] transition-colors"
-              >
-                Abort
-              </button>
-            )}
-            {error && (
-              <button
-                onClick={scan}
-                className="px-3 py-1 rounded-md text-xs font-medium text-[var(--text-secondary)] border border-[var(--text-tertiary)]/30 hover:bg-[var(--bg-glass-hover)] transition-colors"
-              >
-                Retry
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-      <ConnectionsInsightsTable />
+        )}
+        <ConnectionsInsightsTable />
+      </div>
     </div>
   );
 }

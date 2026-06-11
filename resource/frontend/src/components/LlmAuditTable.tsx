@@ -199,7 +199,7 @@ export function LlmAuditTable() {
       const key = r.llmId || `${r.connection || '-'}::${r.rawModel || r.effectiveModel || '-'}`;
       const assetsForRow: UsageAssetWithProject[] = (r.usageAssets || []).map((a) => ({
         ...a,
-        projectKey: r.projectKey,
+        projectKey: a.projectKey || r.projectKey,
       }));
       const existing = map.get(key);
       if (existing) {

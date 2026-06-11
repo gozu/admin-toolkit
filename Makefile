@@ -103,6 +103,13 @@ $(FRONTEND_STAMP): $(FRONTEND_DEPS) $(NODE_MODULES_STAMP)
 build-frontend: $(FRONTEND_STAMP)
 
 # ----------------------------
+# Claude field kit (context tarball for customer machines)
+# ----------------------------
+.PHONY: field-kit
+field-kit:
+	@bash scripts/field_kit.sh
+
+# ----------------------------
 # Build plugin ZIP (prod/dev)
 # ----------------------------
 .PHONY: plugin dev dist-clean clean

@@ -6,6 +6,7 @@ import { useRedState, forgetRed } from '../../state/redUnlockStore';
 import { RedUnlockModal } from '../RedUnlockModal';
 import { AlgorithmReviewCard } from '../AlgorithmReviewCard';
 import { PerfAutoTuneCard } from '../PerfAutoTuneCard';
+import { SupportBundleCard } from '../SupportBundleCard';
 import { datasetExportConfigStore } from '../../state/datasetExportConfigStore';
 
 export const SELECTED_MAIL_CHANNEL_STORAGE_KEY = 'selectedMailChannel';
@@ -149,6 +150,8 @@ export function SettingsPage() {
       <PerfAutoTuneCard />
 
       <AlgorithmReviewCard />
+
+      <SupportBundleCard />
 
       <section className="glass-card p-4 space-y-3">
         <div>

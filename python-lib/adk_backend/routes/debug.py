@@ -2,22 +2,32 @@
 
 Deliberately kept external-facing (no @advanced gate) — used for live
 troubleshooting of deployed instances."""
+import io
+import json
+import os
+import zipfile
+from datetime import datetime, timezone
 from typing import Any, Dict
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, Response, g, jsonify
 
 from adk_backend.caching import _cache_peek
 from adk_backend.clients import _get_sdk_cache
+from adk_backend.logparse import _coerce_log_text, _parse_log_errors
 from adk_backend.prewarm import _PREWARM_STATUS
 from adk_backend.progress import _PROGRESS, _PROGRESS_LOCK
 from adk_backend.settings import _BACKEND_SETTINGS, _BACKEND_SETTINGS_LOCK
+from adk_backend.sysinfo import _dip_home, _safe_read_json, _safe_read_text
 
 bp = Blueprint('debug', __name__)
 
+# Bigger than raw-tail's 100K: the bundle is for offline diagnosis, where the
+# process-resource-monitor DEBUG flood would otherwise push webapp lines out.
+_BUNDLE_LOG_MAX_CHARS = 1_000_000
 
-@bp.route('/api/debug/perf')
-def api_debug_perf():
-    """Return performance debug data without triggering any scans."""
+
+def _perf_payload() -> Dict[str, Any]:
+    """Performance debug data without triggering any scans."""
     try:
         cache = _get_sdk_cache()
         cache_keys = cache.get_cache_keys() if hasattr(cache, 'get_cache_keys') else []
@@ -51,7 +61,7 @@ def api_debug_perf():
         ce_benchmark = {k: v for k, v in ce_benchmark.items() if k != 'events'}
     if isinstance(pf_benchmark, dict):
         pf_benchmark = {k: v for k, v in pf_benchmark.items() if k != 'events'}
-    return jsonify({
+    return {
         'cache_keys': cache_keys,
         'sdk_cache_stats': sdk_stats,
         'backend_settings': settings,
@@ -59,7 +69,72 @@ def api_debug_perf():
         'last_project_footprint_benchmark': pf_benchmark,
         'progress_summaries': progress_summaries,
         'prewarm': dict(_PREWARM_STATUS),
-    })
+    }
+
+
+@bp.route('/api/debug/perf')
+def api_debug_perf():
+    """Return performance debug data without triggering any scans."""
+    return jsonify(_perf_payload())
+
+
+@bp.route('/api/debug/support-bundle')
+def api_debug_support_bundle():
+    """Bundle debug + log diagnostics into one downloadable zip.
+
+    Aggregates what /api/debug/perf, /api/logs/raw-tail and /api/logs/errors
+    expose so a customer can hand over a single file for offline diagnosis.
+    Read-only; triggers no scans."""
+    generated_at = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
+    dip_home = _dip_home()
+    version_info = (
+        _safe_read_json(os.path.join(dip_home, 'dss-version.json'))
+        or _safe_read_json(os.path.join(dip_home, 'config', 'dss-version.json'))
+        or {}
+    )
+
+    log_text = ''
+    log_error = None
+    try:
+        try:
+            log_content = g.client.get_log('backend.log')
+        except Exception:
+            log_content = _safe_read_text(os.path.join(dip_home, 'run', 'backend.log'))
+        log_text = _coerce_log_text(log_content) or ''
+        if len(log_text) > _BUNDLE_LOG_MAX_CHARS:
+            log_text = log_text[-_BUNDLE_LOG_MAX_CHARS:]
+    except Exception as e:
+        log_error = str(e)
+
+    try:
+        log_errors = _parse_log_errors(log_text)
+    except Exception as e:
+        log_errors = {'error': str(e)}
+
+    def dumps(obj):
+        return json.dumps(obj, indent=2, default=str)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('bundle.json', dumps({
+            'generated_at_utc': generated_at,
+            'dss_version': (
+                version_info.get('product_version')
+                or version_info.get('version')
+                or version_info.get('dssVersion')
+            ),
+            'log_tail_chars': len(log_text),
+            'log_error': log_error,
+        }))
+        zf.writestr('debug-perf.json', dumps(_perf_payload()))
+        zf.writestr('logs/errors.json', dumps(log_errors))
+        zf.writestr('logs/backend-tail.log', log_text)
+    filename = 'admin-toolkit-support-bundle-{}.zip'.format(generated_at)
+    return Response(
+        buf.getvalue(),
+        mimetype='application/zip',
+        headers={'Content-Disposition': 'attachment; filename="{}"'.format(filename)},
+    )
 
 
 @bp.route('/api/debug/workers')

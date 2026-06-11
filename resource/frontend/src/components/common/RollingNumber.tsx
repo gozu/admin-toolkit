@@ -1,4 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion';
+import { useEffect, useRef } from 'react';
 
 // Slot-machine digits: each digit is a vertical 0-9 column that springs to the
 // current value, so stats roll up on mount and tick smoothly on change.
@@ -40,6 +41,26 @@ function DigitColumn({ digit, instant }: { digit: number; instant: boolean }) {
 export function RollingNumber({ value, className = '' }: RollingNumberProps) {
   const reduced = useReducedMotion();
   const str = String(value);
+  // Brightness pulse on value change (not on mount). Imperative WAAPI rather
+  // than state/class toggling: no re-render cascade, no remount — the digit
+  // columns' in-flight roll springs keep playing underneath the flash.
+  const prevValueRef = useRef(str);
+  const pulseRef = useRef<HTMLSpanElement>(null);
+  const lastPulseRef = useRef(0);
+  useEffect(() => {
+    if (prevValueRef.current === str) return;
+    prevValueRef.current = str;
+    if (reduced) return;
+    // Coalesce streaming ticks: at most ~2 flashes/sec — the digit-roll
+    // springs already convey every intermediate change.
+    const now = performance.now();
+    if (now - lastPulseRef.current < 500) return;
+    lastPulseRef.current = now;
+    pulseRef.current?.animate(
+      [{ filter: 'brightness(1.6)' }, { filter: 'brightness(1)' }],
+      { duration: 300, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' },
+    );
+  }, [str, reduced]);
   const chars = str.split('');
   return (
     <span
@@ -47,7 +68,7 @@ export function RollingNumber({ value, className = '' }: RollingNumberProps) {
       style={{ fontVariantNumeric: 'tabular-nums', lineHeight: '1em' }}
     >
       <span className="sr-only">{str}</span>
-      <span aria-hidden className="inline-flex">
+      <span aria-hidden ref={pulseRef} className="inline-flex">
         {chars.map((ch, i) =>
           /\d/.test(ch) ? (
             // Keyed by distance from the right edge so trailing digits keep

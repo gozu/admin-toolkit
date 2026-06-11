@@ -1,8 +1,9 @@
-import { motion } from 'framer-motion';
-import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useDiag } from '../../context/DiagContext';
 import type { Lifecycle, PageId } from '../../types';
-import type { ReactNode } from 'react';
+import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 
 import { resolveLifecycle } from '../../utils/pageLifecycle';
 import type { ModuleDefinition } from '../../utils/moduleRegistry';
@@ -573,6 +574,48 @@ function SidebarItemStatus({ module, data }: SidebarItemStatusProps) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Collapsed-rail tooltip                                             */
+/* ------------------------------------------------------------------ */
+
+const EASE_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
+const RAIL_TIP_DELAY_MS = 350;
+// Label stagger when the rail collapses/expands: 12ms per row, capped.
+const LABEL_STAGGER_S = 0.012;
+const LABEL_STAGGER_CAP_S = 0.15;
+
+interface RailTipState {
+  label: string;
+  x: number;
+  y: number;
+}
+
+// Replaces the native `title` on rail (icon-only) buttons. Portaled to <body>
+// so the sidebar's overflow-hidden can't clip it; fixed-positioned to the
+// right of the hovered button, vertically centered.
+function RailTooltip({ tip }: { tip: RailTipState | null }) {
+  const reduced = useReducedMotion();
+  return createPortal(
+    <AnimatePresence>
+      {tip && (
+        <motion.div
+          key={tip.label}
+          role="tooltip"
+          className="fixed z-50 pointer-events-none whitespace-nowrap rounded-md border border-[var(--border-default)] bg-[var(--bg-elevated)] px-2 py-1 text-xs text-[var(--text-primary)] shadow-md"
+          style={{ left: tip.x, top: tip.y, y: '-50%' }}
+          initial={{ opacity: 0, x: -4 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -4 }}
+          transition={reduced ? { duration: 0 } : { duration: 0.14, ease: EASE_OUT }}
+        >
+          {tip.label}
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body,
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Nav structure                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -597,49 +640,47 @@ interface SidebarSectionProps {
   section: NavSection;
   idx: number;
   collapsed: boolean;
-  renderItem: (pageId: PageId) => ReactNode;
+  renderItem: (pageId: PageId, itemIndex: number) => ReactNode;
 }
 
 // One nav section: a collapsible header (label + green chevron) over the classic
 // icon+label rows. Expanded by default; each section's open state persists.
+// Rail (icon-only) mode drops the header and forces the section open; the item
+// rows keep the SAME tree position in both modes so the AnimatePresence inside
+// each row can stagger the labels out/in across the rail flip.
 function SidebarSection({ section, idx, collapsed, renderItem }: SidebarSectionProps) {
   const { isOpen, toggle } = useCollapsible({
     id: `sidebar-section-${section.title}`,
     defaultOpen: true,
   });
 
-  // Rail (icon-only) mode: no headers, no collapsibility — unchanged.
-  if (collapsed) {
-    return (
-      <div className={idx > 0 ? 'mt-4' : ''}>
-        <div className="flex flex-col gap-0.5">{section.items.map(renderItem)}</div>
-      </div>
-    );
-  }
-
   return (
     <div className={idx > 0 ? 'mt-4' : ''}>
-      <button
-        type="button"
-        onClick={toggle}
-        aria-expanded={isOpen}
-        className="flex items-center gap-1 w-full px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#2AB1AC] hover:text-[var(--text-primary)] transition-colors"
-      >
-        <motion.svg
-          animate={{ rotate: isOpen ? 0 : -90 }}
-          transition={{ duration: 0.2 }}
-          className="w-3 h-3 flex-shrink-0 -ml-0.5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+      {!collapsed && (
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={isOpen}
+          className="flex items-center gap-1 w-full px-3 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#2AB1AC] hover:text-[var(--text-primary)] transition-colors"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </motion.svg>
-        <span>{section.title}</span>
-      </button>
-      <div className="collapse-content" data-state={isOpen ? 'open' : 'closed'}>
+          <motion.svg
+            animate={{ rotate: isOpen ? 0 : -90 }}
+            transition={{ duration: 0.2 }}
+            className="w-3 h-3 flex-shrink-0 -ml-0.5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </motion.svg>
+          <span>{section.title}</span>
+        </button>
+      )}
+      <div className="collapse-content" data-state={collapsed || isOpen ? 'open' : 'closed'}>
         <div>
-          <div className="flex flex-col gap-0.5">{section.items.map(renderItem)}</div>
+          <div className="flex flex-col gap-0.5">
+            {section.items.map((id, itemIdx) => renderItem(id, itemIdx))}
+          </div>
         </div>
       </div>
     </div>
@@ -659,6 +700,73 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
     'deprecated-flag-changed',
   );
   const redVisible = useRedVisible();
+  const reduced = useReducedMotion();
+
+  // Icon activation pulse: a one-shot WAAPI animation fired from the
+  // navigation effect, so unrelated re-renders can't cancel it mid-flight
+  // (framer would snap a keyframe target on any prop-identity change).
+  // Suppressed when the navigation came from a press on the row itself —
+  // the global pressJuice squash already gives that click its feedback —
+  // so the pulse fires only for keyboard/palette/breadcrumb navigation.
+  const pressNavRef = useRef(false);
+  const firstNavRef = useRef(true);
+  useEffect(() => {
+    const wasPress = pressNavRef.current;
+    pressNavRef.current = false;
+    if (firstNavRef.current) {
+      firstNavRef.current = false;
+      return;
+    }
+    if (wasPress || reduced) return;
+    const icon = navRef.current?.querySelector<HTMLElement>(
+      `[data-page-id="${activePage}"] [data-nav-icon]`,
+    );
+    icon?.animate(
+      [{ scale: '1' }, { scale: '1.15' }, { scale: '1' }],
+      { duration: 280, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' },
+    );
+  }, [activePage, reduced]);
+
+  // Collapsed-rail tooltip: shown after a short hover delay, hidden instantly
+  // on click/leave/scroll and whenever the collapse state flips.
+  const [railTip, setRailTip] = useState<RailTipState | null>(null);
+  const railTipTimerRef = useRef<number | null>(null);
+
+  const hideRailTip = useCallback(() => {
+    if (railTipTimerRef.current !== null) {
+      window.clearTimeout(railTipTimerRef.current);
+      railTipTimerRef.current = null;
+    }
+    setRailTip(null);
+  }, []);
+
+  const showRailTipDelayed = useCallback((e: ReactMouseEvent<HTMLElement>, label: string) => {
+    const target = e.currentTarget;
+    if (railTipTimerRef.current !== null) window.clearTimeout(railTipTimerRef.current);
+    railTipTimerRef.current = window.setTimeout(() => {
+      railTipTimerRef.current = null;
+      const r = target.getBoundingClientRect();
+      setRailTip({ label, x: r.right + 8, y: r.top + r.height / 2 });
+    }, RAIL_TIP_DELAY_MS);
+  }, []);
+
+  // Clear the tip the moment the collapse mode flips, using the documented
+  // "adjust state during render" pattern (no effect-driven setState cascade).
+  const [tipCollapsedMode, setTipCollapsedMode] = useState(collapsed);
+  if (tipCollapsedMode !== collapsed) {
+    setTipCollapsedMode(collapsed);
+    setRailTip(null);
+  }
+  // Cleanup-only effect: kill any pending show-timer on mode flip / unmount.
+  useEffect(
+    () => () => {
+      if (railTipTimerRef.current !== null) {
+        window.clearTimeout(railTipTimerRef.current);
+        railTipTimerRef.current = null;
+      }
+    },
+    [collapsed],
+  );
 
   const visibleSections = NAV_SECTIONS
     .map((section) => ({
@@ -733,7 +841,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
     setActivePage(pageId);
   }
 
-  function renderNavItem(pageId: PageId) {
+  function renderNavItem(pageId: PageId, itemIndex: number) {
     const item = MODULE_BY_ID[pageId];
     const label = item.navLabel || item.label;
     const isActive = activePage === pageId;
@@ -752,14 +860,24 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
         : `text-[var(--text-secondary)] ${hover}`);
 
     return (
+      // Rail mode keeps the same px-2.5: 10px pad + 20px icon + 10px = the 40px
+      // rail row, so the icon sits dead-center without justify-center and never
+      // shifts when the exiting label region unmounts mid-collapse.
       <button
         key={pageId}
         type="button"
         data-page-id={pageId}
-        onClick={() => handleNavClick(pageId, label)}
-        title={collapsed ? label : undefined}
+        onClick={() => {
+          hideRailTip();
+          // Guard on a real page change so a click on the already-active row
+          // can't leave the press flag stuck for a later keyboard navigation.
+          if (pageId !== activePage) pressNavRef.current = true;
+          handleNavClick(pageId, label);
+        }}
+        onMouseEnter={collapsed ? (e) => showRailTipDelayed(e, label) : undefined}
+        onMouseLeave={collapsed ? hideRailTip : undefined}
         aria-label={label}
-        className={`relative flex items-center gap-3 w-full rounded-md px-2.5 py-1.5 text-sm transition-colors duration-200 ${baseClasses} ${collapsed ? 'justify-center px-0' : ''}`}
+        className={`relative flex items-center gap-3 w-full rounded-md px-2.5 py-1.5 text-sm transition-colors duration-200 ${baseClasses}`}
       >
         {/* Active indicator bar */}
         {isActive && (
@@ -770,24 +888,46 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
           />
         )}
 
-        <span className="flex-shrink-0">{icons[pageId]}</span>
+        {/* Pulsed via WAAPI from the navigation effect (see pressNavRef). */}
+        <span data-nav-icon className="flex-shrink-0">
+          {icons[pageId]}
+        </span>
 
-        {!collapsed && (
-          <>
-            <span className={`flex-1 text-left whitespace-nowrap${isTool ? ' premium-shine-text' : ''}`}>
-              {label}
-              {pageId === 'sanity-check' && <ExternalLinkIcon />}
-            </span>
-            {badgeCount > 0 && (
-              <span className="flex-shrink-0 min-w-[20px] h-5 flex items-center justify-center rounded-full bg-[var(--accent-muted)] text-[var(--accent)] text-xs font-medium px-1.5">
-                {badgeCount}
+        {/* Label region staggers out on rail-collapse and back in on expand
+            (section-local index; whitespace-nowrap keeps the shrink clean). */}
+        <AnimatePresence initial={false}>
+          {!collapsed && (
+            <motion.span
+              key="labels"
+              className="flex flex-1 items-center gap-3"
+              initial={{ opacity: 0, x: -6 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -6 }}
+              transition={
+                reduced
+                  ? { duration: 0 }
+                  : {
+                      duration: 0.12,
+                      delay: Math.min(itemIndex * LABEL_STAGGER_S, LABEL_STAGGER_CAP_S),
+                      ease: EASE_OUT,
+                    }
+              }
+            >
+              <span className={`flex-1 text-left whitespace-nowrap${isTool ? ' premium-shine-text' : ''}`}>
+                {label}
+                {pageId === 'sanity-check' && <ExternalLinkIcon />}
               </span>
-            )}
-            {/* Action pages (noLoadGlyph) never show a load glyph — they have no
-                startup ritual; their lifecycle field drives only in-page UI. */}
-            {!item.noLoadGlyph && <SidebarItemStatus module={item} data={parsedData} />}
-          </>
-        )}
+              {badgeCount > 0 && (
+                <span className="flex-shrink-0 min-w-[20px] h-5 flex items-center justify-center rounded-full bg-[var(--accent-muted)] text-[var(--accent)] text-xs font-medium px-1.5">
+                  {badgeCount}
+                </span>
+              )}
+              {/* Action pages (noLoadGlyph) never show a load glyph — they have no
+                  startup ritual; their lifecycle field drives only in-page UI. */}
+              {!item.noLoadGlyph && <SidebarItemStatus module={item} data={parsedData} />}
+            </motion.span>
+          )}
+        </AnimatePresence>
       </button>
     );
   }
@@ -800,8 +940,13 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
       <div className={`flex items-center px-4 ${collapsed ? 'flex-col gap-1.5 px-2 py-3' : 'justify-between h-11'}`}>
         <button
           type="button"
-          onClick={onBackToHosts}
-          title="Back to host picker"
+          onClick={() => {
+            hideRailTip();
+            onBackToHosts?.();
+          }}
+          onMouseEnter={collapsed ? (e) => showRailTipDelayed(e, 'Back to host picker') : undefined}
+          onMouseLeave={collapsed ? hideRailTip : undefined}
+          title={collapsed ? undefined : 'Back to host picker'}
           aria-label="Back"
           className={`flex items-center gap-2 rounded-md px-2 py-1 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors ${collapsed ? 'justify-center' : ''}`}
         >
@@ -813,8 +958,13 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
         </button>
         <button
           type="button"
-          onClick={onToggleCollapse}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={() => {
+            hideRailTip();
+            onToggleCollapse();
+          }}
+          onMouseEnter={collapsed ? (e) => showRailTipDelayed(e, 'Expand sidebar') : undefined}
+          onMouseLeave={collapsed ? hideRailTip : undefined}
+          title={collapsed ? undefined : 'Collapse sidebar'}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           className={`flex items-center justify-center w-6 h-6 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors`}
         >
@@ -852,6 +1002,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
       <nav
         ref={navRef}
         onMouseMove={() => setKeyboardNav((v) => (v ? false : v))}
+        onScroll={hideRailTip}
         className="flex-1 overflow-y-auto px-2 py-3 space-y-0"
       >
         {visibleSections.map((section, idx) => (
@@ -865,6 +1016,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
         ))}
       </nav>
 
+      <RailTooltip tip={railTip} />
     </aside>
   );
 }

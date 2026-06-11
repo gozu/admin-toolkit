@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useDiag } from '../context/DiagContext';
 import type { PageId } from '../types';
 import { COMMAND_PALETTE_MODULES } from '../utils/moduleRegistry';
@@ -35,21 +35,69 @@ function fuzzyMatch(query: string, def: PageDef): boolean {
   return def.keywords.some((kw) => kw.toLowerCase().includes(q));
 }
 
+const RECENT_PAGES_KEY = 'admin-toolkit-recent-pages';
+const MAX_RECENT_STORED = 6;
+const MAX_RECENT_SHOWN = 5;
+
+function loadRecentPageIds(): string[] {
+  try {
+    const raw = window.localStorage.getItem(RECENT_PAGES_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((v): v is string => typeof v === 'string');
+  } catch {
+    return [];
+  }
+}
+
+function recordRecentPage(pageId: PageId): void {
+  try {
+    const next = [pageId, ...loadRecentPageIds().filter((id) => id !== pageId)].slice(
+      0,
+      MAX_RECENT_STORED,
+    );
+    window.localStorage.setItem(RECENT_PAGES_KEY, JSON.stringify(next));
+  } catch {
+    // localStorage unavailable; recents are best-effort
+  }
+}
+
 /**
  * Inner content rendered only when the palette is open.
  * Mounting/unmounting naturally resets all state (query, selected index).
  */
 function CommandPaletteContent({ onClose }: { onClose: () => void }) {
   const { setActivePage } = useDiag();
+  const reducedMotion = useReducedMotion();
   const [query, setQuery] = useState('');
   const [rawSelectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const results = useMemo(() => {
+  // Snapshot recents once per palette open (content remounts each time)
+  const recentDefs = useMemo(() => {
+    const defs: PageDef[] = [];
+    for (const id of loadRecentPageIds()) {
+      const def = PAGE_DEFS.find((d) => d.id === id);
+      if (def && !defs.includes(def)) defs.push(def);
+      if (defs.length >= MAX_RECENT_SHOWN) break;
+    }
+    return defs;
+  }, []);
+
+  const filtered = useMemo(() => {
     if (!query.trim()) return PAGE_DEFS;
     return PAGE_DEFS.filter((def) => fuzzyMatch(query.trim(), def));
   }, [query]);
+
+  const showRecent = !query.trim() && recentDefs.length > 0;
+
+  // Flat list driving keyboard navigation: Recent section first, then the full list
+  const results = useMemo(
+    () => (showRecent ? [...recentDefs, ...filtered] : filtered),
+    [showRecent, recentDefs, filtered],
+  );
 
   // Derive clamped index from raw index + results length
   const selectedIndex = Math.min(rawSelectedIndex, Math.max(0, results.length - 1));
@@ -73,6 +121,7 @@ function CommandPaletteContent({ onClose }: { onClose: () => void }) {
 
   const handleSelect = useCallback(
     (pageId: PageId) => {
+      recordRecentPage(pageId);
       setActivePage(pageId);
       onClose();
     },
@@ -119,6 +168,51 @@ function CommandPaletteContent({ onClose }: { onClose: () => void }) {
   );
 
   const heading = query.trim() ? 'Results' : 'All Pages';
+
+  // Shared row renderer so Recent + All Pages stay one flat keyboard list
+  const renderRow = (def: PageDef, index: number, keyPrefix: string) => {
+    const isSelected = index === selectedIndex;
+    return (
+      <button
+        key={`${keyPrefix}-${def.id}`}
+        data-palette-item
+        onClick={() => handleSelect(def.id)}
+        onMouseEnter={() => setSelectedIndex(index)}
+        className={`relative w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+          isSelected ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'
+        }`}
+      >
+        {isSelected && (
+          <motion.div
+            layoutId="palette-selection"
+            aria-hidden
+            className="absolute inset-0 rounded bg-[var(--bg-hover)]"
+            transition={
+              reducedMotion
+                ? { duration: 0 }
+                : { type: 'spring', stiffness: 500, damping: 38 }
+            }
+          />
+        )}
+        <span className="relative w-6 text-center text-base shrink-0" aria-hidden>
+          {SECTION_ICONS[def.section] || '\u2022'}
+        </span>
+        <span className="relative flex-1 min-w-0">
+          <span
+            className={`text-sm font-medium ${isSelected ? 'text-[var(--text-primary)]' : ''}`}
+          >
+            {def.label}
+          </span>
+          <span className="ml-2 text-xs text-[var(--text-tertiary)]">{def.section}</span>
+        </span>
+        {isSelected && (
+          <kbd className="relative hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-[var(--text-tertiary)] border border-[var(--border-default)] rounded">
+            Enter
+          </kbd>
+        )}
+      </button>
+    );
+  };
 
   return (
     <motion.div
@@ -169,55 +263,31 @@ function CommandPaletteContent({ onClose }: { onClose: () => void }) {
           </kbd>
         </div>
 
-        {/* Results list */}
-        <div ref={listRef} className="max-h-[400px] overflow-y-auto py-2">
+        {/* Results list: layoutScroll keeps the layoutId highlight accurate while scrolling */}
+        <motion.div ref={listRef} layoutScroll className="max-h-[400px] overflow-y-auto py-2">
           {results.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-[var(--text-tertiary)]">
               No pages matching &ldquo;{query}&rdquo;
             </div>
           ) : (
             <>
+              {showRecent && (
+                <>
+                  <div className="px-4 py-1 text-[10px] font-medium uppercase tracking-wider text-[var(--text-tertiary)]">
+                    Recent
+                  </div>
+                  {recentDefs.map((def, index) => renderRow(def, index, 'recent'))}
+                </>
+              )}
               <div className="px-4 py-1 text-[10px] font-medium uppercase tracking-wider text-[var(--text-tertiary)]">
                 {heading}
               </div>
-              {results.map((def, index) => {
-                const isSelected = index === selectedIndex;
-                return (
-                  <button
-                    key={def.id}
-                    data-palette-item
-                    onClick={() => handleSelect(def.id)}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                      isSelected
-                        ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]'
-                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
-                    }`}
-                  >
-                    <span className="w-6 text-center text-base shrink-0" aria-hidden>
-                      {SECTION_ICONS[def.section] || '\u2022'}
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      <span
-                        className={`text-sm font-medium ${isSelected ? 'text-[var(--text-primary)]' : ''}`}
-                      >
-                        {def.label}
-                      </span>
-                      <span className="ml-2 text-xs text-[var(--text-tertiary)]">
-                        {def.section}
-                      </span>
-                    </span>
-                    {isSelected && (
-                      <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-[var(--text-tertiary)] border border-[var(--border-default)] rounded">
-                        Enter
-                      </kbd>
-                    )}
-                  </button>
-                );
-              })}
+              {filtered.map((def, index) =>
+                renderRow(def, index + (showRecent ? recentDefs.length : 0), 'all'),
+              )}
             </>
           )}
-        </div>
+        </motion.div>
 
         {/* Footer hint */}
         <div className="flex items-center gap-4 px-4 py-2 border-t border-[var(--border-default)] text-[10px] text-[var(--text-tertiary)]">

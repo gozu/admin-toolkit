@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { RollingNumber } from './common/RollingNumber';
 import type { HealthScore, HealthIssue, HealthSeverity, HealthCategoryScore, HealthCategory } from '../types';
@@ -222,7 +222,16 @@ function ScoreGauge({ score, status, calculating }: { score: number; status: Hea
   );
 }
 
-function CategoryBar({ category, calculating }: { category: HealthCategoryScore; calculating?: boolean }) {
+function CategoryBar({
+  category,
+  index,
+  calculating,
+}: {
+  category: HealthCategoryScore;
+  index: number;
+  calculating?: boolean;
+}) {
+  const reduced = useReducedMotion();
   const barColor = category.score >= 80
     ? 'bg-[var(--neon-green)]'
     : category.score >= 50
@@ -262,7 +271,11 @@ function CategoryBar({ category, calculating }: { category: HealthCategoryScore;
           className={`h-full ${barColor} rounded-full`}
           initial={{ width: 0 }}
           animate={{ width: `${category.score}%` }}
-          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          transition={
+            reduced
+              ? { duration: 0 }
+              : { duration: 0.7, ease: [0.16, 1, 0.3, 1], delay: Math.min(index * 0.06, 0.36) }
+          }
         />
       </div>
       <div className="w-8 text-xs font-mono text-[var(--text-muted)] text-right">
@@ -546,7 +559,7 @@ export function HealthScoreCard({ healthScore, calculating = false }: HealthScor
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.2 + idx * 0.1 }}
             >
-              <CategoryBar category={category} calculating={calculating} />
+              <CategoryBar category={category} index={idx} calculating={calculating} />
             </motion.div>
           ))}
         </div>

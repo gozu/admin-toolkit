@@ -4,7 +4,10 @@ import type { PageId } from '../types';
 interface UseKeyboardNavigationOptions {
   onNavigate: (page: PageId) => void;
   onOpenPalette: () => void;
+  onOpenShortcuts?: () => void;
   onToggleTheme?: () => void;
+  /** Suspend all bindings while a top layer (palette/overlay) owns the keyboard. */
+  enabled?: boolean;
 }
 
 const PAGE_ORDER: PageId[] = [
@@ -41,9 +44,12 @@ function isInputFocused(): boolean {
 export function useKeyboardNavigation({
   onNavigate,
   onOpenPalette,
+  onOpenShortcuts,
   onToggleTheme,
+  enabled = true,
 }: UseKeyboardNavigationOptions): void {
   useEffect(() => {
+    if (!enabled) return;
     function handleKeyDown(e: KeyboardEvent) {
       // Cmd+K / Ctrl+K always triggers palette, even in inputs
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -72,10 +78,15 @@ export function useKeyboardNavigation({
         return;
       }
 
-      // Question mark: open command palette (shortcuts help)
+      // Question mark (Shift+/): open the shortcuts overlay; falls back to the
+      // palette for callers that don't wire onOpenShortcuts.
       if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        onOpenPalette();
+        if (onOpenShortcuts) {
+          onOpenShortcuts();
+        } else {
+          onOpenPalette();
+        }
         return;
       }
 
@@ -111,5 +122,5 @@ export function useKeyboardNavigation({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [onNavigate, onOpenPalette, onToggleTheme]);
+  }, [onNavigate, onOpenPalette, onOpenShortcuts, onToggleTheme, enabled]);
 }

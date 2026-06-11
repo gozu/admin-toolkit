@@ -982,6 +982,22 @@ h1, h2, h3, h4 {
   outline-offset: 2px;
 }
 
+/* Focus ring pops outward as it appears (keyboard navigation feedback) */
+@media (prefers-reduced-motion: no-preference) {
+  :focus-visible {
+    animation: focus-pop 180ms var(--ease-out);
+  }
+}
+
+@keyframes focus-pop {
+  from {
+    outline-offset: 0px;
+  }
+  to {
+    outline-offset: 2px;
+  }
+}
+
 /* Skip Navigation Link */
 .skip-link {
   position: absolute;
@@ -2230,4 +2246,127 @@ h1, h2, h3, h4 {
 
 .report-btn-pulse {
   animation: report-pulse 2s ease-in-out infinite;
+}
+
+/* =============================================================================
+   Polish pass — centrally merged CSS from the 24-feature implementation
+   ============================================================================= */
+
+/* Feature 15 — animated ellipsis on active progress messages (reuses @keyframes dots) */
+.loading-ellipsis::after {
+  content: '';
+  animation: dots 1.2s steps(4, end) infinite;
+}
+
+/* Feature 22 — single rotating sort glyph: space is always reserved on sortable
+   headers; opacity gates active/inactive, rotation encodes direction. */
+.dg-sort-arrow {
+  display: inline-block;
+  width: 1.1em;
+  margin-left: 0.15em;
+  text-align: center;
+  line-height: 1;
+  opacity: 0;
+  transform: rotate(0deg);
+  transition:
+    opacity 180ms var(--ease-out),
+    transform 180ms var(--ease-out);
+}
+
+.dg-sort-arrow[data-dir='desc'] {
+  transform: rotate(180deg);
+}
+
+.dg-sort-arrow[data-active='true'] {
+  opacity: 1;
+}
+
+/* Feature 23 — sticky thead scroll shadow, keyed off the rAF-toggled
+   [data-scrolled] attribute on DataGrid's own scroll wrappers. */
+.dg-scrollable .table-dark thead {
+  transition: box-shadow var(--duration-normal) var(--ease-out);
+}
+
+.dg-scrollable[data-scrolled='true'] .table-dark thead {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme='light'] .dg-scrollable[data-scrolled='true'] .table-dark thead {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* Features 1 + 19 — streaming tables: new-row entrance + arrival tint */
+@keyframes stream-row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+    background-color: var(--accent-muted);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    background-color: transparent;
+  }
+}
+
+.stream-row-enter {
+  animation: stream-row-enter 360ms var(--ease-out) both;
+}
+
+/* Feature 20 — skeleton placeholder rows */
+.skeleton-bar {
+  height: 0.75rem;
+  border-radius: 9999px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-hover) 25%,
+    var(--bg-active) 50%,
+    var(--bg-hover) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* Feature 21 — FilterSelect (react-select) menu entrance (reuses @keyframes dropdown-enter) */
+.adk-select__menu {
+  animation: dropdown-enter 140ms var(--ease-out);
+  transform-origin: top;
+}
+
+/* Feature 18 — error shake on failed red-unlock attempt.
+   Standalone `translate` property so it cannot fight transforms. */
+@keyframes fx-shake {
+  10%, 90% { translate: -1px 0; }
+  20%, 80% { translate: 2px 0; }
+  30%, 50%, 70% { translate: -5px 0; }
+  40%, 60% { translate: 5px 0; }
+}
+
+.fx-shake {
+  animation: fx-shake 360ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-ellipsis::after {
+    animation: none;
+    content: '…';
+  }
+  .stream-row-enter,
+  .adk-select__menu,
+  .fx-shake {
+    animation: none;
+  }
+  .skeleton-bar {
+    animation: none;
+    background: var(--bg-hover);
+  }
+  .dg-sort-arrow,
+  .dg-scrollable .table-dark thead {
+    transition: none;
+  }
 }

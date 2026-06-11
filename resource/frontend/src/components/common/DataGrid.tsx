@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useTableSort } from '../../hooks/useTableSort';
 import { ProgressIndicator } from './ProgressIndicator';
 import type { ColumnAlign, ColumnDef } from '../../utils/dataGridTypes';
@@ -88,11 +88,30 @@ export function DataGrid<R>({
     [columns],
   );
 
-  const { sortKey, sortDir, handleSort, sortIndicator } = useTableSort<string>({
+  const { sortKey, sortDir, handleSort } = useTableSort<string>({
     defaultKey: defaultSortColumnId ?? '',
     defaultDir: defaultSortDir,
     ascDefaultKeys,
   });
+
+  // rAF-throttled scroll-shadow toggle. Mutates the DOM attribute directly so
+  // scroll events never re-render the grid; CSS keys off [data-scrolled].
+  const scrollRafRef = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
+    },
+    [],
+  );
+  const handleScrollShadow = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    if (scrollRafRef.current != null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      if (el.scrollTop > 0) el.setAttribute('data-scrolled', 'true');
+      else el.removeAttribute('data-scrolled');
+    });
+  }, []);
 
   const sortedRows = useMemo(() => {
     // Null the active sort when its column is hidden or non-sortable.
@@ -129,6 +148,14 @@ export function DataGrid<R>({
         <tr>
           {visibleColumns.map((col) => {
             const sortable = !!col.sortValue;
+            const isActiveSort = sortable && sortKey === col.id;
+            // Inactive columns rest at the direction they'd adopt when
+            // clicked, so the fade-in never co-animates a rotation.
+            const arrowDir = isActiveSort
+              ? sortDir
+              : ascDefaultKeys.includes(col.id)
+                ? 'asc'
+                : 'desc';
             const style: React.CSSProperties = {};
             if (col.width) style.width = col.width;
             if (col.sticky) style.left = col.sticky.left;
@@ -143,6 +170,9 @@ export function DataGrid<R>({
                 )}
                 style={Object.keys(style).length ? style : undefined}
                 title={col.headerTooltip}
+                aria-sort={
+                  isActiveSort ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined
+                }
                 role={sortable ? 'button' : undefined}
                 tabIndex={sortable ? 0 : undefined}
                 onClick={sortable ? () => handleSort(col.id) : undefined}
@@ -161,7 +191,16 @@ export function DataGrid<R>({
                 {col.headerTooltipMarker && (
                   <span className="ml-0.5 cursor-help text-[var(--text-muted)]">(?)</span>
                 )}
-                {sortable && sortIndicator(col.id)}
+                {sortable && (
+                  <span
+                    aria-hidden="true"
+                    className="dg-sort-arrow"
+                    data-active={isActiveSort || undefined}
+                    data-dir={arrowDir}
+                  >
+                    {'▲'}
+                  </span>
+                )}
               </th>
             );
           })}
@@ -216,7 +255,7 @@ export function DataGrid<R>({
     body = <div className="px-4 py-6 text-sm text-[var(--text-secondary)]">{msg}</div>;
   } else if (scroll === 'card') {
     body = (
-      <div className="card-scroll-body">
+      <div className="card-scroll-body dg-scrollable" onScroll={handleScrollShadow}>
         {table}
         {rowCount}
       </div>
@@ -230,7 +269,11 @@ export function DataGrid<R>({
     );
   } else {
     body = (
-      <div className="overflow-auto" style={{ maxHeight: scroll.maxH }}>
+      <div
+        className="overflow-auto dg-scrollable"
+        style={{ maxHeight: scroll.maxH }}
+        onScroll={handleScrollShadow}
+      >
         {table}
         {rowCount}
       </div>

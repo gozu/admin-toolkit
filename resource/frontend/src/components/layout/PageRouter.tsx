@@ -202,6 +202,13 @@ export function PageRouter() {
         exit="exit"
         transition={crossfadeTransition}
         className="flex-1 flex flex-col"
+        onAnimationStart={(definition) => {
+          // AppShell restores the page's saved scroll offset on this signal:
+          // content is mounted and laid out, entrance not yet visible.
+          if (definition === 'animate') {
+            window.dispatchEvent(new CustomEvent('admin-toolkit:page-entered'));
+          }
+        }}
       >
         <Suspense fallback={<LoadingSpinner />}>
           {hiddenKind ? <HiddenFeatureNotice kind={hiddenKind} /> : renderPage(activePage)}

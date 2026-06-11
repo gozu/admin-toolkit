@@ -23,11 +23,15 @@ export function RedUnlockModal({ isOpen, onClose, onUnlocked }: RedUnlockModalPr
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Bumped on each failed attempt; keys the input wrapper so the shake
+  // animation re-triggers on consecutive failures. 0 = no shake (mount/reopen).
+  const [shakeTick, setShakeTick] = useState(0);
 
   const reset = () => {
     setPassword('');
     setError('');
     setLoading(false);
+    setShakeTick(0);
   };
 
   const close = () => {
@@ -57,6 +61,7 @@ export function RedUnlockModal({ isOpen, onClose, onUnlocked }: RedUnlockModalPr
         else if (e.status === 401) msg = 'Incorrect password.';
       }
       setError(msg);
+      setShakeTick((t) => t + 1);
       setLoading(false);
     }
   };
@@ -95,21 +100,23 @@ export function RedUnlockModal({ isOpen, onClose, onUnlocked }: RedUnlockModalPr
           </svg>
           <p className="text-[var(--text-secondary)]">These actions can permanently modify or delete DSS objects, with no undo. This tool has had limited testing — try these actions in a sandbox instance before running them against production.</p>
         </div>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          placeholder="Password"
-          autoComplete="current-password"
-          className="w-full input-glass text-sm"
-          autoFocus
-        />
+        <div key={shakeTick} className={shakeTick > 0 ? 'fx-shake' : undefined}>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                submit();
+              }
+            }}
+            placeholder="Password"
+            autoComplete="current-password"
+            className="w-full input-glass text-sm"
+            autoFocus
+          />
+        </div>
         {error && <div className="text-sm text-[var(--neon-red)]">{error}</div>}
         <p className="text-xs text-[var(--text-muted)]">
           No prompt next time — the unlock is remembered on this browser (a

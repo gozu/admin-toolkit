@@ -6,6 +6,7 @@ import { useRowSelection } from '../hooks/useRowSelection';
 import { useSortableTable } from '../hooks/useSortableTable';
 import { Button } from './common/Button';
 import { ConfirmDeleteDialog } from './common/ConfirmDeleteDialog';
+import { SkeletonRows } from './common/SkeletonRows';
 import { Spinner } from './common/Spinner';
 import { StatTile } from './common/StatTile';
 import { fetchJson, fetchRaw } from '../utils/api';
@@ -53,6 +54,8 @@ interface FlatRow {
   repo: string;
   image: RegistryImage;
   key: string;
+  /** Arrival order — gates the stream entrance to the newest batch only. */
+  idx: number;
 }
 
 function sortRows(rows: FlatRow[], field: SortField, dir: SortDir): FlatRow[] {
@@ -260,11 +263,23 @@ export function ImageCleaner() {
     const rows: FlatRow[] = [];
     for (const repo of scanRepos) {
       for (const img of repo.images) {
-        rows.push({ repo: repo.name, image: img, key: `${repo.name}:${img.digest}` });
+        rows.push({ repo: repo.name, image: img, key: `${repo.name}:${img.digest}`, idx: rows.length });
       }
     }
     return rows;
   }, [scanRepos]);
+
+  // Entrance window: only rows that arrived in the latest commit animate
+  // (capped batch), so a fast scan can't animate hundreds of rows at once and
+  // earlier rows keep a stable className. "Adjust state during render"
+  // pattern — no effect-driven setState cascade; resets with a new scan
+  // because allRows collapses to 0 first.
+  const [enterBase, setEnterBase] = useState(0);
+  const [prevRowCount, setPrevRowCount] = useState(0);
+  if (prevRowCount !== allRows.length) {
+    setEnterBase(allRows.length > prevRowCount ? prevRowCount : 0);
+    setPrevRowCount(allRows.length);
+  }
 
   const visibleRows = useMemo(
     () => allRows.filter((r) => !deletedKeys.has(r.key)),
@@ -475,7 +490,7 @@ export function ImageCleaner() {
           </section>
         )}
 
-        {hasResults && (
+        {(hasResults || scanLoading) && (
           <>
             <section className="glass-card p-4">
               <div className="grid grid-cols-4 gap-4">
@@ -565,10 +580,11 @@ export function ImageCleaner() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedRows.length === 0 && (
+                    {scanLoading && sortedRows.length === 0 && <SkeletonRows cols={5} />}
+                    {!scanLoading && sortedRows.length === 0 && (
                       <tr>
                         <td
-                          colSpan={deletionEnabled && !scanLoading ? 6 : 5}
+                          colSpan={deletionEnabled ? 6 : 5}
                           className="py-6 text-center text-sm text-[var(--text-muted)]"
                         >
                           No matching images found.
@@ -576,7 +592,17 @@ export function ImageCleaner() {
                       </tr>
                     )}
                     {sortedRows.map((row) => (
-                      <tr key={row.key} className="hover:bg-[var(--bg-glass)]">
+                      <tr
+                        key={row.key}
+                        // Entrance animation only for the newest batch while the
+                        // scan streams rows in (capped at 30); cached/idle
+                        // re-renders and already-entered rows stay class-stable.
+                        className={`hover:bg-[var(--bg-glass)]${
+                          scanLoading && row.idx >= enterBase && row.idx < enterBase + 30
+                            ? ' stream-row-enter'
+                            : ''
+                        }`}
+                      >
                         {deletionEnabled && !scanLoading && (
                           <td>
                             {row.image.deletable ? (

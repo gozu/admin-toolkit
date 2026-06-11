@@ -1,5 +1,6 @@
-import { useState, useEffect, type ReactNode } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import type { PageId } from '../../types';
 import { Sidebar } from './Sidebar';
 import { Breadcrumb } from './Breadcrumb';
 import { useTheme } from '../../hooks/useTheme';
@@ -12,9 +13,20 @@ import { DatasetExportModal } from '../DatasetExportModal';
 import { useRedState, toggleShowRed, hydrateRedStatus } from '../../state/redUnlockStore';
 import { datasetExportConfigStore } from '../../state/datasetExportConfigStore';
 import { feedbackFromPageStore } from '../../state/feedbackFromPage';
+import { subscribeSessionEpoch } from '../../state/sessionCache';
 
 const COLLAPSE_BREAKPOINT = 1280;
 const SIDEBAR_COLLAPSED = 56;
+const SCROLL_TOP_THRESHOLD = 600;
+
+const IS_MAC =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+
+// Per-page scroll positions — module-level so they survive AppShell remounts
+// within a session; cleared on session-epoch bumps (host switch / cache
+// refresh), where restored offsets would point into stale content.
+const pageScrollPositions = new Map<PageId, number>();
+subscribeSessionEpoch(() => pageScrollPositions.clear());
 
 interface AppShellProps {
   children: ReactNode;
@@ -39,6 +51,53 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
   const [showDatasetExport, setShowDatasetExport] = useState(false);
   const { configuredConnection, loaded: datasetExportLoaded } = datasetExportConfigStore.use();
   const datasetExportEnabled = datasetExportLoaded && !!configuredConnection;
+  const reducedMotion = useReducedMotion();
+
+  // Scroll-to-top: rAF-throttled scrollTop tracking on <main>
+  const mainRef = useRef<HTMLElement | null>(null);
+  const scrollRafRef = useRef<number | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  const handleMainScroll = useCallback(() => {
+    if (scrollRafRef.current !== null) return;
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null;
+      const el = mainRef.current;
+      if (el) setShowScrollTop(el.scrollTop > SCROLL_TOP_THRESHOLD);
+    });
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+    },
+    [],
+  );
+
+  // Per-page scroll restoration: save the outgoing page's position on the
+  // navigation commit; restore exactly once when the incoming page begins its
+  // enter animation (PageRouter dispatches 'admin-toolkit:page-entered' from
+  // onAnimationStart — content is mounted and laid out, but the entrance
+  // hasn't visibly played, so there is no two-stage jump and no delayed timer
+  // to fight the user's own scrolling).
+  const { activePage } = state;
+  const prevPageRef = useRef<PageId>(activePage);
+
+  useEffect(() => {
+    const prev = prevPageRef.current;
+    if (prev === activePage) return;
+    if (mainRef.current) pageScrollPositions.set(prev, mainRef.current.scrollTop);
+    prevPageRef.current = activePage;
+  }, [activePage]);
+
+  useEffect(() => {
+    const onPageEntered = () => {
+      const el = mainRef.current;
+      if (el) el.scrollTop = pageScrollPositions.get(activePage) ?? 0;
+    };
+    window.addEventListener('admin-toolkit:page-entered', onPageEntered);
+    return () => window.removeEventListener('admin-toolkit:page-entered', onPageEntered);
+  }, [activePage]);
 
   // Reconcile the unlock UI with the HttpOnly cookie once on boot.
   useEffect(() => {
@@ -171,6 +230,17 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         </div>
 
         <div className="flex items-center gap-2">
+          {/* ⌘K hint — opens the command palette (handled in App.tsx) */}
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('admin-toolkit:open-palette'))}
+            title="Open command palette"
+            className="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)] border border-[var(--border-default)] rounded-md px-2 py-1 hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            <kbd className="font-mono">{IS_MAC ? '⌘K' : 'Ctrl K'}</kbd>
+            <span>Search</span>
+          </button>
+
           {/* Feedback — always-visible cyan-outline button (EAP). Distinct from
               the icon-only toolbar actions; navigates to the Feedback page. */}
           <button
@@ -314,9 +384,44 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
       </motion.header>
 
       {/* Main content area — scrollable */}
-      <main className="overflow-y-auto bg-[var(--bg-app)] flex flex-col relative">
+      <main
+        ref={mainRef}
+        onScroll={handleMainScroll}
+        className="overflow-y-auto bg-[var(--bg-app)] flex flex-col relative"
+      >
         {children}
       </main>
+
+      {/* Scroll-to-top — appears once <main> is scrolled past the threshold */}
+      <AnimatePresence>
+        {showScrollTop && (
+          <motion.button
+            type="button"
+            title="Back to top"
+            aria-label="Scroll back to top"
+            onClick={() =>
+              mainRef.current?.scrollTo({ top: 0, behavior: reducedMotion ? 'auto' : 'smooth' })
+            }
+            className="fixed bottom-5 right-5 z-30 flex items-center justify-center w-9 h-9 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-default)] shadow-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            initial={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+            transition={{ duration: reducedMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <svg
+              className="w-4 h-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="18 15 12 9 6 15" />
+            </svg>
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       <RedUnlockModal isOpen={showUnlock} onClose={() => setShowUnlock(false)} />
       <DatasetExportModal

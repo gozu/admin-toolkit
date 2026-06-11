@@ -58,6 +58,8 @@ export function FilterField({
       <Select
         isMulti
         unstyled
+        // Stable class hook for the menu entrance animation (.adk-select__menu).
+        classNamePrefix="adk-select"
         options={options}
         value={value}
         onChange={(next) => onChange(next)}

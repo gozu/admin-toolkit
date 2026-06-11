@@ -34,11 +34,40 @@ fi
 # character of the checkout path with '-'.
 PROJECT_KEY=$(printf '%s' "$REPO_ROOT" | LC_ALL=C sed 's/[^a-zA-Z0-9]/-/g')
 MEM_SRC="$HOME/.claude/projects/$PROJECT_KEY/memory"
+
+# Memory files NOT shipped: home-environment workflows (deploy/push/test-instance
+# targets) that are wrong or misleading on a customer machine, plus stale
+# merged-branch history. MEMORY.md is skipped here and replaced by the curated
+# index in scripts/field-kit-overrides/ (which also sanitizes files whose
+# pattern is useful but whose specifics are home-only, e.g. live API access).
+MEMORY_SKIP='
+MEMORY.md
+feedback_auto_deploy_after_build.md
+feedback_test_instance.md
+project_secure_push_gate.md
+project_refactor_devibe_branch.md
+project_slick_fx_worktree.md
+reference_tam_repo_pr_flow.md
+reference_webapp_public_no_auth.md
+'
+
 if [ -d "$MEM_SRC" ]; then
-  cp "$MEM_SRC"/*.md "$KIT/memory/"
+  skipped=0
+  for f in "$MEM_SRC"/*.md; do
+    base=$(basename "$f")
+    if printf '%s\n' "$MEMORY_SKIP" | grep -qxF "$base"; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+    cp "$f" "$KIT/memory/"
+  done
+  echo "[field-kit] Memory: skipped $skipped home-only file(s) per sanitize list"
 else
   echo "[field-kit] WARNING: no memory dir at $MEM_SRC - kit will ship without memory" >&2
 fi
+
+# Sanitized override copies replace/supplement the originals
+cp "$REPO_ROOT/scripts/field-kit-overrides/"*.md "$KIT/memory/"
 
 cp "$REPO_ROOT/scripts/field_kit_install.sh" "$KIT/install.sh"
 chmod +x "$KIT/install.sh"
@@ -51,8 +80,9 @@ echo "[field-kit] Built: $OUT"
 echo "[field-kit] Contents:"
 tar -tzf "$OUT" | sed 's/^/  /'
 echo
-echo "[field-kit] REVIEW BEFORE TAKING TO A CUSTOMER: the memory/ files contain"
-echo "[field-kit] internal instance names and URLs (tam-global, gozu fork, ...)."
+echo "[field-kit] Memory is sanitized via MEMORY_SKIP + scripts/field-kit-overrides/."
+echo "[field-kit] NEW memory files ship by default - review any added since the"
+echo "[field-kit] sanitize list was last curated (2026-06-11)."
 echo
 echo "[field-kit] On the customer machine (AlmaLinux 8/9/10 or any Linux):"
 echo "  1. git clone <repo> /data/<dir>/dss-admin-toolkit && cd into it"

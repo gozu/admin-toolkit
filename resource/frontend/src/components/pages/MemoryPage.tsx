@@ -9,7 +9,7 @@ export function MemoryPage() {
   const hasMemory = parsedData.memoryInfo && Object.keys(parsedData.memoryInfo).length > 0;
 
   return (
-    <div className="w-full py-4 space-y-6">
+    <div className="page-fill gap-6">
       {hasMemory ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <MemoryChart />

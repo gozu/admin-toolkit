@@ -287,7 +287,7 @@ export function ConnectionHealthCard() {
   );
 
   return (
-    <div id="connection-health-card" className="space-y-4">
+    <div id="connection-health-card" className="flex flex-col gap-4 flex-1 min-h-0">
       {/* Header */}
       <section className="glass-card p-4">
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">Connection Health</h3>
@@ -362,7 +362,7 @@ export function ConnectionHealthCard() {
 
       {/* Merged issues table: health-test failures + configuration-audit findings */}
       {(hasResults || hasAudit) && (
-        <section className="glass-card p-4">
+        <section className="glass-card p-4 flex flex-col flex-1 min-h-0">
           <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-1">Issues</h4>
           <p className="text-xs text-[var(--text-muted)] mb-3">
             Health-test failures and configuration-audit findings (recommended settings for
@@ -382,7 +382,7 @@ export function ConnectionHealthCard() {
               defaultSortColumnId="category"
               defaultSortDir="asc"
               rowClassName={() => '[&>td]:align-top'}
-              scroll={{ maxH: '60vh' }}
+              scroll="card"
             />
           )}
         </section>

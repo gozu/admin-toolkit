@@ -219,7 +219,7 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' }) {
           ? `Could not load process metrics: ${scan.error ?? 'unknown error'}`
           : 'No process data yet.'
       }
-      scroll={{ maxH: '60vh' }}
+      scroll="card"
     />
   );
 }

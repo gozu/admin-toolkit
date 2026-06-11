@@ -217,6 +217,10 @@ export function ConnectionUsageCard() {
 function ConnectionUsageTable({ items }: { items: CategorizedUsageItem[] }) {
   const { state, setFocusedConnectionFilter, setActivePage } = useDiag();
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<Set<CategorizedUsageItem['category']>>(
+    new Set(),
+  );
+  const [typeFilter, setTypeFilter] = useState('');
   const [detailConn, setDetailConn] = useState<CategorizedUsageItem | null>(null);
   const detailModal = useModal();
   const { open: openDetail } = detailModal;
@@ -231,13 +235,31 @@ function ConnectionUsageTable({ items }: { items: CategorizedUsageItem[] }) {
     setFocusedConnectionFilter(null);
   }, [state.focusedConnectionFilter, items, setFocusedConnectionFilter]);
 
+  const connectionTypes = useMemo(
+    () => Array.from(new Set(items.map((c) => c.type))).sort(),
+    [items],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter(
-      (c) => c.name.toLowerCase().includes(q) || c.type.toLowerCase().includes(q),
-    );
-  }, [items, search]);
+    return items.filter((c) => {
+      if (categoryFilter.size > 0 && !categoryFilter.has(c.category)) return false;
+      if (typeFilter && c.type !== typeFilter) return false;
+      if (!q) return true;
+      return c.name.toLowerCase().includes(q) || c.type.toLowerCase().includes(q);
+    });
+  }, [items, search, categoryFilter, typeFilter]);
+
+  const toggleCategory = (cat: CategorizedUsageItem['category']) =>
+    setCategoryFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+
+  const filtersActive =
+    search.trim().length > 0 || categoryFilter.size > 0 || typeFilter.length > 0;
 
   const columns = useMemo<ColumnDef<CategorizedUsageItem>[]>(
     () => [
@@ -327,15 +349,45 @@ function ConnectionUsageTable({ items }: { items: CategorizedUsageItem[] }) {
 
   return (
     <div>
-      {/* Search */}
-      <div className="mb-2">
+      {/* Search + category / type filters */}
+      <div className="mb-2 flex items-center gap-2">
         <input
           type="text"
           placeholder="Filter connections..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full px-3 py-1.5 text-sm rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
+          className="flex-1 min-w-0 px-3 py-1.5 text-sm rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
         />
+        {(['LLM Mesh', 'Regular'] as const).map((cat) => {
+          const active = categoryFilter.has(cat);
+          return (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => toggleCategory(cat)}
+              title={`Show only ${cat} connections`}
+              className={`px-2 py-1 text-xs font-semibold rounded border whitespace-nowrap transition-all ${
+                active ? 'ring-2 ring-[var(--neon-cyan)]/60' : 'opacity-70 hover:opacity-100'
+              }`}
+              style={{ color: CATEGORY_COLOR[cat], borderColor: CATEGORY_COLOR[cat] }}
+            >
+              {cat}
+            </button>
+          );
+        })}
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          title="Filter by connection type"
+          className="px-2 py-1.5 text-sm rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+        >
+          <option value="">All types</option>
+          {connectionTypes.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
       </div>
 
       <DataGrid
@@ -343,7 +395,7 @@ function ConnectionUsageTable({ items }: { items: CategorizedUsageItem[] }) {
         columns={columns}
         rowKey={(conn) => `${conn.origin}:${conn.name}`}
         defaultSortColumnId="projectCount"
-        filtersActive={search.trim().length > 0}
+        filtersActive={filtersActive}
         noMatchMessage="No connections match the current filter."
         scroll={{ maxH: '60vh' }}
       />

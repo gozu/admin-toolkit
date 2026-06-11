@@ -12,6 +12,7 @@ from adk_backend.settings import (
     _BACKEND_SETTINGS_DEFAULTS,
     _BACKEND_SETTINGS_LOCK,
 )
+from adk_backend.utils import advanced
 
 bp = Blueprint('settings', __name__)
 
@@ -44,6 +45,7 @@ def api_settings_get():
 
 
 @bp.route('/api/settings/update', methods=['POST'])
+@advanced
 def api_settings_update():
     """Update known backend settings at runtime (until the next backend
     restart, when saved plugin config re-merges). All settings are ints;
@@ -87,6 +89,7 @@ _BENCH_MAX_PROJECTS_PER_LEVEL = 150
 
 
 @bp.route('/api/settings/benchmark', methods=['POST'])
+@advanced
 def api_settings_benchmark():
     """Measure real scan throughput at several worker-pool sizes and recommend
     worker settings.

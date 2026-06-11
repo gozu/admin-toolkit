@@ -185,12 +185,19 @@ export function ProgressIndicator({
   // interpolation exists anymore — running == "working", nothing more.)
   const indeterminate = tone === 'active' && progressPct <= 0;
   const displayMessage = message || lifecycleMessage(lc, 'Loading…');
+  // Active messages get an animated CSS ellipsis; strip any literal trailing
+  // one so we never render "Loading……".
+  const messageText =
+    tone === 'active' ? displayMessage.replace(/(?:\.{3}|…)\s*$/, '') : displayMessage;
   const displayPhase = phase || lifecyclePhase(lc);
 
   return (
     <div className={compact ? 'space-y-1' : 'space-y-2'}>
       <div className={`flex items-center justify-between gap-3 text-xs ${colors.text}`}>
-        <span className="min-w-0 truncate">{displayMessage}</span>
+        <span className="min-w-0 truncate">
+          {messageText}
+          {tone === 'active' && <span className="loading-ellipsis" aria-hidden />}
+        </span>
         {!indeterminate && (
           <span className="font-mono text-[var(--text-primary)]">{Math.round(progressPct)}%</span>
         )}
@@ -200,7 +207,9 @@ export function ProgressIndicator({
           className={
             indeterminate
               ? `h-full w-full rounded-full ${colors.fill} animate-pulse motion-reduce:animate-none`
-              : `h-full rounded-full ${colors.fill} transition-[width] duration-300 ease-out motion-reduce:transition-none`
+              : `h-full rounded-full ${colors.fill} transition-[width] duration-300 ease-out motion-reduce:transition-none${
+                  tone === 'active' ? ' progress-sheen' : ''
+                }`
           }
           style={indeterminate ? undefined : { width: `${progressPct}%` }}
         />

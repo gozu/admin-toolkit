@@ -26,7 +26,9 @@ import './state/reportLlmsStore';
 import { AppShell } from './components/layout/AppShell';
 import { PageRouter } from './components/layout/PageRouter';
 import { CommandPalette } from './components/CommandPalette';
+import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
+import { FxLayer } from './fx/FxLayer';
 
 // Lazy load comparison components
 const ComparisonUpload = lazy(() => import('./components/comparison/ComparisonUpload').then(m => ({ default: m.ComparisonUpload })));
@@ -80,11 +82,24 @@ function AppContent() {
   // Command palette state
   const [paletteOpen, setPaletteOpen] = useState(false);
 
-  // Keyboard navigation
+  // '?' shortcuts overlay state
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  // Keyboard navigation — suspended while a top layer (palette/overlay) owns
+  // the keyboard, so '/' can't open the palette invisibly under the overlay.
   useKeyboardNavigation({
     onNavigate: setActivePage,
     onOpenPalette: () => setPaletteOpen(true),
+    onOpenShortcuts: () => setShortcutsOpen(true),
+    enabled: !paletteOpen && !shortcutsOpen,
   });
+
+  // Header ⌘K hint button (AppShell) opens the palette via a window event.
+  useEffect(() => {
+    const onOpenPalette = () => setPaletteOpen(true);
+    window.addEventListener('admin-toolkit:open-palette', onOpenPalette);
+    return () => window.removeEventListener('admin-toolkit:open-palette', onOpenPalette);
+  }, []);
 
   useEffect(() => {
     const onError = (event: ErrorEvent) => {
@@ -204,6 +219,7 @@ function AppContent() {
 
   return (
     <>
+      <FxLayer />
       <AnimatePresence mode="wait">
         <motion.div
           key={viewKey}
@@ -221,6 +237,9 @@ function AppContent() {
       {hasResults && (
         <CommandPalette isOpen={paletteOpen} onClose={() => setPaletteOpen(false)} />
       )}
+
+      {/* '?' keyboard shortcuts overlay */}
+      <ShortcutsOverlay isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </>
   );
 }

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { useTableFilter } from '../hooks/useTableFilter';
 import { useCollapsible } from '../hooks/useCollapsible';
+import { RollingNumber } from './common/RollingNumber';
 
 type CardVariant = 'default' | 'elevated' | 'inset' | 'critical' | 'warning' | 'compact' | 'hero';
 type CardSize = '1x1' | '2x1' | '2x2' | '3x1' | '4x1';
@@ -108,8 +109,8 @@ export function Card({
     <motion.div
       id={id}
       className={cardClasses}
-      initial={{ opacity: 0, y: 20 }}
-      whileInView={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, y: 22, scale: 0.985, filter: 'blur(8px)' }}
+      whileInView={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
       viewport={{ once: true, margin: '-50px' }}
       transition={{
         duration: 0.5,
@@ -147,7 +148,7 @@ export function Card({
               </h4>
               {itemCount !== undefined && (
                 <span className={`px-2 py-0.5 text-xs font-mono font-medium rounded-full ${countBadgeStyles[variant]}`}>
-                  {itemCount}
+                  <RollingNumber value={itemCount} />
                 </span>
               )}
             </div>

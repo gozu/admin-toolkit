@@ -1,3 +1,5 @@
+import { Chart, type Plugin } from 'chart.js';
+
 /** Shared Chart.js tooltip styling used across chart components */
 export const BASE_TOOLTIP_STYLE = {
   backgroundColor: 'rgba(22, 28, 36, 0.95)',
@@ -21,4 +23,64 @@ export function baseLegendLabels(overrides?: Record<string, unknown>) {
     color: '#a0a0b0',
     ...overrides,
   };
+}
+
+/* Chart draw-in: the first render of each chart sweeps in (650ms easeOutQuart,
+ * small per-bar stagger); subsequent data/theme updates use a fast 200ms
+ * transition. Applied by mutating Chart.defaults so every chart component
+ * inherits it without per-chart options changes; a chart that sets its own
+ * `options.animation` overrides this. NOTE: mutate duration/easing/delay in
+ * place — `Animations.configure` derives its per-property option list from
+ * `Object.keys(defaults.animation)`, so replacing the object breaks the
+ * built-in color/visibility animation specs. */
+
+// Computed once at module load; reduced-motion users get instant rendering.
+const PREFERS_REDUCED_MOTION =
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const INITIAL_SWEEP_MS = 650;
+const UPDATE_MS = 200;
+const BAR_STAGGER_STEP_MS = 12;
+const BAR_STAGGER_CAP_MS = 400;
+
+/** Datasets whose draw-in has played, keyed by chart type + labels signature
+ * rather than Chart instance: pages unmount/remount their charts on every
+ * navigation, so an instance key would replay the full sweep on each cache
+ * re-display. New data (different labels) sweeps again; the Set stays tiny
+ * (a handful of charts per session). */
+const sweepDoneKeys = new Set<string>();
+const sweepKey = (chart: Chart): string => {
+  const type = 'type' in chart.config ? String(chart.config.type) : 'mixed';
+  return `${type}:${(chart.data.labels ?? []).join(' ')}`;
+};
+
+const rootAnimation = Chart.defaults.animation;
+if (rootAnimation) {
+  if (PREFERS_REDUCED_MOTION) {
+    rootAnimation.duration = 0;
+  } else {
+    rootAnimation.easing = 'easeOutQuart';
+    rootAnimation.duration = (ctx) =>
+      sweepDoneKeys.has(sweepKey(ctx.chart)) ? UPDATE_MS : INITIAL_SWEEP_MS;
+    rootAnimation.delay = (ctx) => {
+      if (ctx.type !== 'data' || ctx.mode !== 'default') return 0;
+      if (sweepDoneKeys.has(sweepKey(ctx.chart))) return 0;
+      const config = ctx.chart.config;
+      // Stagger only bar charts; pies/doughnuts/treemaps sweep as one.
+      if (!('type' in config) || config.type !== 'bar') return 0;
+      return Math.min(ctx.dataIndex * BAR_STAGGER_STEP_MS, BAR_STAGGER_CAP_MS);
+    };
+    // afterUpdate fires once all element animations of an update have been
+    // resolved, so even a mid-sweep streaming update transitions fast instead
+    // of replaying the full sweep.
+    const sweepGuard: Plugin = {
+      id: 'adkChartSweepGuard',
+      afterUpdate(chart) {
+        sweepDoneKeys.add(sweepKey(chart));
+      },
+    };
+    Chart.register(sweepGuard);
+  }
 }

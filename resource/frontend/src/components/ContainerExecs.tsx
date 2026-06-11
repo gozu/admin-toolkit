@@ -3,6 +3,7 @@ import { Modal } from './Modal';
 import { useModal } from '../hooks/useModal';
 import { fetchJson, getBackendUrl } from '../utils/api';
 import { ProgressIndicator } from './common/ProgressIndicator';
+import { SkeletonRows } from './common/SkeletonRows';
 import { ScanIncompleteNotice } from './ScanIncompleteNotice';
 import { containerExecsScan } from '../state/containerExecsStore';
 import type { ReactNode } from 'react';
@@ -243,11 +244,13 @@ function ContainerExecTable({
   title,
   count,
   emptyText,
+  loading = false,
   children,
 }: {
   title: string;
   count: number;
   emptyText: string;
+  loading?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -267,7 +270,9 @@ function ContainerExecTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-glass)]">
-            {count > 0 ? children : (
+            {count > 0 ? children : loading ? (
+              <SkeletonRows cols={3} />
+            ) : (
               <tr>
                 <td colSpan={3} className="px-4 py-6 text-center text-[var(--text-muted)]">
                   {emptyText}
@@ -589,6 +594,7 @@ export function ContainerExecs() {
         title="Project-Level Overrides"
         count={projectOnlyRows.length}
         emptyText="No projects override the instance default."
+        loading={loading}
       >
         {projectOnlyRows.map((project) => (
           <tr key={project.projectKey} className="align-top hover:bg-[var(--bg-glass-hover)]">
@@ -607,6 +613,7 @@ export function ContainerExecs() {
         title="Object Overrides"
         count={objectOverrideRows.length}
         emptyText="No object-level overrides differ from their project baseline."
+        loading={loading}
       >
         {objectOverrideRows.map((project) => {
           const expanded = expandedProjects.has(project.projectKey);

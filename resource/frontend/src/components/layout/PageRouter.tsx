@@ -82,15 +82,22 @@ function LoadingSpinner() {
   );
 }
 
+// Game-menu page swap: incoming page glides up out of a slight blur; outgoing
+// page drops away fast so navigation never feels gated on the animation.
 const crossfadeVariants = {
-  initial: { opacity: 0 },
-  animate: { opacity: 1 },
-  exit: { opacity: 0 },
+  initial: { opacity: 0, y: 10, scale: 0.995, filter: 'blur(5px)' },
+  animate: { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' },
+  exit: {
+    opacity: 0,
+    y: -6,
+    filter: 'blur(4px)',
+    transition: { duration: 0.07, ease: 'easeIn' as const },
+  },
 };
 
 const crossfadeTransition = {
-  duration: 0.03,
-  ease: 'easeInOut' as const,
+  duration: 0.22,
+  ease: [0.16, 1, 0.3, 1] as [number, number, number, number],
 };
 
 function renderPage(activePage: PageId): React.ReactNode {
@@ -195,6 +202,13 @@ export function PageRouter() {
         exit="exit"
         transition={crossfadeTransition}
         className="flex-1 flex flex-col"
+        onAnimationStart={(definition) => {
+          // AppShell restores the page's saved scroll offset on this signal:
+          // content is mounted and laid out, entrance not yet visible.
+          if (definition === 'animate') {
+            window.dispatchEvent(new CustomEvent('admin-toolkit:page-entered'));
+          }
+        }}
       >
         <Suspense fallback={<LoadingSpinner />}>
           {hiddenKind ? <HiddenFeatureNotice kind={hiddenKind} /> : renderPage(activePage)}

@@ -123,7 +123,7 @@ export const FilesystemTile = memo(function FilesystemTile({
   treemap,
 }: BaseTileProps & { mounts: MountVm[]; treemap: TreemapItem[] }) {
   return (
-    <TileShell title="Filesystem" area="fs" target="filesystem" accent="system" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Filesystem" area="fs" target="filesystem" accent="system" lifecycle={lifecycle} onNavigate={onNavigate} hasData={mounts.length > 0 || treemap.length > 0}>
       <div className="flex h-full min-h-0 flex-col gap-1.5">
         <div className="flex flex-col gap-1">
           {mounts.map((m) => (
@@ -157,7 +157,7 @@ export const MemoryTile = memo(function MemoryTile({
   mem,
 }: BaseTileProps & { mem: MemoryVm | null }) {
   return (
-    <TileShell title="Memory" area="mem" target="memory" accent="system" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Memory" area="mem" target="memory" accent="system" lifecycle={lifecycle} onNavigate={onNavigate} hasData={mem != null}>
       {mem ? (
         <div className="flex h-full flex-col justify-center gap-1.5">
           <BigStat
@@ -198,7 +198,7 @@ export const CpuTile = memo(function CpuTile({
   const state = useSyncExternalStore(subscribeProcessMetrics, getProcessMetrics, getProcessMetrics);
   const top = useMemo(() => selectTopCpu(state.processes), [state.processes]);
   return (
-    <TileShell title="CPU" area="cpu" target="cpu" accent="system" lifecycle={lifecycle} onNavigate={onNavigate}
+    <TileShell title="CPU" area="cpu" target="cpu" accent="system" lifecycle={lifecycle} onNavigate={onNavigate} hasData={top.length > 0}
       titleRight={cores ? <span className="font-mono text-[9px] text-[var(--text-tertiary)]">{cores} cores</span> : undefined}
     >
       <div className="flex h-full flex-col justify-center gap-1">
@@ -227,7 +227,7 @@ export const ConnInventoryTile = memo(function ConnInventoryTile({
     segments.push({ value: vm.otherCount, color: 'var(--text-tertiary)', title: `other: ${vm.otherCount}` });
   }
   return (
-    <TileShell title="Connections" area="coninv" target="connections-inventory" accent="connections" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Connections" area="coninv" target="connections-inventory" accent="connections" lifecycle={lifecycle} onNavigate={onNavigate} hasData={vm.total > 0}>
       <div className="flex h-full min-h-0 flex-col items-center justify-center gap-2">
         <MicroDonut segments={segments} center={vm.total} centerLabel="conns" size={78} />
         <div className="flex w-full min-w-0 flex-col gap-0.5">
@@ -269,7 +269,7 @@ export const ConnHealthTile = memo(function ConnHealthTile({
   vm,
 }: BaseTileProps & { vm: ConnHealthVm }) {
   return (
-    <TileShell title="Conn Health" area="conhlt" target="connections-health" accent="connections" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Conn Health" area="conhlt" target="connections-health" accent="connections" lifecycle={lifecycle} onNavigate={onNavigate} hasData={vm.cells.length > 0}>
       <div className="flex h-full flex-col justify-center gap-1.5">
         <div className="flex flex-wrap gap-1.5">
           <CountChip label="ok" count={vm.ok} tone={vm.ok ? 'ok' : 'neutral'} />
@@ -289,7 +289,7 @@ export const ConnUsageTile = memo(function ConnUsageTile({
   vm,
 }: BaseTileProps & { vm: ConnUsageVm }) {
   return (
-    <TileShell title="Conn Usage" area="conuse" target="connections-usage" accent="connections" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Conn Usage" area="conuse" target="connections-usage" accent="connections" lifecycle={lifecycle} onNavigate={onNavigate} hasData={(vm.scanned ?? 0) > 0}>
       <div className="flex h-full flex-col justify-center gap-1.5">
         <div className="flex items-end gap-4">
           <BigStat value={vm.datasetCount} label="datasets" />
@@ -317,7 +317,7 @@ export const ProjectsTile = memo(function ProjectsTile({
   vm,
 }: BaseTileProps & { vm: ProjectsVm }) {
   return (
-    <TileShell title="Projects" area="proj" target="projects" accent="projects" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Projects" area="proj" target="projects" accent="projects" lifecycle={lifecycle} onNavigate={onNavigate} hasData={vm.count > 0}>
       <div className="flex h-full min-h-0 flex-col gap-2">
         <div className="flex items-end gap-5">
           <BigStat value={vm.count} label="projects" />
@@ -349,7 +349,7 @@ export const UsersTile = memo(function UsersTile({
 }: BaseTileProps & { vm: UsersVm; onOwnerClick: (login: string) => void }) {
   const maxOwner = vm.topOwners[0]?.[1] || 1;
   return (
-    <TileShell title="Users" area="users" target="users" accent="projects" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Users" area="users" target="users" accent="projects" lifecycle={lifecycle} onNavigate={onNavigate} hasData={vm.total > 0}>
       <div className="flex h-full min-h-0 flex-col gap-1.5">
         <div className="flex items-end gap-4">
           <BigStat value={vm.total} label="users" />
@@ -413,6 +413,7 @@ export const ConnInsightsTile = memo(function ConnInsightsTile({
       accent="connections"
       lifecycle={lifecycle}
       onNavigate={onNavigate}
+      hasData={rows.length > 0}
       titleRight={<span className="font-mono text-[9px] text-[var(--text-tertiary)]">audit · health</span>}
     >
       <div className="flex h-full min-h-0 flex-col justify-center gap-1.5">
@@ -443,7 +444,7 @@ export const PluginsTile = memo(function PluginsTile({
   pending,
 }: BaseTileProps & { count: number; pending: boolean }) {
   return (
-    <TileShell title="Plugins" area="plug" target="plugins-installed" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Plugins" area="plug" target="plugins-installed" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate} hasData={count > 0}>
       <div className="flex h-full items-center justify-between gap-2">
         <BigStat value={count} label="installed" />
         {pending && <CountChip label="usage scan" count="…" tone="warn" pulse />}
@@ -459,7 +460,7 @@ export const CodeEnvsTile = memo(function CodeEnvsTile({
   vm,
 }: BaseTileProps & { vm: CodeEnvsVm }) {
   return (
-    <TileShell title="Code Envs" area="cenv" target="code-envs-cleaner" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Code Envs" area="cenv" target="code-envs-cleaner" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate} hasData={vm.count > 0}>
       <div className="flex h-full flex-col justify-center gap-1.5">
         <BigStat
           value={vm.count}
@@ -488,6 +489,7 @@ export const K8sTile = memo(function K8sTile({ lifecycle, onNavigate }: BaseTile
       lifecycle={lifecycle}
       onNavigate={onNavigate}
       idleText="No scan yet — open to scan"
+      hasData={data != null}
     >
       {data && data.ok ? (
         <div className="flex h-full items-center gap-5">
@@ -517,7 +519,7 @@ export const ContainerExecsTile = memo(function ContainerExecsTile({ lifecycle, 
     [summary],
   );
   return (
-    <TileShell title="Container Execs" area="cex" target="container-execs" accent="compute" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Container Execs" area="cex" target="container-execs" accent="compute" lifecycle={lifecycle} onNavigate={onNavigate} hasData={summary != null}>
       {summary ? (
         <div className="flex h-full min-w-0 items-center gap-4">
           <BigStat value={summary.configCount} label="configs" />
@@ -544,7 +546,7 @@ export const LlmAuditTile = memo(function LlmAuditTile({
   const obsolete = summary?.countsByStatus?.obsolete ?? 0;
   const ripoff = summary?.countsByStatus?.ripoff ?? 0;
   return (
-    <TileShell title="Model Audit" area="llm" target="llm-audit" accent="compute" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Model Audit" area="llm" target="llm-audit" accent="compute" lifecycle={lifecycle} onNavigate={onNavigate} hasData={summary != null}>
       {summary ? (
         <div className="flex h-full items-center gap-4">
           <BigStat value={summary.llmsTotal} label="llms in use" />
@@ -568,7 +570,7 @@ export const ProjectComputeTile = memo(function ProjectComputeTile({ lifecycle, 
     [state.ownerGroups],
   );
   return (
-    <TileShell title="Project Compute" area="pcomp" target="project-compute" accent="compute" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Project Compute" area="pcomp" target="project-compute" accent="compute" lifecycle={lifecycle} onNavigate={onNavigate} hasData={recipes > 0}>
       <div className="flex h-full min-w-0 items-center gap-4">
         <BigStat value={recipes} label="pushdown findings" tone={recipes ? 'warn' : 'ok'} />
         <BigStat value={state.ownerGroups.length} label="owners" />
@@ -591,7 +593,7 @@ export const LogsTile = memo(function LogsTile({
   snippet,
 }: BaseTileProps & { unique: number; snippet?: string }) {
   return (
-    <TileShell title="Log Errors" area="logs" target="logs" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Log Errors" area="logs" target="logs" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate} hasData={unique > 0 || snippet != null}>
       <div className="flex h-full min-w-0 items-center gap-4">
         <BigStat value={unique} label="unique errors" tone={unique > 0 ? 'warn' : 'ok'} />
         {snippet && (
@@ -611,7 +613,7 @@ export const SanityTile = memo(function SanityTile({
   vm,
 }: BaseTileProps & { vm: SanityVm }) {
   return (
-    <TileShell title="Sanity Check" area="sanity" target="sanity-check" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Sanity Check" area="sanity" target="sanity-check" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate} hasData={vm.total > 0}>
       <div className="flex h-full items-center gap-4">
         <BigStat value={vm.total} label="messages" tone={vm.maxTone} />
         <div className="flex flex-wrap gap-1.5">
@@ -639,6 +641,7 @@ export const DbHealthTile = memo(function DbHealthTile({ lifecycle, onNavigate }
       onNavigate={onNavigate}
       idleText="Not loaded yet — open to inspect"
       emptyText="No Postgres connection configured"
+      hasData={configured != null}
     >
       <div className="flex h-full min-w-0 items-center gap-4">
         <BigStat value={state.connections.length} label="pg connections" />
@@ -661,7 +664,7 @@ export const EnvCompareTile = memo(function EnvCompareTile({
 }: BaseTileProps & { skippedEnvCount?: number }) {
   const { data } = codeEnvComparisonScan.use();
   return (
-    <TileShell title="Env Comparison" area="envcmp" target="code-envs-comparison" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate}>
+    <TileShell title="Env Comparison" area="envcmp" target="code-envs-comparison" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate} hasData={data != null}>
       {data ? (
         <div className="flex h-full min-w-0 items-center gap-4">
           <BigStat value={data.analyzedCount} label="envs compared" />

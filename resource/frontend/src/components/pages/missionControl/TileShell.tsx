@@ -44,6 +44,12 @@ export interface TileShellProps {
    * idle, not loading — show this dim microcopy instead of a pulsing skeleton.
    */
   idleText?: string;
+  /**
+   * True once the tile's data source has produced something renderable.
+   * While streaming (`running`), a tile with data shows live content under
+   * the progress hairline instead of a skeleton — the original-page pattern.
+   */
+  hasData?: boolean;
   children: ReactNode;
 }
 
@@ -57,12 +63,13 @@ export function TileShell({
   titleRight,
   emptyText,
   idleText,
+  hasData = false,
   children,
 }: TileShellProps) {
   const accentColor = ACCENT_COLOR[accent];
   const phase = lifecycle.phase;
   const isIdle = phase === 'queued' && idleText !== undefined;
-  const showSkeleton = !isIdle && (phase === 'queued' || phase === 'running');
+  const showSkeleton = !isIdle && (phase === 'queued' || phase === 'running') && !hasData;
   const isError = phase === 'error';
   const isEmpty = phase === 'done' && lifecycle.isEmpty;
 

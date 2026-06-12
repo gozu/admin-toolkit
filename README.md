@@ -166,8 +166,8 @@ Pure DSS API operations talk to the instance directly. Anything host-bound (file
 
 ### Install the plugin
 
-1. Get the plugin ZIP — either grab a release artifact (`dss-plugin-admin-toolkit-<version>.zip`) or build it yourself with `make plugin` (output lands in `dist/`).
-2. In DSS: **Plugins → Add plugin → Upload**, select the ZIP.
+1. The repo is private — send your SSH public key to the author to be granted read access.
+2. In DSS: **Plugins → Add plugin → Fetch from Git repository** → `git@github.com:gozu/admin-toolkit.git`. Future upgrades are then one click: **Update from repository**.
 3. When prompted, **build the plugin code environment** (the webapp backend runs in it).
 4. In a project of your choice: **Webapps → New webapp → Plugin webapp → Admin Toolkit**, then start the backend.
 5. **Restrict access**: configure the webapp to require authentication and limit it to admin groups.
@@ -197,60 +197,16 @@ Everything lives on the **Settings** page (plus the plugin preset for secrets):
 - **Mail channel** — pick the DSS messaging channel used by outreach campaigns.
 - **DB Health connection** — point the DB Health tool at your PostgreSQL runtimedb (read-only analysis).
 - **Save tables as datasets** — optionally pick a connection so any UI table can be exported as a managed dataset in the webapp's project.
-- **Algorithm review notebooks** — ship a set of review notebooks (one per scan algorithm) into the webapp's own project, so you can audit exactly how every number is computed.
 - **Performance tuning** — worker counts and cache windows, with a one-click **benchmark auto-tuner** that sweeps worker configurations against your real workload and applies the best one.
 - **Support bundle** — download a ZIP of backend logs, settings, and performance diagnostics for troubleshooting.
 
 <div align="center"><img src="docs/screenshots/settings.png" alt="Settings — mail channel, advanced actions, notebooks, dataset export, experimental features" width="850" /></div>
 
-## Usage notes
+## Auditability
 
-- **Outreach campaigns** — the FS Migration and Project Cleaner tools don't just fix things centrally; they can email project owners about unhealthy patterns (15 built-in campaign types: code-env sprawl, deprecated Python, inactive projects, failing scenarios, …). Each campaign supports recipient preview, per-project exemptions, template preview, and send history.
-- **Report** — export current findings as a standalone document for stakeholders who will never open the webapp.
-- **Errors page** — parses the DSS backend log into deduplicated errors with surrounding context, so you can triage without `tail -f`.
-- **Feedback** — bug reports and feature ideas filed from inside the app land with the toolkit's maintainer.
+Every number the toolkit shows should be checkable, not taken on faith. From Settings you can ship the **algorithm review notebooks** — one Jupyter notebook per scan algorithm, installed into the webapp's own project on the plugin's code env. Each notebook reproduces a scan's computation step by step against your live instance, so you can open it, re-run it, and verify exactly how a number was derived (or tweak the logic and see what changes). Combined with the **support bundle** download and the **Errors** page, this makes the toolkit's reasoning fully inspectable from inside DSS.
 
-## Development
-
-### Prerequisites
-
-- **Node ≥ 20.19** (the rolldown-based build requires it — `nvm use 20` before building)
-- Python 3.9+ with the deps from `code-env/python/spec/requirements.txt` for backend work
-- For deploys: `.dss-url` and `.dss-api-key` files in the project root (see table below)
-
-### Frontend
-
-```bash
-cd resource/frontend
-npm install
-npm run dev          # dev server
-npm run build        # production build (tsc + vite)
-npm run lint         # ESLint
-npm run typecheck    # TypeScript strict
-npm run format       # Prettier
-npx playwright test  # E2E tests
-```
-
-Before any deploy, run the contract checks:
-
-```bash
-npm run typecheck
-node scripts/check_frontend_contracts.mjs   # registry / lifecycle / SSE / tone contracts
-```
-
-### Build & deploy
-
-| Target | What it does |
-|---|---|
-| `make deploy COMMIT_MSG="msg"` | Bump version, build frontend, commit, deploy to all targets |
-| `make plugin` | Build the plugin ZIP into `dist/` |
-| `make deploy-dev` | Deploy to the dev server only |
-| `make deploy-prod-secure` | Deploy to prod via sudo wrappers |
-| `make clean` | Remove dist + node_modules |
-
-Deploy credentials live in untracked root files: `.dss-url` (instance URL), `.dss-api-key` (admin key), and optionally `.dss-project-key` / `.dss-webapp-id`.
-
-### Project structure
+## Project structure
 
 ```
 plugin.json                  # plugin manifest (params, version, secrets)
@@ -264,7 +220,7 @@ docs/                        # UI/UX contracts, screenshots
 Makefile                     # build & deploy orchestration
 ```
 
-The UI has a deliberate soul: polished, fast, dense, with videogame-smooth interactions — no stutters, no layout jumps, no silent waits. Progress states follow strict color semantics (grey = queued, yellow = active/stalled, white = ready, red = failure), and every module plugs into shared navigation, lifecycle, and availability contracts instead of hand-wiring pages. The full rules live in [`docs/ui-ux-contracts.md`](docs/ui-ux-contracts.md); release history is in [`CHANGELOG.md`](CHANGELOG.md).
+Every module plugs into shared navigation, lifecycle, and availability contracts instead of hand-wiring pages. The full rules live in [`docs/ui-ux-contracts.md`](docs/ui-ux-contracts.md); release history is in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Security model
 

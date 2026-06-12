@@ -77,9 +77,13 @@ export function ConnectionsInsightsTable() {
 
   // Clear the one-shot context prefilter once consumed. Updating *context*
   // state in an effect is the legitimate, un-flagged case.
+  // Gated on being the active page: during AnimatePresence exit this table is
+  // still mounted and context-subscribed, and would otherwise eat a filter
+  // that a count-click just set for the Usage page before it mounts.
+  const isActivePage = state.activePage === 'connections-insights';
   useEffect(() => {
-    if (focusedConnectionFilter) setFocusedConnectionFilter(null);
-  }, [focusedConnectionFilter, setFocusedConnectionFilter]);
+    if (focusedConnectionFilter && isActivePage) setFocusedConnectionFilter(null);
+  }, [focusedConnectionFilter, isActivePage, setFocusedConnectionFilter]);
 
   const hasPrefilter = nameFilter !== '' || typeFilter !== '';
 

@@ -117,8 +117,13 @@ export function MissionControlPage() {
     return { phase: 'queued' };
   }, [parsedData.analysisLoading]);
 
+  // Live mode loads the directory tree into apiDirTree; dirTree is zip-mode.
+  const liveDirTree = state.apiDirTree?.tree;
   const mounts = useMemo(() => selectMounts(filesystemInfo), [filesystemInfo]);
-  const treemap = useMemo(() => selectTreemapItems(dirTree), [dirTree]);
+  const treemap = useMemo(
+    () => selectTreemapItems(liveDirTree ?? dirTree),
+    [liveDirTree, dirTree],
+  );
   const mem = useMemo(() => selectMemory(memoryInfo), [memoryInfo]);
   const connTypesVm = useMemo(() => selectConnTypes(connections), [connections]);
   const connHealthVm = useMemo(() => selectConnHealth(connectionHealth), [connectionHealth]);

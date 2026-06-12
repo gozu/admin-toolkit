@@ -324,7 +324,7 @@ export const ProjectsTile = memo(function ProjectsTile({
           <BigStat value={formatAuto(vm.totalBytes)} label="total footprint" />
           <BigStat value={`${vm.avgGb.toFixed(1)} GB`} label="avg / project" />
         </div>
-        <div className="flex min-h-0 flex-1 flex-col justify-end gap-1">
+        <div className="flex min-h-0 flex-1 flex-col justify-evenly gap-1">
           {vm.top.map((r) => (
             <BarRow
               key={r.projectKey}
@@ -367,7 +367,7 @@ export const UsersTile = memo(function UsersTile({
             <CountChip key={profile} label={profile.toLowerCase().replace(/_/g, ' ')} count={count} tone="neutral" />
           ))}
         </div>
-        <div className="flex min-h-0 flex-1 flex-col justify-end gap-1">
+        <div className="flex min-h-0 flex-1 flex-col justify-evenly gap-1">
           {vm.topOwners.length > 0 && (
             <span className="text-[9px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">top owners</span>
           )}

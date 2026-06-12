@@ -10,6 +10,7 @@ interface SectionInfo {
 }
 
 const PAGE_SECTION_MAP: Record<PageId, SectionInfo> = {
+  'mission-control': { label: 'Overview', firstPage: 'summary' },
   summary: { label: 'Overview', firstPage: 'summary' },
   filesystem: { label: 'Overview', firstPage: 'summary' },
   memory: { label: 'Overview', firstPage: 'summary' },
@@ -42,6 +43,7 @@ const PAGE_SECTION_MAP: Record<PageId, SectionInfo> = {
 };
 
 const PAGE_LABELS: Record<PageId, string> = {
+  'mission-control': 'Mission Control',
   summary: 'Summary',
   filesystem: 'Filesystem',
   memory: 'Memory',

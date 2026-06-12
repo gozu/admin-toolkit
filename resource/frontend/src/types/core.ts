@@ -277,6 +277,7 @@ export type DiagAction =
   | { type: 'RESET' };
 
 export type PageId =
+  | 'mission-control'
   | 'summary'
   | 'filesystem'
   | 'memory'

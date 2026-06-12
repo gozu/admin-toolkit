@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDiag } from '../../context/DiagContext';
 import { ScanIncompleteNotice } from '../ScanIncompleteNotice';
 import { DataGrid } from '../common/DataGrid';
+import { ConnectionInsightsRowDetail } from './ConnectionInsightsRowDetail';
 import type { ColumnDef } from '../../utils/dataGridTypes';
+import type { ConnectionLocalFilesystemUsage, ConnectionUsageItem } from '../../types';
 import { dssUrls } from '../../utils/codeEnvUsageLinks';
 import {
   buildConnectionInsightsRows,
@@ -43,7 +45,7 @@ function CountCell(value: number, onClick?: () => void) {
     <button
       type="button"
       onClick={onClick}
-      title="Click to open Usage"
+      title="Click to expand details"
       className={LINK_CLS}
     >
       {value}
@@ -56,6 +58,37 @@ export function ConnectionsInsightsTable() {
   const { parsedData, focusedConnectionFilter } = state;
 
   const rows = useMemo(() => buildConnectionInsightsRows(parsedData), [parsedData]);
+
+  // Inline expansion: count-clicks toggle a full-width detail panel per row.
+  const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleExpanded = useCallback((name: string) => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }, []);
+
+  const datasetUsageByName = useMemo(() => {
+    const m = new Map<string, ConnectionUsageItem>();
+    for (const u of parsedData.connectionDatasetUsages || []) m.set(u.name, u);
+    return m;
+  }, [parsedData.connectionDatasetUsages]);
+  const llmUsageByName = useMemo(() => {
+    const m = new Map<string, ConnectionUsageItem>();
+    for (const u of parsedData.connectionLlmUsages || []) m.set(u.name, u);
+    return m;
+  }, [parsedData.connectionLlmUsages]);
+  const fsUsagesByName = useMemo(() => {
+    const m = new Map<string, ConnectionLocalFilesystemUsage[]>();
+    for (const u of parsedData.connectionLocalFilesystemUsages || []) {
+      const arr = m.get(u.connection);
+      if (arr) arr.push(u);
+      else m.set(u.connection, [u]);
+    }
+    return m;
+  }, [parsedData.connectionLocalFilesystemUsages]);
 
   // Local filter state — seeded from the context prefilter (if any), one-way.
   const [nameFilter, setNameFilter] = useState<string>(focusedConnectionFilter?.name ?? '');
@@ -79,7 +112,7 @@ export function ConnectionsInsightsTable() {
   // state in an effect is the legitimate, un-flagged case.
   // Gated on being the active page: during AnimatePresence exit this table is
   // still mounted and context-subscribed, and would otherwise eat a filter
-  // that a count-click just set for the Usage page before it mounts.
+  // another page just set for the next visit here before it lands.
   const isActivePage = state.activePage === 'connections-insights';
   useEffect(() => {
     if (focusedConnectionFilter && isActivePage) setFocusedConnectionFilter(null);
@@ -99,10 +132,6 @@ export function ConnectionsInsightsTable() {
 
   const columns = useMemo<ColumnDef<ConnectionInsightsRow>[]>(() => {
     const goToHealth = () => setActivePage('connections-health');
-    const goToUsage = (name: string) => {
-      setFocusedConnectionFilter({ name });
-      setActivePage('connections-usage');
-    };
     return [
       {
         id: 'name',
@@ -136,7 +165,7 @@ export function ConnectionsInsightsTable() {
         label: 'Projects',
         align: 'right',
         mono: true,
-        render: (row) => CountCell(row.projectCount, () => goToUsage(row.name)),
+        render: (row) => CountCell(row.projectCount, () => toggleExpanded(row.name)),
         sortValue: (row) => row.projectCount,
       },
       {
@@ -144,7 +173,7 @@ export function ConnectionsInsightsTable() {
         label: 'Datasets',
         align: 'right',
         mono: true,
-        render: (row) => CountCell(row.datasetCount, () => goToUsage(row.name)),
+        render: (row) => CountCell(row.datasetCount, () => toggleExpanded(row.name)),
         sortValue: (row) => row.datasetCount,
       },
       {
@@ -152,7 +181,7 @@ export function ConnectionsInsightsTable() {
         label: 'Recipes',
         align: 'right',
         mono: true,
-        render: (row) => CountCell(row.recipeCount, () => goToUsage(row.name)),
+        render: (row) => CountCell(row.recipeCount, () => toggleExpanded(row.name)),
         sortValue: (row) => row.recipeCount,
       },
       {
@@ -160,8 +189,7 @@ export function ConnectionsInsightsTable() {
         label: 'LLM assets',
         align: 'right',
         mono: true,
-        // llm-audit has no prefilter mechanism — Usage is the closest drill target.
-        render: (row) => CountCell(row.llmAssetCount, () => goToUsage(row.name)),
+        render: (row) => CountCell(row.llmAssetCount, () => toggleExpanded(row.name)),
         sortValue: (row) => row.llmAssetCount,
       },
       {
@@ -169,7 +197,7 @@ export function ConnectionsInsightsTable() {
         label: 'FS usages',
         align: 'right',
         mono: true,
-        render: (row) => CountCell(row.fsUsageCount, () => goToUsage(row.name)),
+        render: (row) => CountCell(row.fsUsageCount, () => toggleExpanded(row.name)),
         sortValue: (row) => row.fsUsageCount,
       },
       {
@@ -219,7 +247,7 @@ export function ConnectionsInsightsTable() {
         sortValue: (row) => (row.healthStatus ? HEALTH_RANK[row.healthStatus] : 0),
       },
     ];
-  }, [setActivePage, setFocusedConnectionFilter]);
+  }, [setActivePage, toggleExpanded]);
 
   const clearFilters = () => {
     setNameFilter('');
@@ -229,8 +257,8 @@ export function ConnectionsInsightsTable() {
   if (rows.length === 0) {
     return (
       <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-6 text-sm text-[var(--text-secondary)]">
-        No connection details available yet. Run a connection scan from <strong>Inventory</strong>,
-        <strong> Usage</strong>, or <strong>Health</strong> to populate insights.
+        No connection details available yet. Run a connection scan from <strong>Inventory</strong> or
+        <strong> Health</strong> to populate insights.
       </div>
     );
   }
@@ -291,6 +319,16 @@ export function ConnectionsInsightsTable() {
         filtersActive={hasPrefilter}
         noMatchMessage="No connections match the current filters."
         scroll="card"
+        expandedRowKeys={expandedKeys}
+        childRowClassName="bg-[var(--bg-glass)]"
+        renderExpandedRow={(row) => (
+          <ConnectionInsightsRowDetail
+            connectionName={row.name}
+            datasetUsage={datasetUsageByName.get(row.name)}
+            llmUsage={llmUsageByName.get(row.name)}
+            fsUsages={fsUsagesByName.get(row.name) ?? []}
+          />
+        )}
       />
     </div>
   );

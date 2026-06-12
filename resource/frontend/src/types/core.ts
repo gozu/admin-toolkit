@@ -291,7 +291,6 @@ export type PageId =
   | 'connections-inventory'
   | 'connections-insights'
   | 'connections-health'
-  | 'connections-usage'
   | 'connections-fs-migration'
   | 'logs'
   | 'sanity-check'

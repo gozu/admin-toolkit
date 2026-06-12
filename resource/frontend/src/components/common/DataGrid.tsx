@@ -26,11 +26,17 @@ interface DataGridProps<R, C = never> {
    * Children are excluded from sorting; cells inherit the matching column's
    * align/mono classes. The parent component owns the expansion state and the
    * expand/collapse affordance (rendered inside a column's `render`).
+   * Two expansion modes share `expandedRowKeys`: column-aligned child rows
+   * (`getRowChildren` + `renderChildRow`) and a full-width detail panel
+   * (`renderExpandedRow`) — a given grid uses one or the other.
    */
   getRowChildren?: (row: R) => readonly C[];
   /** One ReactNode per visible column for a child row. */
   renderChildRow?: (child: C, parent: R, childIndex: number) => ReactNode[];
   childRowKey?: (child: C, parent: R, childIndex: number) => string;
+  /** Full-width expanded detail rendered beneath the row (one <td colSpan>).
+   *  Keyed by expandedRowKeys, independent of getRowChildren. */
+  renderExpandedRow?: (row: R) => ReactNode;
   expandedRowKeys?: ReadonlySet<string>;
   childRowClassName?: string;
   defaultSortColumnId?: string;
@@ -73,6 +79,7 @@ export function DataGrid<R, C = never>({
   getRowChildren,
   renderChildRow,
   childRowKey,
+  renderExpandedRow,
   expandedRowKeys,
   childRowClassName,
   defaultSortColumnId,
@@ -259,6 +266,18 @@ export function DataGrid<R, C = never>({
               })}
             </tr>
           );
+          if (renderExpandedRow && expandedRowKeys?.has(key)) {
+            return (
+              <Fragment key={key}>
+                {parentTr}
+                <tr key={`${key}::expanded`} className={childRowClassName}>
+                  <td colSpan={visibleColumns.length} className="p-0">
+                    {renderExpandedRow(row)}
+                  </td>
+                </tr>
+              </Fragment>
+            );
+          }
           const renderChild = renderChildRow;
           const children =
             getRowChildren && renderChild && expandedRowKeys?.has(key)

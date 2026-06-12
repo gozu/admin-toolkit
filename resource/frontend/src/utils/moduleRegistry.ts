@@ -57,14 +57,13 @@ export const MODULES: readonly ModuleDefinition[] = [
 
   // CONNECTIONS
   { id: 'connections-inventory', label: 'Inventory', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['database', 'connector', 'type', 'inventory'], trends: true, reachability: 'always', lifecycle: { fields: ['connectionsInventoryLoading'] } },
-  { id: 'connections-insights', label: 'Insights', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['connection', 'insights', 'matrix', 'audit', 'usage', 'health', 'projects'], reachability: 'always', lifecycle: { fields: [
+  { id: 'connections-insights', label: 'Insights', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['connection', 'insights', 'matrix', 'audit', 'usage', 'consumption', 'health', 'projects'], reachability: 'always', lifecycle: { fields: [
     'connectionsInventoryLoading',
     'connectionUsageLoading',
     'connectionsHealthLoading',
     'connectionsAuditLoading',
   ] } },
   { id: 'connections-health', label: 'Health', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['connection', 'test', 'health', 'diagnostic'], reachability: 'always', lifecycle: { fields: ['connectionsHealthLoading'] } },
-  { id: 'connections-usage', label: 'Usage', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['connection', 'usage', 'projects', 'consumption'], reachability: 'always', lifecycle: { fields: ['connectionUsageLoading'] } },
   { id: 'connections-fs-migration', label: 'FS Migration', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['filesystem', 'migration', 'local', 'fs', 'outreach', 'owner'], tool: true, reachability: 'always', lifecycle: { fields: ['connectionUsageLoading'] } },
 
   // PROJECTS
@@ -114,7 +113,7 @@ export const MODULE_BY_ID: Readonly<Record<PageId, ModuleDefinition>> = Object.f
 
 export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'OVERVIEW', items: ['summary', 'filesystem', 'memory', 'cpu'] },
-  { title: 'CONNECTIONS', items: ['connections-inventory', 'connections-insights', 'connections-health', 'connections-usage', 'connections-fs-migration'] },
+  { title: 'CONNECTIONS', items: ['connections-inventory', 'connections-insights', 'connections-health', 'connections-fs-migration'] },
   { title: 'PROJECTS', items: ['project-cleaner', 'projects', 'project-compute'] },
   { title: 'USERS', items: ['users'] },
   { title: 'PLUGINS', items: ['plugins-installed', 'plugins'] },

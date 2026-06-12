@@ -508,7 +508,6 @@ const RAW_TABLE_ALLOWLIST = new Set([
   'src/components/comparison/ComparisonMemoryAnalysisCard.tsx',
   'src/components/comparison/ComparisonSettingsSection.tsx',
   'src/components/ConnectionHealthCard.tsx', // SSE health result card
-  'src/components/ConnectionUsageCard.tsx', // SSE usage result card
   'src/components/ContainerExecs.tsx', // container-execs grouping
   'src/components/DebugPanel.tsx', // key/value debug dump
   'src/components/ImageCleaner.tsx',

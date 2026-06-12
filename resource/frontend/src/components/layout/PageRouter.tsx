@@ -40,7 +40,6 @@ import { CodeEnvsComparisonPage } from '../pages/CodeEnvsComparisonPage';
 import { ConnectionsInventoryPage } from '../pages/ConnectionsInventoryPage';
 import { ConnectionsInsightsPage } from '../pages/ConnectionsInsightsPage';
 import { ConnectionsHealthPage } from '../pages/ConnectionsHealthPage';
-import { ConnectionsUsagePage } from '../pages/ConnectionsUsagePage';
 import { ConnectionsFsMigrationPage } from '../pages/ConnectionsFsMigrationPage';
 import { LogsPage } from '../pages/LogsPage';
 import { SanityCheckPage } from '../pages/SanityCheckPage';
@@ -128,8 +127,6 @@ function renderPage(activePage: PageId): React.ReactNode {
       return <ConnectionsInsightsPage />;
     case 'connections-health':
       return <ConnectionsHealthPage />;
-    case 'connections-usage':
-      return <ConnectionsUsagePage />;
     case 'connections-fs-migration':
       return <ConnectionsFsMigrationPage />;
     case 'logs':

@@ -6,10 +6,10 @@ import { Spinner } from '../common/Spinner';
 
 export function ConnectionsInsightsPage() {
   // The scan is auto-triggered by useApiDataLoader at session start.
-  // This page renders the result and exposes abort/retry for the usage scan,
+  // This page renders the result and exposes rescan/abort for the usage scan,
   // but the loading *banner* reflects the composite lifecycle of every
   // dependency (inventory + usage + health + audit).
-  const { scanning, error, scan, abort } = useConnectionUsageScan();
+  const { scanning, scan, abort } = useConnectionUsageScan();
   const { state } = useDiag();
   const pageLifecycle = resolveLifecycleById('connections-insights', state.parsedData);
 
@@ -28,38 +28,39 @@ export function ConnectionsInsightsPage() {
   return (
     <div className="page-fill">
       <div className="flex flex-col gap-4 flex-1 min-h-0">
-        {showBanner && (
-          <div className="rounded-lg px-4 py-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
-              {pageLifecycle.phase === 'running' && <Spinner />}
-              {pageLifecycle.phase === 'error' ? (
-                <span className="text-[var(--neon-red)]">
-                  <span className="font-medium">Insights error:</span> {bannerMessage}
-                </span>
-              ) : (
-                <span>{bannerMessage}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {scanning && (
-                <button
-                  onClick={abort}
-                  className="px-3 py-1 rounded-md text-xs font-medium text-[var(--text-secondary)] border border-[var(--text-tertiary)]/30 hover:bg-[var(--bg-glass-hover)] transition-colors"
-                >
-                  Abort
-                </button>
-              )}
-              {error && (
-                <button
-                  onClick={scan}
-                  className="px-3 py-1 rounded-md text-xs font-medium text-[var(--text-secondary)] border border-[var(--text-tertiary)]/30 hover:bg-[var(--bg-glass-hover)] transition-colors"
-                >
-                  Retry
-                </button>
-              )}
-            </div>
+        <div className="rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+            {showBanner && (
+              <>
+                {pageLifecycle.phase === 'running' && <Spinner />}
+                {pageLifecycle.phase === 'error' ? (
+                  <span className="text-[var(--neon-red)]">
+                    <span className="font-medium">Insights error:</span> {bannerMessage}
+                  </span>
+                ) : (
+                  <span>{bannerMessage}</span>
+                )}
+              </>
+            )}
           </div>
-        )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={scan}
+              disabled={scanning}
+              className="px-3 py-1 rounded-md text-xs font-medium text-[var(--text-secondary)] border border-[var(--text-tertiary)]/30 hover:bg-[var(--bg-glass-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {scanning ? 'Rescanning…' : 'Rescan'}
+            </button>
+            {scanning && (
+              <button
+                onClick={abort}
+                className="px-3 py-1 rounded-md text-xs font-medium text-[var(--text-secondary)] border border-[var(--text-tertiary)]/30 hover:bg-[var(--bg-glass-hover)] transition-colors"
+              >
+                Abort
+              </button>
+            )}
+          </div>
+        </div>
         <ConnectionsInsightsTable />
       </div>
     </div>

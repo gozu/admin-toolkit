@@ -8,7 +8,7 @@ import type {
 } from '../types';
 
 /**
- * LLM mesh connection types — must mirror the set in `ConnectionUsageCard.tsx`.
+ * LLM mesh connection types — the sole copy of this set.
  * A connection whose `type` is in this set is treated as an LLM-asset connection
  * (its dataset/usage rows count toward `llmAssetCount`).
  */

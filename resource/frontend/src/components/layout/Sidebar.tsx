@@ -103,14 +103,6 @@ const icons: Record<string, ReactNode> = {
       <path d="M3 12h4l3-8 4 16 3-8h4" />
     </svg>
   ),
-  'connections-usage': (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-      <line x1="4" y1="20" x2="4" y2="10" />
-      <line x1="10" y1="20" x2="10" y2="4" />
-      <line x1="16" y1="20" x2="16" y2="14" />
-      <line x1="22" y1="20" x2="2" y2="20" />
-    </svg>
-  ),
   'connections-fs-migration': (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v3" />

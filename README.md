@@ -204,7 +204,9 @@ Everything lives on the **Settings** page (plus the plugin preset for secrets):
 
 ## Auditability
 
-Every number the toolkit shows should be checkable, not taken on faith. From Settings you can ship the **algorithm review notebooks** — one Jupyter notebook per scan algorithm, installed into the webapp's own project on the plugin's code env. Each notebook reproduces a scan's computation step by step against your live instance, so you can open it, re-run it, and verify exactly how a number was derived (or tweak the logic and see what changes). Combined with the **support bundle** download and the **Errors** page, this makes the toolkit's reasoning fully inspectable from inside DSS.
+Every number the toolkit shows should be checkable, not taken on faith. The entire plugin is open-source. Convert it to a dev plugin in Dataiku for full access to its files. Both python backend and React frontend.
+
+In addition, Under Settings, you can create python notebooks with the same algorithms being used to collect data for even easier inspection / modification testing.
 
 ## Project structure
 

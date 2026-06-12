@@ -28,6 +28,7 @@ function HiddenFeatureNotice({ kind }: { kind: 'experimental' | 'deprecated' }) 
 }
 
 // Eagerly import lightweight page components to avoid Suspense/AnimatePresence conflicts
+import { MissionControlPage } from '../pages/MissionControlPage';
 import { SummaryPage } from '../pages/SummaryPage';
 import { FilesystemPage } from '../pages/FilesystemPage';
 import { MemoryPage } from '../pages/MemoryPage';
@@ -101,6 +102,8 @@ const crossfadeTransition = {
 
 function renderPage(activePage: PageId): React.ReactNode {
   switch (activePage) {
+    case 'mission-control':
+      return <MissionControlPage />;
     case 'summary':
       return <SummaryPage />;
     case 'filesystem':

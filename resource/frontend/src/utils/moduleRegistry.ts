@@ -50,6 +50,14 @@ export interface ModuleNavSection {
 
 export const MODULES: readonly ModuleDefinition[] = [
   // OVERVIEW
+  { id: 'mission-control', label: 'Mission Control', section: 'Overview', navSection: 'OVERVIEW', keywords: ['mission', 'control', 'wall', 'noc', 'dashboard', 'all'], reachability: 'always', lifecycle: { fields: [
+    'summaryLoading',
+    'filesystemLoading',
+    'memoryLoading',
+    'connectionsInventoryLoading',
+    'projectFootprintLoading',
+    'usersLoading',
+  ] } },
   { id: 'summary', label: 'Summary', section: 'Overview', navSection: 'OVERVIEW', keywords: ['health', 'score', 'overview', 'dashboard'], reachability: 'always', lifecycle: { fields: ['summaryLoading'] } },
   { id: 'filesystem', label: 'Filesystem', section: 'Overview', navSection: 'OVERVIEW', keywords: ['disk', 'storage', 'mount', 'partition'], reachability: 'always', lifecycle: { fields: ['filesystemLoading'] } },
   { id: 'memory', label: 'Memory', section: 'Overview', navSection: 'OVERVIEW', keywords: ['ram', 'swap', 'memory', 'usage', 'pid', 'process'], reachability: 'always', lifecycle: { fields: ['memoryLoading'] } },
@@ -112,7 +120,7 @@ export const MODULE_BY_ID: Readonly<Record<PageId, ModuleDefinition>> = Object.f
 );
 
 export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
-  { title: 'OVERVIEW', items: ['summary', 'filesystem', 'memory', 'cpu'] },
+  { title: 'OVERVIEW', items: ['mission-control', 'summary', 'filesystem', 'memory', 'cpu'] },
   { title: 'CONNECTIONS', items: ['connections-inventory', 'connections-insights', 'connections-health', 'connections-fs-migration'] },
   { title: 'PROJECTS', items: ['project-cleaner', 'projects', 'project-compute'] },
   { title: 'USERS', items: ['users'] },

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useModal } from '../../hooks/useModal';
 import { DataGrid } from '../common/DataGrid';
 import type { ColumnDef } from '../../utils/dataGridTypes';
+import { dssUrls } from '../../utils/codeEnvUsageLinks';
 import type { User } from '../../types';
 import { USER_COLUMNS, type UserColumnId, type UserMatrixCtx } from '../../utils/userMatrix';
 import type { DaughterSpec } from '../../utils/userDaughterSpecs';
@@ -66,7 +67,14 @@ export function UsersTable({
           const disabled = user.enabled === false;
           return (
             <span title={user.userProfile || ''}>
-              <span className={disabled ? 'text-[var(--neon-red)]' : ''}>{user.login}</span>
+              <a
+                href={dssUrls.dssUser(user.login)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-[var(--neon-cyan)] hover:underline"
+              >
+                <span className={disabled ? 'text-[var(--neon-red)]' : ''}>{user.login}</span>
+              </a>
               {disabled && (
                 <span className="ml-1 text-[10px] uppercase tracking-wide text-[var(--neon-red)]">
                   disabled

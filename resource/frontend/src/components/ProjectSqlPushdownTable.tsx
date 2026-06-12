@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Card } from './Card';
 import { ScanIncompleteNotice } from './ScanIncompleteNotice';
 import { getBackendUrl } from '../utils/api';
+import { dssUrls } from '../utils/codeEnvUsageLinks';
 import {
   getSqlPushdownScan,
   restartSqlPushdownScan,
@@ -161,7 +162,18 @@ function RecipeLine({
       </div>
       <div className="pl-4 text-xs text-[var(--text-muted)]">
         connection:{' '}
-        <span className="font-mono text-[var(--text-secondary)]">{recipe.connection}</span>
+        {recipe.connection ? (
+          <a
+            href={dssUrls.llmConn(recipe.connection)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-mono text-[var(--neon-cyan)] hover:underline"
+          >
+            {recipe.connection}
+          </a>
+        ) : (
+          <span className="font-mono text-[var(--text-secondary)]">{recipe.connection}</span>
+        )}
         <span className="ml-2">
           {recipe.inputs.join(', ')} &rarr; {recipe.outputs.join(', ')}
         </span>

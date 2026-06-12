@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { codeEnvComparisonScan } from '../state/codeEnvComparisonStore';
 import { useTableSort } from '../hooks/useTableSort';
 import { Spinner } from './common/Spinner';
+import { dssUrls } from '../utils/codeEnvUsageLinks';
 import type { CodeEnvCompareBlue, CodeEnvCompareYellow } from '../types';
 
 type SectionKey = 'green' | 'purple' | 'blue' | 'yellow';
@@ -571,9 +572,16 @@ function GroupCard({ color, children }: { color: string; children: React.ReactNo
 }
 
 function EnvBadge({ name }: { name: string }) {
+  // 'python' is safe: the comparison backend only compares Python envs
+  // (python-lib/adk_backend/routes/code_envs.py filters to envLang == 'PYTHON').
   return (
-    <span className="inline-flex items-center gap-1 bg-[var(--bg-surface)] px-2.5 py-1 rounded-md font-mono text-xs text-[var(--text-primary)] border border-[var(--border-glass)] shadow-sm">
+    <a
+      href={dssUrls.codeEnv('python', name)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 bg-[var(--bg-surface)] px-2.5 py-1 rounded-md font-mono text-xs text-[var(--text-primary)] border border-[var(--border-glass)] shadow-sm hover:text-[var(--neon-cyan)] hover:border-[var(--neon-cyan)]/50 hover:underline"
+    >
       {name}
-    </span>
+    </a>
   );
 }

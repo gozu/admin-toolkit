@@ -68,4 +68,17 @@ export const dssUrls = {
   codeStudio: (pk: string, id: string) => `${getDssBaseUrl()}/projects/${enc(pk)}/code-studios/${enc(id)}/view`,
   // Admin connection edit — `:connectionName/` segment, no `/edit/` prefix.
   llmConn: (name: string) => `${getDssBaseUrl()}/admin/connections/${enc(name)}/`,
+  // User profile — `profile.user` (`/profile/:userLogin/`) is abstract, but its
+  // `profile.user.view` leaf has url "" so this exact URL is the concrete
+  // "Profile" page. Verified against the akaos instance's ui-router state
+  // table (mainpack bundle, 2026-06-12).
+  dssUser: (login: string) => `${getDssBaseUrl()}/profile/${enc(login)}/`,
+  // Plugin parent states are abstract — `plugin.summary` (`/summary/`) is the
+  // canonical leaf for installed plugins, `plugindev.definition`
+  // (`/definition/`) for dev plugins. Verified against the akaos instance's
+  // ui-router state table (mainpack bundle, 2026-06-12).
+  plugin: (id: string, isDev?: boolean) =>
+    isDev
+      ? `${getDssBaseUrl()}/plugins/development/${enc(id)}/definition/`
+      : `${getDssBaseUrl()}/plugins/${enc(id)}/summary/`,
 };

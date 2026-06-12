@@ -63,6 +63,7 @@ export function buildInitialState(layoutMode: LayoutMode): DiagStateWithComparis
     debugLogs: [],
     apiDirTree: initialApiDirTreeState,
     focusedConnectionFilter: null,
+    focusedUserFilter: null,
     // New comparison state
     mode: 'single',
     activePage: 'summary' as PageId,
@@ -208,6 +209,8 @@ export function diagReducer(
     }
     case 'SET_FOCUSED_CONNECTION_FILTER':
       return { ...state, focusedConnectionFilter: action.payload };
+    case 'SET_FOCUSED_USER_FILTER':
+      return { ...state, focusedUserFilter: action.payload };
     case 'RESET':
       return buildInitialState(state.layoutMode);
 
@@ -287,6 +290,7 @@ export interface DiagContextValue {
   addDebugLog: (message: string, scope?: string, level?: DebugLevel) => void;
   clearDebugLogs: () => void;
   setFocusedConnectionFilter: (filter: { name?: string; type?: string } | null) => void;
+  setFocusedUserFilter: (filter: { login?: string } | null) => void;
   reset: () => void;
   // New comparison convenience methods
   setMode: (mode: AppMode) => void;

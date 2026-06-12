@@ -3,6 +3,7 @@ import { useDiag } from '../../context/DiagContext';
 import { ScanIncompleteNotice } from '../ScanIncompleteNotice';
 import { DataGrid } from '../common/DataGrid';
 import type { ColumnDef } from '../../utils/dataGridTypes';
+import { dssUrls } from '../../utils/codeEnvUsageLinks';
 import {
   buildConnectionInsightsRows,
   type ConnectionInsightsRow,
@@ -35,8 +36,19 @@ function healthTextClass(status: 'ok' | 'fail' | 'skipped' | null): string {
 const LINK_CLS =
   'inline-flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-[var(--bg-glass-hover)] hover:underline cursor-pointer';
 
-function CountCell(value: number) {
-  return value || <span className="text-[var(--text-muted)]">0</span>;
+function CountCell(value: number, onClick?: () => void) {
+  if (!value) return <span className="text-[var(--text-muted)]">0</span>;
+  if (!onClick) return value;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Click to open Usage"
+      className={LINK_CLS}
+    >
+      {value}
+    </button>
+  );
 }
 
 export function ConnectionsInsightsTable() {
@@ -83,6 +95,10 @@ export function ConnectionsInsightsTable() {
 
   const columns = useMemo<ColumnDef<ConnectionInsightsRow>[]>(() => {
     const goToHealth = () => setActivePage('connections-health');
+    const goToUsage = (name: string) => {
+      setFocusedConnectionFilter({ name });
+      setActivePage('connections-usage');
+    };
     return [
       {
         id: 'name',
@@ -91,7 +107,15 @@ export function ConnectionsInsightsTable() {
         defaultSortDir: 'asc',
         cellClassName: 'whitespace-nowrap',
         render: (row) => (
-          <span title={row.driver ? `Driver: ${row.driver}` : undefined}>{row.name}</span>
+          <a
+            href={dssUrls.llmConn(row.name)}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={row.driver ? `Driver: ${row.driver}` : undefined}
+            className="text-[var(--neon-cyan)] hover:underline"
+          >
+            {row.name}
+          </a>
         ),
         sortValue: (row) => row.name.toLowerCase(),
       },
@@ -108,7 +132,7 @@ export function ConnectionsInsightsTable() {
         label: 'Projects',
         align: 'right',
         mono: true,
-        render: (row) => CountCell(row.projectCount),
+        render: (row) => CountCell(row.projectCount, () => goToUsage(row.name)),
         sortValue: (row) => row.projectCount,
       },
       {
@@ -116,7 +140,7 @@ export function ConnectionsInsightsTable() {
         label: 'Datasets',
         align: 'right',
         mono: true,
-        render: (row) => CountCell(row.datasetCount),
+        render: (row) => CountCell(row.datasetCount, () => goToUsage(row.name)),
         sortValue: (row) => row.datasetCount,
       },
       {
@@ -124,7 +148,7 @@ export function ConnectionsInsightsTable() {
         label: 'Recipes',
         align: 'right',
         mono: true,
-        render: (row) => CountCell(row.recipeCount),
+        render: (row) => CountCell(row.recipeCount, () => goToUsage(row.name)),
         sortValue: (row) => row.recipeCount,
       },
       {
@@ -132,7 +156,8 @@ export function ConnectionsInsightsTable() {
         label: 'LLM assets',
         align: 'right',
         mono: true,
-        render: (row) => CountCell(row.llmAssetCount),
+        // llm-audit has no prefilter mechanism — Usage is the closest drill target.
+        render: (row) => CountCell(row.llmAssetCount, () => goToUsage(row.name)),
         sortValue: (row) => row.llmAssetCount,
       },
       {
@@ -140,7 +165,7 @@ export function ConnectionsInsightsTable() {
         label: 'FS usages',
         align: 'right',
         mono: true,
-        render: (row) => CountCell(row.fsUsageCount),
+        render: (row) => CountCell(row.fsUsageCount, () => goToUsage(row.name)),
         sortValue: (row) => row.fsUsageCount,
       },
       {
@@ -190,7 +215,7 @@ export function ConnectionsInsightsTable() {
         sortValue: (row) => (row.healthStatus ? HEALTH_RANK[row.healthStatus] : 0),
       },
     ];
-  }, [setActivePage]);
+  }, [setActivePage, setFocusedConnectionFilter]);
 
   const clearFilters = () => {
     setNameFilter('');

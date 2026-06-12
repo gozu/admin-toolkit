@@ -3,6 +3,7 @@ import { type MultiValue } from 'react-select';
 import { useDiag } from '../context/DiagContext';
 import { DataGrid } from './common/DataGrid';
 import { FilterField, type SelectOption } from './common/FilterSelect';
+import { dssUrls } from '../utils/codeEnvUsageLinks';
 import type { ColumnDef } from '../utils/dataGridTypes';
 import type { PluginInfo } from '../types';
 
@@ -80,7 +81,16 @@ export function PluginsTable({ onOpenUsage }: PluginsTableProps = {}) {
         id: 'name',
         label: 'Plugin Name',
         defaultSortDir: 'asc',
-        render: (plugin) => <span>{plugin.label || plugin.id}</span>,
+        render: (plugin) => (
+          <a
+            href={dssUrls.plugin(plugin.id, plugin.isDev)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[var(--neon-cyan)] hover:underline"
+          >
+            {plugin.label || plugin.id}
+          </a>
+        ),
         sortValue: (plugin) => plugin.label || plugin.id,
       },
       {

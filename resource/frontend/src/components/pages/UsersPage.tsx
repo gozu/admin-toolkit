@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDiag } from '../../context/DiagContext';
 import { useThresholds } from '../../hooks/useThresholds';
 import { ProgressIndicator } from '../common/ProgressIndicator';
@@ -7,13 +7,31 @@ import { buildUserMatrixContext } from '../../utils/userMatrix';
 import { resolveLifecycleById } from '../../utils/pageLifecycle';
 
 export function UsersPage() {
-  const { state } = useDiag();
-  const { parsedData } = state;
+  const { state, setFocusedUserFilter } = useDiag();
+  const { parsedData, focusedUserFilter } = state;
   const { thresholds } = useThresholds();
 
-  const [search, setSearch] = useState('');
+  // Local filter state — seeded from the context prefilter (if any), one-way.
+  const [search, setSearch] = useState(focusedUserFilter?.login ?? '');
   const [onlyWithIssues, setOnlyWithIssues] = useState(false);
   const [hideZeroColumns, setHideZeroColumns] = useState(false);
+
+  // Reflect a prefilter that arrives *after* mount by adjusting state during
+  // render (React's supported pattern) rather than via a setState-in-effect.
+  // The mount seed above already covers the first prefilter.
+  const [lastAppliedFilter, setLastAppliedFilter] = useState(focusedUserFilter);
+  if (focusedUserFilter !== lastAppliedFilter) {
+    setLastAppliedFilter(focusedUserFilter);
+    if (focusedUserFilter && typeof focusedUserFilter.login === 'string') {
+      setSearch(focusedUserFilter.login);
+    }
+  }
+
+  // Clear the one-shot context prefilter once consumed. Updating *context*
+  // state in an effect is the legitimate, un-flagged case.
+  useEffect(() => {
+    if (focusedUserFilter) setFocusedUserFilter(null);
+  }, [focusedUserFilter, setFocusedUserFilter]);
 
   const users = parsedData.users || [];
   // Composite lifecycle: this page joins user × projectFootprint × codeEnvs ×

@@ -103,7 +103,7 @@ function modelMatchesFilter(row: ProjectFootprintRow, filter: ModelFilter): bool
 }
 
 export function ProjectFootprintTable() {
-  const { state } = useDiag();
+  const { state, setFocusedUserFilter, setActivePage } = useDiag();
   const { isVisible } = useTableFilter();
   const rows = state.parsedData.projectFootprint ?? EMPTY_ARR;
   const users = state.parsedData.users ?? EMPTY_ARR;
@@ -231,9 +231,21 @@ export function ProjectFootprintTable() {
         cellClassName: 'text-sm whitespace-nowrap',
         render: (row) =>
           row.owner ? (
-            <span title={row.owner.length > OWNER_MAX_CHARS ? row.owner : undefined}>
+            <button
+              type="button"
+              onClick={() => {
+                setFocusedUserFilter({ login: row.owner });
+                setActivePage('users');
+              }}
+              title={
+                row.owner.length > OWNER_MAX_CHARS
+                  ? `${row.owner} — show on the Users page`
+                  : `Show ${row.owner} on the Users page`
+              }
+              className="hover:text-[var(--neon-cyan)] hover:underline"
+            >
               {truncate(row.owner, OWNER_MAX_CHARS)}
-            </span>
+            </button>
           ) : (
             <span className="text-[var(--text-muted)]">Unknown</span>
           ),
@@ -357,6 +369,8 @@ export function ProjectFootprintTable() {
       openStudios,
       openModels,
       openBreakdown,
+      setFocusedUserFilter,
+      setActivePage,
     ],
   );
 

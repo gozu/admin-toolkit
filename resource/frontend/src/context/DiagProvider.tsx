@@ -53,6 +53,11 @@ export function DiagProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_FOCUSED_CONNECTION_FILTER', payload: filter }),
     [dispatch],
   );
+  const setFocusedUserFilter = useCallback(
+    (filter: { login?: string } | null) =>
+      dispatch({ type: 'SET_FOCUSED_USER_FILTER', payload: filter }),
+    [dispatch],
+  );
   const reset = useCallback(() => dispatch({ type: 'RESET' }), [dispatch]);
   const setMode = useCallback((mode: AppMode) => dispatch({ type: 'SET_MODE', payload: mode }), [dispatch]);
   const setActivePage = useCallback((page: PageId) => dispatch({ type: 'SET_ACTIVE_PAGE', payload: page }), [dispatch]);
@@ -69,14 +74,14 @@ export function DiagProvider({ children }: { children: ReactNode }) {
     state, dispatch,
     setLoading, setError, setExtractedFiles, setParsedData, setActiveFilter, setLayoutMode,
     setDiagType, setRootFiles, setProjectFiles, setDsshome, setOriginalFile, setDataSource,
-    addDebugLog, clearDebugLogs, setFocusedConnectionFilter, reset,
+    addDebugLog, clearDebugLogs, setFocusedConnectionFilter, setFocusedUserFilter, reset,
     setMode, setActivePage, setComparisonFile, clearComparisonFile, setComparisonResult,
     setComparisonViewMode, setComparisonProcessing, resetComparison,
   }), [
     state, dispatch,
     setLoading, setError, setExtractedFiles, setParsedData, setActiveFilter, setLayoutMode,
     setDiagType, setRootFiles, setProjectFiles, setDsshome, setOriginalFile, setDataSource,
-    addDebugLog, clearDebugLogs, setFocusedConnectionFilter, reset,
+    addDebugLog, clearDebugLogs, setFocusedConnectionFilter, setFocusedUserFilter, reset,
     setMode, setActivePage, setComparisonFile, clearComparisonFile, setComparisonResult,
     setComparisonViewMode, setComparisonProcessing, resetComparison,
   ]);

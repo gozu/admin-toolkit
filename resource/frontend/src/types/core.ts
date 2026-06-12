@@ -241,6 +241,7 @@ export interface DiagState {
   debugLogs: DebugLogEntry[];
   apiDirTree: ApiDirTreeState;
   focusedConnectionFilter: { name?: string; type?: string } | null;
+  focusedUserFilter: { login?: string } | null;
 }
 
 // Context actions
@@ -272,6 +273,7 @@ export type DiagAction =
       type: 'SET_FOCUSED_CONNECTION_FILTER';
       payload: { name?: string; type?: string } | null;
     }
+  | { type: 'SET_FOCUSED_USER_FILTER'; payload: { login?: string } | null }
   | { type: 'RESET' };
 
 export type PageId =

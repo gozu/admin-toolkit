@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { useDiag } from '../context/DiagContext';
 import { useTableFilter } from '../hooks/useTableFilter';
 import { DataGrid } from './common/DataGrid';
+import { ExternalLinkIcon } from './ExternalLinkIcon';
+import { dssUrls } from '../utils/codeEnvUsageLinks';
 import type { ColumnDef } from '../utils/dataGridTypes';
 import type { Project } from '../types';
 
@@ -13,7 +15,7 @@ interface ProjectsTableProps {
 const EMPTY_ARR: never[] = [];
 
 export function ProjectsTable({ onViewPermissions }: ProjectsTableProps) {
-  const { state } = useDiag();
+  const { state, setFocusedUserFilter, setActivePage } = useDiag();
   const { isVisible } = useTableFilter();
   const { parsedData } = state;
   const projects = parsedData.projects ?? EMPTY_ARR;
@@ -26,8 +28,12 @@ export function ProjectsTable({ onViewPermissions }: ProjectsTableProps) {
     [projects, searchText],
   );
 
-  const columns = useMemo<ColumnDef<Project>[]>(
-    () => [
+  const columns = useMemo<ColumnDef<Project>[]>(() => {
+    const goToUser = (login: string) => {
+      setFocusedUserFilter({ login });
+      setActivePage('users');
+    };
+    return [
       {
         id: 'name',
         label: 'Project Name',
@@ -43,8 +49,30 @@ export function ProjectsTable({ onViewPermissions }: ProjectsTableProps) {
             >
               {project.name}
             </button>
+            <a
+              href={dssUrls.project(project.key)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={`Open ${project.key} in DSS`}
+              aria-label={`Open ${project.key} in DSS`}
+              className="ml-1 text-[var(--text-muted)] hover:text-[var(--neon-cyan)]"
+            >
+              <ExternalLinkIcon />
+            </a>
             <div className="text-xs text-[var(--text-muted)] mt-1">
-              Owner: {project.owner || 'Unknown'}
+              Owner:{' '}
+              {project.owner ? (
+                <button
+                  type="button"
+                  onClick={() => goToUser(project.owner)}
+                  title={`Show ${project.owner} on the Users page`}
+                  className="hover:text-[var(--neon-cyan)] hover:underline"
+                >
+                  {project.owner}
+                </button>
+              ) : (
+                'Unknown'
+              )}
             </div>
           </>
         ),
@@ -72,9 +100,8 @@ export function ProjectsTable({ onViewPermissions }: ProjectsTableProps) {
         render: (project) => `${project.permissions.length} entries`,
         sortValue: (project) => project.permissions?.length || 0,
       },
-    ],
-    [onViewPermissions],
-  );
+    ];
+  }, [onViewPermissions, setFocusedUserFilter, setActivePage]);
 
   if (!isVisible('projects-table') || projects.length === 0) {
     return null;

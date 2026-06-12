@@ -136,7 +136,10 @@ export function MissionControlPage() {
     () => selectProjects({ projects, projectFootprint, projectFootprintSummary }),
     [projects, projectFootprint, projectFootprintSummary],
   );
-  const usersVm = useMemo(() => selectUsers({ users, projects }), [users, projects]);
+  const usersVm = useMemo(
+    () => selectUsers({ users, projects, projectFootprint }),
+    [users, projects, projectFootprint],
+  );
   const insightsRows = useMemo(
     () =>
       buildConnectionInsightsRows({

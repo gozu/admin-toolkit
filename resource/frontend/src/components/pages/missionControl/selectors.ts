@@ -189,7 +189,8 @@ export function selectProjects(
   const fp = d.projectFootprint || [];
   const top = [...fp].sort((a, b) => (b.totalBytes || 0) - (a.totalBytes || 0)).slice(0, 5);
   return {
-    count: d.projects?.length ?? d.projectFootprintSummary?.projectCount ?? 0,
+    // Live mode skips the basic projects[] load — fall back to the footprint scan.
+    count: d.projects?.length || d.projectFootprintSummary?.projectCount || fp.length,
     totalBytes: fp.reduce((s, r) => s + (r.totalBytes || 0), 0),
     avgGb: d.projectFootprintSummary?.instanceAvgProjectGB ?? 0,
     top,
@@ -211,16 +212,23 @@ export interface UsersVm {
   topOwners: [string, number][];
 }
 
-export function selectUsers(d: Pick<ParsedData, 'users' | 'projects'>): UsersVm {
+export function selectUsers(
+  d: Pick<ParsedData, 'users' | 'projects' | 'projectFootprint'>,
+): UsersVm {
   const users = d.users || [];
   const profileCounts: Record<string, number> = {};
   for (const u of users) {
     const key = u.userProfile || 'unknown';
     profileCounts[key] = (profileCounts[key] || 0) + 1;
   }
+  // Live mode skips the basic projects[] load — footprint rows carry the owner.
+  const ownerSource = d.projects?.length
+    ? d.projects.map((p) => p.owner)
+    : (d.projectFootprint || []).map((r) => r.owner);
   const ownerCounts: Record<string, number> = {};
-  for (const p of d.projects || []) {
-    ownerCounts[p.owner] = (ownerCounts[p.owner] || 0) + 1;
+  for (const owner of ownerSource) {
+    if (!owner) continue;
+    ownerCounts[owner] = (ownerCounts[owner] || 0) + 1;
   }
   return {
     total: users.length,

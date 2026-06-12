@@ -368,7 +368,9 @@ export const UsersTile = memo(function UsersTile({
           ))}
         </div>
         <div className="flex min-h-0 flex-1 flex-col justify-end gap-1">
-          <span className="text-[9px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">top owners</span>
+          {vm.topOwners.length > 0 && (
+            <span className="text-[9px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">top owners</span>
+          )}
           {vm.topOwners.map(([login, count]) => (
             <BarRow
               key={login}

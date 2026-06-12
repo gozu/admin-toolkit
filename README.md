@@ -1,78 +1,130 @@
-# Admin Toolkit
+<div align="center">
 
-A Dataiku DSS plugin for instance administration — health scoring, outreach campaigns, auditing, and cleanup.
+<img src="resource/frontend/public/bird-logo.png" alt="Admin Toolkit logo" width="120" />
 
-Connects to the running DSS instance via the Python API. All data is fetched in real time through a Flask backend. No file uploads or diagnostic bundles needed.
+# Admin Toolkit — Dataiku DSS
 
-**Multi-instance:** Configure additional DSS hosts as `remote-dss-host` plugin presets and switch between them from the top-bar dropdown. The toolkit will offer to create an `ADMINTOOLKIT` project on each host the first time it's needed (one-click confirm). The plugin must also be installed on every remote you want to fully scan.
+**A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-> **Admin-only tool.** The webapp should be configured to require authentication and restricted to admin groups. Do not expose it to regular users.
+![Version](https://img.shields.io/badge/version-0.4.557-blue)
+![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-plugin-2AB1AC)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4.1-38BDF8?logo=tailwindcss&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-backend-3776AB?logo=python&logoColor=white)
 
-## Project Soul
+<img src="docs/screenshots/overview.png" alt="Admin Toolkit overview — composite health score, category scores, detected issues" width="900" />
 
-Admin Toolkit should feel polished, fast, and dense. The UI should respond with videogame-like smoothness: no avoidable stutters, no layout jumps, and no silent long waits. It is acceptable to spend a few extra milliseconds preparing data or GPU-friendly rendering paths when that produces a smoother interaction once the user starts working.
+</div>
 
-Design should be clever and compact. Prefer fewer visible elements with richer interactions: expandable rows, popovers, detail panels, and progressive disclosure are better than spreading every option across the page. Progress indicators are part of the product surface, not decoration: queued/loading/unavailable is grey, active/partial/waiting/stalled is yellow, ready/current/completed-neutral is white, and failure is red.
+---
 
-Future modules must reuse shared navigation, progress, availability, and trends contracts rather than hand-wiring new pages in multiple places.
+## What is it?
 
-## Tech Stack
+Admin Toolkit is a DSS plugin webapp that gives instance administrators a single pane of glass over everything that usually requires SSH sessions, ad-hoc notebooks, and tribal knowledge: disk and memory pressure, code-env sprawl, project footprint, connection health, Kubernetes spend, LLM connections, and more.
 
-React 19 / TypeScript 5.9 / Tailwind 4.1 / Vite / Chart.js — served from a Flask backend via the DSS webapp framework.
+It connects to the running DSS instance through the Python API — all data is fetched live, no diagnostic bundles or file uploads needed. Configure additional DSS hosts as plugin presets and the same webapp scans **every instance in your fleet** from one top-bar switcher.
 
-## Setup
+It scores what it finds, explains *why* something is unhealthy, and — behind an explicit unlock — gives you the tools to fix it: delete inactive projects, clean unused code envs, migrate filesystem data, prune stale Docker images, and email project owners about what they should fix themselves.
 
-### Prerequisites
+> **Admin-only tool.** Configure the webapp to require authentication and restrict it to admin groups. Do not expose it to regular users.
 
-- Access to a Dataiku DSS instance (admin API key)
+> **Beta, best-effort.** Not officially supported by Dataiku. Verify outputs before acting, and test against a sandbox before pointing it at production.
 
-### Configuration
+## Feature tour
 
-Create these files in the project root:
+The toolkit is organized into 8 sidebar sections covering 29 pages. Pages marked **tool** perform mutations and are hidden behind the [Advanced Actions unlock](#advanced-actions-red-unlock).
 
-| File | Contents |
-|------|----------|
-| `.dss-url` | DSS instance URL (e.g. `https://dss.example.com`) |
-| `.dss-api-key` | Admin API key for the instance |
-| `.dss-project-key` | *(optional)* Project key — defaults to `YOUR_PROJECT_KEY` |
-| `.dss-webapp-id` | *(optional)* Webapp ID — defaults to `YOUR_WEBAPP_ID` |
+### Overview
 
-### Development
+Instance vitals at a glance. **Summary** is the landing page: composite health score, per-category breakdown, detected issues with expandable detail, and instance facts (DSS version, Python, cores, RAM, OS). **Filesystem** charts every mount point and drills into the DSS data directory with an interactive treemap and directory tree. **Memory** and **CPU** show live process-level usage by user and component, with workload headroom analysis.
 
-```bash
-cd resource/frontend
-npm install
-npm run dev
-```
+<div align="center"><img src="docs/screenshots/filesystem.png" alt="Filesystem usage — mount points, treemap and directory tree of the DSS data dir" width="850" /></div>
 
-### Build & Deploy
+<div align="center"><img src="docs/screenshots/memory.png" alt="Memory analysis — system memory, JEK/FEK headroom, usage by user" width="850" /></div>
 
-```bash
-make deploy COMMIT_MSG="your message"   # build, bump version, deploy to all targets
-make plugin                              # build ZIP only
-make deploy-dev                          # deploy to dev server only
-make deploy-prod-secure                  # deploy to prod via sudo wrappers
-make clean                               # remove dist + node_modules
-```
+### Connections
 
-`make deploy` auto-increments the patch version in `plugin.json` and `package.json`, commits deploy-relevant files, builds the frontend, archives the plugin, and pushes to all configured targets.
+**Inventory** lists every connection with type and usage trends. **Insights** is the matrix view — datasets, recipes, LLM assets, filesystem usages, audit flags, and health per connection. **Health** runs live connection tests; **Usage** maps which projects consume which connections. **FS Migration** *(tool)* is an outreach-driven campaign to move data off local filesystem connections, with owner notification emails.
 
-### Linting & Tests
+<div align="center"><img src="docs/screenshots/connections-insights.png" alt="Connections insights — usage, audit and health matrix across 96 connections" width="850" /></div>
 
-```bash
-cd resource/frontend
-npm run lint          # ESLint
-npm run typecheck     # TypeScript strict
-npm run format        # Prettier
-npx playwright test   # E2E tests
-```
+### Projects
+
+**Insights** computes the per-project footprint: size on disk, code envs, scenarios, flow complexity, permissions, and a health grade for every project. **Compute** attributes compute usage to projects. **Cleaner** *(tool)* finds projects inactive for a configurable number of days (no active scenarios, no deployed bundles), backs them up to a managed folder, and deletes them.
+
+<div align="center"><img src="docs/screenshots/projects-insights.png" alt="Project footprint — size, code envs and per-project health" width="850" /></div>
+
+<div align="center"><img src="docs/screenshots/project-cleaner.png" alt="Inactive Project Cleaner — 279 candidates with backup-before-delete" width="850" /></div>
+
+### Users
+
+Ownership and accountability: who owns which projects, code envs, and LLM assets, joined with login activity — the page to open before offboarding someone.
+
+### Plugins
+
+**Installed** lists every plugin with version and project usage. **Plugin Sync** *(tool)* compares plugin versions across your DSS hosts and pushes updates between them.
+
+### Code Envs
+
+The deepest module — code-env sprawl is usually the #1 health problem on a mature instance. **Insights** is the read-only view: every env with owner, Python version, size on disk, and exact usage (recipes, notebooks, scenarios, webapps, code studios). **Cleaner** *(tool)* deletes unused envs and migrates usages from one env to another. **Comparison** finds duplicate and near-duplicate envs worth merging.
+
+<div align="center"><img src="docs/screenshots/code-envs.png" alt="Code env insights — 168 envs with size, usage and owner" width="850" /></div>
+
+### AI Compute
+
+**Container Execs** *(tool)* streams the live container-execution inventory (K8s workloads per project, recipe, webapp). **Docker Images** *(tool)* prunes stale images from ECR/ACR/GAR registries. **CS Templates** *(tool)* migrates code studios between templates. **Model Audit** inventories every LLM connection and model with cost and replacement hints. **K8s Insights** audits your clusters live: node utilization, bin-packing savings, idle nodes, and rule-based findings with monthly cost estimates.
+
+<div align="center"><img src="docs/screenshots/k8s-insights.png" alt="K8s Insights — cluster cost, potential savings, node utilization and findings" width="850" /></div>
+
+<div align="center"><img src="docs/screenshots/llm-audit.png" alt="LLM Model Audit — 82 models with connections, cost and replacement hints" width="850" /></div>
+
+### Misc
+
+**Settings** (see [Configuration](#configuration)), **Errors** (parsed backend log errors with context), **Sanity Check** (API self-diagnostics), **DB Health** *(tool)* (PostgreSQL runtimedb bloat/vacuum analysis), **Report** *(tool)* (export findings as a standalone report), and **Feedback** (file bugs and ideas from inside the app).
+
+### Full page index
+
+| Section | Page | What it does |
+|---|---|---|
+| Overview | Summary | Composite health score, issues, instance facts |
+| Overview | Filesystem | Mount usage, data-dir treemap + directory tree |
+| Overview | Memory | System/process RAM, workload headroom |
+| Overview | CPU | Process-level CPU usage |
+| Connections | Inventory | All connections, types, trends |
+| Connections | Insights | Usage/audit/health matrix per connection |
+| Connections | Health | Live connection tests |
+| Connections | Usage | Project ↔ connection consumption map |
+| Connections | FS Migration 🔴 | Migrate data off filesystem connections, with owner outreach |
+| Projects | Cleaner 🔴 | Backup + delete inactive projects |
+| Projects | Insights | Per-project footprint and health |
+| Projects | Compute | Compute usage by project |
+| Users | Users | Ownership, activity, accountability |
+| Plugins | Installed | Plugin inventory with usage |
+| Plugins | Plugin Sync 🔴 | Compare/push plugins across hosts |
+| Code Envs | Cleaner 🔴 | Delete unused envs, migrate usages |
+| Code Envs | Insights | Read-only env inventory with exact usages |
+| Code Envs | Comparison | Find duplicate/mergeable envs |
+| AI Compute | Container Execs 🔴 | Live K8s workload inventory (SSE stream) |
+| AI Compute | Docker Images 🔴 | Prune stale images from ECR/ACR/GAR |
+| AI Compute | CS Templates 🔴 | Replace code studio templates |
+| AI Compute | Model Audit | LLM connection/model inventory with pricing |
+| AI Compute | K8s Insights | Cluster cost + findings audit (SSE stream) |
+| Misc | Settings | Thresholds, weights, mail, performance, support bundle |
+| Misc | Errors | Parsed backend log errors |
+| Misc | Sanity Check | API self-diagnostics |
+| Misc | DB Health 🔴 | Runtimedb bloat/vacuum analysis |
+| Misc | Report 🔴 | Exportable findings report |
+| Misc | Feedback | In-app bug reports and ideas |
+
+🔴 = advanced tool page, hidden until [Advanced Actions](#advanced-actions-red-unlock) are unlocked.
 
 ## Health Score
 
-The composite health score (0-100) is built from six weighted categories:
+The composite 0–100 score is built from six weighted categories:
 
-| Category | Weight |
-|----------|--------|
+| Category | Default weight |
+|---|---|
 | Code Environments | 35% |
 | Project Footprint | 30% |
 | System Capacity | 15% |
@@ -80,19 +132,152 @@ The composite health score (0-100) is built from six weighted categories:
 | Version Currency | 5% |
 | Runtime Config | 5% |
 
-These are derived from 12 toggleable factors (configurable in Settings): Python versions, Spark version, memory availability, filesystem capacity, open files limit, user isolation, cgroups, code envs per project, project size pressure, disabled features, and Java memory limits.
+Categories aggregate 13 individually toggleable health checks — Python versions, Spark version, memory availability, filesystem capacity, open-files limit, user isolation, cgroups (enabled + empty targets), code envs per project, project size pressure, disabled features, Java memory limits, and runtime database. **Every weight and threshold is tunable in Settings**, so the score reflects *your* definition of healthy.
 
-## Outreach Campaigns
+## Architecture
 
-The outreach system sends targeted emails to project owners about unhealthy patterns. 15 built-in campaigns cover issues like code env sprawl, deprecated Python versions, inactive projects, failing scenarios, and more. Each campaign supports recipient preview, exemption management, email template preview, and send history.
+```mermaid
+flowchart LR
+    subgraph Browser
+        SPA["React 19 SPA<br/>Vite + Tailwind + Chart.js"]
+    end
+    subgraph Webapp["DSS plugin webapp"]
+        API["Flask backend<br/>24 route groups, SSE streaming,<br/>caching + prewarm"]
+    end
+    subgraph DSS["Dataiku DSS (local or remote)"]
+        PYAPI["DSS Python API<br/>(reads + gated writes)"]
+        MACROS["6 privileged macros<br/>(ADMINTOOLKIT project)"]
+        HOST["Host resources:<br/>filesystem, /proc, kubectl,<br/>Docker registries, runtimedb"]
+    end
+    SPA -->|"fetch + SSE, X-DSS-Host-Id"| API
+    API --> PYAPI
+    API -->|macro runs| MACROS
+    MACROS --> HOST
+```
 
-## Project Structure
+Pure DSS API operations talk to the instance directly. Anything host-bound (filesystem scans, process metrics, kubectl probes, registry calls, direct DB queries) runs as a **plugin macro** inside a dedicated `ADMINTOOLKIT` project — the toolkit offers to create it on first use with one click. Multi-instance support works by routing every request through an `X-DSS-Host-Id` header that selects the local instance or any configured remote preset.
+
+## Installation
+
+### Requirements
+
+- A Dataiku DSS instance and **global admin** rights (to install the plugin and use the toolkit meaningfully).
+- Python 3.9+ available for the plugin code env. All Python dependencies (Flask, boto3, azure-identity, google-cloud-artifact-registry, psycopg2, …) are declared in the plugin's code-env spec and installed automatically when DSS builds it.
+
+### Install the plugin
+
+1. Get the plugin ZIP — either grab a release artifact (`dss-plugin-admin-toolkit-<version>.zip`) or build it yourself with `make plugin` (output lands in `dist/`).
+2. In DSS: **Plugins → Add plugin → Upload**, select the ZIP.
+3. When prompted, **build the plugin code environment** (the webapp backend runs in it).
+4. In a project of your choice: **Webapps → New webapp → Plugin webapp → Admin Toolkit**, then start the backend.
+5. **Restrict access**: configure the webapp to require authentication and limit it to admin groups.
+6. On first launch, pick a host on the landing screen. The first time a module needs host-level access, the toolkit offers to create the `ADMINTOOLKIT` macro project — one-click confirm.
+
+### Multi-instance setup
+
+1. In the plugin settings, define instances of the **Remote DSS Hosts** preset (URL + admin API key per remote).
+2. Each remote you want to *fully* scan also needs the plugin installed (macros run on the target host).
+3. Switch hosts from the top-bar dropdown — every page rescans against the selected instance, and the toolkit bootstraps `ADMINTOOLKIT` on each remote the first time it's needed.
+
+### Advanced Actions (red unlock)
+
+Mutating tools — delete, replace, migrate, deploy, send — are locked by default and their pages are hidden from the sidebar. To enable them:
+
+1. Generate a secret with the linked generator in the plugin settings (type a password, copy the hash).
+2. Paste it into the **Advanced Actions secret** plugin setting.
+3. In the webapp, click the **Advanced Actions** badge in the header and enter the password to unlock for your session.
+
+Leave the setting empty to keep the toolkit permanently read-only.
+
+## Configuration
+
+Everything lives on the **Settings** page (plus the plugin preset for secrets):
+
+- **Thresholds & scoring** — inactive-project days, code-env sprawl limits, Python/Spark minimums, capacity floors, and the six health-score weights. Defaults are sensible; tune them to your fleet.
+- **Mail channel** — pick the DSS messaging channel used by outreach campaigns.
+- **DB Health connection** — point the DB Health tool at your PostgreSQL runtimedb (read-only analysis).
+- **Save tables as datasets** — optionally pick a connection so any UI table can be exported as a managed dataset in the webapp's project.
+- **Algorithm review notebooks** — ship a set of review notebooks (one per scan algorithm) into the webapp's own project, so you can audit exactly how every number is computed.
+- **Performance tuning** — worker counts and cache windows, with a one-click **benchmark auto-tuner** that sweeps worker configurations against your real workload and applies the best one.
+- **Support bundle** — download a ZIP of backend logs, settings, and performance diagnostics for troubleshooting.
+
+<div align="center"><img src="docs/screenshots/settings.png" alt="Settings — mail channel, advanced actions, notebooks, dataset export, experimental features" width="850" /></div>
+
+## Usage notes
+
+- **Outreach campaigns** — the FS Migration and Project Cleaner tools don't just fix things centrally; they can email project owners about unhealthy patterns (15 built-in campaign types: code-env sprawl, deprecated Python, inactive projects, failing scenarios, …). Each campaign supports recipient preview, per-project exemptions, template preview, and send history.
+- **Report** — export current findings as a standalone document for stakeholders who will never open the webapp.
+- **Errors page** — parses the DSS backend log into deduplicated errors with surrounding context, so you can triage without `tail -f`.
+- **Feedback** — bug reports and feature ideas filed from inside the app land with the toolkit's maintainer.
+
+## Development
+
+### Prerequisites
+
+- **Node ≥ 20.19** (the rolldown-based build requires it — `nvm use 20` before building)
+- Python 3.9+ with the deps from `code-env/python/spec/requirements.txt` for backend work
+- For deploys: `.dss-url` and `.dss-api-key` files in the project root (see table below)
+
+### Frontend
+
+```bash
+cd resource/frontend
+npm install
+npm run dev          # dev server
+npm run build        # production build (tsc + vite)
+npm run lint         # ESLint
+npm run typecheck    # TypeScript strict
+npm run format       # Prettier
+npx playwright test  # E2E tests
+```
+
+Before any deploy, run the contract checks:
+
+```bash
+npm run typecheck
+node scripts/check_frontend_contracts.mjs   # registry / lifecycle / SSE / tone contracts
+```
+
+### Build & deploy
+
+| Target | What it does |
+|---|---|
+| `make deploy COMMIT_MSG="msg"` | Bump version, build frontend, commit, deploy to all targets |
+| `make plugin` | Build the plugin ZIP into `dist/` |
+| `make deploy-dev` | Deploy to the dev server only |
+| `make deploy-prod-secure` | Deploy to prod via sudo wrappers |
+| `make clean` | Remove dist + node_modules |
+
+Deploy credentials live in untracked root files: `.dss-url` (instance URL), `.dss-api-key` (admin key), and optionally `.dss-project-key` / `.dss-webapp-id`.
+
+### Project structure
 
 ```
-plugin.json                  # plugin manifest
-webapps/admin-toolkit/       # Flask backend
-python-lib/                  # shared Python utilities
-resource/frontend/           # React frontend (src/, public/)
-scripts/                     # deploy helper scripts
+plugin.json                  # plugin manifest (params, version, secrets)
+webapps/admin-toolkit/       # Flask webapp entrypoint
+python-lib/                  # backend: adk_backend/ (24 route groups) + shared libs
+python-runnables/            # 6 host-bound macros (metrics, k8s, images, db, cs, dbhealth)
+code-env/python/spec/        # plugin code env dependency spec
+resource/frontend/           # React SPA (src/, public/, tests/)
+scripts/                     # deploy + contract-check tooling
+docs/                        # UI/UX contracts, screenshots
 Makefile                     # build & deploy orchestration
 ```
+
+The UI has a deliberate soul: polished, fast, dense, with videogame-smooth interactions — no stutters, no layout jumps, no silent waits. Progress states follow strict color semantics (grey = queued, yellow = active/stalled, white = ready, red = failure), and every module plugs into shared navigation, lifecycle, and availability contracts instead of hand-wiring pages. The full rules live in [`docs/ui-ux-contracts.md`](docs/ui-ux-contracts.md); release history is in [`CHANGELOG.md`](CHANGELOG.md).
+
+## Security model
+
+- **Admin-only by design** — install the webapp behind DSS authentication, restricted to admin groups.
+- **Read-only by default** — without the Advanced Actions secret, no mutating endpoint is reachable; mutation routes are additionally gated server-side, not just hidden in the UI.
+- **Explicit unlock for writes** — delete / replace / migrate / deploy / send require the per-session red unlock backed by the plugin-level secret.
+- **Scoped host access** — host-bound operations run as DSS macros inside the dedicated `ADMINTOOLKIT` project under the DSS service account, never as arbitrary shell from the webapp.
+- **Backups before destruction** — the Project Cleaner uploads a project backup to a managed folder before any delete.
+
+---
+
+<div align="center">
+
+Built by **Alex Kaos** · © 2026 — All rights reserved. Not an official Dataiku product.
+
+</div>

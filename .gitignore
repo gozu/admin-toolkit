@@ -47,6 +47,7 @@ release_info.json
 !resource/frontend/public/*.png
 !resource/frontend/public/*.svg
 !resource/frontend/src/assets/*.png
+!docs/screenshots/*.png
 !resource/dist/**
 
 # Screenshots and test artifacts

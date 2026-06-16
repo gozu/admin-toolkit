@@ -198,17 +198,34 @@ def _latest_store_plugin_versions(client: Any) -> Dict[str, str]:
             or version_info.get('version')
             or version_info.get('dssVersion')
         )
-        major = str(version or '').split('.')[0]
-        dataiku_version = major if major.isdigit() else '14'
+        parts = str(version or '').split('.')
+        major = parts[0] if parts and parts[0].isdigit() else '14'
+        # Prefer the major.minor catalog (e.g. "14.6"): the bare-major path
+        # ("14") serves a snapshot frozen at the .0 release, so plugins shipped
+        # in later minors show stale storeVersions. Fall back to the bare major
+        # when the minor-specific path is absent (the update server only serves
+        # released minors, e.g. 14.2/14.4/14.6, plus the bare major).
+        candidates = []
+        if len(parts) >= 2 and parts[1].isdigit():
+            candidates.append(f'{major}.{parts[1]}')
+        candidates.append(major)
 
-        url = f'https://update.dataiku.com/dss/{dataiku_version}/plugins/list.json'
-        resp = requests.get(
-            url,
-            headers={'Content-Type': 'application/json'},
-            verify=True,
-            timeout=(3, 10),
-        )
-        resp.raise_for_status()
+        resp = None
+        for seg in candidates:
+            url = f'https://update.dataiku.com/dss/{seg}/plugins/list.json'
+            try:
+                resp = requests.get(
+                    url,
+                    headers={'Content-Type': 'application/json'},
+                    verify=True,
+                    timeout=(3, 10),
+                )
+                resp.raise_for_status()
+                break
+            except Exception:
+                resp = None
+        if resp is None:
+            return out
         for item in (resp.json().get('items') or []):
             if isinstance(item, dict):
                 pid = item.get('id')

@@ -179,25 +179,17 @@ def _latest_store_plugin_versions(client: Any) -> Dict[str, str]:
     Best-effort: on any failure (network, parse, unknown version) returns {} so the
     plugins endpoint still loads, just without a Latest column. The DSS major is
     read the same way as _image_cleaner_release_info, falling back to "14"."""
+    import re
     import requests
 
     out: Dict[str, str] = {}
     try:
-        if _safe_request_host_id() != 'local':
-            metrics = _cache_get(
-                'host_metrics',
-                _BACKEND_SETTINGS['cache_ttl_overview'],
-                lambda: _host_metrics_macro(client),
-            )
-            version_info = metrics.get('version') if isinstance(metrics, dict) else {}
-        else:
-            version_info = _safe_read_json(os.path.join(_dip_home(), 'dss-version.json')) or {}
-        version_info = version_info or {}
-        version = (
-            version_info.get('product_version')
-            or version_info.get('version')
-            or version_info.get('dssVersion')
-        )
+        # "Latest" is keyed off the newest AVAILABLE DSS line (not this
+        # instance's version): highest stable release on the public download
+        # listing, then iterate catalog URLs down from there.
+        listing = requests.get('https://downloads.dataiku.com/public/dss/', timeout=10).text
+        version = max(re.findall(r'href="(\d+\.\d+\.\d+)/"', listing),
+                      key=lambda v: [int(n) for n in v.split('.')])
         parts = str(version or '').split('.')
         major = parts[0] if parts and parts[0].isdigit() else '14'
         # Prefer the major.minor catalog (e.g. "14.6"): the bare-major path

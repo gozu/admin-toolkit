@@ -167,7 +167,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         initial={{ y: -14, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.45, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
-        className="relative flex items-center justify-between px-5 py-1 border-b border-[var(--border-default)] bg-[var(--bg-surface)]">
+        className="app-topbar relative flex items-center justify-between px-5 py-1 border-b border-[var(--border-default)] bg-[var(--bg-surface)]">
         <Breadcrumb />
 
         {/* Center branding */}
@@ -370,7 +370,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
               </svg>
             </button>
             {showAbout && (
-              <div className="absolute right-0 top-full mt-2 w-52 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] shadow-lg p-3 z-50">
+              <div className="topbar-menu absolute right-0 top-full mt-2 w-52 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] shadow-lg p-3 z-50">
                 <div className="text-xs font-mono text-[var(--text-secondary)] mb-1">
                   v{__APP_VERSION__}
                 </div>

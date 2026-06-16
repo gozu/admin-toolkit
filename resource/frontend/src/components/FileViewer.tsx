@@ -139,7 +139,7 @@ export function FileViewer({
 
   const footer = (
     <div className="flex items-center justify-between">
-      <span className="text-sm text-gray-500">
+      <span className="text-sm text-[var(--text-tertiary)]">
         {showingLastLines ? (
           <>Showing last {displayedLineCount.toLocaleString()} of {totalLines.toLocaleString()} lines | {formatBytes(content?.length || 0)}</>
         ) : (
@@ -184,7 +184,7 @@ export function FileViewer({
             style={{ minHeight: '200px' }}
           >
             {showingLastLines && (
-              <div className="text-center text-gray-500 mb-2 pb-2 border-b border-gray-700">
+              <div className="text-center text-[var(--text-tertiary)] mb-2 pb-2 border-b border-[var(--border-default)]">
                 ... {(totalLines - MAX_LOG_LINES).toLocaleString()} earlier lines truncated ...
               </div>
             )}

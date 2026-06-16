@@ -26,8 +26,8 @@ export function FilterButtons({ filters }: FilterButtonsProps) {
         className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors
           ${
             activeFilter === 'all'
-              ? 'bg-[#00b5aa] text-white'
-              : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+              ? 'bg-[var(--accent)] text-white'
+              : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] border border-[var(--border-default)]'
           }
         `}
       >
@@ -40,8 +40,8 @@ export function FilterButtons({ filters }: FilterButtonsProps) {
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors
             ${
               activeFilter === filter.id
-                ? 'bg-[#00b5aa] text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                ? 'bg-[var(--accent)] text-white'
+                : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] border border-[var(--border-default)]'
             }
           `}
         >

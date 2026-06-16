@@ -54,13 +54,13 @@ export function Section({
         {icon && <span className={`${headerColorClass}`}>{icon}</span>}
         <h2 className={`text-lg font-semibold ${headerColorClass}`}>{title}</h2>
         {itemCount !== undefined && (
-          <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-medium rounded-full">
+          <span className="px-2 py-0.5 bg-[var(--bg-hover)] text-[var(--text-secondary)] text-xs font-medium rounded-full">
             {itemCount}
           </span>
         )}
         {collapsible && (
           <svg
-            className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${
+            className={`w-5 h-5 text-[var(--text-tertiary)] transition-transform duration-200 ${
               isOpen ? '' : '-rotate-90'
             }`}
             fill="none"

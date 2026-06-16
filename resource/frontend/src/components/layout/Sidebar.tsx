@@ -938,7 +938,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
       className="app-sidebar flex flex-col h-full bg-[var(--bg-sidebar)] border-r border-[var(--border-default)] overflow-hidden"
     >
       {/* Host picker + collapse toggle */}
-      <div className={`flex items-center px-4 ${collapsed ? 'flex-col gap-1.5 px-2 py-3' : 'sidebar-topstrip justify-between h-11'}`}>
+      <div className={`flex items-center px-4 ${collapsed ? 'flex-col gap-1.5 px-2 py-3' : 'sidebar-topstrip justify-between h-[45px]'}`}>
         <button
           type="button"
           onClick={() => {

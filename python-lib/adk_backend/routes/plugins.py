@@ -202,12 +202,14 @@ def _latest_store_plugin_versions(client: Any) -> Dict[str, str]:
         major = parts[0] if parts and parts[0].isdigit() else '14'
         # Prefer the major.minor catalog (e.g. "14.6"): the bare-major path
         # ("14") serves a snapshot frozen at the .0 release, so plugins shipped
-        # in later minors show stale storeVersions. Fall back to the bare major
-        # when the minor-specific path is absent (the update server only serves
-        # released minors, e.g. 14.2/14.4/14.6, plus the bare major).
+        # in later minors show stale storeVersions. The update server only
+        # publishes some minors (e.g. 14.2/14.4/14.6), so when the instance's
+        # own minor is absent, step DOWN through lower minors to the nearest
+        # published catalog before finally falling back to the bare major.
         candidates = []
         if len(parts) >= 2 and parts[1].isdigit():
-            candidates.append(f'{major}.{parts[1]}')
+            for minor in range(int(parts[1]), -1, -1):
+                candidates.append(f'{major}.{minor}')
         candidates.append(major)
 
         resp = None

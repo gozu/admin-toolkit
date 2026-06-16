@@ -316,6 +316,21 @@
   --border-default: #dcdcdc;
 }
 
+/* Sidebar: darken nav text for crisp contrast against the gray panel. */
+[data-theme="light"] .app-sidebar {
+  --text-secondary: #383838;
+  --text-tertiary:  #6e6e6e;
+}
+
+/* Sidebar top strip: continue the dark top bar full-width across the sidebar's
+   header row (its h-11 matches the header's 44px), with light controls. */
+[data-theme="light"] .app-sidebar .sidebar-topstrip {
+  background:       #222222;
+  --text-primary:   #f4f4f5;
+  --text-tertiary:  #c9c9c9;
+  --bg-hover:       rgba(255, 255, 255, 0.08);
+}
+
 [data-theme="light"] .btn-primary {
   background: var(--accent);
   box-shadow: var(--shadow-sm);

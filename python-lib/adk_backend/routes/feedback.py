@@ -1,6 +1,7 @@
 """In-app feedback route (EAP) — emails feedback + attachments via the same
 DSS mail channel the outreach campaigns use (adk_backend.mail)."""
 import logging
+import mimetypes
 import os
 import re
 import tempfile
@@ -146,24 +147,32 @@ def api_feedback():
         body_lines.append(diagnostics)
     body = '\n'.join(body_lines)
 
-    # send() wants list[BufferedReader] (real open file objects). werkzeug's
-    # FileStorage.stream (a SpooledTemporaryFile) isn't guaranteed compatible,
-    # so stage each upload to its own temp dir under a sanitized original name
-    # and hand over open 'rb' handles; close + delete them in finally.
+    # send() forwards each attachment into a `requests` multipart POST. A bare
+    # file handle can land without a Content-Type, and DSS's Java mail layer then
+    # fails with "Content-Type <null>, expected MIME type". So hand over explicit
+    # (filename, handle, content_type) 3-tuples with a guaranteed MIME type.
+    # werkzeug's FileStorage.stream (a SpooledTemporaryFile) isn't guaranteed
+    # compatible, so stage each upload to its own temp dir under a sanitized
+    # original name; close + delete the handles in finally.
     handles: List[Any] = []
+    attachments: List[Any] = []
     temp_paths: List[str] = []
     temp_dirs: List[str] = []
     try:
         for up in uploads:
             tmpdir = tempfile.mkdtemp(prefix='admin-toolkit-feedback-')
             temp_dirs.append(tmpdir)
-            dest = os.path.join(tmpdir, _feedback_safe_name(up.filename))
+            safe_name = _feedback_safe_name(up.filename)
+            dest = os.path.join(tmpdir, safe_name)
             up.save(dest)
             temp_paths.append(dest)
-            handles.append(open(dest, 'rb'))
+            handle = open(dest, 'rb')
+            handles.append(handle)
+            content_type = mimetypes.guess_type(safe_name)[0] or 'application/octet-stream'
+            attachments.append((safe_name, handle, content_type))
         channel_obj.send(
             project_key, [FEEDBACK_RECIPIENT], subject, body,
-            attachments=handles or None, plain_text=True,
+            attachments=attachments or None, plain_text=True,
         )
     except Exception as exc:
         _LOGGER.warning("[feedback] send failed: %s", exc)

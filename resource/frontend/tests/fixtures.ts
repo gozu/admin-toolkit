@@ -61,7 +61,6 @@ export const helpers = {
 // Extended test fixture (auto-navigates to the app)
 // ---------------------------------------------------------------------------
 export const test = base.extend<{ appPage: Page }>({
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   appPage: async ({ page }, use) => {
     await helpers.waitForApp(page);
     await use(page);

@@ -190,7 +190,7 @@ test.describe('Redesign Smoke Tests', () => {
     await page.waitForTimeout(400);
 
     // Look for the command palette input
-    let input = page.locator('input[placeholder*="search" i]').or(
+    const input = page.locator('input[placeholder*="search" i]').or(
       page.locator('input[placeholder*="command" i]'),
     ).or(
       page.locator('input[placeholder*="page" i]'),
@@ -212,8 +212,6 @@ test.describe('Redesign Smoke Tests', () => {
       await input.first().fill('resources');
       await page.waitForTimeout(200);
 
-      // Should show matching results
-      const results = page.locator('[class*="command-palette"] button, [class*="palette"] [role="option"]');
       // Just check the input accepted text
       const val = await input.first().inputValue();
       expect(val).toBe('resources');

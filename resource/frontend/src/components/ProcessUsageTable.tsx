@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { DataGrid } from './common/DataGrid';
+import { RefreshControl } from './common/RefreshControl';
 import {
   getProcessMetrics,
   restartProcessMetricsScan,
@@ -172,13 +173,11 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' }) {
         >
           {allExpanded ? 'Collapse all' : 'Expand all'}
         </button>
-        <button
-          onClick={restartProcessMetricsScan}
-          disabled={scan.status === 'loading'}
-          className="rounded px-2 py-1 text-[var(--text-secondary)] hover:bg-[var(--bg-glass-hover)] hover:text-[var(--text-primary)] disabled:opacity-50"
-        >
-          {scan.status === 'loading' ? 'Refreshing…' : 'Refresh'}
-        </button>
+        <RefreshControl
+          busy={scan.status === 'loading'}
+          fetchedAt={scan.status === 'done' ? scan.finishedAt : null}
+          onRefresh={restartProcessMetricsScan}
+        />
       </span>
     </div>
   );

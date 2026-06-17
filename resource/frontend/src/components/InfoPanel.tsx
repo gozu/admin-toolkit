@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { motion } from 'framer-motion';
 import { useDiag } from '../context/DiagContext';
+import { RefreshControl } from './common/RefreshControl';
+import { getHostSummary, refreshHostSummary, subscribeHostSummary } from '../state/hostSummary';
 
 function useCountUp(target: number, duration = 1000) {
   const [value, setValue] = useState(0);
@@ -189,8 +191,10 @@ function CopyableValue({ value, label }: { value: string; label: string }) {
 }
 
 export function InfoPanel() {
-  const { state } = useDiag();
+  const { state, setParsedData } = useDiag();
   const { parsedData } = state;
+  const hostSummary = useSyncExternalStore(subscribeHostSummary, getHostSummary, getHostSummary);
+  const canRefresh = state.dataSource === 'api';
 
   return (
     <motion.div
@@ -201,6 +205,16 @@ export function InfoPanel() {
       viewport={{ once: true, margin: '-50px' }}
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
     >
+      {canRefresh && (
+        <div className="flex items-center justify-end mb-3">
+          <RefreshControl
+            busy={hostSummary.status === 'loading'}
+            fetchedAt={hostSummary.status === 'done' ? hostSummary.fetchedAt : null}
+            onRefresh={() => void refreshHostSummary(setParsedData)}
+            title="Re-run host info (cpuinfo / free -m / df / ulimit)"
+          />
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 flex-1 auto-rows-fr">
         {/* Company */}
         {parsedData.company && (

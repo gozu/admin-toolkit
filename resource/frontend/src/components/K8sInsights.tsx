@@ -5,6 +5,7 @@ import { ProgressIndicator } from './common/ProgressIndicator';
 import { k8sInsightsScan, setK8sScanClusterId } from '../state/k8sInsightsStore';
 import { k8sClusterHealthStore } from '../state/k8sClusterHealthStore';
 import { DataGrid } from './common/DataGrid';
+import { RefreshControl } from './common/RefreshControl';
 import { K8sNodeDetail } from './K8sNodeDetail';
 import { K8sFindingEvidence } from './K8sFindingEvidence';
 import type { ColumnDef } from '../utils/dataGridTypes';
@@ -107,7 +108,7 @@ const UNAVAILABLE_CLUSTER_COLUMNS: ColumnDef<UnavailableCluster>[] = [
 ];
 
 export function K8sInsights() {
-  const { data, loading, scanMessage, error, scanStarted } = k8sInsightsScan.use();
+  const { data, loading, scanMessage, error, scanStarted, finishedAt } = k8sInsightsScan.use();
   const health = k8sClusterHealthStore.use();
   const { addDebugLog } = useDiag();
   const [clusters, setClusters] = useState<K8sInsightsClustersResult | null>(null);
@@ -269,15 +270,14 @@ export function K8sInsights() {
                 Abort
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={runScan}
+              <RefreshControl
+                busy={false}
+                fetchedAt={data ? finishedAt : null}
+                onRefresh={runScan}
+                label={data || error ? 'Refresh' : 'Run audit'}
                 disabled={!selectedCluster || !!auditBlockedReason}
                 title={auditBlockedReason || undefined}
-                className="px-3 py-1 text-xs font-mono rounded border border-white/15 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {data || error ? 'Run again' : 'Run audit'}
-              </button>
+              />
             )}
           </div>
         </div>

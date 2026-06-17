@@ -31,11 +31,12 @@ _LOGGER = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────
 FEEDBACK_RECIPIENT = 'alex.kaos@dataiku.com'
 _FEEDBACK_MAX_MSG_LEN = 5000
-_FEEDBACK_MAX_FILES = 5
-_FEEDBACK_MAX_FILE_BYTES = 8 * 1024 * 1024  # 8 MB per file
+# 5 user attachments + 1 auto-generated diagnostic bundle.
+_FEEDBACK_MAX_FILES = 6
+_FEEDBACK_MAX_FILE_BYTES = 25 * 1024 * 1024  # 25 MB per file (SMTP attachment ceiling)
 _FEEDBACK_ALLOWED_EXT = {
     '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg',
-    '.pdf', '.txt', '.log',
+    '.pdf', '.txt', '.log', '.zip',
 }
 _FEEDBACK_RATE_MAX = 5            # max submissions …
 _FEEDBACK_RATE_WINDOW_S = 600     # … per 10 minutes, per (host, client IP)

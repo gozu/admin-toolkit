@@ -4,6 +4,8 @@ import { getActiveHost } from '../../state/hostStore';
 import { feedbackFromPageStore } from '../../state/feedbackFromPage';
 import { getModuleLabel } from '../../utils/moduleRegistry';
 import { formatBytes } from '../../utils/formatters';
+import { useDiag } from '../../context/DiagContext';
+import { buildDiagBundle, type BundleManifest } from '../../utils/diagBundle';
 import { Spinner } from '../common/Spinner';
 
 type FeedbackType = 'bug' | 'idea' | 'other';
@@ -16,7 +18,9 @@ const TYPE_LABELS: Record<FeedbackType, string> = {
 };
 
 const MAX_FILES = 5;
-const MAX_FILE_MB = 8;
+// Mirror of the backend feedback caps (python-lib/adk_backend/routes/feedback.py):
+// 25 MB per file and .zip allowed (for the auto-generated diagnostic bundle).
+const MAX_FILE_MB = 25;
 const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
 const ALLOWED_EXT = new Set([
   '.png',
@@ -29,8 +33,9 @@ const ALLOWED_EXT = new Set([
   '.pdf',
   '.txt',
   '.log',
+  '.zip',
 ]);
-const ACCEPT_ATTR = 'image/*,.pdf,.txt,.log';
+const ACCEPT_ATTR = 'image/*,.pdf,.txt,.log,.zip';
 
 function extOf(name: string): string {
   const dot = name.lastIndexOf('.');
@@ -38,6 +43,7 @@ function extOf(name: string): string {
 }
 
 export function FeedbackPage() {
+  const { state: diagState } = useDiag();
   const [type, setType] = useState<FeedbackType>('bug');
   const [message, setMessage] = useState('');
   const [email, setEmail] = useState('');
@@ -47,6 +53,13 @@ export function FeedbackPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // The generated diagnostic bundle lives in its own slot (separate from the
+  // user's `files`) so it can be pinned in the UI and appended to the submit.
+  const [bundle, setBundle] = useState<File | null>(null);
+  const [bundleManifest, setBundleManifest] = useState<BundleManifest | null>(null);
+  const [bundleStatus, setBundleStatus] = useState<'idle' | 'generating' | 'error'>('idle');
+  const [bundleNote, setBundleNote] = useState<string | null>(null);
 
   // The page the user came from is captured once, at mount, from the stash the
   // header button set just before navigating here.
@@ -98,6 +111,75 @@ export function FeedbackPage() {
     setFiles((prev) => prev.filter((_, i) => i !== idx));
   }, []);
 
+  const removeBundle = useCallback(() => {
+    setBundle(null);
+    setBundleManifest(null);
+    setBundleNote(null);
+    setBundleStatus('idle');
+  }, []);
+
+  const generateBundle = useCallback(async () => {
+    if (bundleStatus === 'generating') return;
+    setBundleStatus('generating');
+    setBundleNote(null);
+    try {
+      const { blob, filename, manifest } = await buildDiagBundle({
+        report: {
+          type,
+          message: message.trim(),
+          email: email.trim(),
+          diagnosticsText: diagnosticsText.text,
+        },
+        state: {
+          parsedData: diagState.parsedData,
+          debugLogs: diagState.debugLogs,
+          mode: diagState.mode,
+          activePage: diagState.activePage,
+          layoutMode: diagState.layoutMode,
+          activeFilter: diagState.activeFilter,
+          focusedConnectionFilter: diagState.focusedConnectionFilter,
+          focusedUserFilter: diagState.focusedUserFilter,
+          comparison: diagState.comparison,
+        },
+      });
+
+      // Always download a copy for the user.
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+
+      setBundleManifest(manifest);
+      const file = new File([blob], filename, { type: 'application/zip' });
+      if (file.size > MAX_FILE_BYTES) {
+        // Too large to email: keep the downloaded copy, skip auto-attach.
+        setBundle(null);
+        setBundleNote(
+          `Bundle too large to email (${formatBytes(file.size)}) — it's been downloaded; ` +
+            'please send it to the toolkit author directly.',
+        );
+      } else {
+        setBundle(file);
+      }
+      setBundleStatus('idle');
+    } catch (err) {
+      setBundleStatus('error');
+      setBundleNote(
+        `Could not generate the diagnostic bundle: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }, [
+    bundleStatus,
+    type,
+    message,
+    email,
+    diagnosticsText.text,
+    diagState,
+  ]);
+
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
@@ -128,6 +210,7 @@ export function FeedbackPage() {
         fd.append('diagnostics', diagnosticsText.text);
         fd.append('website', website);
         files.forEach((f) => fd.append('attachments', f, f.name));
+        if (bundle) fd.append('attachments', bundle, bundle.name);
 
         const res = await fetchRaw('/api/feedback', { method: 'POST', body: fd });
         if (res.ok) {
@@ -135,6 +218,7 @@ export function FeedbackPage() {
           setMessage('');
           setEmail('');
           setFiles([]);
+          removeBundle();
           return;
         }
 
@@ -157,7 +241,7 @@ export function FeedbackPage() {
         setErrorMsg('Could not reach the server. Please check your connection and try again.');
       }
     },
-    [status, message, type, email, website, files, diagnosticsText.text],
+    [status, message, type, email, website, files, bundle, removeBundle, diagnosticsText.text],
   );
 
   // Typing again after a send clears the stale success/error banner.
@@ -252,12 +336,118 @@ export function FeedbackPage() {
             />
           </div>
 
+          {/* Diagnostic bundle */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
+              Diagnostic bundle{' '}
+              <span className="font-normal normal-case text-[var(--text-tertiary)]">
+                (recommended for bugs — one .zip of everything support needs)
+              </span>
+            </label>
+            <p className="text-xs text-[var(--text-secondary)] mb-2 max-w-prose">
+              Captures the toolkit's in-memory state plus a snapshot of cheap, read-only host
+              reads. It's downloaded to you and attached to this report. No scans are triggered.
+            </p>
+            <button
+              type="button"
+              onClick={generateBundle}
+              disabled={bundleStatus === 'generating'}
+              className={
+                bundleStatus === 'generating'
+                  ? 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm border border-[var(--border-glass)] bg-[var(--bg-glass)] text-[var(--text-tertiary)] cursor-not-allowed'
+                  : 'flex items-center gap-2 px-4 py-2 rounded-lg text-sm border border-[var(--neon-cyan)]/40 text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)]/10 transition-colors'
+              }
+            >
+              {bundleStatus === 'generating' ? (
+                <>
+                  <Spinner />
+                  Generating…
+                </>
+              ) : bundle || bundleManifest ? (
+                'Regenerate diagnostic bundle'
+              ) : (
+                'Generate diagnostic bundle'
+              )}
+            </button>
+
+            {bundle && (
+              <ul className="mt-3 space-y-2">
+                <li className="flex items-center justify-between gap-3 rounded-lg border border-[var(--neon-cyan)]/30 bg-[var(--neon-cyan)]/5 px-3 py-2">
+                  <span
+                    className="min-w-0 flex-1 truncate text-sm text-[var(--text-primary)]"
+                    title={bundle.name}
+                  >
+                    {bundle.name}
+                  </span>
+                  <span className="flex-shrink-0 rounded bg-[var(--neon-cyan)]/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--neon-cyan)]">
+                    generated
+                  </span>
+                  <span className="flex-shrink-0 text-xs text-[var(--text-muted)]">
+                    {formatBytes(bundle.size)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={removeBundle}
+                    className="flex-shrink-0 p-1 rounded text-[var(--text-muted)] hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                    aria-label="Remove diagnostic bundle"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </li>
+              </ul>
+            )}
+
+            {bundleNote && (
+              <p
+                className={`mt-2 text-xs ${
+                  bundleStatus === 'error'
+                    ? 'text-[var(--neon-red)]'
+                    : 'text-[var(--text-secondary)]'
+                }`}
+              >
+                {bundleNote}
+              </p>
+            )}
+
+            {bundleManifest && (
+              <details className="mt-3 rounded-lg border border-[var(--border-glass)] bg-[var(--bg-surface)] px-3 py-2">
+                <summary className="text-xs font-medium text-[var(--text-tertiary)] cursor-pointer select-none">
+                  Bundle contents ({bundleManifest.files.length} files)
+                </summary>
+                <ul className="mt-2 space-y-0.5 text-xs font-mono text-[var(--text-secondary)] max-h-48 overflow-auto">
+                  {bundleManifest.files.map((f) => (
+                    <li key={f} className="break-all">
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <dl className="mt-2 grid grid-cols-[1fr_max-content] gap-x-3 gap-y-1 text-xs font-mono text-[var(--text-secondary)]">
+                  {Object.entries(bundleManifest.backendFetches).map(([path, r]) => (
+                    <div key={path} className="contents">
+                      <dt className="text-[var(--text-tertiary)] break-all">{path}</dt>
+                      <dd className={r.ok ? 'text-[var(--text-secondary)]' : 'text-[var(--neon-red)]'}>
+                        {r.ok ? `ok ${r.status ?? ''}`.trim() : r.error || `failed ${r.status ?? ''}`.trim()}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
+            )}
+          </div>
+
           {/* Attachments */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
               Attachments{' '}
               <span className="font-normal normal-case text-[var(--text-tertiary)]">
-                (optional — images, pdf, txt, log · up to {MAX_FILES} · {MAX_FILE_MB} MB each)
+                (optional — images, pdf, txt, log, zip · up to {MAX_FILES} · {MAX_FILE_MB} MB each)
               </span>
             </label>
             <div

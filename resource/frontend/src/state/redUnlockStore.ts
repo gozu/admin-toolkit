@@ -121,3 +121,11 @@ export function useRedState(): { authed: boolean; showRed: boolean; expiresAt: n
   const live = isLive(s);
   return { authed: live, showRed: s.showRed, expiresAt: live ? s.expiresAt : 0 };
 }
+
+/** Non-hook getter — same shape as useRedState(), for non-React callers
+ *  (e.g. the diagnostic-bundle builder) that need a one-shot snapshot. */
+export function getRedState(): { authed: boolean; showRed: boolean; expiresAt: number } {
+  const s = store.get();
+  const live = isLive(s);
+  return { authed: live, showRed: s.showRed, expiresAt: live ? s.expiresAt : 0 };
+}

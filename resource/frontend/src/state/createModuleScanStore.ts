@@ -36,6 +36,21 @@ export interface CreateModuleScanStoreOptions<TData, TEvent> {
   reduce?: (state: ScanState<TData>, ev: TEvent) => Partial<ScanState<TData>>;
 }
 
+// A compact, bounded description of a scan's data payload — enough to tell what
+// loaded without serializing potentially-large arrays into the diag bundle.
+function summarizeScanData(data: unknown): unknown {
+  if (data == null) return null;
+  if (Array.isArray(data)) return { kind: 'array', length: data.length };
+  if (typeof data === 'object') {
+    const summary: Record<string, unknown> = { kind: 'object' };
+    for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+      summary[k] = Array.isArray(v) ? `array(${v.length})` : typeof v;
+    }
+    return summary;
+  }
+  return { kind: typeof data };
+}
+
 export function createModuleScanStore<TData, TEvent>(
   opts: CreateModuleScanStoreOptions<TData, TEvent>,
 ): ModuleScanStore<TData> {
@@ -170,6 +185,21 @@ export function createModuleScanStore<TData, TEvent>(
     field: opts.loadingField,
     subscribe: store.subscribe,
     lifecycle,
+    snapshot: () => {
+      const s = store.get();
+      return {
+        loading: s.loading,
+        scanStarted: s.scanStarted,
+        progressPct: s.progressPct,
+        scanPhase: s.scanPhase,
+        scanMessage: s.scanMessage,
+        error: s.error,
+        startedAt: s.startedAt,
+        finishedAt: s.finishedAt,
+        total: s.total ?? null,
+        data: summarizeScanData(s.data),
+      };
+    },
   });
 
   return {

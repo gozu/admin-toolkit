@@ -47,10 +47,12 @@
   /* -------------------------------------------------------------------------
      Accent & Semantic Colors
      ------------------------------------------------------------------------- */
-  --accent:         #3b82f6;
-  --accent-muted:   rgba(59, 130, 246, 0.15);
-  --success:        #22c55e;
-  --warning:        #eab308;
+  /* Intense, high-pop palette — saturated enough to read crisply against
+     both the dark surfaces and (in light mode) pure-white content. */
+  --accent:         #4d8dfd;
+  --accent-muted:   rgba(77, 141, 253, 0.18);
+  --success:        #2ee06b;
+  --warning:        #facc15;
   --danger:         #ef4444;
 
   /* -------------------------------------------------------------------------
@@ -66,11 +68,11 @@
   --bg-glass: rgba(20, 20, 20, 0.7);
   --bg-glass-hover: var(--bg-hover);
   --neon-cyan: var(--accent);
-  --neon-cyan-dim: rgba(59, 130, 246, 0.7);
+  --neon-cyan-dim: rgba(77, 141, 253, 0.7);
   --neon-green: var(--success);
-  --neon-green-dim: rgba(34, 197, 94, 0.7);
+  --neon-green-dim: rgba(46, 224, 107, 0.7);
   --neon-amber: var(--warning);
-  --neon-amber-dim: rgba(234, 179, 8, 0.7);
+  --neon-amber-dim: rgba(250, 204, 21, 0.7);
   --neon-red: var(--danger);
   --neon-red-dim: rgba(239, 68, 68, 0.7);
   --neon-purple: #8b5cf6;
@@ -205,7 +207,7 @@
 
 [data-theme="light"] {
   /* Backgrounds — three clear tiers */
-  --bg-app:       #fafafa;   /* very light canvas */
+  --bg-app:       #ffffff;   /* content/canvas pure white (255,255,255) — matches DSS */
   --bg-sidebar:   #f2f2f2;   /* DISTINCT gray panel — Dataiku panel gray */
   --bg-surface:   #ffffff;   /* white cards pop against gray sidebar */
   --bg-elevated:  #ffffff;   /* clean white modals */
@@ -319,10 +321,11 @@
   background-image: none;
 }
 
-/* Sidebar: darken nav text for crisp contrast against the gray panel. */
+/* Sidebar: pure-black nav text for crisp contrast against the gray panel (matches DSS). */
 [data-theme="light"] .app-sidebar {
-  --text-secondary: #383838;
-  --text-tertiary:  #6e6e6e;
+  --text-primary:   #000000;
+  --text-secondary: #000000;
+  --text-tertiary:  #555555;
 }
 
 /* Sidebar top strip: continue the dark top bar full-width across the sidebar's

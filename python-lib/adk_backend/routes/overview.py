@@ -5,7 +5,7 @@ import os
 import platform
 import time
 
-from flask import Blueprint, g, jsonify
+from flask import Blueprint, g, jsonify, request
 
 from adk_backend.caching import _cache_get
 from adk_backend.clients import _safe_request_host_id
@@ -170,8 +170,12 @@ def api_process_metrics():
     """Per-process CPU + memory snapshot from the active host (via macro).
 
     Host-bound (`ps`/subprocess) so it goes through the process-metrics macro,
-    which runs as `dataiku`. Short-cached to keep repeated page loads cheap.
+    which runs as `dataiku`. Short-cached to keep repeated page loads cheap;
+    `?fresh=1` (the table's Refresh button) bypasses the cache so an explicit
+    re-run actually re-reads `ps`.
     """
+    if request.args.get('fresh'):
+        return jsonify(_process_metrics_macro(g.client))
     data = _cache_get(
         'process_metrics',
         _BACKEND_SETTINGS['cache_ttl_overview'],

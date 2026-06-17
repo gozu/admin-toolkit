@@ -77,7 +77,7 @@ export function subscribeProcessMetrics(listener: () => void): () => void {
   return store.subscribe(listener);
 }
 
-async function runLoad() {
+async function runLoad(fresh = false) {
   _controller?.abort();
   const controller = new AbortController();
   _controller = controller;
@@ -85,9 +85,12 @@ async function runLoad() {
   store.set({ ...INITIAL_STATE, status: 'loading', startedAt: new Date().toISOString() });
 
   try {
-    const data = await fetchJson<ProcessMetricsResponse>('/api/host/process-metrics', {
-      signal: controller.signal,
-    });
+    // `?fresh=1` bypasses the backend's process-metrics cache so an explicit
+    // Refresh re-runs `ps` instead of returning the (up to 10-min) cached snapshot.
+    const data = await fetchJson<ProcessMetricsResponse>(
+      fresh ? '/api/host/process-metrics?fresh=1' : '/api/host/process-metrics',
+      { signal: controller.signal },
+    );
     if (!data.ok) throw new Error(data.error || 'Process metrics unavailable');
     const processes = data.processes || [];
     store.patch({
@@ -118,9 +121,9 @@ export function startProcessMetricsScan(): void {
   void runLoad();
 }
 
-/** Retry button — abort any in-flight load, reset state, and start fresh. */
+/** Refresh button — abort any in-flight load and re-run `ps` (cache-bypass). */
 export function restartProcessMetricsScan(): void {
   _controller?.abort();
   _controller = null;
-  void runLoad();
+  void runLoad(true);
 }

@@ -87,6 +87,7 @@ const MODULE_PAGES = [
   ['src/components/pages/DbHealthPage.tsx',       'dbHealthConnectionsStore'],
   ['src/components/ImageCleaner.tsx',             'imageCleanerDetectScan'],
   ['src/components/ProjectSqlPushdownTable.tsx',  'sqlPushdownScan'],
+  ['src/components/pages/ProjectCostPage.tsx',    'projectCostScan'],
 ];
 
 function findMountOnlyEffects(body) {

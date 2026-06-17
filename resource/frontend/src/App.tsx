@@ -22,6 +22,7 @@ import './state/codeEnvComparisonStore';
 import './state/csTemplateStore';
 import './state/imageCleanerStore';
 import './state/managedFoldersStore';
+import './state/projectCostScan';
 import './state/reportLlmsStore';
 import { AppShell } from './components/layout/AppShell';
 import { PageRouter } from './components/layout/PageRouter';

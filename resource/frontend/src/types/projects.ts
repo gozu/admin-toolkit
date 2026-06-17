@@ -154,3 +154,83 @@ export interface User {
 
 // User stats
 export type UserStats = Record<string, string | number>;
+
+// ── Cost / CRU (Compute Resource Usage, parsed from host audit logs) ──────────
+// Shape mirrors python-runnables/cru-audit/runnable.py JSON output exactly.
+export interface CruSpan {
+  firstTs: string | null;
+  lastTs: string | null;
+  files: number;
+  filesRead: number;
+  linesScanned: number;
+  cruRecords: number;
+}
+
+export interface CruTotals {
+  memGBh: number;
+  cpuH: number;
+  llmUSD: number;
+  projectCount: number;
+  userCount: number;
+}
+
+export interface CruProjectUserBreakdown {
+  authIdentifier: string;
+  memGBh: number;
+  cpuH: number;
+  records: number;
+  llmUSD?: number;
+}
+
+export interface CruProjectContextBreakdown {
+  type: string;
+  memGBh: number;
+  cpuH: number;
+  records: number;
+}
+
+export interface CruProjectRow {
+  projectKey: string;
+  memGBh: number;
+  cpuH: number;
+  llmUSD: number;
+  llmTokens: number;
+  records: number;
+  byUser?: CruProjectUserBreakdown[];
+  byContextType?: CruProjectContextBreakdown[];
+}
+
+export interface CruUserRow {
+  authIdentifier: string;
+  memGBh: number;
+  cpuH: number;
+  llmUSD: number;
+  records: number;
+}
+
+export interface CruContextTypeRow {
+  type: string;
+  memGBh: number;
+  cpuH: number;
+  records: number;
+}
+
+export interface CruIdleResource {
+  id: string;
+  projectKey: string;
+  contextType: string;
+  memGBh: number;
+  cpuH: number;
+}
+
+export interface CruCostData {
+  ok?: boolean;
+  error?: string;
+  auditDir?: string;
+  span?: CruSpan;
+  totals?: CruTotals;
+  projects?: CruProjectRow[];
+  users?: CruUserRow[];
+  contextTypes?: CruContextTypeRow[];
+  idleResources?: CruIdleResource[];
+}

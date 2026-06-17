@@ -1,0 +1,19 @@
+{
+    "meta": {
+        "label": "CRU audit parse",
+        "description": "Stream the host audit logs ($DIP_HOME/run/audit/audit.log*) and roll up Compute Resource Usage (memory GB·h + CPU·h from LOCAL_PROCESS, $ from LLM_USAGE) per project / user / context.type. Runs as the dataiku service account so it can read the local audit dir regardless of webapp impersonation.",
+        "icon": "icon-money"
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": [
+        {
+            "name": "max_files",
+            "label": "Max rotated files to read (0 = all)",
+            "type": "INT",
+            "defaultValue": 0,
+            "mandatory": false
+        }
+    ]
+}

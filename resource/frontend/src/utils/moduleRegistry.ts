@@ -78,6 +78,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   { id: 'project-cleaner', label: 'Project Cleaner', navLabel: 'Cleaner', section: 'Projects', navSection: 'PROJECTS', keywords: ['clean', 'delete', 'inactive', 'project'], tool: true, reachability: 'always', lifecycle: { fields: ['projectCleanerLoading'] } },
   { id: 'projects', label: 'Projects', navLabel: 'Insights', section: 'Projects', navSection: 'PROJECTS', keywords: ['project', 'footprint', 'permissions'], trends: true, reachability: 'always', lifecycle: { fields: ['projectFootprintLoading'] } },
   { id: 'project-compute', label: 'Compute', section: 'Projects', navSection: 'PROJECTS', keywords: ['compute', 'project', 'usage', 'workload'], reachability: 'always', lifecycle: { fields: ['projectComputeLoading'] } },
+  { id: 'project-cost', label: 'Cost / CRU', navLabel: 'Cost', section: 'Projects', navSection: 'PROJECTS', keywords: ['cost', 'cru', 'compute', 'resource', 'usage', 'memory', 'cpu', 'llm', 'audit'], streamEndpoint: '/api/cru/stream', reachability: 'always', lifecycle: { fields: ['projectCostLoading'] } },
 
   // USERS
   { id: 'users', label: 'Users', section: 'Users', navSection: 'USERS', keywords: ['user', 'owner', 'login', 'email', 'accountability', 'ownership'], reachability: 'always', lifecycle: { fields: [
@@ -122,7 +123,7 @@ export const MODULE_BY_ID: Readonly<Record<PageId, ModuleDefinition>> = Object.f
 export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'OVERVIEW', items: ['mission-control', 'summary', 'filesystem', 'memory', 'cpu'] },
   { title: 'CONNECTIONS', items: ['connections-inventory', 'connections-insights', 'connections-health', 'connections-fs-migration'] },
-  { title: 'PROJECTS', items: ['project-cleaner', 'projects', 'project-compute'] },
+  { title: 'PROJECTS', items: ['project-cleaner', 'projects', 'project-compute', 'project-cost'] },
   { title: 'USERS', items: ['users'] },
   { title: 'PLUGINS', items: ['plugins-installed', 'plugins'] },
   { title: 'CODE ENVS', items: ['code-envs', 'code-envs-cleaner', 'code-envs-comparison'] },

@@ -11,6 +11,7 @@ _PROCESS_METRICS_MACRO_ID = 'pyrunnable_admin-toolkit_process-metrics'
 _DBHEALTH_MACRO_ID = 'pyrunnable_admin-toolkit_dbhealth-query'
 _IMAGE_CLEANER_MACRO_ID = 'pyrunnable_admin-toolkit_image-cleaner'
 _K8S_INSIGHTS_MACRO_ID = 'pyrunnable_admin-toolkit_k8s-insights'
+_CRU_AUDIT_MACRO_ID = 'pyrunnable_admin-toolkit_cru-audit'
 
 
 def _host_metrics_macro(client: Any) -> Dict[str, Any]:
@@ -71,6 +72,28 @@ def _image_cleaner_macro(client: Any, operation: str, **params: Any) -> Dict[str
     project = _resolve_macro_project(client)
     macro = project.get_macro(_IMAGE_CLEANER_MACRO_ID)
     macro_params: Dict[str, Any] = {'operation': operation}
+    for key, value in params.items():
+        if value is not None:
+            macro_params[key] = value
+    run_id = macro.run(params=macro_params, wait=True)
+    result = macro.get_result(run_id, as_type='json')
+    if not isinstance(result, dict):
+        return {'ok': False, 'error': f'macro returned non-dict: {type(result).__name__}'}
+    return result
+
+
+def _cru_audit_macro(client: Any, **params: Any) -> Dict[str, Any]:
+    """Invoke the cru-audit macro on the active host. Parses the host audit
+    logs and returns the rolled-up CRU JSON (see python-runnables/cru-audit/
+    runnable.py for shape: {ok, span, totals, projects, users, contextTypes,
+    idleResources}). The one optional param is max_files (INT, 0 = all).
+
+    Raises MacroProjectMissing if ADMINTOOLKIT doesn't exist on the host —
+    the @errorhandler converts that to a 409 the frontend can react to.
+    """
+    project = _resolve_macro_project(client)
+    macro = project.get_macro(_CRU_AUDIT_MACRO_ID)
+    macro_params: Dict[str, Any] = {}
     for key, value in params.items():
         if value is not None:
             macro_params[key] = value

@@ -35,6 +35,7 @@ import { MemoryPage } from '../pages/MemoryPage';
 import { CpuUsagePage } from '../pages/CpuUsagePage';
 import { ProjectsPage } from '../pages/ProjectsPage';
 import { ProjectComputePage } from '../pages/ProjectComputePage';
+import { ProjectCostPage } from '../pages/ProjectCostPage';
 import { UsersPage } from '../pages/UsersPage';
 import { CodeEnvsInsightsPage } from '../pages/CodeEnvsPage';
 import { CodeEnvsComparisonPage } from '../pages/CodeEnvsComparisonPage';
@@ -116,6 +117,8 @@ function renderPage(activePage: PageId): React.ReactNode {
       return <ProjectsPage />;
     case 'project-compute':
       return <ProjectComputePage />;
+    case 'project-cost':
+      return <ProjectCostPage />;
     case 'users':
       return <UsersPage />;
     case 'code-envs':

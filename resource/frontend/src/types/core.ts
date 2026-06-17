@@ -17,6 +17,7 @@ import type { LlmAuditResponse } from './llmAudit';
 import type { LogError, LogStats } from './logs';
 import type { PluginInfo } from './plugins';
 import type {
+  CruCostData,
   Project,
   ProjectFootprintRow,
   ProjectFootprintSummary,
@@ -134,6 +135,7 @@ export interface ParsedData {
   projects?: Project[];
   projectFootprint?: ProjectFootprintRow[];
   projectFootprintSummary?: ProjectFootprintSummary;
+  projectCostData?: CruCostData;
   plugins?: string[];
   pluginDetails?: PluginInfo[];
   pluginsCount?: number;
@@ -163,6 +165,7 @@ export interface ParsedData {
   projectCleanerLoading?: Lifecycle;
   projectFootprintLoading?: Lifecycle;
   projectComputeLoading?: Lifecycle;
+  projectCostLoading?: Lifecycle;
   usersLoading?: Lifecycle;
   pluginsLoading?: Lifecycle;
   pluginSyncLoading?: Lifecycle;
@@ -297,6 +300,7 @@ export type PageId =
   | 'sanity-check'
   | 'project-cleaner'
   | 'project-compute'
+  | 'project-cost'
   | 'plugins-installed'
   | 'plugins'
   | 'report'

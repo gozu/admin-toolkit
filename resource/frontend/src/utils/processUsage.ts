@@ -19,6 +19,20 @@ export function displayUser(user: string): string {
   return user.startsWith('dssuser_') ? user.slice('dssuser_'.length) : user;
 }
 
+// Webapp-backend processes carry a very long argv: the python interpreter, the
+// `-m dataiku.webapps.backend` module, the absolute webappruns run-dir path, and
+// a trailing `start_command.json`. Collapse all that to just the run directory
+// (`webappruns/<project>/<webapp>/run_…`) — the rest is noise. Other commands
+// are returned unchanged; the full argv stays in the row tooltip.
+export function displayCommand(command: string): string {
+  const idx = command.indexOf('webappruns/');
+  if (idx === -1) return command;
+  const tail = command.slice(idx);
+  const run = tail.match(/^webappruns\/\S*?\/run_[^/\s]+/);
+  if (run) return run[0];
+  return tail.replace(/\/start_command\.json\s*$/, '');
+}
+
 /**
  * Aggregate per-PID process metrics into a per-user ranking, sorted by `value`
  * descending. `metric` selects what `value` measures:

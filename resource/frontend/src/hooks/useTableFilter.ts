@@ -22,7 +22,7 @@ const FILTER_GROUP_DEFINITIONS = {
   charts: {
     id: 'charts',
     label: 'Charts',
-    filterIds: ['filesystem-table', 'memory-chart', 'connections-chart'],
+    filterIds: ['filesystem-table', 'memory-chart', 'cpu-chart', 'connections-chart'],
   },
   data: {
     id: 'data',
@@ -95,6 +95,10 @@ export function useTableFilter() {
 
     if (parsedData.memoryInfo && Object.keys(parsedData.memoryInfo).length > 0) {
       options.push({ id: 'memory-chart', label: 'System Memory' });
+    }
+
+    if (parsedData.cpuCores) {
+      options.push({ id: 'cpu-chart', label: 'CPU Usage' });
     }
 
     if (parsedData.sparkSettings && Object.keys(parsedData.sparkSettings).length > 0) {

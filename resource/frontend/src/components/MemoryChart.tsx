@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { motion } from 'framer-motion';
 import { Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, type TooltipItem, type Plugin } from 'chart.js';
@@ -7,6 +7,9 @@ import { useTableFilter } from '../hooks/useTableFilter';
 import { parseNumericValue, formatMemory } from '../utils/formatters';
 import { CHART_PALETTE } from '../utils/chartColors';
 import { BASE_TOOLTIP_STYLE, baseLegendLabels } from '../utils/chartConfig';
+import { RefreshControl } from './common/RefreshControl';
+import { getHostSummary, refreshHostSummary, subscribeHostSummary } from '../state/hostSummary';
+import { restartProcessMetricsScan } from '../state/processMetrics';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -22,10 +25,12 @@ const CHART_COLORS = {
 };
 
 export function MemoryChart() {
-  const { state } = useDiag();
+  const { state, setParsedData } = useDiag();
   const { isVisible } = useTableFilter();
   const { parsedData } = state;
   const memoryInfo = parsedData.memoryInfo ?? EMPTY_OBJ;
+  const hostSummary = useSyncExternalStore(subscribeHostSummary, getHostSummary, getHostSummary);
+  const canRefresh = state.dataSource === 'api';
 
   const chartData = useMemo(() => {
     const parseMemory = (value: string | undefined): number => {
@@ -130,8 +135,21 @@ export function MemoryChart() {
       viewport={{ once: true, margin: '-50px' }}
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
     >
-      <div className="chart-header">
+      <div className="chart-header flex items-center justify-between gap-3">
         <h4>System Memory</h4>
+        {canRefresh && (
+          <RefreshControl
+            busy={hostSummary.status === 'loading'}
+            fetchedAt={hostSummary.status === 'done' ? hostSummary.fetchedAt : null}
+            onRefresh={() => {
+              void refreshHostSummary(setParsedData);
+              // Also re-run `ps` so the "Memory usage" table below this card
+              // refreshes from the same click (cache-bypassed).
+              restartProcessMetricsScan();
+            }}
+            title="Re-run host memory (free -m) and the process table (ps)"
+          />
+        )}
       </div>
 
       <div className="chart-body" style={{ height: '280px' }}>

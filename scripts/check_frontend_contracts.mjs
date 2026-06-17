@@ -516,6 +516,7 @@ const RAW_TABLE_ALLOWLIST = new Set([
   'src/components/LocalFilesystemMigrationCard.tsx',
   'src/components/MemoryAnalysisCard.tsx',
   'src/components/MemoryChart.tsx',
+  'src/components/CpuChart.tsx', // doughnut summary key/value table
   'src/components/pages/CodeEnvsPage.tsx',
   'src/components/pages/DbHealthPage.tsx',
   'src/components/PluginComparator.tsx', // plugin comparison

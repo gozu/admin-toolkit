@@ -247,9 +247,9 @@ export function CSTemplateReplacement() {
   const projects = useMemo(() => data?.projects ?? [], [data?.projects]);
   const templates = useMemo(() => data?.templates ?? [], [data?.templates]);
 
-  const [selectedProjectKey, setSelectedProjectKey] = useState('');
-  const [selectedCsId, setSelectedCsId] = useState('');
-  const [targetTemplateId, setTargetTemplateId] = useState('');
+  const [selectedProjectKeyRaw, setSelectedProjectKey] = useState('');
+  const [selectedCsIdRaw, setSelectedCsId] = useState('');
+  const [targetTemplateIdRaw, setTargetTemplateId] = useState('');
   const [confirmText, setConfirmText] = useState('');
   const [busy, setBusy] = useState(false);
   const [migrateError, setMigrateError] = useState<string | null>(null);
@@ -264,36 +264,35 @@ export function CSTemplateReplacement() {
     }
   }, [scanStarted]);
 
+  // Default/clamp the cascading project → code-studio → template selection during
+  // render rather than seeding via effects. The `*Raw` states hold the user's
+  // explicit picks; the memos and downstream reads use the effective values.
+  const selectedProjectKey =
+    selectedProjectKeyRaw ||
+    (projects.find((p) => p.codeStudios.length > 0)?.projectKey ?? '');
   const selectedProject = useMemo(
     () => projects.find((p) => p.projectKey === selectedProjectKey) || null,
     [projects, selectedProjectKey],
   );
+
+  const selectedCsId =
+    selectedProject && selectedProject.codeStudios.some((cs) => cs.id === selectedCsIdRaw)
+      ? selectedCsIdRaw
+      : selectedProject
+        ? selectedProject.codeStudios[0]?.id || ''
+        : selectedCsIdRaw;
   const selectedCs = useMemo(
     () => selectedProject?.codeStudios.find((cs) => cs.id === selectedCsId) || null,
     [selectedProject, selectedCsId],
   );
 
-  useEffect(() => {
-    if (!selectedProjectKey && projects.length > 0) {
-      const firstWithCS = projects.find((p) => p.codeStudios.length > 0);
-      if (firstWithCS) setSelectedProjectKey(firstWithCS.projectKey);
-    }
-  }, [projects, selectedProjectKey]);
-
-  useEffect(() => {
-    if (!selectedProject) return;
-    if (!selectedProject.codeStudios.some((cs) => cs.id === selectedCsId)) {
-      setSelectedCsId(selectedProject.codeStudios[0]?.id || '');
-    }
-  }, [selectedProject, selectedCsId]);
-
-  useEffect(() => {
-    if (!selectedCs) return;
+  const targetTemplateId = (() => {
+    if (!selectedCs) return targetTemplateIdRaw;
     const choices = templates.filter((t) => t.id !== selectedCs.templateId);
-    if (!choices.some((t) => t.id === targetTemplateId)) {
-      setTargetTemplateId(choices[0]?.id || '');
-    }
-  }, [selectedCs, templates, targetTemplateId]);
+    return choices.some((t) => t.id === targetTemplateIdRaw)
+      ? targetTemplateIdRaw
+      : choices[0]?.id || '';
+  })();
 
   const runMigrate = async (dryRun: boolean) => {
     if (!selectedProjectKey || !selectedCsId || !targetTemplateId) return;

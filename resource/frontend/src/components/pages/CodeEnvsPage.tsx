@@ -274,15 +274,14 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
   // Managed-folder selection (Backup destination)
   const { data: foldersData, loading: foldersLoading, scanStarted } = managedFoldersScan.use();
   const folders = useMemo(() => foldersData?.folders ?? [], [foldersData?.folders]);
-  const [folderId, setFolderId] = useState('');
+  const [folderIdRaw, setFolderId] = useState('');
+  // Default the backup destination during render rather than via an effect.
+  // `folderIdRaw` holds the user's explicit pick.
+  const folderId = folderIdRaw || (folders[0]?.id ?? '');
 
   useEffect(() => {
     if (!readOnly && !scanStarted) void managedFoldersScan.load();
   }, [readOnly, scanStarted]);
-
-  useEffect(() => {
-    if (!folderId && folders.length > 0) setFolderId(folders[0].id);
-  }, [folders, folderId]);
 
   // Owner filter (Insights' click-to-filter)
   const [ownerFilter, setOwnerFilter] = useState<string | null>(null);
@@ -303,9 +302,9 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
   const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
   const [bulkDeleteProgress, setBulkDeleteProgress] = useState('');
 
-  // Replacement state
-  const [sourceName, setSourceName] = useState('');
-  const [targetName, setTargetName] = useState('');
+  // Replacement state (raw user picks; effective values derived below).
+  const [sourceNameRaw, setSourceName] = useState('');
+  const [targetNameRaw, setTargetName] = useState('');
   const [dryRun, setDryRun] = useState(true);
   const [confirmText, setConfirmText] = useState('');
   const [replaceLoading, setReplaceLoading] = useState(false);
@@ -388,6 +387,14 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
     () => sortedRealEnvs.filter((env) => (env.usageCount || 0) > 0),
     [sortedRealEnvs],
   );
+  // Default/clamp the source env to the first in-use env during render rather
+  // than via an effect. `sourceNameRaw` holds the user's explicit pick.
+  const sourceName =
+    sourceNameRaw && inUseEnvs.some((env) => codeEnvKey(env) === sourceNameRaw)
+      ? sourceNameRaw
+      : inUseEnvs.length > 0
+        ? codeEnvKey(inUseEnvs[0])
+        : sourceNameRaw;
   const sourceEnv = useMemo(
     () => sortedRealEnvs.find((env) => codeEnvKey(env) === sourceName) || null,
     [sortedRealEnvs, sourceName],
@@ -403,31 +410,16 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
     [sortedRealEnvs, sourceEnv],
   );
 
-  useEffect(() => {
-    if (!sourceName && inUseEnvs.length > 0) {
-      setSourceName(codeEnvKey(inUseEnvs[0]));
-      return;
-    }
-    if (
-      sourceName &&
-      inUseEnvs.length > 0 &&
-      !inUseEnvs.some((env) => codeEnvKey(env) === sourceName)
-    ) {
-      setSourceName(codeEnvKey(inUseEnvs[0]));
-    }
-  }, [inUseEnvs, sourceName]);
-
-  useEffect(() => {
-    const nextTarget = targetChoices[0]?.name || '';
-    if (
-      (!targetName ||
-        targetName === sourceEnv?.name ||
-        !targetChoices.some((env) => env.name === targetName)) &&
-      nextTarget
-    ) {
-      setTargetName(nextTarget);
-    }
-  }, [sourceEnv?.name, targetChoices, targetName]);
+  // Default/clamp the target env during render rather than via an effect.
+  // `targetNameRaw` holds the user's explicit pick; falls back to the first
+  // valid choice that isn't the source env.
+  const nextTargetName = targetChoices[0]?.name || '';
+  const targetName =
+    targetNameRaw &&
+    targetNameRaw !== sourceEnv?.name &&
+    targetChoices.some((env) => env.name === targetNameRaw)
+      ? targetNameRaw
+      : nextTargetName || targetNameRaw;
 
   const selectableUnusedRows = useMemo(
     () =>

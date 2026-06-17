@@ -126,6 +126,8 @@ export function AiLogAnalysis({ rawLogErrors }: AiLogAnalysisProps) {
     }
     if (logMode === 'curated' && rawLogErrors?.length) {
       const newLogData = buildCuratedLogData(rawLogErrors);
+      // Rebuild user-editable content when the upstream raw errors change.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEditableContent(buildFullMessage(editableSystemPrompt, newLogData));
     }
   }, [rawLogErrors, logMode, editableSystemPrompt, buildFullMessage]);

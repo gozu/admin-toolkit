@@ -70,6 +70,8 @@ export function ReportPage() {
       const line = `[${ts}] Phase: ${phase}`;
       if (phase.startsWith('Generating report')) {
         // Update the last log line in-place instead of appending
+        // Accumulating a verbose log from streamed phases is genuine effect work.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setLogs((prev) => {
           if (prev.length > 0 && prev[prev.length - 1].includes('Generating report')) {
             return [...prev.slice(0, -1), line];
@@ -85,6 +87,8 @@ export function ReportPage() {
   // Track error in verbose log
   useEffect(() => {
     if (error) {
+      // Append the error to the verbose log — accumulating a log is effect work.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       addLog(`ERROR: ${error}`);
     }
   }, [error, addLog]);
@@ -93,6 +97,8 @@ export function ReportPage() {
   useEffect(() => {
     if (status === 'generating') {
       startRef.current = Date.now();
+      // Drive an elapsed-time timer — timers are canonical effect territory.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setElapsedMs(0);
       timerRef.current = setInterval(() => {
         setElapsedMs(Date.now() - startRef.current);

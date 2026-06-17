@@ -121,6 +121,8 @@ export function ImageCleaner() {
   useEffect(() => {
     if (providerInitialized) return;
     if (detectData?.provider) {
+      // Initialize the provider once from the async detect result.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setProvider(detectData.provider);
       setProviderInitialized(true);
     } else if (detectDone) {
@@ -166,12 +168,16 @@ export function ImageCleaner() {
   // OR provider switch). On a remount within the same session the cached
   // releaseInfo is referentially stable, so the effect doesn't re-run.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (releaseInfo) setCutoffDate(releaseInfo.maxCutoffDate);
   }, [releaseInfo]);
 
   // Reset scan-result state when the active provider changes.
   useEffect(() => {
     if (!detectStarted) return;
+    // Reset scan results when the active provider changes — an external input
+    // driving a state reset is genuine effect territory, not derivable.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setScanRepos([]);
     setScanTotal(null);
     setScanError(null);

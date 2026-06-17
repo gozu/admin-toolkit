@@ -155,10 +155,15 @@ export function DbHealthPage() {
   // Pick a default selected connection once the store reports loaded data.
   // Only auto-select when a connection is configured in plugin settings; if it
   // is blank, DB Health is disabled (see the not-configured branch below).
+  // Deriving this during render is not viable here: this component relies on
+  // React-Compiler manual memoization that a render-computed value would break
+  // (adds preserve-manual-memoization errors). Seeding once from async store
+  // data is genuine effect territory.
   useEffect(() => {
     if (!connLoaded || connections.length === 0 || selectedConn) return;
     if (!configuredConnection) return;
     const match = connections.find((c) => c.name === configuredConnection);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedConn(match ? match.name : configuredConnection);
   }, [connLoaded, connections, configuredConnection, selectedConn]);
 

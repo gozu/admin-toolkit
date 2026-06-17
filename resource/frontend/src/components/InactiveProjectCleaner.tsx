@@ -61,6 +61,8 @@ export function InactiveProjectCleaner() {
     const currentHost = getActiveHostId();
     const cachedForHost = getCachedInactiveProjects(currentHost);
     if (cachedForHost) {
+      // Cache-hit branch of the data-load effect — hydrating from cache.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRows(cachedForHost);
       setIsLoading(false);
       return;
@@ -95,15 +97,12 @@ export function InactiveProjectCleaner() {
     if (!foldersScanStarted) void managedFoldersScan.load();
   }, [foldersScanStarted]);
 
-  useEffect(() => {
-    if (folders.length === 0) {
-      if (folderId) setFolderId('');
-      return;
-    }
-    if (!folders.some((folder) => folder.id === folderId)) {
-      setFolderId(folders[0].id);
-    }
-  }, [folderId, folders]);
+  // Default/clamp the backup destination during render rather than via an effect.
+  // `folderId` holds the user's explicit pick; reads use the effective value.
+  const effectiveFolderId =
+    folderId && folders.some((folder) => folder.id === folderId)
+      ? folderId
+      : (folders[0]?.id ?? '');
 
   const { sortField, sortDir, toggleSort, sortIndicator } = useSortableTable<SortField>();
   const [deletedKeys, setDeletedKeys] = useState<Set<string>>(new Set());
@@ -154,7 +153,7 @@ export function InactiveProjectCleaner() {
   const confirmBulkDelete = useCallback(async () => {
     const count = selectedRows.length;
     if (count === 0) return;
-    if (!folderId) return;
+    if (!effectiveFolderId) return;
 
     setBulkDeleteLoading(true);
     setBulkDeleteError(null);
@@ -163,7 +162,7 @@ export function InactiveProjectCleaner() {
         const row = selectedRows[i];
         setBulkDeleteProgress(`Deleting ${i + 1} of ${count}: ${row.projectKey}...`);
         await fetchJson(
-          `/api/tools/project-cleaner/${row.projectKey}?folderId=${encodeURIComponent(folderId)}`,
+          `/api/tools/project-cleaner/${row.projectKey}?folderId=${encodeURIComponent(effectiveFolderId)}`,
           {
             method: 'DELETE',
             headers: { 'X-Confirm-Name': row.projectKey },
@@ -179,17 +178,17 @@ export function InactiveProjectCleaner() {
       setBulkDeleteLoading(false);
       setBulkDeleteProgress('');
     }
-  }, [selectedRows, bulkDeleteModal, folderId, clearSelection]);
+  }, [selectedRows, bulkDeleteModal, effectiveFolderId, clearSelection]);
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
-    if (!folderId) return;
+    if (!effectiveFolderId) return;
 
     setDeleteLoading(true);
     setDeleteError(null);
     try {
       await fetchJson(
-        `/api/tools/project-cleaner/${deleteTarget.projectKey}?folderId=${encodeURIComponent(folderId)}`,
+        `/api/tools/project-cleaner/${deleteTarget.projectKey}?folderId=${encodeURIComponent(effectiveFolderId)}`,
         {
           method: 'DELETE',
           headers: { 'X-Confirm-Name': deleteTarget.projectKey },
@@ -202,7 +201,7 @@ export function InactiveProjectCleaner() {
     } finally {
       setDeleteLoading(false);
     }
-  }, [deleteTarget, deleteModal, folderId]);
+  }, [deleteTarget, deleteModal, effectiveFolderId]);
 
   const dssBaseUrl = useMemo(() => {
     const bUrl = getBackendUrl('/');
@@ -279,7 +278,7 @@ export function InactiveProjectCleaner() {
             </label>
             <select
               id="pc-folder-select"
-              value={folderId}
+              value={effectiveFolderId}
               onChange={(e) => setFolderId(e.target.value)}
               disabled={foldersLoading || folders.length === 0}
               className="input-glass text-sm py-1 px-2 rounded min-w-[200px]"
@@ -321,7 +320,7 @@ export function InactiveProjectCleaner() {
               <Button variant="ghost" onClick={clearSelection}>
                 Clear
               </Button>
-              <Button variant="danger" onClick={openBulkDelete} disabled={!folderId}>
+              <Button variant="danger" onClick={openBulkDelete} disabled={!effectiveFolderId}>
                 Delete Selected
               </Button>
             </div>
@@ -403,8 +402,8 @@ export function InactiveProjectCleaner() {
                       <Button
                         variant="danger"
                         onClick={() => openDeleteConfirm(row)}
-                        disabled={!folderId}
-                        title={!folderId ? 'Select a backup destination first' : undefined}
+                        disabled={!effectiveFolderId}
+                        title={!effectiveFolderId ? 'Select a backup destination first' : undefined}
                       >
                         Delete
                       </Button>

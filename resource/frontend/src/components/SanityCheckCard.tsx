@@ -436,6 +436,8 @@ export function SanityCheckCard() {
     if (autoRanRef.current) return;
     if (hasResults) return;
     autoRanRef.current = true;
+    // Auto-start the scan once on mount — kicking off async work is the canonical effect use.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void rescan();
   }, [hasResults, rescan]);
 

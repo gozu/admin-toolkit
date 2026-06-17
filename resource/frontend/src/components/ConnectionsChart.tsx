@@ -228,7 +228,6 @@ function ConnectionsSummaryTable({
   }, [visibleConnections.length]);
 
   useLayoutEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- measuring layout to pick column count
     recompute();
     const container = containerRef.current;
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => recompute()) : null;

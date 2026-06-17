@@ -20,4 +20,13 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // Playwright fixtures use `use(page)`, which the react-hooks v7 plugin
+    // mis-reads as React's `use` hook. tests/ has no React hooks at all.
+    files: ['tests/**/*.{ts,tsx}'],
+    rules: {
+      'react-hooks/rules-of-hooks': 'off',
+      'react-hooks/set-state-in-effect': 'off',
+    },
+  },
 ])

@@ -162,6 +162,12 @@ function LocalFilesystemOutreachPanel({ usages }: { usages: ConnectionLocalFiles
   );
 
   useEffect(() => {
+    // Prune the selection to valid owners (and default to all-when-empty) whenever
+    // the owner groups change. This must run on groups-change rather than during
+    // render: the "empty → select all" fallback is only meant to seed/re-seed when
+    // the input changes, not to override a deliberate user-emptied selection — so
+    // it can't be derived during render without changing toggle semantics.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedOwners((prev) => {
       const validOwners = new Set(groups.map((group) => group.owner));
       const next = new Set(Array.from(prev).filter((owner) => validOwners.has(owner)));

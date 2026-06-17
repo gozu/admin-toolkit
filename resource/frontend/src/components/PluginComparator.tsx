@@ -90,6 +90,9 @@ export function PluginComparator() {
   });
 
   useEffect(() => {
+    // Reset all comparison state when the target host changes — an external input
+    // driving a state reset is genuine effect territory, not derivable.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCompared(false);
     setRows([]);
     setFilter('all');

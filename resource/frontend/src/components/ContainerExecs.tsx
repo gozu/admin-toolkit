@@ -368,8 +368,8 @@ function ReplacementResult({ result }: { result: ContainerExecReplaceResult }) {
 
 export function ContainerExecs() {
   const { data, loading, progressPct, scanPhase, scanMessage, error, scanStarted } = containerExecsScan.use();
-  const [sourceConfig, setSourceConfig] = useState('');
-  const [targetConfig, setTargetConfig] = useState('');
+  const [sourceConfigRaw, setSourceConfig] = useState('');
+  const [targetConfigRaw, setTargetConfig] = useState('');
   const [dryRun, setDryRun] = useState(true);
   const [replaceResult, setReplaceResult] = useState<ContainerExecReplaceResult | null>(null);
   const [showDetails, setShowDetails] = useState(false);
@@ -433,6 +433,21 @@ export function ContainerExecs() {
     () => uniqueSorted(visibleRows.filter((row) => row.replacementSupported).map(rowConfig)),
     [visibleRows],
   );
+
+  // Default/clamp the source & target configs during render rather than via
+  // effects. The raw states hold the user's explicit picks; reads use the
+  // effective values. Target defaults to the first config that isn't the source.
+  const sourceConfig =
+    sourceConfigRaw && sourceConfigNames.includes(sourceConfigRaw)
+      ? sourceConfigRaw
+      : (sourceConfigNames[0] ?? '');
+  const nextTargetConfig = configNames.find((name) => name !== sourceConfig) || '';
+  const targetConfig =
+    targetConfigRaw &&
+    targetConfigRaw !== sourceConfig &&
+    (targetConfigRaw === INHERIT_TARGET || configNames.includes(targetConfigRaw))
+      ? targetConfigRaw
+      : nextTargetConfig || targetConfigRaw;
   const orphanedConfigObjectCount = useMemo(() => {
     if (validConfigSet.size === 0) return 0;
     return visibleRows.filter((row) => {
@@ -482,24 +497,6 @@ export function ContainerExecs() {
       return next;
     });
   };
-
-  useEffect(() => {
-    if (!sourceConfig && sourceConfigNames.length > 0) {
-      setSourceConfig(sourceConfigNames[0]);
-      return;
-    }
-    if (sourceConfig && sourceConfigNames.length > 0 && !sourceConfigNames.includes(sourceConfig)) {
-      setSourceConfig(sourceConfigNames[0]);
-    }
-  }, [sourceConfig, sourceConfigNames]);
-
-  useEffect(() => {
-    const nextTarget = configNames.find((name) => name !== sourceConfig) || '';
-    const targetIsValid = targetConfig === INHERIT_TARGET || configNames.includes(targetConfig);
-    if ((!targetConfig || targetConfig === sourceConfig || !targetIsValid) && nextTarget) {
-      setTargetConfig(nextTarget);
-    }
-  }, [configNames, sourceConfig, targetConfig]);
 
   const runReplace = async (nextDryRun: boolean) => {
     if (!sourceConfig || !targetConfig || sourceConfig === targetConfig) return;

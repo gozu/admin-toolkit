@@ -60,18 +60,23 @@ export function useReportGenerator(): UseReportGeneratorReturn {
   // Label → ID mapping
   const llmMap = useMemo(() => new Map(llms.map((l) => [l.label, l.id])), [llms]);
 
+  // Default the selection to the first LLM, derived during render rather than
+  // seeded via an effect (avoids a throwaway render). The raw `selectedLlmLabel`
+  // still holds the user's explicit pick; reads use the effective value.
+  const effectiveLlmLabel =
+    (selectedLlmLabel && llms.some((l) => l.label === selectedLlmLabel)
+      ? selectedLlmLabel
+      : llms[0]?.label) ?? '';
+
   // Fetch LLMs on first selector open
   const fetchLlms = useCallback(async () => {
     await reportLlmsStore.load();
   }, []);
 
   useEffect(() => {
-    if (!selectedLlmLabel && llms.length > 0) {
-      setSelectedLlmLabel(llms[0].label);
-    }
-  }, [llms, selectedLlmLabel]);
-
-  useEffect(() => {
+    // Mirror the store's load error into local error state — syncing from an
+    // external store is genuine effect territory, not derivable during render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (llmsError) setError(llmsError);
   }, [llmsError]);
 
@@ -89,7 +94,7 @@ export function useReportGenerator(): UseReportGeneratorReturn {
 
   const generate = useCallback(
     (parsedData: ParsedData) => {
-      const llmId = llmMap.get(selectedLlmLabel);
+      const llmId = llmMap.get(effectiveLlmLabel);
       if (!llmId) return;
 
       lastParsedDataRef.current = parsedData;
@@ -230,7 +235,7 @@ export function useReportGenerator(): UseReportGeneratorReturn {
         }
       })();
     },
-    [selectedLlmLabel, llmMap, setLifecycle],
+    [effectiveLlmLabel, llmMap, setLifecycle],
   );
 
   const retry = useCallback(() => {
@@ -262,7 +267,7 @@ export function useReportGenerator(): UseReportGeneratorReturn {
     phase,
     llms: llms,
     isLoadingLlms,
-    selectedLlmLabel,
+    selectedLlmLabel: effectiveLlmLabel,
     setSelectedLlmLabel,
     generate,
     reportData,

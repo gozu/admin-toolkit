@@ -58,6 +58,9 @@ export function FeedbackPage() {
 
   // The generated diagnostic bundle lives in its own slot (separate from the
   // user's `files`) so it can be pinned in the UI and appended to the submit.
+  // `bundleFile` is the generated file (always set on success, for download);
+  // `bundle` is the attach slot (null when the file is too large to email).
+  const [bundleFile, setBundleFile] = useState<File | null>(null);
   const [bundle, setBundle] = useState<File | null>(null);
   const [bundleManifest, setBundleManifest] = useState<BundleManifest | null>(null);
   const [bundleStatus, setBundleStatus] = useState<'idle' | 'generating' | 'error'>('idle');
@@ -133,11 +136,21 @@ export function FeedbackPage() {
   }, []);
 
   const removeBundle = useCallback(() => {
+    setBundleFile(null);
     setBundle(null);
     setBundleManifest(null);
     setBundleNote(null);
     setBundleStatus('idle');
   }, []);
+
+  const downloadBundle = useCallback(() => {
+    if (!bundleFile) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(bundleFile);
+    a.download = bundleFile.name;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }, [bundleFile]);
 
   const generateBundle = useCallback(async () => {
     if (bundleStatus === 'generating') return;
@@ -164,21 +177,17 @@ export function FeedbackPage() {
         },
       });
 
-      // Always download a copy for the user.
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(a.href);
-
+      // No auto-download — the bundle is primarily an email attachment. The user
+      // can download it on demand with the Download button below.
       setBundleManifest(manifest);
       const file = new File([blob], filename, { type: 'application/zip' });
+      setBundleFile(file);
       if (file.size > MAX_FILE_BYTES) {
-        // Too large to email: keep the downloaded copy, skip auto-attach.
+        // Too large to email: skip auto-attach; download stays available.
         setBundle(null);
         setBundleNote(
-          `Bundle too large to email (${formatBytes(file.size)}) — it's been downloaded; ` +
-            'please send it to the toolkit author directly.',
+          `Bundle too large to email (${formatBytes(file.size)}) — not attached. ` +
+            'Use Download to save it and send it to the toolkit author directly.',
         );
       } else {
         setBundle(file);
@@ -406,7 +415,8 @@ export function FeedbackPage() {
             </label>
             <p className="text-xs text-[var(--text-secondary)] mb-2 max-w-prose">
               Captures the toolkit's in-memory state plus a snapshot of cheap, read-only host
-              reads. It's downloaded to you and attached to this report. No scans are triggered.
+              reads. It's attached to this report; you can also download a copy on demand. No
+              scans are triggered.
             </p>
             <button
               type="button"
@@ -423,28 +433,35 @@ export function FeedbackPage() {
                   <Spinner />
                   Generating…
                 </>
-              ) : bundle || bundleManifest ? (
+              ) : bundleFile ? (
                 'Regenerate diagnostic bundle'
               ) : (
                 'Generate diagnostic bundle'
               )}
             </button>
 
-            {bundle && (
+            {bundleFile && (
               <ul className="mt-3 space-y-2">
                 <li className="flex items-center justify-between gap-3 rounded-lg border border-[var(--neon-cyan)]/30 bg-[var(--neon-cyan)]/5 px-3 py-2">
                   <span
                     className="min-w-0 flex-1 truncate text-sm text-[var(--text-primary)]"
-                    title={bundle.name}
+                    title={bundleFile.name}
                   >
-                    {bundle.name}
+                    {bundleFile.name}
                   </span>
                   <span className="flex-shrink-0 rounded bg-[var(--neon-cyan)]/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--neon-cyan)]">
-                    generated
+                    {bundle ? 'will attach' : 'download only'}
                   </span>
                   <span className="flex-shrink-0 text-xs text-[var(--text-muted)]">
-                    {formatBytes(bundle.size)}
+                    {formatBytes(bundleFile.size)}
                   </span>
+                  <button
+                    type="button"
+                    onClick={downloadBundle}
+                    className="flex-shrink-0 px-2 py-1 rounded text-xs border border-[var(--neon-cyan)]/40 text-[var(--neon-cyan)] hover:bg-[var(--neon-cyan)]/10 transition-colors"
+                  >
+                    Download
+                  </button>
                   <button
                     type="button"
                     onClick={removeBundle}

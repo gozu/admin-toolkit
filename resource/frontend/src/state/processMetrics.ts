@@ -7,6 +7,8 @@ export interface ProcessMetricsState {
   processes: ProcessMetric[];
   totalProcesses: number | null;
   truncated: boolean;
+  // Target host's DIP_HOME, used to strip boilerplate from command lines.
+  dipHome: string | null;
   status: 'idle' | 'loading' | 'done' | 'error';
   error: string | null;
   // Stored timestamps so lifecycle resolution stays pure at render time.
@@ -19,6 +21,7 @@ interface ProcessMetricsResponse {
   processes?: ProcessMetric[];
   totalProcesses?: number;
   truncated?: boolean;
+  dipHome?: string;
   error?: string;
 }
 
@@ -26,6 +29,7 @@ const INITIAL_STATE: ProcessMetricsState = {
   processes: [],
   totalProcesses: null,
   truncated: false,
+  dipHome: null,
   status: 'idle',
   error: null,
   startedAt: null,
@@ -98,6 +102,7 @@ async function runLoad(fresh = false) {
       processes,
       totalProcesses: data.totalProcesses ?? processes.length,
       truncated: Boolean(data.truncated),
+      dipHome: data.dipHome ?? null,
       finishedAt: new Date().toISOString(),
     });
   } catch (err) {

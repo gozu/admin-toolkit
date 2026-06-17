@@ -9,7 +9,8 @@ import {
 } from '../state/processMetrics';
 import type { ColumnDef } from '../utils/dataGridTypes';
 import { formatKb } from '../utils/formatters';
-import { aggregateByUser, displayCommand, displayUser } from '../utils/processUsage';
+import { aggregateByUser, displayCommand, displayUser, webappRefFromCommand } from '../utils/processUsage';
+import { dssUrls } from '../utils/codeEnvUsageLinks';
 import type { Lifecycle, ProcessMetric } from '../types';
 
 /** Per-user aggregate row: both metrics joined so every column is sortable. */
@@ -197,13 +198,26 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' }) {
         <span key="pid" className="block pl-6 font-mono tabular-nums text-[var(--text-secondary)]">
           {p.pid}
         </span>,
-        <span
-          key="cmd"
-          title={p.command}
-          className="block max-w-[32rem] truncate text-left font-sans text-[var(--text-secondary)]"
-        >
-          {displayCommand(p.command)}
-        </span>,
+        ((cleaned, ref) => (
+          <span
+            key="cmd"
+            title={p.command}
+            className="block max-w-[32rem] truncate text-left font-sans text-[var(--text-secondary)]"
+          >
+            {ref ? (
+              <a
+                href={dssUrls.webapp(ref.projectKey, ref.webappId)}
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-[var(--neon-cyan)] hover:underline"
+              >
+                {cleaned}
+              </a>
+            ) : (
+              cleaned
+            )}
+          </span>
+        ))(displayCommand(p.command, scan.dipHome), webappRefFromCommand(p.command)),
         `${p.cpuPercent.toFixed(1)}%`,
         `${p.memPercent.toFixed(1)}%`,
         formatKb(p.rssKb),

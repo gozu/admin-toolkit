@@ -5,6 +5,7 @@ see every process on the target host regardless of webapp impersonation. Backs
 the Overview "Memory usage by PID" breakdown and the "CPU" sub-page.
 """
 import json
+import os
 import subprocess
 
 from dataiku.runnables import Runnable
@@ -69,7 +70,17 @@ def _collect_processes(limit=_MAX_PROCESSES):
         procs = sorted(kept.values(), key=lambda p: p['rssKb'], reverse=True)
     else:
         procs.sort(key=lambda p: p['rssKb'], reverse=True)
-    return {'ok': True, 'processes': procs, 'totalProcesses': total, 'truncated': truncated}
+    # DIP_HOME varies per host; report the *target* host's value (this macro runs
+    # on the host) so the frontend can strip it from process command lines.
+    # Mirrors the fallback chain in python-lib/adk_backend/sysinfo.py:_dip_home.
+    dip_home = os.environ.get('DIP_HOME') or os.environ.get('DSS_HOME') or ''
+    return {
+        'ok': True,
+        'processes': procs,
+        'totalProcesses': total,
+        'truncated': truncated,
+        'dipHome': dip_home,
+    }
 
 
 class MyRunnable(Runnable):

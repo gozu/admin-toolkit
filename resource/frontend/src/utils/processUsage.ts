@@ -22,15 +22,41 @@ export function displayUser(user: string): string {
 // Webapp-backend processes carry a very long argv: the python interpreter, the
 // `-m dataiku.webapps.backend` module, the absolute webappruns run-dir path, and
 // a trailing `start_command.json`. Collapse all that to just the run directory
-// (`webappruns/<project>/<webapp>/run_…`) — the rest is noise. Other commands
-// are returned unchanged; the full argv stays in the row tooltip.
-export function displayCommand(command: string): string {
+// (`webappruns/<project>/<webapp>/run_…`) — the rest is noise. For every other
+// command, strip the host boilerplate: every occurrence of `<dipHome>/` (cleans
+// both the leading interpreter path and inline args like `-f<dipHome>/jupyter-run/…`)
+// then the `code-envs/python/` segment, so e.g.
+//   /data/dataiku/dss_data/code-envs/python/plugin_x_managed/bin/python -m foo
+// reads as `plugin_x_managed/bin/python -m foo`. The full argv stays in the
+// row tooltip. `dipHome` comes from the target host (process-metrics macro);
+// when absent, fall back to a conservative strip of any `…/dss_data/` prefix.
+export function displayCommand(command: string, dipHome?: string | null): string {
   const idx = command.indexOf('webappruns/');
-  if (idx === -1) return command;
-  const tail = command.slice(idx);
-  const run = tail.match(/^webappruns\/\S*?\/run_[^/\s]+/);
-  if (run) return run[0];
-  return tail.replace(/\/start_command\.json\s*$/, '');
+  if (idx !== -1) {
+    const tail = command.slice(idx);
+    const run = tail.match(/^webappruns\/\S*?\/run_[^/\s]+/);
+    if (run) return run[0];
+    return tail.replace(/\/start_command\.json\s*$/, '');
+  }
+  let out = command;
+  if (dipHome) {
+    out = out.split(dipHome.replace(/\/+$/, '') + '/').join('');
+  } else {
+    out = out.replace(/\S*\/dss_data\//g, '');
+  }
+  return out.split('code-envs/python/').join('');
+}
+
+// Webapp processes embed their DSS object in the argv as
+// `…/webappruns/<PROJECT_KEY>/<WEBAPP_ID>/run_…`. Pull those two segments out so
+// the row can deep-link to the webapp. Returns null for any other process —
+// notebook/recipe kernels carry no project key in their command line.
+export function webappRefFromCommand(
+  command: string,
+): { projectKey: string; webappId: string } | null {
+  const m = command.match(/webappruns\/([^/\s]+)\/([^/\s]+)\//);
+  if (!m) return null;
+  return { projectKey: m[1], webappId: m[2] };
 }
 
 /**

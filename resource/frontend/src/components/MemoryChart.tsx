@@ -9,6 +9,7 @@ import { CHART_PALETTE } from '../utils/chartColors';
 import { BASE_TOOLTIP_STYLE, baseLegendLabels } from '../utils/chartConfig';
 import { RefreshControl } from './common/RefreshControl';
 import { getHostSummary, refreshHostSummary, subscribeHostSummary } from '../state/hostSummary';
+import { restartProcessMetricsScan } from '../state/processMetrics';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -140,8 +141,13 @@ export function MemoryChart() {
           <RefreshControl
             busy={hostSummary.status === 'loading'}
             fetchedAt={hostSummary.status === 'done' ? hostSummary.fetchedAt : null}
-            onRefresh={() => void refreshHostSummary(setParsedData)}
-            title="Re-run free -m / df / ulimit on the host"
+            onRefresh={() => {
+              void refreshHostSummary(setParsedData);
+              // Also re-run `ps` so the "Memory usage" table below this card
+              // refreshes from the same click (cache-bypassed).
+              restartProcessMetricsScan();
+            }}
+            title="Re-run host memory (free -m) and the process table (ps)"
           />
         )}
       </div>

@@ -9,7 +9,7 @@ import {
 } from '../state/processMetrics';
 import type { ColumnDef } from '../utils/dataGridTypes';
 import { formatKb } from '../utils/formatters';
-import { aggregateByUser, displayUser } from '../utils/processUsage';
+import { aggregateByUser, displayCommand, displayUser } from '../utils/processUsage';
 import type { Lifecycle, ProcessMetric } from '../types';
 
 /** Per-user aggregate row: both metrics joined so every column is sortable. */
@@ -202,7 +202,7 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' }) {
           title={p.command}
           className="block max-w-[32rem] truncate text-left font-sans text-[var(--text-secondary)]"
         >
-          {p.command}
+          {displayCommand(p.command)}
         </span>,
         `${p.cpuPercent.toFixed(1)}%`,
         `${p.memPercent.toFixed(1)}%`,

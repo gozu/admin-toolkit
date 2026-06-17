@@ -117,7 +117,17 @@ def api_feedback():
     if not channels:
         _LOGGER.warning("[feedback] send failed: no DSS mail channel configured")
         return jsonify({'error': 'No DSS mail channel configured'}), 400
-    selected = _get_configured_mail_channel() or channels[0]['id']
+    # Channel resolution: an explicit per-request choice from the UI wins (lets
+    # the user pick which mail channel sends the feedback, mirroring the email
+    # outreach tools); otherwise fall back to the configured channel, then the
+    # first available one. Ignore an explicit id that isn't a real channel.
+    requested_channel = (request.form.get('mailChannel') or '').strip()
+    valid_ids = {c['id'] for c in channels}
+    selected = (
+        (requested_channel if requested_channel in valid_ids else '')
+        or _get_configured_mail_channel()
+        or channels[0]['id']
+    )
     channel_obj = _get_mail_channel(client, selected)
     if channel_obj is None:
         _LOGGER.warning("[feedback] send failed: cannot resolve mail channel %s", selected)
@@ -177,7 +187,7 @@ def api_feedback():
 
     _FEEDBACK_RATE[rate_key] = recent + [now]
     _LOGGER.info(
-        "[feedback] sent type=%s files=%d host=%s",
-        fb_type, len(uploads), getattr(g, 'host_id', 'local'),
+        "[feedback] sent type=%s files=%d host=%s channel=%s",
+        fb_type, len(uploads), getattr(g, 'host_id', 'local'), selected,
     )
     return jsonify({'ok': True})

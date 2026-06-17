@@ -6,6 +6,8 @@ import { getModuleLabel } from '../../utils/moduleRegistry';
 import { formatBytes } from '../../utils/formatters';
 import { useDiag } from '../../context/DiagContext';
 import { buildDiagBundle, type BundleManifest } from '../../utils/diagBundle';
+import { loadFromStorage, saveToStorage } from '../../utils/storage';
+import { SELECTED_MAIL_CHANNEL_STORAGE_KEY } from './SettingsPage';
 import { Spinner } from '../common/Spinner';
 
 type FeedbackType = 'bug' | 'idea' | 'other';
@@ -64,6 +66,25 @@ export function FeedbackPage() {
   // The page the user came from is captured once, at mount, from the stash the
   // header button set just before navigating here.
   const [fromPageId] = useState(() => feedbackFromPageStore.get());
+
+  // Mail-channel picker — which DSS channel sends this feedback. Shares the
+  // localStorage key with Settings so a choice carries across both. The feedback
+  // route honours the explicit choice (else configured, else first channel).
+  const mailChannels = diagState.parsedData.mailChannels ?? [];
+  const configuredChannel = diagState.parsedData.configuredMailChannel || '';
+  const [storedChannel, setStoredChannel] = useState<string>(() =>
+    loadFromStorage<string>(SELECTED_MAIL_CHANNEL_STORAGE_KEY, ''),
+  );
+  const isStoredValid = !!storedChannel && mailChannels.some((c) => c.id === storedChannel);
+  const selectedChannel = isStoredValid
+    ? storedChannel
+    : mailChannels.some((c) => c.id === configuredChannel)
+      ? configuredChannel
+      : mailChannels[0]?.id ?? '';
+  const handleChannelChange = useCallback((id: string) => {
+    setStoredChannel(id);
+    saveToStorage(SELECTED_MAIL_CHANNEL_STORAGE_KEY, id);
+  }, []);
 
   const diagnosticsText = useMemo(() => {
     const host = getActiveHost();
@@ -207,6 +228,7 @@ export function FeedbackPage() {
         fd.append('type', type);
         fd.append('message', trimmed);
         if (email.trim()) fd.append('email', email.trim());
+        if (selectedChannel) fd.append('mailChannel', selectedChannel);
         fd.append('diagnostics', diagnosticsText.text);
         fd.append('website', website);
         files.forEach((f) => fd.append('attachments', f, f.name));
@@ -241,7 +263,18 @@ export function FeedbackPage() {
         setErrorMsg('Could not reach the server. Please check your connection and try again.');
       }
     },
-    [status, message, type, email, website, files, bundle, removeBundle, diagnosticsText.text],
+    [
+      status,
+      message,
+      type,
+      email,
+      website,
+      files,
+      bundle,
+      removeBundle,
+      selectedChannel,
+      diagnosticsText.text,
+    ],
   );
 
   // Typing again after a send clears the stale success/error banner.
@@ -335,6 +368,33 @@ export function FeedbackPage() {
               className="w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-elevated)] text-[var(--text-primary)] px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
             />
           </div>
+
+          {/* Mail channel — which DSS channel sends this feedback */}
+          {mailChannels.length > 0 && (
+            <div>
+              <label
+                htmlFor="feedback-mail-channel"
+                className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-tertiary)] mb-2"
+              >
+                Send via{' '}
+                <span className="font-normal normal-case text-[var(--text-tertiary)]">
+                  (DSS mail channel — shared with Settings)
+                </span>
+              </label>
+              <select
+                id="feedback-mail-channel"
+                value={selectedChannel}
+                onChange={(e) => handleChannelChange(e.target.value)}
+                className="w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-elevated)] text-[var(--text-primary)] px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+              >
+                {mailChannels.map((channel) => (
+                  <option key={channel.id} value={channel.id}>
+                    {channel.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Diagnostic bundle */}
           <div>

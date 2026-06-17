@@ -32,6 +32,7 @@ export function DirTreeSection({ file }: DirTreeSectionProps) {
   const [started, setStarted] = useState(false);
   const [entrySize, setEntrySize] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [activeNode, setActiveNode] = useState<DirEntry | null>(null);
   const loadStartedRef = useRef(false);
 
   // Wait 1 second after mount before starting
@@ -205,12 +206,14 @@ export function DirTreeSection({ file }: DirTreeSectionProps) {
         onExpand={handleExpand}
         expandedNodes={expandedNodes}
         isExpanding={state.isLoading}
+        onActiveNodeChange={setActiveNode}
       />
       <DirTreeTable
         data={state.tree}
         onExpand={handleExpand}
         expandedNodes={expandedNodes}
         isExpanding={state.isLoading}
+        rootNode={activeNode}
       />
     </div>
   );

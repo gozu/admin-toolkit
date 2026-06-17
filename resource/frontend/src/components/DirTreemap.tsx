@@ -14,6 +14,7 @@ interface DirTreemapProps {
   expandedNodes?: Map<string, DirEntry>;
   isExpanding?: boolean;
   onVisibleDirectoriesChange?: (dirPaths: string[]) => void;
+  onActiveNodeChange?: (node: DirEntry | null) => void;
 }
 
 // Color palette for different depths
@@ -129,12 +130,14 @@ function wouldCreateDuplicateView(
   return false;
 }
 
-export function DirTreemap({ data, onExpand, expandedNodes, isExpanding, onVisibleDirectoriesChange }: DirTreemapProps) {
+export function DirTreemap({ data, onExpand, expandedNodes, isExpanding, onVisibleDirectoriesChange, onActiveNodeChange }: DirTreemapProps) {
   const [currentNode, setCurrentNode] = useState<DirEntry | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<DirEntry[]>([]);
   const [loadingPath, setLoadingPath] = useState<string | null>(null);
 
   const activeNode = currentNode || data.root;
+
+  useEffect(() => { onActiveNodeChange?.(currentNode); }, [currentNode, onActiveNodeChange]);
 
   const pushParentIfNeeded = useCallback(() => {
     if (!activeNode || !data.root) return;

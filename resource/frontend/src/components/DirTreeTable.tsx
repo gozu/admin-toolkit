@@ -8,6 +8,7 @@ interface DirTreeTableProps {
   onExpand?: (dirPath: string) => Promise<DirEntry | null>;
   expandedNodes?: Map<string, DirEntry>;
   isExpanding?: boolean;
+  rootNode?: DirEntry | null;
 }
 
 function formatSize(bytes: number): string {
@@ -262,12 +263,16 @@ function SortHeader({
   );
 }
 
-export function DirTreeTable({ data, onExpand, expandedNodes, isExpanding }: DirTreeTableProps) {
-  const [expanded, setExpanded] = useState<Set<string>>(() => {
-    // Auto-expand root
-    if (data.root) return new Set([data.root.path]);
-    return new Set();
-  });
+export function DirTreeTable({ data, onExpand, expandedNodes, isExpanding, rootNode }: DirTreeTableProps) {
+  // Render root follows the treemap's drill-down when provided, else the full tree.
+  const baseRoot = rootNode ?? data.root;
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(baseRoot ? [baseRoot.path] : []));
+  // Re-anchor (and auto-expand) the table when the drill-down root changes.
+  const [anchoredPath, setAnchoredPath] = useState(baseRoot?.path);
+  if (baseRoot?.path !== anchoredPath) {
+    setAnchoredPath(baseRoot?.path);
+    setExpanded(new Set(baseRoot ? [baseRoot.path] : []));
+  }
   const { sortKey: sortField, sortDir: sortDirection, handleSort } = useTableSort<SortField>({
     defaultKey: 'size',
     ascDefaultKeys: ['name'],
@@ -287,7 +292,7 @@ export function DirTreeTable({ data, onExpand, expandedNodes, isExpanding }: Dir
   }, []);
 
   const expandAll = useCallback(() => {
-    if (!data.root) return;
+    if (!baseRoot) return;
     const allPaths = new Set<string>();
     const collect = (node: DirEntry) => {
       if (node.isDirectory) {
@@ -295,14 +300,14 @@ export function DirTreeTable({ data, onExpand, expandedNodes, isExpanding }: Dir
         node.children.forEach(collect);
       }
     };
-    collect(data.root);
+    collect(baseRoot);
     setExpanded(allPaths);
-  }, [data.root]);
+  }, [baseRoot]);
 
   const collapseAll = useCallback(() => {
-    if (!data.root) return;
-    setExpanded(new Set([data.root.path]));
-  }, [data.root]);
+    if (!baseRoot) return;
+    setExpanded(new Set([baseRoot.path]));
+  }, [baseRoot]);
 
   const handleToggle = useCallback(
     async (node: DirEntry) => {
@@ -321,7 +326,7 @@ export function DirTreeTable({ data, onExpand, expandedNodes, isExpanding }: Dir
 
   // Sort the tree (only top-level children, keeps tree structure)
   const sortedRoot = useMemo(() => {
-    if (!data.root) return null;
+    if (!baseRoot) return null;
 
     const sortChildren = (node: DirEntry): DirEntry => {
       if (!node.isDirectory || node.children.length === 0) return node;
@@ -351,10 +356,10 @@ export function DirTreeTable({ data, onExpand, expandedNodes, isExpanding }: Dir
       };
     };
 
-    return sortChildren(data.root);
-  }, [data.root, sortField, sortDirection]);
+    return sortChildren(baseRoot);
+  }, [baseRoot, sortField, sortDirection]);
 
-  if (!data.root) {
+  if (!baseRoot) {
     return (
       <div className="glass-card p-5 flex items-center justify-center h-[400px]">
         <span className="text-[var(--text-muted)]">No directory data available</span>
@@ -419,7 +424,7 @@ export function DirTreeTable({ data, onExpand, expandedNodes, isExpanding }: Dir
                   key={node.path}
                   node={node}
                   depth={depth}
-                  maxSize={data.totalSize}
+                  maxSize={baseRoot.size}
                   isExpanded={isExpanded}
                   hasChildren={hasChildren}
                   hasHiddenChildren={hasHiddenChildren}

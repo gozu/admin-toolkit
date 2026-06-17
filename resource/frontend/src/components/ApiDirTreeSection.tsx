@@ -1,11 +1,13 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { DirTreemap } from './DirTreemap';
 import { DirTreeTable } from './DirTreeTable';
 import { useApiDirTree } from '../hooks';
+import type { DirEntry } from '../types';
 
 export function ApiDirTreeSection() {
   const { state, loadRoot, abortLoad, expandDirectory, schedulePrefetch, cancelPrefetch } = useApiDirTree();
+  const [activeNode, setActiveNode] = useState<DirEntry | null>(null);
 
   const scope = state.scope;
   const projectKey = state.projectKey;
@@ -108,12 +110,14 @@ export function ApiDirTreeSection() {
           expandedNodes={state.expandedNodes}
           isExpanding={state.isExpanding}
           onVisibleDirectoriesChange={schedulePrefetch}
+          onActiveNodeChange={setActiveNode}
         />
         <DirTreeTable
           data={state.tree}
           onExpand={expandDirectory}
           expandedNodes={state.expandedNodes}
           isExpanding={state.isExpanding}
+          rootNode={activeNode}
         />
       </div>
     </div>

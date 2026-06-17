@@ -254,6 +254,10 @@ export function useDelayedPageWarmup(enabled: boolean, parsedData: ParsedData): 
       cancelled = true;
       if (idleHandle != null) cancelIdle(idleHandle);
     };
+    // `setLifecycle` is a fresh closure each render (it's not memoized), so adding
+    // it would re-fire this one-shot warmup queue on every render. It only wraps
+    // the stable `dispatch`, which IS in the deps, so omitting it is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setLifecycle wraps dispatch (already a dep); listing it would re-run the warmup each render
   }, [dispatch, enabled]);
 
   useEffect(() => {

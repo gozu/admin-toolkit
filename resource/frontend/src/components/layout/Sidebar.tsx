@@ -567,7 +567,11 @@ function SidebarItemStatus({ module, data }: SidebarItemStatusProps) {
     >
       {kind !== 'done' ? (
         renderGlyph(kind)
-      ) : sawPendingRef.current ? (
+      ) : // One-shot mount decision: the ref (set at line 545) records whether we
+      // ever saw a pending state this mount, picking the celebrate vs. settle
+      // branch. Reading it during render is the point — it gates JSX.
+      // eslint-disable-next-line react-hooks/refs -- intentional render-time read of a mount-scoped flag
+      sawPendingRef.current ? (
         // Completion observed live this mount → celebrate. Keyed on finishedAt
         // so a fresh done-episode (e.g. after a session reset) remounts and
         // replays the dust instead of staying gone.
@@ -796,6 +800,10 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
   const navRef = useRef<HTMLElement>(null);
   const [keyboardNav, setKeyboardNav] = useState(false);
   const activePageRef = useRef(activePage);
+  // Latest-value ref: synced in render so the keydown handler (registered once
+  // in the effect below) reads the current page without re-binding the listener
+  // on every nav. Read only inside the event handler, never during render.
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref, read only in event handler
   activePageRef.current = activePage;
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

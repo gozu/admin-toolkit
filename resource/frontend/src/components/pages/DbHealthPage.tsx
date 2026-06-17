@@ -131,10 +131,19 @@ export function DbHealthPage() {
   } = dbHealthConnectionsStore.use();
   const [selectedConn, setSelectedConn] = useState<string>('');
 
-  const selectedDetail = selectedConn ? detailsByConnection[selectedConn] : undefined;
+  // Memoized off the store-derived map + selection so it's a stable reference.
+  // The downstream useMemo/useCallback dep on it (and on `tables`/`perProject`
+  // below) then stays stable, which keeps the React Compiler from bailing out of
+  // optimizing this component (react-hooks/preserve-manual-memoization).
+  const selectedDetail = useMemo(
+    () => (selectedConn ? detailsByConnection[selectedConn] : undefined),
+    [selectedConn, detailsByConnection],
+  );
   const overview = selectedDetail?.overview ?? null;
-  const tables = selectedDetail?.tables ?? [];
-  const perProject = selectedDetail?.perProject ?? null;
+  // Wrapped so the `?? []` / `?? null` fallbacks don't mint a fresh reference
+  // each render (an unstable dep for the memos that consume them).
+  const tables = useMemo(() => selectedDetail?.tables ?? [], [selectedDetail]);
+  const perProject = useMemo(() => selectedDetail?.perProject ?? null, [selectedDetail]);
   const dataLoading = selectedDetail?.loading ?? false;
   const dataError = selectedDetail?.error ?? null;
   const warnings = selectedDetail?.warnings ?? [];

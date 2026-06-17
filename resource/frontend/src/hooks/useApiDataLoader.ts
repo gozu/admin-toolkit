@@ -47,6 +47,11 @@ export function useApiDataLoader(enabled: boolean, reloadKey = 0) {
   // load effect calls the current fn without stale-closure / exhaustive-deps churn.
   const { loadRoot: loadDirTreeRoot } = useApiDirTree();
   const loadDirTreeRootRef = useRef(loadDirTreeRoot);
+  // Intentional latest-value ref: synced in render so the long-lived load effect
+  // (deps [enabled]) always calls the current fn without re-subscribing. The ref
+  // is only *read* later inside that effect, never during render, so the
+  // render-time write is safe. A useEffect sync would lag one commit.
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref, read only in effects
   loadDirTreeRootRef.current = loadDirTreeRoot;
 
   // Connections usage scan (shared by Insights / Usage / FS-Migration). Was

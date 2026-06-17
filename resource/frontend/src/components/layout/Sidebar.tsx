@@ -174,20 +174,12 @@ const icons: Record<string, ReactNode> = {
     </svg>
   ),
   'project-cost': (
-    // TEMP A/B: left = hand-drawn (house style), right = Lucide circle-dollar-sign (exact path)
-    <span style={{ display: 'inline-flex', gap: 4 }}>
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="9" />
-        <path d="M15 9.5a3 3 0 0 0-3-1.5c-1.66 0-3 .9-3 2s1.34 2 3 2 3 .9 3 2-1.34 2-3 2a3 3 0 0 1-3-1.5" />
-        <line x1="12" y1="6" x2="12" y2="8" />
-        <line x1="12" y1="16" x2="12" y2="18" />
-      </svg>
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8" />
-        <path d="M12 18V6" />
-      </svg>
-    </span>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M15 9.5a3 3 0 0 0-3-1.5c-1.66 0-3 .9-3 2s1.34 2 3 2 3 .9 3 2-1.34 2-3 2a3 3 0 0 1-3-1.5" />
+      <line x1="12" y1="6" x2="12" y2="8" />
+      <line x1="12" y1="16" x2="12" y2="18" />
+    </svg>
   ),
   plugins: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">

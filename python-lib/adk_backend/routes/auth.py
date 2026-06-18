@@ -28,6 +28,7 @@ import time
 import dataiku
 from flask import Blueprint, jsonify, request
 
+from adk_backend import hostkeys
 from adk_backend.utils import local_only
 
 bp = Blueprint('auth', __name__)
@@ -156,4 +157,105 @@ def api_auth_red_lock():
     """Forget the unlock on this device by clearing the cookie."""
     resp = jsonify({'unlocked': False})
     resp.delete_cookie(_RED_COOKIE_NAME, path='/')
+    return resp
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Remote-host API-key unlock
+#
+# Remote-host preset API keys may be stored encrypted as `adkfk1$` blobs
+# (generated offline in hash.html with a password the admin remembers). To
+# decrypt them at request time the backend needs the derived Fernet key; the
+# admin unlocks once per browser by POSTing the password, and the derived key
+# rides an HttpOnly cookie (mirroring the red-unlock flow). The key is never
+# persisted server-side — only the ciphertext + (non-secret) salt are.
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _encrypted_host_blobs():
+    """[(host_id, blob)] for every remote-dss-host preset whose apiKey is an
+    adkfk1$ encrypted blob. Read from LOCAL plugin settings (admin-only)."""
+    try:
+        raw = dataiku.api_client().get_plugin('admin-toolkit').get_settings().get_raw()
+    except Exception:
+        return []
+    presets = raw.get('presets') if isinstance(raw, dict) else None
+    if not isinstance(presets, list):
+        return []
+    out = []
+    for preset in presets:
+        if not isinstance(preset, dict):
+            continue
+        if not (preset.get('type') or '').endswith('remote-dss-host'):
+            continue
+        cfg = preset.get('config') or {}
+        key = cfg.get('apiKey') or ''
+        if hostkeys.is_encrypted(key):
+            out.append((preset.get('name'), key))
+    return out
+
+
+@bp.route('/api/hosts/keys/unlock', methods=['POST'])
+@local_only
+def api_hosts_keys_unlock():
+    """Verify the password decrypts the stored blobs, cache the derived key, and
+    hand back an HttpOnly cookie carrying it. Reports any presets it couldn't
+    decrypt (e.g. a blob made with a different salt)."""
+    blobs = _encrypted_host_blobs()
+    if not blobs:
+        return jsonify({
+            'error': 'not-configured',
+            'message': 'No remote host has an encrypted API key. Encrypt a key with the tool and paste the adkfk1$… blob into the preset first.',
+        }), 400
+    body = request.get_json(silent=True) or {}
+    password = body.get('password') or ''
+    # All blobs share one salt; derive from the first and verify against it.
+    salt = hostkeys.salt_from_blob(blobs[0][1])
+    fernet_key = hostkeys.derive_fernet_key(password, salt)
+    try:
+        hostkeys.decrypt_blob(blobs[0][1], fernet_key)
+    except Exception:
+        return jsonify({'error': 'invalid-password', 'message': 'Incorrect password.'}), 401
+    failed = []
+    for host_id, blob in blobs:
+        try:
+            hostkeys.decrypt_blob(blob, fernet_key)
+        except Exception:
+            failed.append(host_id)
+    exp = int(time.time()) + _RED_TOKEN_TTL_SECONDS
+    hostkeys.set_active_key(fernet_key)
+    resp = jsonify({'unlocked': True, 'expiresAt': exp * 1000, 'failed': failed})
+    resp.set_cookie(
+        hostkeys.KEY_COOKIE_NAME, fernet_key.decode('ascii'),
+        max_age=_RED_TOKEN_TTL_SECONDS, path='/',
+        secure=_red_secure_cookie(), httponly=True, samesite='Lax',
+    )
+    return resp
+
+
+@bp.route('/api/hosts/keys/status', methods=['GET'])
+@local_only
+def api_hosts_keys_status():
+    """Boot-time UI hydration: are any presets encrypted, and does this browser's
+    cookie still decrypt them?"""
+    blobs = _encrypted_host_blobs()
+    configured = len(blobs) > 0
+    unlocked = False
+    cookie = request.cookies.get(hostkeys.KEY_COOKIE_NAME, '')
+    if configured and cookie:
+        try:
+            hostkeys.decrypt_blob(blobs[0][1], cookie.encode('ascii'))
+            unlocked = True
+        except Exception:
+            unlocked = False
+    return jsonify({'configured': configured, 'unlocked': unlocked})
+
+
+@bp.route('/api/hosts/keys/lock', methods=['POST'])
+@local_only
+def api_hosts_keys_lock():
+    """Forget the unlock on this device: clear the cookie and the process cache."""
+    hostkeys.clear_active_key()
+    resp = jsonify({'unlocked': False})
+    resp.delete_cookie(hostkeys.KEY_COOKIE_NAME, path='/')
     return resp

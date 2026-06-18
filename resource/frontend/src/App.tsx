@@ -28,6 +28,8 @@ import { AppShell } from './components/layout/AppShell';
 import { PageRouter } from './components/layout/PageRouter';
 import { CommandPalette } from './components/CommandPalette';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
+import { HostKeyUnlockModal } from './components/HostKeyUnlockModal';
+import { hydrateHostKeyStatus, useHostKeyState } from './state/hostKeyUnlockStore';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { FxLayer } from './fx/FxLayer';
 
@@ -69,6 +71,29 @@ function AppContent() {
     window.addEventListener('admin-toolkit:macro-project-missing', onMacroProjectMissing);
     return () => window.removeEventListener('admin-toolkit:macro-project-missing', onMacroProjectMissing);
   }, [liveMode]);
+
+  // Encrypted remote-host keys: reconcile with the cookie on boot, and pop the
+  // unlock modal when a request comes back 409 remote-keys-locked.
+  const [showHostKeyUnlock, setShowHostKeyUnlock] = useState(false);
+  const { configured: hostKeyConfigured, unlocked: hostKeyUnlocked } = useHostKeyState();
+  useEffect(() => {
+    if (liveMode) hydrateHostKeyStatus();
+  }, [liveMode]);
+  useEffect(() => {
+    if (liveMode && hostKeyConfigured && !hostKeyUnlocked) setShowHostKeyUnlock(true);
+  }, [liveMode, hostKeyConfigured, hostKeyUnlocked]);
+  useEffect(() => {
+    const onLocked = () => {
+      if (liveMode) setShowHostKeyUnlock(true);
+    };
+    window.addEventListener('admin-toolkit:remote-keys-locked', onLocked);
+    return () => window.removeEventListener('admin-toolkit:remote-keys-locked', onLocked);
+  }, [liveMode]);
+  const handleHostKeyUnlocked = useCallback(() => {
+    setShowHostKeyUnlock(false);
+    bumpSessionEpoch();
+    setReloadKey((k) => k + 1);
+  }, []);
 
   const handleRefreshCache = useCallback(async () => {
     await fetchRaw('/api/cache/clear', { method: 'POST' });
@@ -241,6 +266,14 @@ function AppContent() {
 
       {/* '?' keyboard shortcuts overlay */}
       <ShortcutsOverlay isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      {/* Remote-host API-key unlock — mounted app-wide so it can appear during
+          the initial data load (before AppShell exists) when keys are locked. */}
+      <HostKeyUnlockModal
+        isOpen={showHostKeyUnlock}
+        onClose={() => setShowHostKeyUnlock(false)}
+        onUnlocked={handleHostKeyUnlocked}
+      />
     </>
   );
 }

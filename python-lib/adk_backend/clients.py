@@ -11,6 +11,7 @@ import dataikuapi
 from dateutil import parser as dtparser
 from flask import abort, g, request
 
+from adk_backend import hostkeys
 from adk_backend.caching import _cache_get
 from adk_backend.context import _THREAD_LOCAL
 from adk_backend.settings import _BACKEND_SETTINGS
@@ -179,11 +180,25 @@ def _remote_host_config(host_id: str) -> Optional[Dict[str, Any]]:
         if preset.get('name') != host_id:
             continue
         cfg = preset.get('config') or {}
+        # Remote-host keys may be stored encrypted (adkfk1$ blob). Decrypt
+        # transparently with the process-cached key; raise RemoteKeysLocked (→
+        # 409, frontend pops the unlock modal) when locked or undecryptable.
+        raw_key = cfg.get('apiKey') or ''
+        if hostkeys.is_encrypted(raw_key):
+            active = hostkeys.get_active_key()
+            if active is None:
+                raise hostkeys.RemoteKeysLocked(host_id)
+            try:
+                api_key = hostkeys.decrypt_blob(raw_key, active)
+            except Exception:
+                raise hostkeys.RemoteKeysLocked(host_id)
+        else:
+            api_key = raw_key
         return {
             'id': preset.get('name'),
             'label': cfg.get('label') or preset.get('name'),
             'url': (cfg.get('url') or '').rstrip('/'),
-            'apiKey': cfg.get('apiKey') or '',
+            'apiKey': api_key,
             'verifyTls': bool(cfg.get('verifyTls', True)),
             'backupProjectKey': (cfg.get('backupProjectKey') or '').strip(),
         }

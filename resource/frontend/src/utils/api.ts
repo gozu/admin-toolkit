@@ -1,5 +1,6 @@
 import { getActiveHostId } from '../state/hostStore';
 import { markLockedFromServer } from '../state/redUnlockStore';
+import { markLockedFromServer as markHostKeyLockedFromServer } from '../state/hostKeyUnlockStore';
 import { parseSseStream, type SseFrame } from './sseStream';
 
 export function getBackendUrl(path: string): string {
@@ -52,6 +53,13 @@ async function toApiError(response: Response, url: string): Promise<ApiRequestEr
       && (body as { error?: string }).error === 'macro-project-missing') {
     globalThis.dispatchEvent?.(new CustomEvent('admin-toolkit:macro-project-missing', { detail: body }));
   }
+  // A remote host's API key is encrypted and we hold no usable decryption key:
+  // reflect the locked state and let the app pop the host-key unlock modal.
+  if (response.status === 409 && body && typeof body === 'object'
+      && (body as { error?: string }).error === 'remote-keys-locked') {
+    markHostKeyLockedFromServer();
+    globalThis.dispatchEvent?.(new CustomEvent('admin-toolkit:remote-keys-locked', { detail: body }));
+  }
   // The server-side advanced gate rejected us: the unlock cookie is missing,
   // expired, or the admin rotated the password. Reflect the locked state in the
   // UI (the cookie itself is HttpOnly; the server is the source of truth) so the
@@ -96,6 +104,11 @@ export async function fetchRaw(path: string, init?: RequestInit): Promise<Respon
       if (body && typeof body === 'object'
           && (body as { error?: string }).error === 'macro-project-missing') {
         globalThis.dispatchEvent?.(new CustomEvent('admin-toolkit:macro-project-missing', { detail: body }));
+      }
+      if (body && typeof body === 'object'
+          && (body as { error?: string }).error === 'remote-keys-locked') {
+        markHostKeyLockedFromServer();
+        globalThis.dispatchEvent?.(new CustomEvent('admin-toolkit:remote-keys-locked', { detail: body }));
       }
     } catch {
       /* body was non-JSON or already consumed by the caller */

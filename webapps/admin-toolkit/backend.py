@@ -34,6 +34,10 @@ from adk_backend.sysinfo import (
 # Red-unlock token helpers live with their routes; the app-wide @advanced gate
 # (_check_red_unlock below) still validates the cookie on every request.
 from adk_backend.routes.auth import _RED_COOKIE_NAME, _verify_red_token
+# Remote-host key decryption: the unlock cookie carries the derived Fernet key;
+# we seed the process cache from it on every request so _remote_host_config can
+# decrypt (and background loaders inherit it).
+from adk_backend.hostkeys import KEY_COOKIE_NAME, RemoteKeysLocked, set_active_key
 
 # Names with no in-module reference are re-exported for tests/backend/*,
 # which patch or call them via `backend.<name>`.
@@ -63,13 +67,23 @@ def _attach_client() -> None:
     """
     if not request.path.startswith('/api/'):
         return
+    # Seed the remote-host decryption key from the unlock cookie BEFORE client
+    # resolution, so _remote_host_config can decrypt an adkfk1$ blob. The key
+    # persists in a process cache so cookieless background loaders inherit it.
+    key_cookie = request.cookies.get(KEY_COOKIE_NAME)
+    if key_cookie:
+        set_active_key(key_cookie.encode('ascii'))
     host_id = request.headers.get('X-DSS-Host-Id', 'local') or 'local'
     g.host_id = host_id
     g.host_error = None
+    g.host_keys_locked = False
     view = app.view_functions.get(request.endpoint)
     client_host_id = 'local' if view is not None and getattr(view, '_admin_toolkit_local_only', False) else host_id
     try:
         g.client = _resolve_client(client_host_id)
+    except RemoteKeysLocked:
+        g.client = None
+        g.host_keys_locked = True
     except Exception as exc:
         g.client = None
         g.host_error = f'{type(exc).__name__}: {str(exc)[:200]}'
@@ -99,12 +113,19 @@ def _check_host_ready() -> Optional[Response]:
     """
     if not request.path.startswith('/api/'):
         return None
-    if getattr(g, 'host_error', None) is None:
-        return None
     if request.path in ('/api/hosts', '/api/hosts/check', '/api/hosts/macro-project'):
         return None
     view = app.view_functions.get(request.endpoint)
     if view is not None and getattr(view, '_admin_toolkit_local_only', False):
+        return None
+    # An encrypted remote-host key with no usable decryption key → ask the
+    # frontend to pop the unlock modal (distinct from the generic 502).
+    if getattr(g, 'host_keys_locked', False):
+        return jsonify({
+            'error': 'remote-keys-locked',
+            'hostId': getattr(g, 'host_id', 'local'),
+        }), 409
+    if getattr(g, 'host_error', None) is None:
         return None
     return jsonify({
         'error': 'host-unreachable',
@@ -119,6 +140,16 @@ def _handle_macro_project_missing(_exc: MacroProjectMissing):
         'error': 'macro-project-missing',
         'projectKey': MACRO_PROJECT_KEY,
         'defaultName': MACRO_PROJECT_DEFAULT_NAME,
+        'hostId': getattr(g, 'host_id', 'local'),
+    }), 409
+
+
+@app.errorhandler(RemoteKeysLocked)
+def _handle_remote_keys_locked(_exc: RemoteKeysLocked):
+    """An encrypted remote-host key was hit mid-request with no usable key →
+    409 so the frontend pops the host-key unlock modal."""
+    return jsonify({
+        'error': 'remote-keys-locked',
         'hostId': getattr(g, 'host_id', 'local'),
     }), 409
 

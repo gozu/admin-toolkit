@@ -27,7 +27,7 @@
         {
             "name": "apiKey",
             "label": "Admin API Key",
-            "description": "Admin-level personal or global API key on the remote DSS. NOTE: stored as plaintext — DSS encrypts PASSWORD-typed plugin params with a key the webapp backend can't access, so we use STRING here so the webapp can build the remote DSSClient. Only DSS admins can read plugin settings, so the key is admin-only.",
+            "description": "Admin-level personal or global API key on the remote DSS. Encrypt this key before pasting — open the <a href=\"/plugins/admin-toolkit/resource/hash.html\" target=\"_blank\" rel=\"noopener noreferrer\">encrypt tool</a>, encrypt with your master password, and paste the resulting <code>adkfk1$…</code> blob here. (Why STRING and not PASSWORD: DSS would encrypt a PASSWORD param with a key the webapp backend can't read, so the toolkit does its own <code>adkfk1$</code> encryption instead.)",
             "type": "STRING",
             "mandatory": true
         },

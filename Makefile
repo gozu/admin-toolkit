@@ -56,6 +56,7 @@ DEPLOY_COMMIT_PATHS := \
 	python-runnables \
 	webapps \
 	resource/dist \
+	resource/hash.html \
 	resource/dbhealth-connection-choices.py \
 	resource/frontend/src \
 	resource/frontend/public \

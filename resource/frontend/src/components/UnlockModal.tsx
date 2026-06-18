@@ -10,7 +10,8 @@ interface UnlockModalProps {
 }
 
 // Where the admin turns a password into the plugin secret + encrypted host keys.
-const ENCRYPT_TOOL_URL = 'https://gozu.github.io/hash.html';
+// Served statically by DSS from the plugin's resource/ dir on the controller.
+const ENCRYPT_TOOL_URL = '/plugins/admin-toolkit/resource/hash.html';
 
 /**
  * Single password prompt for both gates. One password unlocks the advanced

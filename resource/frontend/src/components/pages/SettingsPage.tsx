@@ -14,9 +14,10 @@ export const SELECTED_MAIL_CHANNEL_STORAGE_KEY = 'selectedMailChannel';
 export const SHOW_EXPERIMENTAL_STORAGE_KEY = 'showExperimental';
 export const SHOW_DEPRECATED_STORAGE_KEY = 'showDeprecated';
 
-// The only place to turn a password into a secret. Hosted on the admin's public
-// page; type the password there and paste the result into the plugin setting.
-const SECRET_PAGE_URL = 'https://gozu.github.io/hash.html';
+// The only place to turn a password into a secret. Served statically by DSS from
+// the plugin's resource/ dir; type the password there and paste the result into
+// the plugin setting.
+const SECRET_PAGE_URL = '/plugins/admin-toolkit/resource/hash.html';
 
 export function SettingsPage() {
   const { state } = useDiag();

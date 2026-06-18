@@ -8,7 +8,7 @@ import dkulogo from '../../assets/dkulogo.png';
 import { exportAllTablesToZip } from '../../utils/exportTables';
 import { exportDataToZip } from '../../utils/exportData';
 import { useDiag } from '../../context/DiagContext';
-import { RedUnlockModal } from '../RedUnlockModal';
+import { UnlockModal } from '../UnlockModal';
 import { DatasetExportModal } from '../DatasetExportModal';
 import { useRedState, toggleShowRed, hydrateRedStatus } from '../../state/redUnlockStore';
 import { datasetExportConfigStore } from '../../state/datasetExportConfigStore';
@@ -423,7 +423,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         )}
       </AnimatePresence>
 
-      <RedUnlockModal isOpen={showUnlock} onClose={() => setShowUnlock(false)} />
+      <UnlockModal isOpen={showUnlock} onClose={() => setShowUnlock(false)} />
       <DatasetExportModal
         isOpen={showDatasetExport}
         onClose={() => setShowDatasetExport(false)}

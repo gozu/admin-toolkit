@@ -4,8 +4,7 @@ import { loadFromStorage, saveToStorage } from '../../utils/storage';
 import { useToggleFlag } from '../../hooks/useToggleFlag';
 import { useRedState, forgetRed } from '../../state/redUnlockStore';
 import { useHostKeyState, forgetHostKey } from '../../state/hostKeyUnlockStore';
-import { RedUnlockModal } from '../RedUnlockModal';
-import { HostKeyUnlockModal } from '../HostKeyUnlockModal';
+import { UnlockModal } from '../UnlockModal';
 import { AlgorithmReviewCard } from '../AlgorithmReviewCard';
 import { PerfAutoTuneCard } from '../PerfAutoTuneCard';
 import { SupportBundleCard } from '../SupportBundleCard';
@@ -41,7 +40,6 @@ export function SettingsPage() {
   const [showUnlock, setShowUnlock] = useState(false);
 
   const { configured: hostKeyConfigured, unlocked: hostKeyUnlocked } = useHostKeyState();
-  const [showHostKeyUnlock, setShowHostKeyUnlock] = useState(false);
 
   const {
     configuredConnection: datasetExportConnection,
@@ -185,7 +183,7 @@ export function SettingsPage() {
           ) : (
             <button
               type="button"
-              onClick={() => setShowHostKeyUnlock(true)}
+              onClick={() => setShowUnlock(true)}
               disabled={!hostKeyConfigured}
               className="px-3 py-1.5 rounded bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30 disabled:opacity-40 text-sm transition-colors"
             >
@@ -295,11 +293,7 @@ export function SettingsPage() {
         </label>
       </section>
 
-      <RedUnlockModal isOpen={showUnlock} onClose={() => setShowUnlock(false)} />
-      <HostKeyUnlockModal
-        isOpen={showHostKeyUnlock}
-        onClose={() => setShowHostKeyUnlock(false)}
-      />
+      <UnlockModal isOpen={showUnlock} onClose={() => setShowUnlock(false)} />
     </div>
   );
 }

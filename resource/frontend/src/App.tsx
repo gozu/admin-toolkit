@@ -28,7 +28,7 @@ import { AppShell } from './components/layout/AppShell';
 import { PageRouter } from './components/layout/PageRouter';
 import { CommandPalette } from './components/CommandPalette';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
-import { HostKeyUnlockModal } from './components/HostKeyUnlockModal';
+import { UnlockModal } from './components/UnlockModal';
 import { hydrateHostKeyStatus, useHostKeyState } from './state/hostKeyUnlockStore';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { FxLayer } from './fx/FxLayer';
@@ -267,9 +267,10 @@ function AppContent() {
       {/* '?' keyboard shortcuts overlay */}
       <ShortcutsOverlay isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
-      {/* Remote-host API-key unlock — mounted app-wide so it can appear during
-          the initial data load (before AppShell exists) when keys are locked. */}
-      <HostKeyUnlockModal
+      {/* Unified password unlock — mounted app-wide so it can appear during the
+          initial data load (before AppShell exists) when remote-host keys are
+          locked. One password also unlocks the advanced action pages. */}
+      <UnlockModal
         isOpen={showHostKeyUnlock}
         onClose={() => setShowHostKeyUnlock(false)}
         onUnlocked={handleHostKeyUnlocked}

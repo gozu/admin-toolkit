@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Admin Toolkit — Destructive Actions password hash</title>
+<title>Admin Toolkit — Security Setup</title>
 <style>
   :root {
     --bg: #0d1117;
@@ -13,6 +13,7 @@
     --muted: #8b949e;
     --teal: #2AB1AC;
     --red: #f85149;
+    --green: #3fb950;
   }
   * { box-sizing: border-box; }
   body {
@@ -34,9 +35,28 @@
     border-radius: 12px;
     padding: 28px;
   }
-  h1 { font-size: 18px; margin: 0 0 4px; }
-  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; line-height: 1.5; }
-  label { display: block; font-size: 13px; font-weight: 600; margin: 16px 0 6px; }
+  h1 { font-size: 18px; margin: 0; }
+
+  .step {
+    margin-top: 26px;
+    padding-top: 22px;
+    border-top: 1px solid var(--border);
+  }
+  .step.locked { opacity: 0.4; pointer-events: none; user-select: none; }
+  .step-head {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 15px; font-weight: 600; margin-bottom: 10px;
+  }
+  .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: rgba(42, 177, 172, 0.18); color: var(--teal);
+    font-size: 12px; font-weight: 700; flex: none;
+  }
+  .step.done .num { background: rgba(63, 185, 80, 0.18); color: var(--green); }
+  .step-desc { color: var(--muted); font-size: 13px; margin: 0 0 10px; line-height: 1.5; }
+  .step-desc em { color: var(--text); font-style: normal; }
+
   input[type="password"], input[type="text"] {
     width: 100%;
     padding: 10px 12px;
@@ -47,8 +67,11 @@
     color: var(--text);
     outline: none;
   }
+  input + input { margin-top: 10px; }
   input:focus { border-color: var(--teal); }
-  .row { display: flex; gap: 10px; align-items: center; margin-top: 18px; }
+  input:read-only { color: var(--muted); border-style: dashed; }
+
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
   button {
     appearance: none;
     border: 1px solid var(--teal);
@@ -62,11 +85,27 @@
   }
   button:hover { background: rgba(42, 177, 172, 0.28); }
   button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .result {
-    margin-top: 20px;
-    display: none;
+  .linkbtn {
+    border: none; background: none; color: var(--teal);
+    font-size: 13px; font-weight: 500; padding: 6px 0 0; text-decoration: underline;
   }
-  .result.show { display: block; }
+  .linkbtn:hover { background: none; }
+  .showtog {
+    margin: 0; font-weight: 400; color: var(--muted);
+    display: flex; align-items: center; gap: 6px; font-size: 13px;
+  }
+  .showtog input { width: auto; }
+
+  .host-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  .host-row input { width: auto; min-width: 0; margin-top: 0; }
+  .hr-label { flex: 0 0 34%; }
+  .hr-key { flex: 1; }
+  .hr-del {
+    flex: none; padding: 9px 13px; font-size: 16px; line-height: 1;
+    border-color: var(--border); background: transparent; color: var(--muted);
+  }
+  .hr-del:hover { border-color: var(--red); color: var(--red); background: transparent; }
+
   .hash {
     width: 100%;
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
@@ -86,9 +125,27 @@
     color: var(--text);
   }
   .copy:hover { border-color: var(--teal); }
-  .err { color: var(--red); font-size: 13px; margin-top: 12px; min-height: 16px; }
+
+  .enc-result { margin-top: 16px; }
+  .enc-result-name { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+
+  #hash { margin-top: 0; }
+  .err { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 16px; }
+
+  .callout {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--red);
+    border-radius: 8px;
+    background: rgba(248, 81, 73, 0.12);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .callout strong { color: var(--red); }
+
   .note {
-    margin-top: 22px;
+    margin-top: 26px;
     padding-top: 16px;
     border-top: 1px solid var(--border);
     color: var(--muted);
@@ -96,45 +153,57 @@
     line-height: 1.6;
   }
   .note strong { color: var(--text); }
-  code { color: var(--teal); font-family: ui-monospace, monospace; }
 </style>
 </head>
 <body>
   <div class="card">
-    <h1>Destructive Actions — password hash</h1>
-    <p class="sub">
-      Type the password you want to gate destructive actions with. This page derives a
-      salted PBKDF2 hash <strong>entirely in your browser</strong> — the password is never
-      sent anywhere. Paste the resulting hash into the Admin Toolkit plugin settings field
-      <em>“Destructive Actions password (hash)”</em>.
-    </p>
+    <h1>Admin Toolkit — Security Setup</h1>
 
-    <form id="form">
-      <label for="pw">Password</label>
-      <input id="pw" type="password" autocomplete="new-password" placeholder="Choose a password" />
-      <label for="pw2">Confirm password</label>
-      <input id="pw2" type="password" autocomplete="new-password" placeholder="Re-type it" />
-      <div class="row">
-        <button id="go" type="submit">Generate hash</button>
-        <label style="margin:0; font-weight:400; color:var(--muted); display:flex; align-items:center; gap:6px;">
-          <input id="show" type="checkbox" style="width:auto;" /> show
-        </label>
+    <!-- ① Master password -->
+    <section class="step" id="step1">
+      <div class="step-head"><span class="num">1</span> Master Admin Toolkit Password</div>
+
+      <input id="pw" type="password" autocomplete="new-password" placeholder="Master Admin Toolkit Password" />
+      <input id="pw2" type="password" autocomplete="new-password" placeholder="Confirm password" />
+
+      <div class="callout">
+        This is the only password for Admin Toolkit. Used to encrypt Advanced Actions and API
+        keys of every remote host. <strong>Write it down now</strong> — it is never stored or
+        sent, so if you lose it, every secret here must be redone.
       </div>
-    </form>
 
-    <div class="err" id="err"></div>
+      <div class="row">
+        <button id="setPw" type="button">Set password</button>
+        <button id="changePw" type="button" class="linkbtn" style="display:none;">Change password (clears everything)</button>
+        <label class="showtog"><input id="show" type="checkbox" /> show</label>
+      </div>
+      <div class="err" id="pwErr"></div>
+    </section>
 
-    <div class="result" id="result">
-      <label>Hash to paste into plugin settings</label>
+    <!-- ② Advanced-actions secret -->
+    <section class="step locked" id="step2">
+      <div class="step-head"><span class="num">2</span> Advanced Actions secret</div>
+      <p class="step-desc">Paste into Plugin settings → <em>“Advanced Actions password (hash)”</em>.</p>
       <div class="hash" id="hash"></div>
-      <button class="copy" id="copy" type="button">Copy to clipboard</button>
-    </div>
+      <button class="copy" id="copyHash" type="button">Copy</button>
+    </section>
+
+    <!-- ③ Encrypt host API keys -->
+    <section class="step locked" id="step3">
+      <div class="step-head"><span class="num">3</span> Remote host API keys</div>
+      <p class="step-desc">
+        Paste each blob into that host’s preset <em>“API Key”</em> field. One unlock opens them all.
+      </p>
+      <div id="hostRows"></div>
+      <button id="addHost" type="button" class="linkbtn">+ Add another host</button>
+      <div class="row"><button id="encGo" type="button">Encrypt all</button></div>
+      <div class="err" id="encErr"></div>
+      <div id="encResults"></div>
+    </section>
 
     <div class="note">
-      Format: <code>pbkdf2_sha256$&lt;iterations&gt;$&lt;base64-salt&gt;$&lt;base64-derived&gt;</code><br />
-      Algorithm: PBKDF2-HMAC-SHA-256 · 600,000 iterations · random 16-byte salt · 32-byte key.<br />
-      <strong>Offline-safe:</strong> this page makes no network requests. You can save it and
-      open it from disk.
+      <strong>Offline-safe:</strong> this page makes no network requests — you can save it and
+      run it from disk.
     </div>
   </div>
 
@@ -142,11 +211,23 @@
   const ITERATIONS = 600000;
   const DKLEN = 32;
   const SALT_BYTES = 16;
+  // Domain tag so the host-key salt can never collide with any other use of the
+  // password. salt = SHA-256(password + tag)[:16] — deterministic, so the same
+  // password always yields the same salt/key (nothing for the admin to manage).
+  const HOST_SALT_TAG = ' adk-hostkey-salt-v1';
+
+  let masterPassword = null; // set in step 1; never leaves this tab
 
   function b64(bytes) {
     let s = '';
     for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
     return btoa(s);
+  }
+  function b64url(bytes, pad) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    let out = btoa(s).replace(/\+/g, '-').replace(/\//g, '_');
+    return pad ? out : out.replace(/=+$/, '');
   }
 
   async function derive(password, salt) {
@@ -162,60 +243,196 @@
     return new Uint8Array(bits);
   }
 
-  const form = document.getElementById('form');
+  // Deterministic 16-byte salt for host-key encryption, fixed by the password.
+  async function hostSalt(password) {
+    const data = new TextEncoder().encode(password + HOST_SALT_TAG);
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
+    return digest.slice(0, SALT_BYTES);
+  }
+
+  // Build a Fernet token: 0x80 | ts(8) | iv(16) | aes-cbc-ct | hmac(32), base64url.
+  // Fernet key = base64url(PBKDF2(pw, salt)); first 16 bytes sign (HMAC), last 16 encrypt.
+  async function encryptKey(password, plaintext, salt) {
+    const derived = await derive(password, salt);     // 32 bytes
+    const signingKey = derived.slice(0, 16);
+    const encKey = derived.slice(16, 32);
+    const iv = crypto.getRandomValues(new Uint8Array(16));
+    const aesKey = await crypto.subtle.importKey('raw', encKey, { name: 'AES-CBC' }, false, ['encrypt']);
+    const ct = new Uint8Array(await crypto.subtle.encrypt(
+      { name: 'AES-CBC', iv }, aesKey, new TextEncoder().encode(plaintext)));
+    const ts = Math.floor(Date.now() / 1000);
+    const tsBytes = new Uint8Array(8);
+    for (let i = 7, t = ts; i >= 0; i--) { tsBytes[i] = t & 0xff; t = Math.floor(t / 256); }
+    const frame = new Uint8Array(1 + 8 + 16 + ct.length);
+    frame[0] = 0x80;
+    frame.set(tsBytes, 1);
+    frame.set(iv, 9);
+    frame.set(ct, 25);
+    const hmacKey = await crypto.subtle.importKey('raw', signingKey, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const mac = new Uint8Array(await crypto.subtle.sign('HMAC', hmacKey, frame));
+    const token = new Uint8Array(frame.length + mac.length);
+    token.set(frame, 0);
+    token.set(mac, frame.length);
+    return 'adkfk1$' + b64url(salt, false) + '$' + b64url(token, true);
+  }
+
+  function webCryptoOk(target) {
+    if (!crypto || !crypto.subtle) {
+      target.textContent = 'Web Crypto is unavailable — open this page over https:// or from a local file.';
+      return false;
+    }
+    return true;
+  }
+
+  async function copyFrom(el, btn) {
+    try {
+      await navigator.clipboard.writeText(el.textContent);
+      const old = btn.textContent;
+      btn.textContent = 'Copied ✓';
+      setTimeout(() => { btn.textContent = old; }, 1500);
+    } catch {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(r);
+    }
+  }
+
+  // ── Elements ──────────────────────────────────────────────────────────────
   const pw = document.getElementById('pw');
   const pw2 = document.getElementById('pw2');
   const show = document.getElementById('show');
-  const err = document.getElementById('err');
-  const result = document.getElementById('result');
+  const setPw = document.getElementById('setPw');
+  const changePw = document.getElementById('changePw');
+  const pwErr = document.getElementById('pwErr');
+  const step1 = document.getElementById('step1');
+  const step2 = document.getElementById('step2');
+  const step3 = document.getElementById('step3');
   const hashEl = document.getElementById('hash');
-  const copyBtn = document.getElementById('copy');
-  const go = document.getElementById('go');
+  const copyHash = document.getElementById('copyHash');
+  const hostRows = document.getElementById('hostRows');
+  const addHost = document.getElementById('addHost');
+  const encGo = document.getElementById('encGo');
+  const encErr = document.getElementById('encErr');
+  const encResults = document.getElementById('encResults');
 
   show.addEventListener('change', () => {
     const t = show.checked ? 'text' : 'password';
     pw.type = t; pw2.type = t;
   });
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    err.textContent = '';
-    result.classList.remove('show');
+  // ① Set the one password: derive the advanced-actions hash and unlock ②/③.
+  setPw.addEventListener('click', async () => {
+    pwErr.textContent = '';
     const p = pw.value;
-    if (!p) { err.textContent = 'Enter a password.'; return; }
-    if (p !== pw2.value) { err.textContent = 'Passwords do not match.'; return; }
-    if (!crypto || !crypto.subtle) {
-      err.textContent = 'Web Crypto is unavailable — open this page over https:// or from a local file.';
-      return;
-    }
-    go.disabled = true;
-    go.textContent = 'Generating…';
+    if (!p) { pwErr.textContent = 'Enter a password.'; return; }
+    if (p !== pw2.value) { pwErr.textContent = 'Passwords do not match.'; return; }
+    if (!webCryptoOk(pwErr)) return;
+
+    setPw.disabled = true;
+    setPw.textContent = 'Working…';
     try {
       const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
       const derived = await derive(p, salt);
-      const phc = 'pbkdf2_sha256$' + ITERATIONS + '$' + b64(salt) + '$' + b64(derived);
-      hashEl.textContent = phc;
-      result.classList.add('show');
+      hashEl.textContent = 'pbkdf2_sha256$' + ITERATIONS + '$' + b64(salt) + '$' + b64(derived);
+
+      masterPassword = p;
+      pw.readOnly = true; pw2.readOnly = true;
+      setPw.style.display = 'none';
+      changePw.style.display = '';
+      step1.classList.add('done');
+      step2.classList.remove('locked');
+      step3.classList.remove('locked');
+      if (!hostRows.children.length) addRow();
+      hostRows.firstElementChild.querySelector('.hr-key').focus();
     } catch (ex) {
-      err.textContent = 'Failed to derive hash: ' + (ex && ex.message ? ex.message : ex);
-    } finally {
-      go.disabled = false;
-      go.textContent = 'Generate hash';
+      pwErr.textContent = 'Failed: ' + (ex && ex.message ? ex.message : ex);
+      setPw.disabled = false;
+      setPw.textContent = 'Set password';
     }
   });
 
-  copyBtn.addEventListener('click', async () => {
+  // Changing the password clears all derived state — the only safe way to avoid
+  // mixing keys encrypted under two different passwords.
+  changePw.addEventListener('click', () => {
+    if (encResults.children.length > 0 &&
+        !confirm('Change the password and start over? Any keys you already encrypted used the current password and would need to be redone.')) {
+      return;
+    }
+    location.reload();
+  });
+
+  copyHash.addEventListener('click', () => copyFrom(hashEl, copyHash));
+
+  // ③ One row per remote host. Add as many as needed, then encrypt all at once.
+  function addRow() {
+    const row = document.createElement('div');
+    row.className = 'host-row';
+    const label = document.createElement('input');
+    label.type = 'text'; label.className = 'hr-label';
+    label.placeholder = 'Host name (optional)';
+    label.autocomplete = 'off'; label.spellcheck = false;
+    const key = document.createElement('input');
+    key.type = 'text'; key.className = 'hr-key';
+    key.placeholder = 'API key';
+    key.autocomplete = 'off'; key.spellcheck = false;
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'hr-del'; del.title = 'Remove'; del.textContent = '×';
+    del.addEventListener('click', () => {
+      row.remove();
+      if (!hostRows.children.length) addRow();
+    });
+    row.appendChild(label); row.appendChild(key); row.appendChild(del);
+    hostRows.appendChild(row);
+    return row;
+  }
+  addRow();
+
+  addHost.addEventListener('click', () => addRow().querySelector('.hr-key').focus());
+
+  encGo.addEventListener('click', async () => {
+    encErr.textContent = '';
+    encResults.innerHTML = '';
+    if (masterPassword === null) { encErr.textContent = 'Set the password in step 1 first.'; return; }
+    const rows = [...hostRows.children].map((r, i) => ({
+      name: r.querySelector('.hr-label').value.trim(),
+      key: r.querySelector('.hr-key').value.trim(),
+      i,
+    })).filter((r) => r.key);
+    if (!rows.length) { encErr.textContent = 'Enter at least one API key.'; return; }
+    if (!webCryptoOk(encErr)) return;
+
+    encGo.disabled = true;
+    encGo.textContent = 'Encrypting…';
     try {
-      await navigator.clipboard.writeText(hashEl.textContent);
-      copyBtn.textContent = 'Copied ✓';
-      setTimeout(() => { copyBtn.textContent = 'Copy to clipboard'; }, 1500);
-    } catch {
-      const r = document.createRange();
-      r.selectNodeContents(hashEl);
-      const sel = window.getSelection();
-      sel.removeAllRanges(); sel.addRange(r);
+      const salt = await hostSalt(masterPassword);
+      for (const r of rows) {
+        const blob = await encryptKey(masterPassword, r.key, salt);
+        renderResult(r.name || ('Host ' + (r.i + 1)), blob);
+      }
+    } catch (ex) {
+      encErr.textContent = 'Failed to encrypt: ' + (ex && ex.message ? ex.message : ex);
+    } finally {
+      encGo.disabled = false;
+      encGo.textContent = 'Encrypt all';
     }
   });
+
+  function renderResult(name, blob) {
+    const wrap = document.createElement('div');
+    wrap.className = 'enc-result';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'enc-result-name';
+    nameEl.textContent = name;
+    const box = document.createElement('div');
+    box.className = 'hash';
+    box.textContent = blob;
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'copy'; btn.textContent = 'Copy';
+    btn.addEventListener('click', () => copyFrom(box, btn));
+    wrap.appendChild(nameEl); wrap.appendChild(box); wrap.appendChild(btn);
+    encResults.appendChild(wrap);
+  }
 </script>
 </body>
 </html>

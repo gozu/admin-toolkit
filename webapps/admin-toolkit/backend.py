@@ -107,13 +107,14 @@ def _check_red_unlock() -> Optional[Response]:
 def _check_host_ready() -> Optional[Response]:
     """Short-circuit /api/* requests when the active host couldn't be resolved.
 
-    Two exemptions: the 3 /api/hosts/* endpoints that exist precisely to
+    Two exemptions: the /api/hosts/* endpoints that exist precisely to
     diagnose / fix a broken host config, and any view marked @local_only
     (it reads local-only state and doesn't need the active host).
     """
     if not request.path.startswith('/api/'):
         return None
-    if request.path in ('/api/hosts', '/api/hosts/check', '/api/hosts/macro-project'):
+    if request.path in ('/api/hosts', '/api/hosts/check', '/api/hosts/macro-project',
+                        '/api/hosts/install-toolkit'):
         return None
     view = app.view_functions.get(request.endpoint)
     if view is not None and getattr(view, '_admin_toolkit_local_only', False):

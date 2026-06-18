@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchJson } from '../utils/api';
+import { fetchJson, fetchRaw } from '../utils/api';
+import { parseSseStream } from '../utils/sseStream';
 import { hostStore, setHosts, setActiveHost } from '../state/hostStore';
-import type { DssHost, DssHostStatus } from '../types';
+import { ProgressIndicator } from './common/ProgressIndicator';
+import type { DssHost, DssHostStatus, Lifecycle } from '../types';
 import dkulogo from '../assets/dkulogo.png';
 
 interface HostGateProps {
@@ -9,6 +11,44 @@ interface HostGateProps {
 }
 
 type ProbeState = DssHostStatus | 'loading' | undefined;
+
+// ── Install-toolkit flow (one-click bootstrap of a plugin-less remote) ──
+type InstallStepKey = 'install' | 'codeenv' | 'project';
+type StepStatus = 'queued' | 'active' | 'done' | 'error';
+interface StepView {
+  status: StepStatus;
+  message: string;
+}
+
+const INSTALL_STEPS: { key: InstallStepKey; label: string }[] = [
+  { key: 'install', label: 'Install plugin' },
+  { key: 'codeenv', label: 'Build code env' },
+  { key: 'project', label: 'Create project' },
+];
+
+function initialInstallSteps(): Record<InstallStepKey, StepView> {
+  return {
+    install: { status: 'queued', message: 'Queued' },
+    codeenv: { status: 'queued', message: 'Queued' },
+    project: { status: 'queued', message: 'Queued' },
+  };
+}
+
+// Map a step view onto a Lifecycle so ProgressIndicator derives its own tone
+// (grey queued / yellow active / white done / red error) — never a `tone` prop.
+const STEP_EPOCH = '1970-01-01T00:00:00.000Z';
+function stepLifecycle(step: StepView): Lifecycle {
+  switch (step.status) {
+    case 'queued':
+      return { phase: 'queued' };
+    case 'active':
+      return { phase: 'running', startedAt: STEP_EPOCH, progressPct: 0, message: step.message, updatedAt: STEP_EPOCH };
+    case 'done':
+      return { phase: 'done', startedAt: STEP_EPOCH, finishedAt: STEP_EPOCH, isEmpty: false, message: step.message };
+    case 'error':
+      return { phase: 'error', startedAt: STEP_EPOCH, finishedAt: STEP_EPOCH, error: step.message, progressPct: 0 };
+  }
+}
 
 function dotColor(s: ProbeState): string {
   if (s === undefined || s === 'loading') return 'bg-[var(--text-tertiary)]';
@@ -33,6 +73,13 @@ export function HostGate({ onEnter }: HostGateProps) {
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  // One-click install flow.
+  const [installHost, setInstallHost] = useState<DssHost | null>(null);
+  const [installSteps, setInstallSteps] = useState<Record<InstallStepKey, StepView>>(initialInstallSteps);
+  const [installRunning, setInstallRunning] = useState(false);
+  const [installError, setInstallError] = useState<string | null>(null);
+  const [installReady, setInstallReady] = useState(false);
+  const installButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!setupHost) return;
@@ -43,6 +90,17 @@ export function HostGate({ onEnter }: HostGateProps) {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [setupHost]);
+
+  useEffect(() => {
+    if (!installHost) return;
+    installButtonRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Don't let Escape interrupt an in-flight install.
+      if (e.key === 'Escape' && !installRunning) setInstallHost(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [installHost, installRunning]);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +154,15 @@ export function HostGate({ onEnter }: HostGateProps) {
       status !== undefined
       && status !== 'loading'
       && status.ok
+      && status.pluginInstalled === false
+    ) {
+      openInstall(host);
+      return;
+    }
+    if (
+      status !== undefined
+      && status !== 'loading'
+      && status.ok
       && status.pluginInstalled !== false
       && status.adminToolkitProjectExists === false
     ) {
@@ -104,6 +171,76 @@ export function HostGate({ onEnter }: HostGateProps) {
       return;
     }
     enterHost(host.id);
+  }
+
+  function openInstall(host: DssHost) {
+    setInstallHost(host);
+    setInstallSteps(initialInstallSteps());
+    setInstallError(null);
+    setInstallReady(false);
+    setInstallRunning(false);
+  }
+
+  async function runInstall() {
+    if (!installHost) return;
+    const hostId = installHost.id;
+    setInstallRunning(true);
+    setInstallError(null);
+    setInstallReady(false);
+    setInstallSteps(initialInstallSteps());
+    let completed = false;
+    try {
+      const response = await fetchRaw('/api/hosts/install-toolkit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostId }),
+      });
+      if (!response.ok || !response.body) {
+        const body = await response.text();
+        let msg = `Install failed: ${response.status} ${response.statusText}`;
+        try {
+          const parsed = JSON.parse(body) as { error?: string };
+          if (parsed.error) msg = parsed.error;
+        } catch {
+          /* not JSON */
+        }
+        throw new Error(msg);
+      }
+      for await (const frame of parseSseStream(response.body)) {
+        if (frame.event !== 'step') continue;
+        const p = frame.payload as {
+          step: InstallStepKey | 'complete';
+          status: StepStatus;
+          msg?: string;
+          error?: string;
+        };
+        if (p.step === 'complete') {
+          completed = true;
+          continue;
+        }
+        const stepKey = p.step;
+        const message = p.error || p.msg;
+        setInstallSteps((s) => ({
+          ...s,
+          [stepKey]: { status: p.status, message: message || s[stepKey].message },
+        }));
+        if (p.status === 'error') {
+          throw new Error(p.error || `${stepKey} failed`);
+        }
+      }
+      if (!completed) {
+        throw new Error('Install stream ended before completing');
+      }
+      const status = await probeHost(hostId);
+      if (!status.ok || status.pluginInstalled === false || status.adminToolkitProjectExists === false) {
+        throw new Error(status.error || 'Host is still not ready after install');
+      }
+      setInstallReady(true);
+    } catch (err) {
+      setInstallError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setInstallRunning(false);
+    }
   }
 
   async function confirmSetup() {
@@ -241,6 +378,64 @@ export function HostGate({ onEnter }: HostGateProps) {
           </div>
         </div>
       )}
+
+      {installHost && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-lg border border-[var(--border-glass)] bg-[var(--bg-surface)] p-5 shadow-xl">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">Install Admin Toolkit on this host</h2>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
+              {installHost.label} is reachable but the Admin Toolkit plugin isn't installed. This installs the
+              exact plugin version running here, builds its code env, and creates the support project on that host
+              — no manual steps.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              {INSTALL_STEPS.map((def) => (
+                <div key={def.key}>
+                  <div className="text-xs font-medium text-[var(--text-secondary)] mb-1">{def.label}</div>
+                  <ProgressIndicator lifecycle={stepLifecycle(installSteps[def.key])} compact />
+                </div>
+              ))}
+            </div>
+
+            {installError && (
+              <div className="mt-3 rounded border border-[var(--neon-red)]/40 bg-[var(--neon-red)]/10 px-3 py-2 text-sm text-[var(--neon-red)]">
+                {installError}
+              </div>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setInstallHost(null)}
+                disabled={installRunning}
+                className="rounded border border-[var(--border-glass)] px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-glass-hover)] disabled:opacity-60"
+              >
+                {installReady ? 'Close' : 'Cancel'}
+              </button>
+              {installReady ? (
+                <button
+                  type="button"
+                  onClick={() => { const id = installHost.id; setInstallHost(null); enterHost(id); }}
+                  className="rounded bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+                >
+                  Enter host →
+                </button>
+              ) : (
+                <button
+                  ref={installButtonRef}
+                  type="button"
+                  onClick={runInstall}
+                  disabled={installRunning}
+                  className="rounded bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+                >
+                  {installRunning ? 'Installing…' : installError ? 'Retry' : 'Install'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -254,7 +449,9 @@ interface HostCardProps {
 
 function HostCard({ host, status, accent, onClick }: HostCardProps) {
   const accentBorder = accent === 'local' ? 'border-[var(--neon-cyan)]/40' : 'border-[var(--border-glass)]';
-  const reachable = status !== undefined && status !== 'loading' && status.ok && status.pluginInstalled !== false;
+  const probed = status !== undefined && status !== 'loading';
+  const needsInstall = probed && status.ok && status.pluginInstalled === false;
+  const reachable = probed && status.ok && status.pluginInstalled !== false;
   const needsSetup = reachable && status.adminToolkitProjectExists === false;
   return (
     <button
@@ -282,7 +479,7 @@ function HostCard({ host, status, accent, onClick }: HostCardProps) {
           <div className="text-xs text-[var(--text-secondary)] mt-1">{dotLabel(status)}</div>
         </div>
         <span className="text-xs text-[var(--text-tertiary)] group-hover:text-[var(--neon-cyan)] transition-colors shrink-0">
-          {needsSetup ? 'Set up →' : reachable ? 'Enter →' : 'Try →'}
+          {needsInstall ? 'Install →' : needsSetup ? 'Set up →' : reachable ? 'Enter →' : 'Try →'}
         </span>
       </div>
     </button>

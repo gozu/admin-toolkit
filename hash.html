@@ -212,8 +212,9 @@
   const DKLEN = 32;
   const SALT_BYTES = 16;
   // Domain tag so the host-key salt can never collide with any other use of the
-  // password. salt = SHA-256(password + tag)[:16] — deterministic, so the same
-  // password always yields the same salt/key (nothing for the admin to manage).
+  // password. salt = PBKDF2(password, tag, 600k)[:16] — deterministic, so the same
+  // password always yields the same salt/key (nothing for the admin to manage),
+  // but it can't serve as a fast offline password verifier (see hostSalt).
   const HOST_SALT_TAG = ' adk-hostkey-salt-v1';
 
   let masterPassword = null; // set in step 1; never leaves this tab
@@ -245,9 +246,14 @@
 
   // Deterministic 16-byte salt for host-key encryption, fixed by the password.
   async function hostSalt(password) {
-    const data = new TextEncoder().encode(password + HOST_SALT_TAG);
-    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
-    return digest.slice(0, SALT_BYTES);
+    // Derive the salt through the full KDF (not a bare hash) so the stored salt
+    // can't serve as a fast offline password verifier: checking a guess against
+    // it costs the same 600k-iteration PBKDF2 as attacking the ciphertext. Still
+    // deterministic — same password → same salt/key, so one key opens every blob
+    // across separate encrypt runs (nothing for the admin to manage).
+    const tagSalt = new TextEncoder().encode(HOST_SALT_TAG);
+    const derived = await derive(password, tagSalt);   // PBKDF2(pw, tag, 600k) → 32 bytes
+    return derived.slice(0, SALT_BYTES);
   }
 
   // Build a Fernet token: 0x80 | ts(8) | iv(16) | aes-cbc-ct | hmac(32), base64url.

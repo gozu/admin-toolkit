@@ -25,9 +25,15 @@
             "mandatory": true
         },
         {
-            "name": "apiKey",
+            "name": "sep_apikey",
             "label": "Admin API Key",
-            "description": "Admin-level personal or global API key on the remote DSS. Encrypt this key before pasting — open the <a href=\"/plugins/admin-toolkit/resource/hash.html\" target=\"_blank\" rel=\"noopener noreferrer\">encrypt tool</a>, encrypt with your master password, and paste the resulting <code>adkfk1$…</code> blob here. (Why STRING and not PASSWORD: DSS would encrypt a PASSWORD param with a key the webapp backend can't read, so the toolkit does its own <code>adkfk1$</code> encryption instead.)",
+            "description": "Encrypt the key before pasting it below — open the <a href=\"/plugins/admin-toolkit/resource/hash.html\" target=\"_blank\" rel=\"noopener noreferrer\">encrypt tool</a>, encrypt with your master password, and paste the resulting <code>adkfk1$…</code> blob into the field below. (The field is STRING, not PASSWORD: DSS would encrypt a PASSWORD param with a key the webapp backend can't read, so the toolkit does its own <code>adkfk1$</code> encryption.)",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "apiKey",
+            "label": "Encrypted API key",
+            "description": "Admin-level personal or global API key on the remote DSS. Paste the encrypted adkfk1$… blob produced by the encrypt tool above.",
             "type": "STRING",
             "mandatory": true
         },

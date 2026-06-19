@@ -5,206 +5,543 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Admin Toolkit — Security Setup</title>
 <style>
+  /* Tokens mirror resource/frontend/src/index.css (the webapp's design system),
+     condensed to the slice this offline page needs. Webapp blue accent. */
   :root {
-    --bg: #0d1117;
-    --surface: #161b22;
-    --border: #2d333b;
-    --text: #e6edf3;
-    --muted: #8b949e;
-    --teal: #2AB1AC;
-    --red: #f85149;
-    --green: #3fb950;
+    --bg-app:        #0a0a0a;
+    --bg-surface:    #141414;
+    --bg-elevated:   #1a1a1a;
+    --bg-hover:      #1f1f1f;
+    --border:        #1f1f1f;
+    --border-hover:  #2a2a2a;
+    --text-primary:  #ededef;
+    --text-secondary:#a0a0a3;
+    --text-tertiary: #6e6e73;
+    --accent:        #4d8dfd;
+    --accent-muted:  rgba(77, 141, 253, 0.18);
+    --success:       #2ee06b;
+    --warning:       #facc15;
+    --danger:        #ef4444;
+    --ease-out:      cubic-bezier(0.16, 1, 0.3, 1);
+    --dur-fast:      150ms;
+    --dur-normal:    200ms;
+    --dur-slow:      300ms;
+    --dur-slower:    500ms;
+    --radius-lg:     12px;
+    --radius-xl:     16px;
+    --radius-full:   9999px;
+    --shadow-sm:     0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md:     0 2px 8px rgba(0, 0, 0, 0.4);
+    --shadow-lg:     0 4px 16px rgba(0, 0, 0, 0.5);
+    /* System stack only — no CDN, no embedded fonts, zero network requests. */
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
+
   body {
     margin: 0;
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px;
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 40px 24px;
+    background: var(--bg-app);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    position: relative;
+    overflow-x: hidden;
   }
+  /* Restrained NOC backdrop — faint radial vignette … */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background: radial-gradient(ellipse 90% 80% at 50% 40%, transparent 60%, rgba(0, 0, 0, 0.14));
+  }
+  /* … + barely-there scanlines. */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background: repeating-linear-gradient(0deg, rgba(128, 128, 128, 0.025) 0 1px, transparent 1px 3px);
+  }
+
+  /* ── Card: Mission-Control tile chrome + signature entrance ────────────── */
   .card {
+    position: relative;
+    z-index: 1;
     width: 100%;
     max-width: 560px;
-    background: var(--surface);
+    background: var(--bg-surface);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 28px;
+    border-radius: var(--radius-xl);
+    padding: 32px 32px 28px;
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    animation: hero-enter var(--dur-slower) var(--ease-out) both;
   }
-  h1 { font-size: 18px; margin: 0; }
+  /* 1px blue→transparent accent hairline across the top */
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+  }
+  @keyframes hero-enter {
+    from { opacity: 0; transform: translateY(22px) scale(0.985); filter: blur(8px); }
+    to   { opacity: 1; transform: none;                          filter: blur(0); }
+  }
 
+  /* ── Hero ──────────────────────────────────────────────────────────────── */
+  .eyebrow {
+    display: block;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    margin-bottom: 8px;
+  }
+  .hero { margin-bottom: 4px; }
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    margin: 0;
+    color: var(--text-primary);
+  }
+  .subtitle {
+    margin: 7px 0 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* ── Step rail with status glyphs ──────────────────────────────────────── */
   .step {
-    margin-top: 26px;
-    padding-top: 22px;
+    display: flex;
+    gap: 16px;
+    margin-top: 24px;
+    padding-top: 24px;
     border-top: 1px solid var(--border);
+    transition:
+      opacity var(--dur-slower) var(--ease-out),
+      transform var(--dur-slower) var(--ease-out),
+      filter var(--dur-slower) var(--ease-out);
   }
-  .step.locked { opacity: 0.4; pointer-events: none; user-select: none; }
-  .step-head {
-    display: flex; align-items: center; gap: 10px;
-    font-size: 15px; font-weight: 600; margin-bottom: 10px;
+  /* Locked steps reveal with a smooth opacity + slide + de-blur (not a hard flip). */
+  .step.locked {
+    opacity: 0.4;
+    pointer-events: none;
+    user-select: none;
+    transform: translateY(6px);
+    filter: blur(1px);
   }
-  .num {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 22px; height: 22px; border-radius: 50%;
-    background: rgba(42, 177, 172, 0.18); color: var(--teal);
-    font-size: 12px; font-weight: 700; flex: none;
-  }
-  .step.done .num { background: rgba(63, 185, 80, 0.18); color: var(--green); }
-  .step-desc { color: var(--muted); font-size: 13px; margin: 0 0 10px; line-height: 1.5; }
-  .step-desc em { color: var(--text); font-style: normal; }
+  /* Subtle stagger so step 3 unlocks just after step 2. */
+  #step2 { transition-delay: 40ms; }
+  #step3 { transition-delay: 120ms; }
 
+  .step-rail {
+    flex: none;
+    width: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .step-rail::after {
+    content: '';
+    flex: 1;
+    width: 1px;
+    margin-top: 8px;
+    background: linear-gradient(180deg, var(--border-hover), transparent);
+  }
+  .step:last-of-type .step-rail::after { display: none; }
+
+  .step-glyph {
+    position: relative;
+    flex: none;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    border: 1px solid var(--border-hover);
+    background: var(--bg-elevated);
+    color: var(--text-tertiary);
+    transition:
+      color var(--dur-normal) var(--ease-out),
+      border-color var(--dur-normal) var(--ease-out),
+      background var(--dur-normal) var(--ease-out);
+  }
+  /* Locked / queued */
+  .step-glyph::before { content: '○'; }
+  /* Active / current (not locked, not done) — accent dot */
+  .step:not(.locked):not(.done) .step-glyph {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-muted);
+  }
+  .step:not(.locked):not(.done) .step-glyph::before { content: '●'; }
+  /* Done — green ✓ with a one-shot 2.5s check-fade ring flourish */
+  .step.done .step-glyph {
+    color: var(--success);
+    border-color: var(--success);
+    background: rgba(46, 224, 107, 0.14);
+  }
+  .step.done .step-glyph::before { content: '✓'; }
+  .step.done .step-glyph::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--success);
+    animation: check-fade 2.5s var(--ease-out) forwards;
+  }
+  @keyframes check-fade {
+    0%   { opacity: 1;   transform: scale(0.6); }
+    80%  { opacity: 0.5; transform: scale(1.25); }
+    100% { opacity: 0;   transform: scale(1.45); }
+  }
+
+  .step-body { flex: 1; min-width: 0; }
+  .step-head {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+  }
+  .step-desc { color: var(--text-secondary); font-size: 13px; margin: 0 0 12px; line-height: 1.55; }
+  .step-desc em { color: var(--text-primary); font-style: normal; }
+
+  /* ── Inputs ────────────────────────────────────────────────────────────── */
   input[type="password"], input[type="text"] {
     width: 100%;
-    padding: 10px 12px;
+    padding: 11px 13px;
     font-size: 14px;
-    background: var(--bg);
+    font-family: var(--font-sans);
+    background: var(--bg-app);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text);
+    border-radius: var(--radius-lg);
+    color: var(--text-primary);
     outline: none;
+    transition:
+      border-color var(--dur-normal) var(--ease-out),
+      box-shadow var(--dur-normal) var(--ease-out);
   }
   input + input { margin-top: 10px; }
-  input:focus { border-color: var(--teal); }
-  input:read-only { color: var(--muted); border-style: dashed; }
+  input::placeholder { color: var(--text-tertiary); }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-muted); }
+  input:read-only { color: var(--text-tertiary); border-style: dashed; box-shadow: none; }
 
-  .row { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
-  button {
-    appearance: none;
-    border: 1px solid var(--teal);
-    background: rgba(42, 177, 172, 0.15);
-    color: var(--teal);
+  /* ── Live strength gauge (ProgressIndicator tone system, condensed) ──────── */
+  .gauge { margin-top: 12px; }
+  .gauge-track {
+    height: 6px;
+    border-radius: var(--radius-full);
+    background: var(--bg-elevated);
+    overflow: hidden;
+  }
+  .gauge-fill {
+    height: 100%;
+    width: 0;
+    border-radius: var(--radius-full);
+    background: var(--text-tertiary);
+    transition:
+      width var(--dur-slow) var(--ease-out),
+      background var(--dur-normal) var(--ease-out);
+  }
+  .gauge-fill.tone-weak   { background: var(--warning); }
+  .gauge-fill.tone-fair   { background: var(--accent); }
+  .gauge-fill.tone-strong { background: var(--success); }
+  .gauge-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 6px;
+    min-height: 14px;
+  }
+  .gauge-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+  .gauge-label.tone-weak   { color: var(--warning); }
+  .gauge-label.tone-fair   { color: var(--accent); }
+  .gauge-label.tone-strong { color: var(--success); }
+  .gauge-hint {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: var(--text-tertiary);
+  }
+
+  /* Progress sheen — leading-edge shimmer on an active gauge. */
+  .progress-sheen { position: relative; overflow: hidden; }
+  .progress-sheen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+    transform: translateX(-100%);
+    animation: progress-sheen-sweep 1.6s ease-in-out infinite;
+  }
+  @keyframes progress-sheen-sweep { to { transform: translateX(100%); } }
+
+  /* ── Buttons ───────────────────────────────────────────────────────────── */
+  button { appearance: none; font-family: var(--font-sans); cursor: pointer; }
+  .btn-primary {
+    position: relative;
+    overflow: hidden;
+    background: var(--accent);
+    color: #ffffff;
     font-size: 14px;
     font-weight: 600;
-    padding: 10px 16px;
-    border-radius: 8px;
-    cursor: pointer;
+    padding: 10px 18px;
+    border: none;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    transition:
+      background var(--dur-fast) ease-out,
+      box-shadow var(--dur-fast) ease-out;
   }
-  button:hover { background: rgba(42, 177, 172, 0.28); }
-  button:disabled { opacity: 0.4; cursor: not-allowed; }
-  .linkbtn {
-    border: none; background: none; color: var(--teal);
-    font-size: 13px; font-weight: 500; padding: 6px 0 0; text-decoration: underline;
+  .btn-primary:hover { background: #4b8df8; box-shadow: var(--shadow-md); }
+  .btn-primary:active { background: #2563eb; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+  /* Shine sweep across primary buttons on hover */
+  .btn-primary::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -80%;
+    width: 55%;
+    height: 100%;
+    background: linear-gradient(105deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+    transform: skewX(-20deg);
+    opacity: 0;
+    pointer-events: none;
   }
-  .linkbtn:hover { background: none; }
-  .showtog {
-    margin: 0; font-weight: 400; color: var(--muted);
-    display: flex; align-items: center; gap: 6px; font-size: 13px;
+  .btn-primary:hover::after { animation: btn-shine 0.85s var(--ease-out); }
+  @keyframes btn-shine {
+    from { left: -80%; opacity: 1; }
+    to   { left: 140%; opacity: 1; }
   }
-  .showtog input { width: auto; }
 
+  .linkbtn {
+    border: none;
+    background: none;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 0 0;
+  }
+  .linkbtn:hover { text-decoration: underline; }
+  .showtog {
+    margin: 0;
+    font-weight: 400;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .showtog input { width: auto; accent-color: var(--accent); }
+
+  .row { display: flex; gap: 12px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+
+  /* ── Host rows ─────────────────────────────────────────────────────────── */
   .host-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
   .host-row input { width: auto; min-width: 0; margin-top: 0; }
   .hr-label { flex: 0 0 34%; }
   .hr-key { flex: 1; }
   .hr-del {
-    flex: none; padding: 9px 13px; font-size: 16px; line-height: 1;
-    border-color: var(--border); background: transparent; color: var(--muted);
+    flex: none;
+    padding: 10px 13px;
+    font-size: 16px;
+    line-height: 1;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: transparent;
+    color: var(--text-tertiary);
+    transition:
+      border-color var(--dur-fast) ease-out,
+      color var(--dur-fast) ease-out;
   }
-  .hr-del:hover { border-color: var(--red); color: var(--red); background: transparent; }
+  .hr-del:hover { border-color: var(--danger); color: var(--danger); }
 
+  /* ── Output blobs ──────────────────────────────────────────────────────── */
   .hash {
     width: 100%;
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
     word-break: break-all;
-    background: var(--bg);
-    border: 1px solid var(--teal);
-    border-radius: 8px;
+    background: var(--bg-app);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-lg);
     padding: 12px;
-    color: var(--text);
+    color: var(--text-primary);
     line-height: 1.5;
   }
   .copy {
     margin-top: 10px;
-    border-color: var(--border);
-    background: transparent;
-    color: var(--text);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 14px;
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius-lg);
+    transition:
+      border-color var(--dur-fast) ease-out,
+      color var(--dur-fast) ease-out,
+      background var(--dur-fast) ease-out;
   }
-  .copy:hover { border-color: var(--teal); }
+  .copy:hover { border-color: var(--accent); color: var(--accent); background: var(--bg-hover); }
 
-  .enc-result { margin-top: 16px; }
-  .enc-result-name { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  /* Streaming encrypted results — fade + slide + blue arrival-tint settling. */
+  .enc-result {
+    margin-top: 16px;
+    padding: 10px 12px;
+    border-radius: var(--radius-lg);
+  }
+  .enc-result-name { font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); }
+  @keyframes stream-row-enter {
+    from { opacity: 0; transform: translateY(4px); background-color: var(--accent-muted); }
+    to   { opacity: 1; transform: none;            background-color: transparent; }
+  }
+  .stream-row-enter { animation: stream-row-enter 360ms var(--ease-out) both; }
 
   #hash { margin-top: 0; }
-  .err { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 16px; }
+  .err { color: var(--danger); font-size: 13px; margin-top: 10px; min-height: 16px; }
 
   .callout {
     margin-top: 14px;
     padding: 12px 14px;
-    border: 1px solid var(--red);
-    border-radius: 8px;
-    background: rgba(248, 81, 73, 0.12);
-    color: var(--text);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-lg);
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--text-primary);
     font-size: 13px;
     line-height: 1.55;
   }
-  .callout strong { color: var(--red); }
+  .callout strong { color: var(--danger); }
 
-  .note {
-    margin-top: 26px;
-    padding-top: 16px;
-    border-top: 1px solid var(--border);
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 1.6;
+  /* ── Error shake + busy loading-ellipsis ──────────────────────────────── */
+  @keyframes fx-shake {
+    10%, 90% { translate: -1px 0; }
+    20%, 80% { translate: 2px 0; }
+    30%, 50%, 70% { translate: -5px 0; }
+    40%, 60% { translate: 5px 0; }
   }
-  .note strong { color: var(--text); }
+  .fx-shake { animation: fx-shake 360ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+
+  @keyframes dots {
+    0%   { content: ''; }
+    25%  { content: '.'; }
+    50%  { content: '..'; }
+    75%  { content: '...'; }
+  }
+  .loading-ellipsis::after { content: ''; animation: dots 1.2s steps(4, end) infinite; }
+
+  /* ── prefers-reduced-motion: disable motion, keep everything visible ───── */
+  @media (prefers-reduced-motion: reduce) {
+    .card { animation: none; }
+    .step { transition: none; }
+    .gauge-fill,
+    input { transition: none; }
+    .progress-sheen::after,
+    .btn-primary:hover::after,
+    .stream-row-enter,
+    .fx-shake { animation: none; }
+    .step.done .step-glyph::after { animation: none; opacity: 0; }
+    .loading-ellipsis::after { animation: none; content: '…'; }
+  }
 </style>
 </head>
 <body>
   <div class="card">
-    <h1>Admin Toolkit — Security Setup</h1>
+    <header class="hero">
+      <span class="eyebrow">Security setup</span>
+      <h1>Admin Toolkit</h1>
+      <p class="subtitle">Forge the one master key that arms the toolkit.</p>
+    </header>
 
     <!-- ① Master password -->
     <section class="step" id="step1">
-      <div class="step-head"><span class="num">1</span> Master Admin Toolkit Password</div>
+      <div class="step-rail"><span class="step-glyph" aria-hidden="true"></span></div>
+      <div class="step-body">
+        <span class="eyebrow">Step 01 · Master key</span>
+        <div class="step-head">Master Admin Toolkit Password</div>
 
-      <input id="pw" type="password" autocomplete="new-password" placeholder="Master Admin Toolkit Password" />
-      <input id="pw2" type="password" autocomplete="new-password" placeholder="Confirm password" />
+        <input id="pw" type="password" autocomplete="new-password" placeholder="Master Admin Toolkit Password" />
+        <input id="pw2" type="password" autocomplete="new-password" placeholder="Confirm password" />
 
-      <div class="callout">
-        This is the only password for Admin Toolkit. Used to encrypt Advanced Actions and API
-        keys of every remote host. <strong>Write it down now</strong> — it is never stored or
-        sent, so if you lose it, every secret here must be redone.
+        <div class="gauge" id="gauge">
+          <div class="gauge-track"><div class="gauge-fill" id="pwBarFill"></div></div>
+          <div class="gauge-meta">
+            <span class="gauge-label" id="pwStrengthLabel"></span>
+            <span class="gauge-hint">length + variety</span>
+          </div>
+        </div>
+
+        <div class="callout">
+          This is the only password for Admin Toolkit. Used to encrypt Advanced Actions and API
+          keys of every remote host. <strong>Write it down now</strong> — it is never stored or
+          sent, so if you lose it, every secret here must be redone.
+        </div>
+
+        <div class="row">
+          <button id="setPw" type="button" class="btn-primary">Set password</button>
+          <button id="changePw" type="button" class="linkbtn" style="display:none;">Change password (clears everything)</button>
+          <label class="showtog"><input id="show" type="checkbox" /> show</label>
+        </div>
+        <div class="err" id="pwErr"></div>
       </div>
-
-      <div class="row">
-        <button id="setPw" type="button">Set password</button>
-        <button id="changePw" type="button" class="linkbtn" style="display:none;">Change password (clears everything)</button>
-        <label class="showtog"><input id="show" type="checkbox" /> show</label>
-      </div>
-      <div class="err" id="pwErr"></div>
     </section>
 
     <!-- ② Advanced-actions secret -->
     <section class="step locked" id="step2">
-      <div class="step-head"><span class="num">2</span> Advanced Actions secret</div>
-      <p class="step-desc">Paste into Plugin settings → <em>“Advanced Actions password (hash)”</em>.</p>
-      <div class="hash" id="hash"></div>
-      <button class="copy" id="copyHash" type="button">Copy</button>
+      <div class="step-rail"><span class="step-glyph" aria-hidden="true"></span></div>
+      <div class="step-body">
+        <span class="eyebrow">Step 02 · Advanced actions</span>
+        <div class="step-head">Advanced Actions secret</div>
+        <p class="step-desc">Paste into Plugin settings → <em>“Advanced Actions password (hash)”</em>.</p>
+        <div class="hash" id="hash"></div>
+        <button class="copy" id="copyHash" type="button">Copy</button>
+      </div>
     </section>
 
     <!-- ③ Encrypt host API keys -->
     <section class="step locked" id="step3">
-      <div class="step-head"><span class="num">3</span> Remote host API keys</div>
-      <p class="step-desc">
-        Paste each blob into that host’s preset <em>“API Key”</em> field. One unlock opens them all.
-      </p>
-      <div id="hostRows"></div>
-      <button id="addHost" type="button" class="linkbtn">+ Add another host</button>
-      <div class="row"><button id="encGo" type="button">Encrypt all</button></div>
-      <div class="err" id="encErr"></div>
-      <div id="encResults"></div>
+      <div class="step-rail"><span class="step-glyph" aria-hidden="true"></span></div>
+      <div class="step-body">
+        <span class="eyebrow">Step 03 · Remote hosts</span>
+        <div class="step-head">Remote host API keys</div>
+        <p class="step-desc">
+          Paste each blob into that host’s preset <em>“API Key”</em> field. One unlock opens them all.
+        </p>
+        <div id="hostRows"></div>
+        <button id="addHost" type="button" class="linkbtn">+ Add another host</button>
+        <div class="row"><button id="encGo" type="button" class="btn-primary">Encrypt all</button></div>
+        <div class="err" id="encErr"></div>
+        <div id="encResults"></div>
+      </div>
     </section>
-
-    <div class="note">
-      <strong>Offline-safe:</strong> this page makes no network requests — you can save it and
-      run it from disk.
-    </div>
   </div>
 
 <script>
@@ -321,6 +658,78 @@
   const encGo = document.getElementById('encGo');
   const encErr = document.getElementById('encErr');
   const encResults = document.getElementById('encResults');
+  const pwBarFill = document.getElementById('pwBarFill');
+  const pwStrengthLabel = document.getElementById('pwStrengthLabel');
+
+  // Presentation-only: live strength gauge under the master-password field.
+  // Local estimate (length + character-class variety) → ProgressIndicator tones
+  // grey→yellow→blue/green. Informational; never gates the password.
+  function estimateStrength(p) {
+    if (!p) return { pct: 0, label: '', tone: '' };
+    let classes = 0;
+    if (/[a-z]/.test(p)) classes++;
+    if (/[A-Z]/.test(p)) classes++;
+    if (/[0-9]/.test(p)) classes++;
+    if (/[^A-Za-z0-9]/.test(p)) classes++;
+    const lenScore = Math.min(p.length / 16, 1);
+    const varScore = classes / 4;
+    const score = 0.55 * lenScore + 0.45 * varScore;
+    if (p.length < 8 || score < 0.4) {
+      return { pct: Math.max(14, Math.round(score * 100)), label: 'weak', tone: 'weak' };
+    }
+    if (score < 0.72) {
+      return { pct: Math.round(score * 100), label: 'fair', tone: 'fair' };
+    }
+    return { pct: Math.min(100, Math.round(score * 100)), label: 'strong', tone: 'strong' };
+  }
+  function updateGauge() {
+    const s = estimateStrength(pw.value);
+    pwBarFill.style.width = s.pct + '%';
+    pwBarFill.classList.remove('tone-weak', 'tone-fair', 'tone-strong', 'progress-sheen');
+    pwStrengthLabel.classList.remove('tone-weak', 'tone-fair', 'tone-strong');
+    if (s.tone) {
+      pwBarFill.classList.add('tone-' + s.tone);
+      pwStrengthLabel.classList.add('tone-' + s.tone);
+      // Sheen while still "building"; settles off once strong.
+      if (s.tone !== 'strong') pwBarFill.classList.add('progress-sheen');
+    }
+    pwStrengthLabel.textContent = s.label;
+  }
+  pw.addEventListener('input', updateGauge);
+
+  // Presentation-only: shake an error line when it gains text (any code path).
+  function wireShake(el) {
+    new MutationObserver(() => {
+      if (el.textContent.trim()) {
+        el.classList.remove('fx-shake');
+        void el.offsetWidth; // reflow so the animation restarts
+        el.classList.add('fx-shake');
+      }
+    }).observe(el, { childList: true, characterData: true, subtree: true });
+  }
+  wireShake(pwErr);
+  wireShake(encErr);
+
+  // Presentation-only: animate the trailing ellipsis on a busy button
+  // ("Working…", "Encrypting…") without touching the click handlers.
+  function wireBusyDots(btn) {
+    let guard = false;
+    new MutationObserver(() => {
+      if (guard) return;
+      const txt = btn.textContent;
+      if (/…$/.test(txt)) {
+        guard = true;
+        btn.textContent = txt.replace(/…+$/, '');
+        const dots = document.createElement('span');
+        dots.className = 'loading-ellipsis';
+        dots.setAttribute('aria-hidden', 'true');
+        btn.appendChild(dots);
+        guard = false;
+      }
+    }).observe(btn, { childList: true, characterData: true, subtree: true });
+  }
+  wireBusyDots(setPw);
+  wireBusyDots(encGo);
 
   show.addEventListener('change', () => {
     const t = show.checked ? 'text' : 'password';
@@ -426,7 +835,7 @@
 
   function renderResult(name, blob) {
     const wrap = document.createElement('div');
-    wrap.className = 'enc-result';
+    wrap.className = 'enc-result stream-row-enter';
     const nameEl = document.createElement('div');
     nameEl.className = 'enc-result-name';
     nameEl.textContent = name;

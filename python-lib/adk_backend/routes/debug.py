@@ -5,6 +5,7 @@ troubleshooting of deployed instances."""
 import io
 import json
 import os
+import sys
 import zipfile
 from datetime import datetime, timezone
 from typing import Any, Dict
@@ -61,7 +62,25 @@ def _perf_payload() -> Dict[str, Any]:
         ce_benchmark = {k: v for k, v in ce_benchmark.items() if k != 'events'}
     if isinstance(pf_benchmark, dict):
         pf_benchmark = {k: v for k, v in pf_benchmark.items() if k != 'events'}
+    # Which Python actually runs this backend, and is `cryptography` importable
+    # here? Diagnoses code-env mismatch (useContextualCodeEnv can bind the webapp
+    # to a different env than the one rebuilt) behind the host-key encrypt error.
+    try:
+        import cryptography
+        crypto_info = {'ok': True, 'version': getattr(cryptography, '__version__', '?'),
+                       'file': getattr(cryptography, '__file__', '?')}
+    except Exception as ex:
+        crypto_info = {'ok': False, 'error': '%s: %s' % (type(ex).__name__, ex)}
+    python_env = {
+        'executable': sys.executable,
+        'prefix': sys.prefix,
+        'version': sys.version.split()[0],
+        'cryptography': crypto_info,
+        'env_hints': {k: v for k, v in os.environ.items()
+                      if 'CODE_ENV' in k.upper() or 'CODEENV' in k.upper() or 'DKU_VENV' in k.upper()},
+    }
     return {
+        'python_env': python_env,
         'cache_keys': cache_keys,
         'sdk_cache_stats': sdk_stats,
         'backend_settings': settings,

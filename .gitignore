@@ -152,3 +152,5 @@ realaudit/
 getaudittam.sh
 # Local CRU/audit how-to scratch (anonymized, but kept out of the plugin repo).
 CRU.md
+# Local API-key scratch files — live credentials, never commit (repo is public).
+*.key

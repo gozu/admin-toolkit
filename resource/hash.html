@@ -649,15 +649,25 @@
     location.reload();
   });
 
-  // Copy the secret to the clipboard, then close this tab. If the clipboard is
-  // blocked, fall back to selecting the text and leave the tab open.
+  // Copy the secret, then close this tab. `await writeText` resolves only once the
+  // value is on the system clipboard, so that await IS the "did it copy?" check —
+  // no blind timer needed. We add a short margin before closing so the clipboard
+  // commit can flush (tearing the tab down the same instant can race it), then fall
+  // back gracefully for browsers that refuse to let a page close its own tab.
   copyHash.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(hashEl.textContent);
-      window.close();
     } catch {
-      copyFrom(hashEl, copyHash);
+      copyFrom(hashEl, copyHash); // clipboard blocked → select the text for manual copy
+      return;
     }
+    copyHash.textContent = 'Copied ✓';
+    setTimeout(() => {
+      window.close();
+      // Reached only if the browser blocked window.close() (tabs opened by typing
+      // the URL, or with navigation history, can't be closed by script).
+      copyHash.textContent = 'Copied ✓ — you can close this tab';
+    }, 150);
   });
 </script>
 </body>

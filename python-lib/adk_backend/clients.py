@@ -144,6 +144,14 @@ def _thread_client() -> Any:
 MACRO_PROJECT_KEY = 'ADMINTOOLKIT'
 MACRO_PROJECT_DEFAULT_NAME = 'Admin Toolkit'
 
+# Install source for the git-based remote install (install_plugin_from_git).
+# Hardcoded default; the install dialog prefills it but lets the admin override
+# the URL/branch per-run. The remote DSS must be set up to access this repo
+# (e.g. a deploy key for the SSH form) — otherwise git install fails by design
+# and the admin-uploaded .zip path in api_hosts_install_toolkit takes over.
+ADMIN_TOOLKIT_GIT_REPO_URL = 'git@github.com:gozu/admin-toolkit.git'
+ADMIN_TOOLKIT_GIT_BRANCH = 'main'
+
 
 class MacroProjectMissing(Exception):
     """Raised when ADMINTOOLKIT does not exist on the active host.

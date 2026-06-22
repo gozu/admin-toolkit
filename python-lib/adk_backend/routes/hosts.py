@@ -5,7 +5,9 @@ exist precisely to diagnose / fix a broken host config (including the one-click
 install-toolkit flow that turns a plugin-less remote green).
 """
 
+import io
 import json
+import os
 import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -14,6 +16,8 @@ from flask import Blueprint, jsonify, request
 
 from adk_backend import hostkeys
 from adk_backend.clients import (
+    ADMIN_TOOLKIT_GIT_BRANCH,
+    ADMIN_TOOLKIT_GIT_REPO_URL,
     MACRO_PROJECT_DEFAULT_NAME,
     MACRO_PROJECT_KEY,
     _build_remote_client,
@@ -33,6 +37,12 @@ bp = Blueprint('hosts', __name__)
 # in the DSS plugin-settings UI.
 _PLUGIN_ID = 'admin-toolkit'
 _PRESET_TYPE = 'parameter-set-admin-toolkit-remote-dss-host'
+
+# Upload-fallback plugin .zip ceiling. The real plugin bundle is ~2 MB; cap well
+# under Flask's 16 MB default so an oversized/wrong file is rejected cleanly
+# rather than silently truncated. Raise both this and MAX_CONTENT_LENGTH
+# (backend.py) together if the bundle ever approaches the limit.
+_PLUGIN_ZIP_MAX_BYTES = 16 * 1024 * 1024
 
 
 @bp.route('/api/hosts')
@@ -99,13 +109,20 @@ def api_hosts_macro_project():
 def api_hosts_install_toolkit():
     """One-click turnkey install of the Admin Toolkit onto a reachable remote.
 
-    Source of truth is the plugin running on THIS controller, streamed live via
-    download_plugin_stream → install_plugin_from_archive on the remote, so the
-    remote receives the exact version the controller runs (no version drift, no
-    bundled zip-of-itself, no git/network egress). Macros ship inside the
-    archive, so installing the plugin installs them too. Three steps:
+    Produces a normal *installed* (updatable) plugin on the remote via one of two
+    admin-chosen sources — both end in a plugin the customer can later update:
 
-      1. install  — install (or update_from_zip) the plugin on the remote,
+      • git (default)  — the remote pulls the plugin straight from a hardcoded
+        repo URL/branch (prefilled in the dialog, editable per run) via
+        install_plugin_from_git / update_from_git. No bytes leave the controller.
+      • upload (.zip)   — the admin uploads the plugin archive in the dialog and
+        the backend streams it to install_plugin_from_archive / update_from_zip.
+        Used when the remote can't reach the repo (private / air-gapped).
+
+    Three steps total — only step 1 branches on the source; steps 2 & 3 are
+    source-agnostic:
+
+      1. install  — install (or update) the plugin on the remote,
       2. codeenv  — build + select the plugin's managed code env on the remote,
       3. project  — create the ADMINTOOLKIT support project if absent.
 
@@ -113,16 +130,46 @@ def api_hosts_install_toolkit():
     status ∈ active|done|error, then a terminal {step:'complete', status:'done'}.
     All ops are pure DSS-API calls → they stay on the client (no macro needed).
     """
-    payload = request.get_json(silent=True) or {}
-    host_id = (payload.get('hostId') or '').strip()
+    # Parse by content type so the legacy {hostId} JSON body still works.
+    # Upload mode arrives as multipart (admin-supplied .zip in the `plugin`
+    # field); everything else is JSON with an optional mode (default 'git') and
+    # an optional repoUrl/branch override of the hardcoded git source.
+    zip_bytes: Optional[bytes] = None
+    repo_url = ADMIN_TOOLKIT_GIT_REPO_URL
+    branch = ADMIN_TOOLKIT_GIT_BRANCH
+    if (request.content_type or '').startswith('multipart/'):
+        mode = 'upload'
+        host_id = (request.form.get('hostId') or '').strip()
+    else:
+        payload = request.get_json(silent=True) or {}
+        host_id = (payload.get('hostId') or '').strip()
+        mode = (payload.get('mode') or 'git').strip() or 'git'
+        repo_url = (payload.get('repoUrl') or '').strip() or ADMIN_TOOLKIT_GIT_REPO_URL
+        branch = (payload.get('branch') or '').strip() or ADMIN_TOOLKIT_GIT_BRANCH
     if not host_id or host_id == 'local':
         return jsonify({'error': 'hostId must reference a remote-dss-host preset'}), 400
+
+    if mode == 'upload':
+        # Buffer + validate the upload BEFORE the generator so a bad file fails
+        # with a clean 400 instead of mid-stream (mirrors routes/feedback.py).
+        upload = request.files.get('plugin')
+        if upload is None or not upload.filename:
+            return jsonify({'error': 'No plugin .zip uploaded'}), 400
+        if os.path.splitext(upload.filename)[1].lower() != '.zip':
+            return jsonify({'error': 'Plugin upload must be a .zip file'}), 400
+        zip_bytes = upload.read()
+        if not zip_bytes:
+            return jsonify({'error': 'Uploaded plugin .zip is empty'}), 400
+        if len(zip_bytes) > _PLUGIN_ZIP_MAX_BYTES:
+            return jsonify({
+                'error': f'Plugin .zip too large (max {_PLUGIN_ZIP_MAX_BYTES // (1024 * 1024)} MB)',
+            }), 400
+
     # _remote_host_config raises RemoteKeysLocked (→ 409 via @errorhandler, pops
     # the unlock modal) when the preset key is encrypted and we hold no key.
     cfg = _remote_host_config(host_id)
     if cfg is None:
         return jsonify({'error': 'invalid-host-id', 'hostId': host_id}), 400
-    local_client = _resolve_client('local')
     remote_client = _build_remote_client(cfg)
 
     def sse(step: str, status: str, msg: str = None, error: str = None) -> str:
@@ -135,18 +182,46 @@ def api_hosts_install_toolkit():
 
     def generate():
         # ── Step 1: install (or update) the plugin on the remote ──
-        yield sse('install', 'active', 'Installing plugin on remote…')
+        yield sse('install', 'active',
+                  'Installing plugin from git…' if mode == 'git'
+                  else 'Uploading plugin to remote…')
         try:
             already_installed = False
             for plug in (remote_client.list_plugins() or []):
                 if isinstance(plug, dict) and plug.get('id') == 'admin-toolkit':
                     already_installed = True
                     break
-            stream = local_client.download_plugin_stream('admin-toolkit')
-            if already_installed:
-                remote_client.get_plugin('admin-toolkit').update_from_zip(stream)
+            if mode == 'upload':
+                # Synchronous archive install/update from the buffered upload.
+                stream = io.BytesIO(zip_bytes)
+                if already_installed:
+                    remote_client.get_plugin('admin-toolkit').update_from_zip(stream)
+                else:
+                    remote_client.install_plugin_from_archive(stream)
             else:
-                remote_client.install_plugin_from_archive(stream)
+                # git: install_plugin_from_git / update_from_git both return a
+                # DSSFuture → poll with the same pattern as the codeenv step.
+                if already_installed:
+                    future = remote_client.get_plugin('admin-toolkit').update_from_git(
+                        repo_url, checkout=branch)
+                else:
+                    future = remote_client.install_plugin_from_git(
+                        repo_url, checkout=branch)
+                if future.job_id:
+                    polls = 0
+                    while True:
+                        state = future.peek_state() or {}
+                        if state.get('hasResult') or not state.get('alive', True):
+                            break
+                        polls += 1
+                        if polls > 240:  # ~20 min cap at 5s/poll
+                            raise Exception('git install timed out after ~20 min')
+                        yield sse('install', 'active',
+                                  'Pulling from git… (~%ds)' % (polls * 5))
+                        time.sleep(5)
+                    future.get_result()
+                else:
+                    future.wait_for_result()
             yield sse('install', 'done',
                       'Plugin updated' if already_installed else 'Plugin installed')
         except Exception as exc:

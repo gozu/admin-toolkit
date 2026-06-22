@@ -26,6 +26,13 @@ const INSTALL_STEPS: { key: InstallStepKey; label: string }[] = [
   { key: 'project', label: 'Create project' },
 ];
 
+// Cosmetic mirror of the backend constants (clients.py) — prefilled into the
+// dialog's git fields, which the admin can override per run. Not fetched at
+// runtime; the backend falls back to its own constants when these are blank.
+type InstallMode = 'git' | 'upload';
+const INSTALL_GIT_REPO_DEFAULT = 'git@github.com:gozu/admin-toolkit.git';
+const INSTALL_GIT_BRANCH_DEFAULT = 'main';
+
 function initialInstallSteps(): Record<InstallStepKey, StepView> {
   return {
     install: { status: 'queued', message: 'Queued' },
@@ -80,6 +87,14 @@ export function HostGate({ onEnter }: HostGateProps) {
   const [installError, setInstallError] = useState<string | null>(null);
   const [installReady, setInstallReady] = useState(false);
   const installButtonRef = useRef<HTMLButtonElement | null>(null);
+  // Install source: git (default, repo/branch editable) or admin-uploaded .zip.
+  const [installMode, setInstallMode] = useState<InstallMode>('git');
+  const [installRepoUrl, setInstallRepoUrl] = useState(INSTALL_GIT_REPO_DEFAULT);
+  const [installBranch, setInstallBranch] = useState(INSTALL_GIT_BRANCH_DEFAULT);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [installFallbackHint, setInstallFallbackHint] = useState<string | null>(null);
+  const [uploadDragging, setUploadDragging] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!setupHost) return;
@@ -179,22 +194,59 @@ export function HostGate({ onEnter }: HostGateProps) {
     setInstallError(null);
     setInstallReady(false);
     setInstallRunning(false);
+    setInstallMode('git');
+    setInstallRepoUrl(INSTALL_GIT_REPO_DEFAULT);
+    setInstallBranch(INSTALL_GIT_BRANCH_DEFAULT);
+    setUploadFile(null);
+    setInstallFallbackHint(null);
+    setUploadDragging(false);
+  }
+
+  function handleUploadDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setUploadDragging(false);
+    const f = e.dataTransfer.files[0];
+    if (f?.name.toLowerCase().endsWith('.zip')) setUploadFile(f);
+  }
+
+  function handleUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f?.name.toLowerCase().endsWith('.zip')) setUploadFile(f);
+    e.target.value = ''; // allow re-selecting the same file
   }
 
   async function runInstall() {
     if (!installHost) return;
     const hostId = installHost.id;
+    const mode = installMode;
+    if (mode === 'upload' && !uploadFile) return;
     setInstallRunning(true);
     setInstallError(null);
+    setInstallFallbackHint(null);
     setInstallReady(false);
     setInstallSteps(initialInstallSteps());
     let completed = false;
     try {
-      const response = await fetchRaw('/api/hosts/install-toolkit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostId }),
-      });
+      let init: RequestInit;
+      if (mode === 'upload') {
+        const fd = new FormData();
+        fd.append('hostId', hostId);
+        fd.append('plugin', uploadFile as File);
+        // No Content-Type header — the browser sets the multipart boundary.
+        init = { method: 'POST', body: fd };
+      } else {
+        init = {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            hostId,
+            mode: 'git',
+            repoUrl: installRepoUrl.trim() || INSTALL_GIT_REPO_DEFAULT,
+            branch: installBranch.trim() || INSTALL_GIT_BRANCH_DEFAULT,
+          }),
+        };
+      }
+      const response = await fetchRaw('/api/hosts/install-toolkit', init);
       if (!response.ok || !response.body) {
         const body = await response.text();
         let msg = `Install failed: ${response.status} ${response.statusText}`;
@@ -238,6 +290,12 @@ export function HostGate({ onEnter }: HostGateProps) {
       setInstallReady(true);
     } catch (err) {
       setInstallError(err instanceof Error ? err.message : String(err));
+      // Auto-fallback to Option B: a failed git install reveals the upload zone
+      // so the admin can retry with the plugin .zip (private / air-gapped repo).
+      if (mode === 'git') {
+        setInstallMode('upload');
+        setInstallFallbackHint('Git install failed — upload the plugin .zip instead.');
+      }
     } finally {
       setInstallRunning(false);
     }
@@ -384,10 +442,103 @@ export function HostGate({ onEnter }: HostGateProps) {
           <div className="w-full max-w-lg rounded-lg border border-[var(--border-glass)] bg-[var(--bg-surface)] p-5 shadow-xl">
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">Install Admin Toolkit on this host</h2>
             <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
-              {installHost.label} is reachable but the Admin Toolkit plugin isn't installed. This installs the
-              exact plugin version running here, builds its code env, and creates the support project on that host
-              — no manual steps.
+              {installHost.label} is reachable but the Admin Toolkit plugin isn't installed. Install it from git
+              (default) or upload the plugin <code className="text-[var(--neon-cyan)]">.zip</code>, then this builds
+              its code env and creates the support project on that host.
             </p>
+
+            {!installReady && (
+              <div className="mt-4 space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setInstallMode('git')}
+                    disabled={installRunning}
+                    className={`rounded border px-3 py-2 text-left transition-colors disabled:opacity-60 ${
+                      installMode === 'git'
+                        ? 'border-[var(--neon-cyan)] bg-[var(--neon-cyan)]/10 text-[var(--text-primary)]'
+                        : 'border-[var(--border-glass)] text-[var(--text-secondary)] hover:bg-[var(--bg-glass-hover)]'
+                    }`}
+                  >
+                    <div className="text-sm font-medium">From git</div>
+                    <div className="text-[11px] text-[var(--text-tertiary)]">Recommended · updatable</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInstallMode('upload')}
+                    disabled={installRunning}
+                    className={`rounded border px-3 py-2 text-left transition-colors disabled:opacity-60 ${
+                      installMode === 'upload'
+                        ? 'border-[var(--neon-cyan)] bg-[var(--neon-cyan)]/10 text-[var(--text-primary)]'
+                        : 'border-[var(--border-glass)] text-[var(--text-secondary)] hover:bg-[var(--bg-glass-hover)]'
+                    }`}
+                  >
+                    <div className="text-sm font-medium">Upload .zip</div>
+                    <div className="text-[11px] text-[var(--text-tertiary)]">Air-gapped fallback</div>
+                  </button>
+                </div>
+
+                {installMode === 'git' ? (
+                  <div className="space-y-2">
+                    <label className="block">
+                      <span className="text-xs font-medium text-[var(--text-secondary)]">Repository URL</span>
+                      <input
+                        type="text"
+                        value={installRepoUrl}
+                        onChange={(e) => setInstallRepoUrl(e.target.value)}
+                        disabled={installRunning}
+                        spellCheck={false}
+                        className="mt-1 w-full rounded border border-[var(--border-glass)] bg-[var(--bg-glass)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] focus:border-[var(--neon-cyan)] focus:outline-none disabled:opacity-60"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-[var(--text-secondary)]">Branch / tag / commit</span>
+                      <input
+                        type="text"
+                        value={installBranch}
+                        onChange={(e) => setInstallBranch(e.target.value)}
+                        disabled={installRunning}
+                        spellCheck={false}
+                        className="mt-1 w-full rounded border border-[var(--border-glass)] bg-[var(--bg-glass)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] focus:border-[var(--neon-cyan)] focus:outline-none disabled:opacity-60"
+                      />
+                    </label>
+                    <p className="text-[11px] text-[var(--text-tertiary)]">
+                      The remote DSS must be able to reach this repo (e.g. a configured deploy key). If it can't,
+                      switch to Upload .zip.
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => { if (!installRunning) uploadInputRef.current?.click(); }}
+                    onDrop={handleUploadDrop}
+                    onDragOver={(e) => { e.preventDefault(); setUploadDragging(true); }}
+                    onDragLeave={(e) => { e.preventDefault(); setUploadDragging(false); }}
+                    className={`rounded border-2 border-dashed px-4 py-6 text-center text-sm transition-colors ${
+                      installRunning ? 'pointer-events-none opacity-60' : 'cursor-pointer'
+                    } ${
+                      uploadDragging
+                        ? 'border-[var(--neon-cyan)] bg-[var(--neon-cyan)]/10'
+                        : 'border-[var(--border-glass)] hover:bg-[var(--bg-glass-hover)]'
+                    }`}
+                  >
+                    {uploadFile ? (
+                      <span className="font-mono break-all text-[var(--text-primary)]">{uploadFile.name}</span>
+                    ) : (
+                      <span className="text-[var(--text-secondary)]">
+                        {uploadDragging ? 'Drop plugin .zip here' : 'Drop the plugin .zip here, or click to browse'}
+                      </span>
+                    )}
+                    <input
+                      ref={uploadInputRef}
+                      type="file"
+                      accept=".zip"
+                      className="hidden"
+                      onChange={handleUploadChange}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="mt-4 space-y-3">
               {INSTALL_STEPS.map((def) => (
@@ -401,6 +552,12 @@ export function HostGate({ onEnter }: HostGateProps) {
             {installError && (
               <div className="mt-3 rounded border border-[var(--neon-red)]/40 bg-[var(--neon-red)]/10 px-3 py-2 text-sm text-[var(--neon-red)]">
                 {installError}
+              </div>
+            )}
+
+            {installFallbackHint && !installReady && (
+              <div className="mt-2 rounded border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+                {installFallbackHint}
               </div>
             )}
 
@@ -426,7 +583,7 @@ export function HostGate({ onEnter }: HostGateProps) {
                   ref={installButtonRef}
                   type="button"
                   onClick={runInstall}
-                  disabled={installRunning}
+                  disabled={installRunning || (installMode === 'upload' && !uploadFile)}
                   className="rounded bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
                 >
                   {installRunning ? 'Installing…' : installError ? 'Retry' : 'Install'}

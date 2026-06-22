@@ -43,6 +43,25 @@ _PRESET_TYPE = 'parameter-set-admin-toolkit-remote-dss-host'
 # rather than silently truncated. Raise both this and MAX_CONTENT_LENGTH
 # (backend.py) together if the bundle ever approaches the limit.
 _PLUGIN_ZIP_MAX_BYTES = 16 * 1024 * 1024
+# How many trailing build-log lines to forward per SSE tick (live install feed).
+_INSTALL_LOG_TAIL = 12
+
+
+def _future_log_tail(state: Dict[str, Any], n: int = _INSTALL_LOG_TAIL) -> Tuple[List[str], Optional[int]]:
+    """Pull a compact tail of build-log lines from a DSSFuture peek_state.
+
+    DSS long-running futures carry a rolling `log` object
+    ({totalLines, lines[]}) whose `lines` are the most-recent build output
+    (git clone / pip install). We forward only the last `n` lines over SSE for
+    a live feed — pure DSS API, no macro, no extra endpoint. The future's
+    `log.lines` are clean build output (unlike admin get_log(), whose header
+    embeds an access-token line), so they're safe to stream to the public
+    webapp. Returns ([], None) when the future has not logged anything yet.
+    """
+    lg = (state or {}).get('log') or {}
+    lines = lg.get('lines') or []
+    tail = [str(x) for x in lines[-n:] if str(x).strip()]
+    return tail, lg.get('totalLines')
 
 
 @bp.route('/api/hosts')
@@ -172,12 +191,17 @@ def api_hosts_install_toolkit():
         return jsonify({'error': 'invalid-host-id', 'hostId': host_id}), 400
     remote_client = _build_remote_client(cfg)
 
-    def sse(step: str, status: str, msg: str = None, error: str = None) -> str:
+    def sse(step: str, status: str, msg: str = None, error: str = None,
+            log: List[str] = None, total: int = None) -> str:
         evt: Dict[str, Any] = {'step': step, 'status': status}
         if msg is not None:
             evt['msg'] = msg
         if error is not None:
             evt['error'] = error
+        if log:
+            evt['log'] = log
+        if total is not None:
+            evt['total'] = total
         return "event: step\ndata: %s\n\n" % json.dumps(evt)
 
     def generate():
@@ -216,8 +240,10 @@ def api_hosts_install_toolkit():
                         polls += 1
                         if polls > 240:  # ~20 min cap at 5s/poll
                             raise Exception('git install timed out after ~20 min')
+                        tail, total = _future_log_tail(state)
                         yield sse('install', 'active',
-                                  'Pulling from git… (~%ds)' % (polls * 5))
+                                  msg=state.get('jobDisplayName') or 'Cloning from git…',
+                                  log=tail, total=total)
                         time.sleep(5)
                     future.get_result()
                 else:
@@ -247,7 +273,10 @@ def api_hosts_install_toolkit():
                         polls += 1
                         if polls > 240:  # ~20 min cap at 5s/poll
                             raise Exception('code env build timed out after ~20 min')
-                        yield sse('codeenv', 'active', 'Building code env… (~%ds)' % (polls * 5))
+                        tail, total = _future_log_tail(state)
+                        yield sse('codeenv', 'active',
+                                  msg=state.get('jobDisplayName') or 'Building code env…',
+                                  log=tail, total=total)
                         time.sleep(5)
                     result = future.get_result() or {}
                 else:

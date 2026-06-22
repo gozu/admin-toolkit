@@ -18,6 +18,8 @@ type StepStatus = 'queued' | 'active' | 'done' | 'error';
 interface StepView {
   status: StepStatus;
   message: string;
+  log?: string[];
+  total?: number;
 }
 
 const INSTALL_STEPS: { key: InstallStepKey; label: string }[] = [
@@ -95,6 +97,12 @@ export function HostGate({ onEnter }: HostGateProps) {
   const [installFallbackHint, setInstallFallbackHint] = useState<string | null>(null);
   const [uploadDragging, setUploadDragging] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const logRef = useRef<HTMLPreElement | null>(null);
+
+  // Keep the live build-log panel pinned to its newest line as it streams.
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [installSteps]);
 
   useEffect(() => {
     if (!setupHost) return;
@@ -265,6 +273,8 @@ export function HostGate({ onEnter }: HostGateProps) {
           status: StepStatus;
           msg?: string;
           error?: string;
+          log?: string[];
+          total?: number;
         };
         if (p.step === 'complete') {
           completed = true;
@@ -274,7 +284,12 @@ export function HostGate({ onEnter }: HostGateProps) {
         const message = p.error || p.msg;
         setInstallSteps((s) => ({
           ...s,
-          [stepKey]: { status: p.status, message: message || s[stepKey].message },
+          [stepKey]: {
+            status: p.status,
+            message: message || s[stepKey].message,
+            log: p.log ?? s[stepKey].log,
+            total: p.total ?? s[stepKey].total,
+          },
         }));
         if (p.status === 'error') {
           throw new Error(p.error || `${stepKey} failed`);
@@ -549,6 +564,34 @@ export function HostGate({ onEnter }: HostGateProps) {
                 </div>
               ))}
             </div>
+
+            {(() => {
+              // Live build-log feed for whichever step is currently active —
+              // mirrors the remote's git-clone / pip-install output (streamed
+              // from the DSSFuture log tail), auto-scrolled to the newest line.
+              const active = INSTALL_STEPS.find((d) => installSteps[d.key].status === 'active');
+              const lines = active ? installSteps[active.key].log : undefined;
+              if (!active || !lines || lines.length === 0) return null;
+              const total = installSteps[active.key].total;
+              return (
+                <div className="mt-3">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">
+                      Live log · {active.label}
+                    </span>
+                    {total ? (
+                      <span className="font-mono text-[10px] text-[var(--text-tertiary)]">{total} lines</span>
+                    ) : null}
+                  </div>
+                  <pre
+                    ref={logRef}
+                    className="max-h-32 overflow-auto whitespace-pre-wrap rounded border border-[var(--border-glass)] bg-[var(--bg-app)] px-2 py-1 font-mono text-[10px] leading-relaxed text-[var(--text-secondary)]"
+                  >
+                    {lines.join('\n')}
+                  </pre>
+                </div>
+              );
+            })()}
 
             {installError && (
               <div className="mt-3 rounded border border-[var(--neon-red)]/40 bg-[var(--neon-red)]/10 px-3 py-2 text-sm text-[var(--neon-red)]">

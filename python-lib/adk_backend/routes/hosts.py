@@ -64,6 +64,25 @@ def _future_log_tail(state: Dict[str, Any], n: int = _INSTALL_LOG_TAIL) -> Tuple
     return tail, lg.get('totalLines')
 
 
+def _install_error_message(exc: Exception) -> str:
+    """Map known git-install failures to actionable guidance; otherwise return
+    the raw exception text.
+
+    The DSS `installFromGit` NPE *"Cannot read field credentials because
+    currentUser is null"* means the host preset's API key has no associated DSS
+    user (a global API key). DSS resolves git credentials from the current user,
+    so the clone fails regardless of repo/URL/visibility. The fix is a personal
+    API key (which carries a user), or the upload-.zip path (which needs none).
+    """
+    msg = str(exc)
+    if 'currentUser' in msg and 'null' in msg:
+        return ("This host's API key has no associated DSS user (it looks like a "
+                "global API key), so DSS can't resolve git credentials for the "
+                "clone. Use a personal API key in this host's preset, or switch "
+                "to Upload .zip (which needs no user).")
+    return f'{type(exc).__name__}: {str(exc)[:300]}'
+
+
 @bp.route('/api/hosts')
 def api_hosts():
     """List local + remote-preset hosts. API keys are never returned."""
@@ -251,7 +270,7 @@ def api_hosts_install_toolkit():
             yield sse('install', 'done',
                       'Plugin updated' if already_installed else 'Plugin installed')
         except Exception as exc:
-            yield sse('install', 'error', error=f'{type(exc).__name__}: {str(exc)[:300]}')
+            yield sse('install', 'error', error=_install_error_message(exc))
             return
 
         # ── Step 2: build + select the plugin's managed code env on the remote ──

@@ -8,7 +8,7 @@
   "hasBackend": "true",
   "enableJavascriptModules": "true",
   "noJSSecurity": "true",
-  "useContextualCodeEnv": "true",
+  "useContextualCodeEnv": "false",
   "standardWebAppLibraries": ["dataiku"],
   "params": []
 }

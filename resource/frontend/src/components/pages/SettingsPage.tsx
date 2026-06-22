@@ -3,8 +3,8 @@ import { useDiag } from '../../context/DiagContext';
 import { loadFromStorage, saveToStorage } from '../../utils/storage';
 import { useToggleFlag } from '../../hooks/useToggleFlag';
 import { useRedState, forgetRed } from '../../state/redUnlockStore';
-import { useHostKeyState, forgetHostKey } from '../../state/hostKeyUnlockStore';
 import { UnlockModal } from '../UnlockModal';
+import { RemoteHostsCard } from '../RemoteHostsCard';
 import { AlgorithmReviewCard } from '../AlgorithmReviewCard';
 import { PerfAutoTuneCard } from '../PerfAutoTuneCard';
 import { SupportBundleCard } from '../SupportBundleCard';
@@ -39,8 +39,6 @@ export function SettingsPage() {
 
   const { authed: unlocked, expiresAt } = useRedState();
   const [showUnlock, setShowUnlock] = useState(false);
-
-  const { configured: hostKeyConfigured, unlocked: hostKeyUnlocked } = useHostKeyState();
 
   const {
     configuredConnection: datasetExportConnection,
@@ -151,64 +149,7 @@ export function SettingsPage() {
         </p>
       </section>
 
-      <section className="glass-card p-4 space-y-3">
-        <div>
-          <h3 className="text-lg font-semibold text-[var(--text-primary)]">Remote host API keys</h3>
-          <p className="text-sm text-[var(--text-muted)]">
-            Remote-host presets can store their admin API key encrypted at rest. When any key is
-            encrypted, unlock once with the password used to encrypt it — the unlock is remembered
-            on this browser in a secure cookie so the toolkit can reach those hosts.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <span
-            className={`px-2 py-0.5 text-xs font-medium rounded border ${
-              !hostKeyConfigured
-                ? 'bg-[var(--bg-glass)] text-[var(--text-secondary)] border-[var(--border-default)]'
-                : hostKeyUnlocked
-                  ? 'bg-[var(--accent)]/20 text-[var(--accent)] border-[var(--accent)]/50'
-                  : 'bg-[var(--status-warning-bg)] text-[var(--neon-amber)] border-[var(--status-warning-border)]'
-            }`}
-          >
-            {!hostKeyConfigured ? 'No encrypted keys' : hostKeyUnlocked ? 'Unlocked' : 'Locked'}
-          </span>
-          {hostKeyConfigured && hostKeyUnlocked ? (
-            <button
-              type="button"
-              onClick={() => void forgetHostKey()}
-              className="px-3 py-1.5 rounded bg-[var(--bg-glass)] hover:bg-[var(--bg-glass-hover)] text-sm text-[var(--text-secondary)] transition-colors"
-            >
-              Forget on this device
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowUnlock(true)}
-              disabled={!hostKeyConfigured}
-              className="px-3 py-1.5 rounded bg-[var(--accent)]/20 text-[var(--accent)] hover:bg-[var(--accent)]/30 disabled:opacity-40 text-sm transition-colors"
-            >
-              Unlock…
-            </button>
-          )}
-        </div>
-
-        <p className="text-sm text-[var(--text-muted)]">
-          <span className="font-medium text-[var(--text-secondary)]">Admin setup:</span>{' '}
-          open the{' '}
-          <a
-            href={SECRET_PAGE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[var(--accent)] hover:underline"
-          >
-            encrypt tool
-          </a>
-          , encrypt each host’s API key with the <em>same</em> password, and paste the resulting{' '}
-          <code className="text-[var(--accent)]">adkfk1$…</code> blob into the preset’s API Key
-          field. The plaintext key never leaves the browser.
-        </p>
-      </section>
+      <RemoteHostsCard />
 
       <PerfAutoTuneCard />
 

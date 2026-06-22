@@ -9,9 +9,11 @@ interface UnlockModalProps {
   onUnlocked?: () => void;
 }
 
-// Where the admin turns a password into the plugin secret + encrypted host keys.
+// hash.html is now only where the admin turns a password into the plugin's
+// Advanced Actions secret. Encrypted remote-host keys are managed server-side in
+// the webapp (Settings → Remote Hosts) — this one password unlocks both gates.
 // Served statically by DSS from the plugin's resource/ dir on the controller.
-const ENCRYPT_TOOL_URL = '/plugins/admin-toolkit/resource/hash.html';
+const SECRET_PAGE_URL = '/plugins/admin-toolkit/resource/hash.html';
 
 /**
  * Single password prompt for both gates. One password unlocks the advanced
@@ -66,7 +68,7 @@ export function UnlockModal({ isOpen, onClose, onUnlocked }: UnlockModalProps) {
       if (hostFailed.length > 0) {
         // Unlocked, but some presets were encrypted with a different password.
         setNotice(
-          `Unlocked, but these hosts could not be decrypted — re-encrypt them with the same password: ${hostFailed.join(', ')}`,
+          `Unlocked, but these hosts could not be decrypted — re-save them in Settings → Remote Hosts to re-encrypt under this password: ${hostFailed.join(', ')}`,
         );
         setLoading(false);
         return;
@@ -96,7 +98,7 @@ export function UnlockModal({ isOpen, onClose, onUnlocked }: UnlockModalProps) {
     if (host === 'wrong-password') stuck.push('remote-host keys');
     setNotice(
       `Unlocked ${opened.join(' and ')}. ${stuck.join(' and ')} use a different password — ` +
-        `re-set them to this one (plugin settings / encrypt tool), then reload.`,
+        `re-set them to this one (plugin settings / Settings → Remote Hosts), then reload.`,
     );
     setLoading(false);
   };
@@ -163,12 +165,12 @@ export function UnlockModal({ isOpen, onClose, onUnlocked }: UnlockModalProps) {
           No prompt next time — the unlock is remembered on this browser (secure cookies). The
           password is set by an administrator with the{' '}
           <a
-            href={ENCRYPT_TOOL_URL}
+            href={SECRET_PAGE_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[var(--accent)] hover:underline"
           >
-            setup tool
+            secret generator
           </a>{' '}
           and pasted into{' '}
           <a

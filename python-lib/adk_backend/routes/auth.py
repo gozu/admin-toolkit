@@ -118,6 +118,19 @@ def _red_secure_cookie() -> bool:
     return request.headers.get('X-Forwarded-Proto', '').lower() == 'https' or request.is_secure
 
 
+def set_hostkey_cookie(resp, fernet_key: bytes) -> None:
+    """Attach the HttpOnly host-key cookie carrying the derived Fernet key.
+
+    Shared by the unlock endpoint and the preset writer's path-A auto-unlock, so
+    a successful master-password encrypt also opens host-key decryption for the
+    rest of the session (matching the unlock flow exactly)."""
+    resp.set_cookie(
+        hostkeys.KEY_COOKIE_NAME, fernet_key.decode('ascii'),
+        max_age=_RED_TOKEN_TTL_SECONDS, path='/',
+        secure=_red_secure_cookie(), httponly=True, samesite='Lax',
+    )
+
+
 @bp.route('/api/auth/red/unlock', methods=['POST'])
 @local_only
 def api_auth_red_unlock():
@@ -225,11 +238,7 @@ def api_hosts_keys_unlock():
     exp = int(time.time()) + _RED_TOKEN_TTL_SECONDS
     hostkeys.set_active_key(fernet_key)
     resp = jsonify({'unlocked': True, 'expiresAt': exp * 1000, 'failed': failed})
-    resp.set_cookie(
-        hostkeys.KEY_COOKIE_NAME, fernet_key.decode('ascii'),
-        max_age=_RED_TOKEN_TTL_SECONDS, path='/',
-        secure=_red_secure_cookie(), httponly=True, samesite='Lax',
-    )
+    set_hostkey_cookie(resp, fernet_key)
     return resp
 
 

@@ -27,13 +27,13 @@
         {
             "name": "sep_apikey",
             "label": "Admin API Key",
-            "description": "Encrypt the key before pasting it below — open the <a href=\"/plugins/admin-toolkit/resource/hash.html\" target=\"_blank\" rel=\"noopener noreferrer\">encrypt tool</a>, encrypt with your master password, and paste the resulting <code>adkfk1$…</code> blob into the field below. (The field is STRING, not PASSWORD: DSS would encrypt a PASSWORD param with a key the webapp backend can't read, so the toolkit does its own <code>adkfk1$</code> encryption.)",
+            "description": "<strong>Recommended:</strong> add and manage remote hosts in the Admin Toolkit webapp → <em>Settings → Remote Hosts</em>, where the API key is encrypted for you automatically. To configure a host here instead, paste a pre-encrypted <code>adkfk1$…</code> blob into the field below. (The field is STRING, not PASSWORD: DSS would encrypt a PASSWORD param with a key the webapp backend can't read, so the toolkit does its own <code>adkfk1$</code> encryption.)",
             "type": "SEPARATOR"
         },
         {
             "name": "apiKey",
             "label": "Encrypted API key",
-            "description": "Admin-level personal or global API key on the remote DSS. Paste the encrypted adkfk1$… blob produced by the encrypt tool above.",
+            "description": "Admin-level personal or global API key on the remote DSS, stored as an encrypted adkfk1$… blob. Prefer the webapp's Settings → Remote Hosts to add hosts — it encrypts the key for you.",
             "type": "STRING",
             "mandatory": true
         },

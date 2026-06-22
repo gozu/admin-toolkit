@@ -145,9 +145,8 @@
     transform: translateY(6px);
     filter: blur(1px);
   }
-  /* Subtle stagger so step 3 unlocks just after step 2. */
+  /* Subtle stagger so step 2 unlocks just after step 1. */
   #step2 { transition-delay: 40ms; }
-  #step3 { transition-delay: 120ms; }
 
   .step-rail {
     flex: none;
@@ -364,27 +363,7 @@
 
   .row { display: flex; gap: 12px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
 
-  /* ── Host rows ─────────────────────────────────────────────────────────── */
-  .host-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
-  .host-row input { width: auto; min-width: 0; margin-top: 0; }
-  .hr-label { flex: 0 0 34%; }
-  .hr-key { flex: 1; }
-  .hr-del {
-    flex: none;
-    padding: 10px 13px;
-    font-size: 16px;
-    line-height: 1;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: transparent;
-    color: var(--text-tertiary);
-    transition:
-      border-color var(--dur-fast) ease-out,
-      color var(--dur-fast) ease-out;
-  }
-  .hr-del:hover { border-color: var(--danger); color: var(--danger); }
-
-  /* ── Output blobs ──────────────────────────────────────────────────────── */
+  /* ── Output blob ───────────────────────────────────────────────────────── */
   .hash {
     width: 100%;
     font-family: var(--font-mono);
@@ -412,19 +391,6 @@
       background var(--dur-fast) ease-out;
   }
   .copy:hover { border-color: var(--accent); color: var(--accent); background: var(--bg-hover); }
-
-  /* Streaming encrypted results — fade + slide + blue arrival-tint settling. */
-  .enc-result {
-    margin-top: 16px;
-    padding: 10px 12px;
-    border-radius: var(--radius-lg);
-  }
-  .enc-result-name { font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); }
-  @keyframes stream-row-enter {
-    from { opacity: 0; transform: translateY(4px); background-color: var(--accent-muted); }
-    to   { opacity: 1; transform: none;            background-color: transparent; }
-  }
-  .stream-row-enter { animation: stream-row-enter 360ms var(--ease-out) both; }
 
   #hash { margin-top: 0; }
   .err { color: var(--danger); font-size: 13px; margin-top: 10px; min-height: 16px; }
@@ -466,7 +432,6 @@
     input { transition: none; }
     .progress-sheen::after,
     .btn-primary:hover::after,
-    .stream-row-enter,
     .fx-shake { animation: none; }
     .step.done .step-glyph::after { animation: none; opacity: 0; }
     .loading-ellipsis::after { animation: none; content: '…'; }
@@ -500,9 +465,10 @@
         </div>
 
         <div class="callout">
-          This is the only password for Admin Toolkit. Used to encrypt Advanced Actions and API
-          keys of every remote host. <strong>Write it down now</strong> — it is never stored or
-          sent, so if you lose it, every secret here must be redone.
+          This is the only password for Admin Toolkit. It unlocks Advanced Actions and the
+          encrypted API keys of every remote host — which you now add and manage in the webapp’s
+          <strong>Settings → Remote Hosts</strong> page. <strong>Write it down now</strong> — it is
+          never stored or sent, so if you lose it, every secret must be redone.
         </div>
 
         <div class="row">
@@ -525,34 +491,12 @@
         <button class="copy" id="copyHash" type="button">Copy</button>
       </div>
     </section>
-
-    <!-- ③ Encrypt host API keys -->
-    <section class="step locked" id="step3">
-      <div class="step-rail"><span class="step-glyph" aria-hidden="true"></span></div>
-      <div class="step-body">
-        <span class="eyebrow">Step 03 · Remote hosts</span>
-        <div class="step-head">Remote host API keys</div>
-        <p class="step-desc">
-          Paste each blob into that host’s preset <em>“API Key”</em> field. One unlock opens them all.
-        </p>
-        <div id="hostRows"></div>
-        <button id="addHost" type="button" class="linkbtn">+ Add another host</button>
-        <div class="row"><button id="encGo" type="button" class="btn-primary">Encrypt all</button></div>
-        <div class="err" id="encErr"></div>
-        <div id="encResults"></div>
-      </div>
-    </section>
   </div>
 
 <script>
   const ITERATIONS = 600000;
   const DKLEN = 32;
   const SALT_BYTES = 16;
-  // Domain tag so the host-key salt can never collide with any other use of the
-  // password. salt = PBKDF2(password, tag, 600k)[:16] — deterministic, so the same
-  // password always yields the same salt/key (nothing for the admin to manage),
-  // but it can't serve as a fast offline password verifier (see hostSalt).
-  const HOST_SALT_TAG = ' adk-hostkey-salt-v1';
 
   let masterPassword = null; // set in step 1; never leaves this tab
 
@@ -560,12 +504,6 @@
     let s = '';
     for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
     return btoa(s);
-  }
-  function b64url(bytes, pad) {
-    let s = '';
-    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
-    let out = btoa(s).replace(/\+/g, '-').replace(/\//g, '_');
-    return pad ? out : out.replace(/=+$/, '');
   }
 
   async function derive(password, salt) {
@@ -579,44 +517,6 @@
       DKLEN * 8
     );
     return new Uint8Array(bits);
-  }
-
-  // Deterministic 16-byte salt for host-key encryption, fixed by the password.
-  async function hostSalt(password) {
-    // Derive the salt through the full KDF (not a bare hash) so the stored salt
-    // can't serve as a fast offline password verifier: checking a guess against
-    // it costs the same 600k-iteration PBKDF2 as attacking the ciphertext. Still
-    // deterministic — same password → same salt/key, so one key opens every blob
-    // across separate encrypt runs (nothing for the admin to manage).
-    const tagSalt = new TextEncoder().encode(HOST_SALT_TAG);
-    const derived = await derive(password, tagSalt);   // PBKDF2(pw, tag, 600k) → 32 bytes
-    return derived.slice(0, SALT_BYTES);
-  }
-
-  // Build a Fernet token: 0x80 | ts(8) | iv(16) | aes-cbc-ct | hmac(32), base64url.
-  // Fernet key = base64url(PBKDF2(pw, salt)); first 16 bytes sign (HMAC), last 16 encrypt.
-  async function encryptKey(password, plaintext, salt) {
-    const derived = await derive(password, salt);     // 32 bytes
-    const signingKey = derived.slice(0, 16);
-    const encKey = derived.slice(16, 32);
-    const iv = crypto.getRandomValues(new Uint8Array(16));
-    const aesKey = await crypto.subtle.importKey('raw', encKey, { name: 'AES-CBC' }, false, ['encrypt']);
-    const ct = new Uint8Array(await crypto.subtle.encrypt(
-      { name: 'AES-CBC', iv }, aesKey, new TextEncoder().encode(plaintext)));
-    const ts = Math.floor(Date.now() / 1000);
-    const tsBytes = new Uint8Array(8);
-    for (let i = 7, t = ts; i >= 0; i--) { tsBytes[i] = t & 0xff; t = Math.floor(t / 256); }
-    const frame = new Uint8Array(1 + 8 + 16 + ct.length);
-    frame[0] = 0x80;
-    frame.set(tsBytes, 1);
-    frame.set(iv, 9);
-    frame.set(ct, 25);
-    const hmacKey = await crypto.subtle.importKey('raw', signingKey, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-    const mac = new Uint8Array(await crypto.subtle.sign('HMAC', hmacKey, frame));
-    const token = new Uint8Array(frame.length + mac.length);
-    token.set(frame, 0);
-    token.set(mac, frame.length);
-    return 'adkfk1$' + b64url(salt, false) + '$' + b64url(token, true);
   }
 
   function webCryptoOk(target) {
@@ -650,14 +550,8 @@
   const pwErr = document.getElementById('pwErr');
   const step1 = document.getElementById('step1');
   const step2 = document.getElementById('step2');
-  const step3 = document.getElementById('step3');
   const hashEl = document.getElementById('hash');
   const copyHash = document.getElementById('copyHash');
-  const hostRows = document.getElementById('hostRows');
-  const addHost = document.getElementById('addHost');
-  const encGo = document.getElementById('encGo');
-  const encErr = document.getElementById('encErr');
-  const encResults = document.getElementById('encResults');
   const pwBarFill = document.getElementById('pwBarFill');
   const pwStrengthLabel = document.getElementById('pwStrengthLabel');
 
@@ -708,10 +602,9 @@
     }).observe(el, { childList: true, characterData: true, subtree: true });
   }
   wireShake(pwErr);
-  wireShake(encErr);
 
   // Presentation-only: animate the trailing ellipsis on a busy button
-  // ("Working…", "Encrypting…") without touching the click handlers.
+  // ("Working…") without touching the click handlers.
   function wireBusyDots(btn) {
     let guard = false;
     new MutationObserver(() => {
@@ -729,14 +622,13 @@
     }).observe(btn, { childList: true, characterData: true, subtree: true });
   }
   wireBusyDots(setPw);
-  wireBusyDots(encGo);
 
   show.addEventListener('change', () => {
     const t = show.checked ? 'text' : 'password';
     pw.type = t; pw2.type = t;
   });
 
-  // ① Set the one password: derive the advanced-actions hash and unlock ②/③.
+  // ① Set the one password: derive the advanced-actions hash and unlock ②.
   setPw.addEventListener('click', async () => {
     pwErr.textContent = '';
     const p = pw.value;
@@ -757,9 +649,6 @@
       changePw.style.display = '';
       step1.classList.add('done');
       step2.classList.remove('locked');
-      step3.classList.remove('locked');
-      if (!hostRows.children.length) addRow();
-      hostRows.firstElementChild.querySelector('.hr-key').focus();
     } catch (ex) {
       pwErr.textContent = 'Failed: ' + (ex && ex.message ? ex.message : ex);
       setPw.disabled = false;
@@ -767,87 +656,13 @@
     }
   });
 
-  // Changing the password clears all derived state — the only safe way to avoid
-  // mixing keys encrypted under two different passwords.
+  // Changing the password regenerates the secret from scratch — the safe way to
+  // rotate it. (Encrypted remote-host keys are managed in the webapp now.)
   changePw.addEventListener('click', () => {
-    if (encResults.children.length > 0 &&
-        !confirm('Change the password and start over? Any keys you already encrypted used the current password and would need to be redone.')) {
-      return;
-    }
     location.reload();
   });
 
   copyHash.addEventListener('click', () => copyFrom(hashEl, copyHash));
-
-  // ③ One row per remote host. Add as many as needed, then encrypt all at once.
-  function addRow() {
-    const row = document.createElement('div');
-    row.className = 'host-row';
-    const label = document.createElement('input');
-    label.type = 'text'; label.className = 'hr-label';
-    label.placeholder = 'Host name (optional)';
-    label.autocomplete = 'off'; label.spellcheck = false;
-    const key = document.createElement('input');
-    key.type = 'text'; key.className = 'hr-key';
-    key.placeholder = 'API key';
-    key.autocomplete = 'off'; key.spellcheck = false;
-    const del = document.createElement('button');
-    del.type = 'button'; del.className = 'hr-del'; del.title = 'Remove'; del.textContent = '×';
-    del.addEventListener('click', () => {
-      row.remove();
-      if (!hostRows.children.length) addRow();
-    });
-    row.appendChild(label); row.appendChild(key); row.appendChild(del);
-    hostRows.appendChild(row);
-    return row;
-  }
-  addRow();
-
-  addHost.addEventListener('click', () => addRow().querySelector('.hr-key').focus());
-
-  encGo.addEventListener('click', async () => {
-    encErr.textContent = '';
-    encResults.innerHTML = '';
-    if (masterPassword === null) { encErr.textContent = 'Set the password in step 1 first.'; return; }
-    const rows = [...hostRows.children].map((r, i) => ({
-      name: r.querySelector('.hr-label').value.trim(),
-      key: r.querySelector('.hr-key').value.trim(),
-      i,
-    })).filter((r) => r.key);
-    if (!rows.length) { encErr.textContent = 'Enter at least one API key.'; return; }
-    if (!webCryptoOk(encErr)) return;
-
-    encGo.disabled = true;
-    encGo.textContent = 'Encrypting…';
-    try {
-      const salt = await hostSalt(masterPassword);
-      for (const r of rows) {
-        const blob = await encryptKey(masterPassword, r.key, salt);
-        renderResult(r.name || ('Host ' + (r.i + 1)), blob);
-      }
-    } catch (ex) {
-      encErr.textContent = 'Failed to encrypt: ' + (ex && ex.message ? ex.message : ex);
-    } finally {
-      encGo.disabled = false;
-      encGo.textContent = 'Encrypt all';
-    }
-  });
-
-  function renderResult(name, blob) {
-    const wrap = document.createElement('div');
-    wrap.className = 'enc-result stream-row-enter';
-    const nameEl = document.createElement('div');
-    nameEl.className = 'enc-result-name';
-    nameEl.textContent = name;
-    const box = document.createElement('div');
-    box.className = 'hash';
-    box.textContent = blob;
-    const btn = document.createElement('button');
-    btn.type = 'button'; btn.className = 'copy'; btn.textContent = 'Copy';
-    btn.addEventListener('click', () => copyFrom(box, btn));
-    wrap.appendChild(nameEl); wrap.appendChild(box); wrap.appendChild(btn);
-    encResults.appendChild(wrap);
-  }
 </script>
 </body>
 </html>

@@ -86,6 +86,21 @@ export async function hydrateHostKeyStatus(): Promise<void> {
   }
 }
 
+/** Force a re-probe of host-key status against the server. Unlike
+ *  hydrateHostKeyStatus (once-guarded for boot) this always re-runs — used by
+ *  the Remote Hosts manager after a mutation, where a first encrypted key flips
+ *  `configured` (and a path-A add auto-unlocks server-side → `unlocked`). */
+export async function reloadHostKeyStatus(): Promise<void> {
+  try {
+    const s = await fetchJson<{ configured: boolean; unlocked: boolean }>(
+      '/api/hosts/keys/status',
+    );
+    set({ configured: !!s.configured, unlocked: !!s.unlocked });
+  } catch {
+    /* leave the current state on a probe failure */
+  }
+}
+
 /** React hook — full state for Settings + the boot/locked modal trigger. */
 export function useHostKeyState(): HostKeyUnlockState {
   return store.use();

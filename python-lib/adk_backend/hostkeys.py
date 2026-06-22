@@ -35,6 +35,12 @@ KEY_COOKIE_NAME = 'admin_toolkit_hostkey'
 _PBKDF2_ITERATIONS = 600000
 _PBKDF2_DKLEN = 32
 
+# Deterministic-salt derivation tag. The leading space is significant and MUST
+# match hash.html's `HOST_SALT_TAG = ' adk-hostkey-salt-v1'` byte-for-byte, or a
+# blob made in the browser tool and one made server-side would get different
+# salts → different keys → cross-decrypt failures.
+HOST_SALT_TAG = b' adk-hostkey-salt-v1'
+
 
 class RemoteKeysLocked(Exception):
     """Raised when an encrypted preset key is encountered but no decryption key
@@ -67,6 +73,31 @@ def salt_from_blob(blob: str) -> bytes:
     if len(parts) != 3 or parts[0] != 'adkfk1':
         raise ValueError('not an adkfk1 blob')
     return _b64url_decode(parts[1])
+
+
+def host_salt(password: str) -> bytes:
+    """Deterministic 16-byte salt = PBKDF2(pw, HOST_SALT_TAG, 600k)[:16].
+
+    Mirrors hash.html's hostSalt(): the salt is derived through the full KDF (not
+    a bare hash) so the stored salt can't serve as a fast offline password
+    verifier. Same password → same salt → one derived key opens every blob, with
+    nothing for the admin to manage. Used only as the first-key fallback (path A):
+    once any encrypted preset exists, its salt is reused via salt_from_blob."""
+    derived = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'),
+                                  HOST_SALT_TAG, _PBKDF2_ITERATIONS, dklen=_PBKDF2_DKLEN)
+    return derived[:16]
+
+
+def encrypt_blob(plaintext: str, fernet_key: bytes, salt: bytes) -> str:
+    """Inverse of decrypt_blob → 'adkfk1$<b64url-salt>$<fernet-token>'.
+
+    cryptography's Fernet.encrypt() produces the same 0x80│ts│iv│ct│hmac frame
+    the hand-rolled JS Fernet in hash.html emits, so blobs round-trip across both
+    implementations. Salt is stored unpadded, token padded — matching hash.html."""
+    from cryptography.fernet import Fernet
+    token = Fernet(fernet_key).encrypt(plaintext.encode('utf-8')).decode('ascii')
+    salt_b64 = base64.urlsafe_b64encode(salt).decode('ascii').rstrip('=')
+    return f'{BLOB_PREFIX}{salt_b64}${token}'
 
 
 def decrypt_blob(blob: str, fernet_key: Optional[bytes]) -> str:

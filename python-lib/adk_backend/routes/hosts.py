@@ -6,22 +6,33 @@ install-toolkit flow that turns a plugin-less remote green).
 """
 
 import json
+import re
 import time
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, jsonify, request
 
+from adk_backend import hostkeys
 from adk_backend.clients import (
     MACRO_PROJECT_DEFAULT_NAME,
     MACRO_PROJECT_KEY,
     _build_remote_client,
     _list_remote_hosts,
+    _local_thread_client,
     _remote_host_config,
     _resolve_client,
 )
-from adk_backend.utils import _sse_response
+from adk_backend.routes.auth import _red_secret, _verify_red_password, set_hostkey_cookie
+from adk_backend.utils import _sse_response, advanced, local_only
 
 bp = Blueprint('hosts', __name__)
+
+# DSS prefixes parameter-set preset types as `parameter-set-<plugin-id>-<name>`.
+# Reads elsewhere match on the `remote-dss-host` suffix; writes use this exact
+# canonical type so a webapp-created preset is indistinguishable from one made
+# in the DSS plugin-settings UI.
+_PLUGIN_ID = 'admin-toolkit'
+_PRESET_TYPE = 'parameter-set-admin-toolkit-remote-dss-host'
 
 
 @bp.route('/api/hosts')
@@ -198,3 +209,259 @@ def api_hosts_install_toolkit():
         yield sse('complete', 'done', 'Admin Toolkit installed')
 
     return _sse_response(generate)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Remote-host preset CRUD (managed from the webapp's Settings → Remote Hosts)
+#
+# The webapp owns the whole remote-dss-host preset. The plaintext API key is
+# sent here over HTTPS and encrypted SERVER-SIDE into an adkfk1$ blob before it
+# touches saved settings (never stored in plaintext). Key/salt provenance is the
+# B→A failover (see _encrypt_api_key): prefer the already-unlocked host-key
+# Fernet key (no user action); fail over to the Advanced Actions password.
+#
+# All routes are @advanced (gated on the red unlock cookie — managing hosts is
+# an advanced action) + @local_only (plugin settings are local-only; never
+# 502'd when the active *remote* host is unreachable). Request bodies carry
+# plaintext keys / the master password and are NEVER logged.
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _is_remote_host_preset(preset: Any) -> bool:
+    return isinstance(preset, dict) and (preset.get('type') or '').endswith('remote-dss-host')
+
+
+def _local_plugin_settings():
+    """Plugin settings object on the LOCAL instance (where presets live)."""
+    return _local_thread_client().get_plugin(_PLUGIN_ID).get_settings()
+
+
+def _slugify(label: str) -> str:
+    slug = re.sub(r'[^a-z0-9]+', '-', (label or '').lower()).strip('-')
+    return slug or 'host'
+
+
+def _unique_preset_name(label: str, presets: List[Any]) -> str:
+    """Generate an immutable preset id (routing key) from the label, deduped."""
+    base = _slugify(label)
+    taken = {p.get('name') for p in presets if isinstance(p, dict)}
+    if base not in taken:
+        return base
+    i = 2
+    while f'{base}-{i}' in taken:
+        i += 1
+    return f'{base}-{i}'
+
+
+def _existing_salt_source() -> Optional[bytes]:
+    """The salt shared by all encrypted presets (from the first encrypted blob),
+    or None when no encrypted preset exists yet. Reusing it guarantees a single
+    unlock opens every blob regardless of salt-derivation history."""
+    try:
+        raw = _local_plugin_settings().get_raw()
+    except Exception:
+        return None
+    presets = raw.get('presets') if isinstance(raw, dict) else None
+    if not isinstance(presets, list):
+        return None
+    for preset in presets:
+        if not _is_remote_host_preset(preset):
+            continue
+        key = (preset.get('config') or {}).get('apiKey') or ''
+        if hostkeys.is_encrypted(key):
+            try:
+                return hostkeys.salt_from_blob(key)
+            except Exception:
+                continue
+    return None
+
+
+def _encrypt_api_key(
+    plaintext: str, password: Optional[str]
+) -> Tuple[Optional[str], Optional[bytes], Optional[Tuple[Dict[str, Any], int]]]:
+    """Encrypt a plaintext API key into an adkfk1$ blob via the B→A failover.
+
+    Returns (blob, fernet_key, error). On success error is None; fernet_key is
+    non-None only on path A (so the caller auto-unlocks via set_active_key +
+    cookie). On failure blob/fernet_key are None and error is a (payload, status)
+    tuple to return verbatim."""
+    salt = _existing_salt_source()
+    password = (password or '').strip()
+
+    if not password:
+        # ── Path B: use the already-unlocked host key (no user action) ──
+        active = hostkeys.get_active_key()
+        # No cached key, or no salt to key against yet (first key ever) → prompt.
+        if active is None or salt is None:
+            return None, None, ({'ok': False, 'needPassword': True}, 200)
+        try:
+            return hostkeys.encrypt_blob(plaintext, active, salt), None, None
+        except Exception:
+            return None, None, ({'ok': False, 'needPassword': True}, 200)
+
+    # ── Path A: master password supplied → verify, derive, auto-unlock ──
+    stored = _red_secret()
+    if not stored:
+        return None, None, ({
+            'ok': False,
+            'error': 'advanced-not-configured',
+            'message': 'No Advanced Actions password is configured yet. Set one first, '
+                       'then add the host.',
+        }, 400)
+    if not _verify_red_password(password, stored):
+        return None, None, ({'ok': False, 'error': 'invalid-password',
+                             'message': 'Incorrect password.'}, 401)
+    if salt is None:
+        salt = hostkeys.host_salt(password)  # first key ever
+    fernet_key = hostkeys.derive_fernet_key(password, salt)
+    try:
+        blob = hostkeys.encrypt_blob(plaintext, fernet_key, salt)
+    except Exception as exc:
+        return None, None, ({'ok': False, 'error': 'encrypt-failed',
+                             'message': f'{type(exc).__name__}: {str(exc)[:200]}'}, 500)
+    return blob, fernet_key, None
+
+
+def _save_preset(name: str, cfg: Dict[str, Any]) -> None:
+    """Upsert a remote-dss-host preset by name into local plugin settings."""
+    settings = _local_plugin_settings()
+    raw = settings.get_raw()
+    if not isinstance(raw.get('presets'), list):
+        raw['presets'] = []
+    presets = raw['presets']
+    for preset in presets:
+        if _is_remote_host_preset(preset) and preset.get('name') == name:
+            preset['type'] = _PRESET_TYPE
+            preset['config'] = cfg
+            break
+    else:
+        presets.append({'name': name, 'type': _PRESET_TYPE, 'config': cfg})
+    settings.save()
+
+
+def _delete_preset(name: str) -> None:
+    """Drop the matching remote-dss-host preset from local plugin settings."""
+    settings = _local_plugin_settings()
+    raw = settings.get_raw()
+    presets = raw.get('presets')
+    if not isinstance(presets, list):
+        return
+    raw['presets'] = [
+        p for p in presets
+        if not (_is_remote_host_preset(p) and p.get('name') == name)
+    ]
+    settings.save()
+
+
+@bp.route('/api/hosts/presets', methods=['GET'])
+@advanced
+@local_only
+def api_hosts_presets_list():
+    """Full editable host list. keyStatus ∈ encrypted|plaintext|none. Never
+    returns the key itself."""
+    try:
+        raw = _local_plugin_settings().get_raw()
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': f'{type(exc).__name__}: {str(exc)[:200]}'}), 500
+    presets = raw.get('presets') if isinstance(raw, dict) else None
+    out: List[Dict[str, Any]] = []
+    if isinstance(presets, list):
+        for preset in presets:
+            if not _is_remote_host_preset(preset):
+                continue
+            cfg = preset.get('config') or {}
+            key = cfg.get('apiKey') or ''
+            key_status = 'encrypted' if hostkeys.is_encrypted(key) else ('plaintext' if key else 'none')
+            out.append({
+                'name': preset.get('name'),
+                'label': cfg.get('label') or preset.get('name'),
+                'url': (cfg.get('url') or '').rstrip('/'),
+                'verifyTls': bool(cfg.get('verifyTls', True)),
+                'backupProjectKey': (cfg.get('backupProjectKey') or '').strip(),
+                'keyStatus': key_status,
+            })
+    return jsonify({'ok': True, 'hosts': out})
+
+
+@bp.route('/api/hosts/presets', methods=['POST'])
+@advanced
+@local_only
+def api_hosts_presets_save():
+    """Create or update a remote-dss-host preset (encrypting the key server-side)."""
+    payload = request.get_json(silent=True) or {}
+    label = (payload.get('label') or '').strip()
+    url = (payload.get('url') or '').strip().rstrip('/')
+    name = (payload.get('name') or '').strip()
+    api_key = payload.get('apiKey')
+    password = payload.get('password')
+    verify_tls = bool(payload.get('verifyTls', True))
+    backup_project_key = (payload.get('backupProjectKey') or '').strip()
+
+    if not label:
+        return jsonify({'ok': False, 'error': 'invalid-label', 'message': 'Label is required.'}), 400
+    if not url or not re.match(r'^https?://', url, re.IGNORECASE):
+        return jsonify({'ok': False, 'error': 'invalid-url',
+                        'message': 'URL must start with http:// or https://.'}), 400
+
+    try:
+        raw = _local_plugin_settings().get_raw()
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': f'{type(exc).__name__}: {str(exc)[:200]}'}), 500
+    presets = raw.get('presets') if isinstance(raw.get('presets'), list) else []
+
+    existing: Optional[Dict[str, Any]] = None
+    if name:
+        for preset in presets:
+            if _is_remote_host_preset(preset) and preset.get('name') == name:
+                existing = preset
+                break
+    # name is the routing key: generated on create, immutable on edit.
+    if existing is None:
+        name = _unique_preset_name(label, presets)
+
+    fernet_key: Optional[bytes] = None  # set on path-A success → auto-unlock
+    raw_key = (api_key or '').strip()
+    if raw_key:
+        if hostkeys.is_encrypted(raw_key):
+            stored_key = raw_key  # power-user paste of a ready blob — store as-is
+        else:
+            blob, fernet_key, err = _encrypt_api_key(raw_key, password)
+            if err is not None:
+                body, status = err
+                return jsonify(body), status
+            stored_key = blob
+    elif existing is not None:
+        stored_key = (existing.get('config') or {}).get('apiKey') or ''  # keep current key
+    else:
+        return jsonify({'ok': False, 'error': 'missing-key',
+                        'message': 'An API key is required for a new host.'}), 400
+
+    cfg = {
+        'label': label,
+        'url': url,
+        'apiKey': stored_key,
+        'verifyTls': verify_tls,
+        'backupProjectKey': backup_project_key,
+    }
+    try:
+        _save_preset(name, cfg)
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': f'{type(exc).__name__}: {str(exc)[:200]}'}), 500
+
+    resp = jsonify({'ok': True, 'name': name})
+    if fernet_key is not None:
+        hostkeys.set_active_key(fernet_key)
+        set_hostkey_cookie(resp, fernet_key)
+    return resp
+
+
+@bp.route('/api/hosts/presets/<name>', methods=['DELETE'])
+@advanced
+@local_only
+def api_hosts_presets_delete(name: str):
+    """Delete a remote-dss-host preset by name."""
+    try:
+        _delete_preset((name or '').strip())
+    except Exception as exc:
+        return jsonify({'ok': False, 'error': f'{type(exc).__name__}: {str(exc)[:200]}'}), 500
+    return jsonify({'ok': True})

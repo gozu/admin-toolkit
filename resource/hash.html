@@ -5,8 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Admin Toolkit — Security Setup</title>
 <style>
-  /* Tokens mirror resource/frontend/src/index.css (the webapp's design system),
-     condensed to the slice this offline page needs. Webapp blue accent. */
   :root {
     --bg-app:        #0a0a0a;
     --bg-surface:    #141414;
@@ -33,7 +31,6 @@
     --shadow-sm:     0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md:     0 2px 8px rgba(0, 0, 0, 0.4);
     --shadow-lg:     0 4px 16px rgba(0, 0, 0, 0.5);
-    /* System stack only — no CDN, no embedded fonts, zero network requests. */
     --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   }
@@ -53,7 +50,6 @@
     position: relative;
     overflow-x: hidden;
   }
-  /* Restrained NOC backdrop — faint radial vignette … */
   body::before {
     content: '';
     position: fixed;
@@ -62,7 +58,6 @@
     z-index: 0;
     background: radial-gradient(ellipse 90% 80% at 50% 40%, transparent 60%, rgba(0, 0, 0, 0.14));
   }
-  /* … + barely-there scanlines. */
   body::after {
     content: '';
     position: fixed;
@@ -72,7 +67,6 @@
     background: repeating-linear-gradient(0deg, rgba(128, 128, 128, 0.025) 0 1px, transparent 1px 3px);
   }
 
-  /* ── Card: Mission-Control tile chrome + signature entrance ────────────── */
   .card {
     position: relative;
     z-index: 1;
@@ -86,7 +80,6 @@
     overflow: hidden;
     animation: hero-enter var(--dur-slower) var(--ease-out) both;
   }
-  /* 1px blue→transparent accent hairline across the top */
   .card::before {
     content: '';
     position: absolute;
@@ -99,7 +92,6 @@
     to   { opacity: 1; transform: none;                          filter: blur(0); }
   }
 
-  /* ── Hero ──────────────────────────────────────────────────────────────── */
   .eyebrow {
     display: block;
     text-transform: uppercase;
@@ -125,7 +117,6 @@
     line-height: 1.5;
   }
 
-  /* ── Step rail with status glyphs ──────────────────────────────────────── */
   .step {
     display: flex;
     gap: 16px;
@@ -137,7 +128,6 @@
       transform var(--dur-slower) var(--ease-out),
       filter var(--dur-slower) var(--ease-out);
   }
-  /* Locked steps reveal with a smooth opacity + slide + de-blur (not a hard flip). */
   .step.locked {
     opacity: 0.4;
     pointer-events: none;
@@ -145,7 +135,6 @@
     transform: translateY(6px);
     filter: blur(1px);
   }
-  /* Subtle stagger so step 2 unlocks just after step 1. */
   #step2 { transition-delay: 40ms; }
 
   .step-rail {
@@ -183,16 +172,13 @@
       border-color var(--dur-normal) var(--ease-out),
       background var(--dur-normal) var(--ease-out);
   }
-  /* Locked / queued */
   .step-glyph::before { content: '○'; }
-  /* Active / current (not locked, not done) — accent dot */
   .step:not(.locked):not(.done) .step-glyph {
     color: var(--accent);
     border-color: var(--accent);
     background: var(--accent-muted);
   }
   .step:not(.locked):not(.done) .step-glyph::before { content: '●'; }
-  /* Done — green ✓ with a one-shot 2.5s check-fade ring flourish */
   .step.done .step-glyph {
     color: var(--success);
     border-color: var(--success);
@@ -224,7 +210,6 @@
   .step-desc { color: var(--text-secondary); font-size: 13px; margin: 0 0 12px; line-height: 1.55; }
   .step-desc em { color: var(--text-primary); font-style: normal; }
 
-  /* ── Inputs ────────────────────────────────────────────────────────────── */
   input[type="password"], input[type="text"] {
     width: 100%;
     padding: 11px 13px;
@@ -244,7 +229,6 @@
   input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-muted); }
   input:read-only { color: var(--text-tertiary); border-style: dashed; box-shadow: none; }
 
-  /* ── Live strength gauge (ProgressIndicator tone system, condensed) ──────── */
   .gauge { margin-top: 12px; }
   .gauge-track {
     height: 6px;
@@ -288,7 +272,6 @@
     color: var(--text-tertiary);
   }
 
-  /* Progress sheen — leading-edge shimmer on an active gauge. */
   .progress-sheen { position: relative; overflow: hidden; }
   .progress-sheen::after {
     content: '';
@@ -300,7 +283,6 @@
   }
   @keyframes progress-sheen-sweep { to { transform: translateX(100%); } }
 
-  /* ── Buttons ───────────────────────────────────────────────────────────── */
   button { appearance: none; font-family: var(--font-sans); cursor: pointer; }
   .btn-primary {
     position: relative;
@@ -320,7 +302,6 @@
   .btn-primary:hover { background: #4b8df8; box-shadow: var(--shadow-md); }
   .btn-primary:active { background: #2563eb; }
   .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
-  /* Shine sweep across primary buttons on hover */
   .btn-primary::after {
     content: '';
     position: absolute;
@@ -363,7 +344,6 @@
 
   .row { display: flex; gap: 12px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
 
-  /* ── Output blob ───────────────────────────────────────────────────────── */
   .hash {
     width: 100%;
     font-family: var(--font-mono);
@@ -407,7 +387,6 @@
   }
   .callout strong { color: var(--danger); }
 
-  /* ── Error shake + busy loading-ellipsis ──────────────────────────────── */
   @keyframes fx-shake {
     10%, 90% { translate: -1px 0; }
     20%, 80% { translate: 2px 0; }
@@ -424,7 +403,6 @@
   }
   .loading-ellipsis::after { content: ''; animation: dots 1.2s steps(4, end) infinite; }
 
-  /* ── prefers-reduced-motion: disable motion, keep everything visible ───── */
   @media (prefers-reduced-motion: reduce) {
     .card { animation: none; }
     .step { transition: none; }
@@ -446,7 +424,6 @@
       <p class="subtitle">Forge the one master key that arms the toolkit.</p>
     </header>
 
-    <!-- ① Master password -->
     <section class="step" id="step1">
       <div class="step-rail"><span class="step-glyph" aria-hidden="true"></span></div>
       <div class="step-body">
@@ -478,7 +455,6 @@
       </div>
     </section>
 
-    <!-- ② Advanced-actions secret -->
     <section class="step locked" id="step2">
       <div class="step-rail"><span class="step-glyph" aria-hidden="true"></span></div>
       <div class="step-body">
@@ -496,7 +472,7 @@
   const DKLEN = 32;
   const SALT_BYTES = 16;
 
-  let masterPassword = null; // set in step 1; never leaves this tab
+  let masterPassword = null;
 
   function b64(bytes) {
     let s = '';
@@ -539,7 +515,6 @@
     }
   }
 
-  // ── Elements ──────────────────────────────────────────────────────────────
   const pw = document.getElementById('pw');
   const pw2 = document.getElementById('pw2');
   const show = document.getElementById('show');
@@ -553,9 +528,6 @@
   const pwBarFill = document.getElementById('pwBarFill');
   const pwStrengthLabel = document.getElementById('pwStrengthLabel');
 
-  // Presentation-only: live strength gauge under the master-password field.
-  // Local estimate from length ALONE → ProgressIndicator tones grey→yellow→
-  // blue/green. Informational; never gates the password.
   function estimateStrength(p) {
     if (!p) return { pct: 0, label: '', tone: '' };
     const pct = Math.min(Math.round((p.length / 16) * 100), 100);
@@ -571,27 +543,23 @@
     if (s.tone) {
       pwBarFill.classList.add('tone-' + s.tone);
       pwStrengthLabel.classList.add('tone-' + s.tone);
-      // Sheen while still "building"; settles off once strong.
       if (s.tone !== 'strong') pwBarFill.classList.add('progress-sheen');
     }
     pwStrengthLabel.textContent = s.label;
   }
   pw.addEventListener('input', updateGauge);
 
-  // Presentation-only: shake an error line when it gains text (any code path).
   function wireShake(el) {
     new MutationObserver(() => {
       if (el.textContent.trim()) {
         el.classList.remove('fx-shake');
-        void el.offsetWidth; // reflow so the animation restarts
+        void el.offsetWidth;
         el.classList.add('fx-shake');
       }
     }).observe(el, { childList: true, characterData: true, subtree: true });
   }
   wireShake(pwErr);
 
-  // Presentation-only: animate the trailing ellipsis on a busy button
-  // ("Working…") without touching the click handlers.
   function wireBusyDots(btn) {
     let guard = false;
     new MutationObserver(() => {
@@ -615,7 +583,6 @@
     pw.type = t; pw2.type = t;
   });
 
-  // ① Set the one password: derive the advanced-actions hash and unlock ②.
   setPw.addEventListener('click', async () => {
     pwErr.textContent = '';
     const p = pw.value;
@@ -643,17 +610,10 @@
     }
   });
 
-  // Changing the password regenerates the secret from scratch — the safe way to
-  // rotate it. (Encrypted remote-host keys are managed in the webapp now.)
   changePw.addEventListener('click', () => {
     location.reload();
   });
 
-  // Copy the secret, then close this tab. `await writeText` resolves once the value
-  // is queued to the system clipboard, but on some platforms the OS-clipboard commit
-  // flushes a beat later — closing the tab the same instant races that flush and can
-  // silently drop the copy. So we show "Copied ✓" and give the commit a moment to
-  // land before closing. (If the clipboard API is blocked, select the text instead.)
   copyHash.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(hashEl.textContent);

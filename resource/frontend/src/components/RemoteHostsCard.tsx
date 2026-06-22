@@ -106,7 +106,7 @@ export function RemoteHostsCard() {
       setTests((prev) => ({
         ...prev,
         [name]: {
-          lifecycle: ok ? doneLc('Reachable') : errorLc(res.error || 'Unreachable'),
+          lifecycle: ok ? doneLc('✓ Reachable') : errorLc(res.error || 'Unreachable'),
           result: res,
         },
       }));
@@ -343,7 +343,7 @@ function ResultPill({ ok, label }: { ok: boolean; label: string }) {
           : 'bg-[var(--status-warning-bg)] text-[var(--neon-amber)] border-[var(--status-warning-border)]'
       }`}
     >
-      {label}
+      {ok ? `✓ ${label}` : label}
     </span>
   );
 }

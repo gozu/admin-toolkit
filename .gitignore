@@ -142,3 +142,13 @@ security-reviews/
 bestofboth/
 docs/security-gate.html
 .venv
+
+# Local audit/diagnostic dumps pulled from live instances — REAL production
+# data (usernames, logins, project keys, IPs). Multi-GB, never committable,
+# especially to a public repo. Fetched by the local-only getaudittam.sh helper.
+audit-logs/
+diag-audit/
+realaudit/
+getaudittam.sh
+# Local CRU/audit how-to scratch (anonymized, but kept out of the plugin repo).
+CRU.md

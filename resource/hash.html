@@ -460,15 +460,13 @@
           <div class="gauge-track"><div class="gauge-fill" id="pwBarFill"></div></div>
           <div class="gauge-meta">
             <span class="gauge-label" id="pwStrengthLabel"></span>
-            <span class="gauge-hint">length + variety</span>
+            <span class="gauge-hint">length</span>
           </div>
         </div>
 
         <div class="callout">
-          This is the only password for Admin Toolkit. It unlocks Advanced Actions and the
-          encrypted API keys of every remote host — which you now add and manage in the webapp’s
-          <strong>Settings → Remote Hosts</strong> page. <strong>Write it down now</strong> — it is
-          never stored or sent, so if you lose it, every secret must be redone.
+          Admin Toolkit’s one password — unlocks Advanced Actions and every remote-host key.
+          <strong>Write it down</strong>: it is never stored and can’t be recovered.
         </div>
 
         <div class="row">
@@ -488,7 +486,7 @@
         <div class="step-head">Advanced Actions secret</div>
         <p class="step-desc">Paste into Plugin settings → <em>“Advanced Actions password (hash)”</em>.</p>
         <div class="hash" id="hash"></div>
-        <button class="copy" id="copyHash" type="button">Copy</button>
+        <button class="copy" id="copyHash" type="button">Copy and Close this tab</button>
       </div>
     </section>
   </div>
@@ -556,25 +554,14 @@
   const pwStrengthLabel = document.getElementById('pwStrengthLabel');
 
   // Presentation-only: live strength gauge under the master-password field.
-  // Local estimate (length + character-class variety) → ProgressIndicator tones
-  // grey→yellow→blue/green. Informational; never gates the password.
+  // Local estimate from length ALONE → ProgressIndicator tones grey→yellow→
+  // blue/green. Informational; never gates the password.
   function estimateStrength(p) {
     if (!p) return { pct: 0, label: '', tone: '' };
-    let classes = 0;
-    if (/[a-z]/.test(p)) classes++;
-    if (/[A-Z]/.test(p)) classes++;
-    if (/[0-9]/.test(p)) classes++;
-    if (/[^A-Za-z0-9]/.test(p)) classes++;
-    const lenScore = Math.min(p.length / 16, 1);
-    const varScore = classes / 4;
-    const score = 0.55 * lenScore + 0.45 * varScore;
-    if (p.length < 8 || score < 0.4) {
-      return { pct: Math.max(14, Math.round(score * 100)), label: 'weak', tone: 'weak' };
-    }
-    if (score < 0.72) {
-      return { pct: Math.round(score * 100), label: 'fair', tone: 'fair' };
-    }
-    return { pct: Math.min(100, Math.round(score * 100)), label: 'strong', tone: 'strong' };
+    const pct = Math.min(Math.round((p.length / 16) * 100), 100);
+    if (p.length < 8)  return { pct: Math.max(14, pct), label: 'weak',   tone: 'weak' };
+    if (p.length < 16) return { pct, label: 'fair', tone: 'fair' };
+    return { pct: 100, label: 'strong', tone: 'strong' };
   }
   function updateGauge() {
     const s = estimateStrength(pw.value);
@@ -662,7 +649,16 @@
     location.reload();
   });
 
-  copyHash.addEventListener('click', () => copyFrom(hashEl, copyHash));
+  // Copy the secret to the clipboard, then close this tab. If the clipboard is
+  // blocked, fall back to selecting the text and leave the tab open.
+  copyHash.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(hashEl.textContent);
+      window.close();
+    } catch {
+      copyFrom(hashEl, copyHash);
+    }
+  });
 </script>
 </body>
 </html>

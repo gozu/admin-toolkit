@@ -146,10 +146,12 @@ MACRO_PROJECT_DEFAULT_NAME = 'Admin Toolkit'
 
 # Install source for the git-based remote install (install_plugin_from_git).
 # Hardcoded default; the install dialog prefills it but lets the admin override
-# the URL/branch per-run. The remote DSS must be set up to access this repo
-# (e.g. a deploy key for the SSH form) — otherwise git install fails by design
-# and the admin-uploaded .zip path in api_hosts_install_toolkit takes over.
-ADMIN_TOOLKIT_GIT_REPO_URL = 'git@github.com:gozu/admin-toolkit.git'
+# the URL/branch per-run. Use the HTTPS form for a PUBLIC repo: it needs no
+# credentials, so DSS skips the per-user git-credential lookup that NPEs under
+# an API-key request ("currentUser is null"). The SSH form (git@…) forces that
+# lookup and fails. For a private/air-gapped remote, the admin-uploaded .zip
+# path in api_hosts_install_toolkit takes over.
+ADMIN_TOOLKIT_GIT_REPO_URL = 'https://github.com/gozu/admin-toolkit.git'
 ADMIN_TOOLKIT_GIT_BRANCH = 'main'
 
 

@@ -30,7 +30,7 @@ const INSTALL_STEPS: { key: InstallStepKey; label: string }[] = [
 // dialog's git fields, which the admin can override per run. Not fetched at
 // runtime; the backend falls back to its own constants when these are blank.
 type InstallMode = 'git' | 'upload';
-const INSTALL_GIT_REPO_DEFAULT = 'git@github.com:gozu/admin-toolkit.git';
+const INSTALL_GIT_REPO_DEFAULT = 'https://github.com/gozu/admin-toolkit.git';
 const INSTALL_GIT_BRANCH_DEFAULT = 'main';
 
 function initialInstallSteps(): Record<InstallStepKey, StepView> {
@@ -503,8 +503,9 @@ export function HostGate({ onEnter }: HostGateProps) {
                       />
                     </label>
                     <p className="text-[11px] text-[var(--text-tertiary)]">
-                      The remote DSS must be able to reach this repo (e.g. a configured deploy key). If it can't,
-                      switch to Upload .zip.
+                      The remote DSS must have network access to this repo (public HTTPS needs no credentials; a
+                      private/SSH repo needs git access configured on the remote). If it can't reach it, switch to
+                      Upload .zip.
                     </p>
                   </div>
                 ) : (

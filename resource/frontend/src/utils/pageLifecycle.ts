@@ -1,5 +1,5 @@
 import type { Lifecycle, ParsedData, PageId } from '../types';
-import { MODULE_BY_ID, type ModuleDefinition } from './moduleRegistry';
+import { MODULE_BY_ID, type ModuleDefinition, type LifecycleFieldName } from './moduleRegistry';
 import { aggregateLifecycles } from './lifecycleAggregator';
 
 // A module that hasn't been kicked off yet reads as `queued` (no startedAt).
@@ -11,9 +11,15 @@ const DEFAULT_QUEUED: Lifecycle = { phase: 'queued' };
 // ParsedData. The resolver gathers them, defaulting any absent field to
 // queued, and runs the pure aggregator. Single-field modules pass through
 // unchanged because the aggregator returns the sole state as-is.
+export function resolveLifecycleFromFields(
+  fields: readonly LifecycleFieldName[],
+  d: ParsedData,
+): Lifecycle {
+  return aggregateLifecycles(fields.map((f) => d[f] ?? DEFAULT_QUEUED));
+}
+
 export function resolveLifecycle(module: ModuleDefinition, d: ParsedData): Lifecycle {
-  const states = module.lifecycle.fields.map((f) => d[f] ?? DEFAULT_QUEUED);
-  return aggregateLifecycles(states);
+  return resolveLifecycleFromFields(module.lifecycle.fields, d);
 }
 
 export function resolveLifecycleById(pageId: PageId, d: ParsedData): Lifecycle {

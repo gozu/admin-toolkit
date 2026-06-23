@@ -7,7 +7,7 @@ export { useScrolled } from './useScrolled';
 export { useCollapsible } from './useCollapsible';
 export { useIssueDetection } from './useIssueDetection';
 export { useTheme } from './useTheme';
-export { useHealthScore } from './useHealthScore';
+export { useHealthScore, SCORE_LIFECYCLE_FIELDS } from './useHealthScore';
 export { useSharedHealthFactors } from './useSharedHealthFactors';
 export { useDirTreeLoader } from './useDirTreeLoader';
 export { useDataSource } from './useDataSource';

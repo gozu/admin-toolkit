@@ -11,8 +11,11 @@ import {
 import { managedFoldersScan } from '../state/managedFoldersStore';
 import { prefetchInactiveProjects } from '../state/inactiveProjectsCache';
 import { startProcessMetricsScan } from '../state/processMetrics';
+import { projectCostScan } from '../state/projectCostScan';
 import { reportLlmsStore } from '../state/reportLlmsStore';
 import { getSessionEpoch } from '../state/sessionCache';
+import { SHARED_LOADING_FIELDS } from '../utils/moduleRegistry';
+import { resolveLifecycleFromFields } from '../utils/pageLifecycle';
 import type { Lifecycle, ParsedData } from '../types';
 
 type IdleHandle = number;
@@ -45,6 +48,14 @@ const chunkPreloads = [
 function isTerminal(lc: Lifecycle | undefined): boolean {
   return lc?.phase === 'done' || lc?.phase === 'error';
 }
+
+// Cost/CRU (`projectCostLoading`) is the only global-aggregate field with no
+// init-time starter — it loads solely on the Cost page's mount, so the global
+// "Analysis complete" indicator (and anything gated on it) never resolves until
+// the page is visited. Auto-start it here, but only once every OTHER aggregate
+// field is terminal, so the heavy CRU/audit parse runs last and doesn't compete
+// with the rest of the initial load.
+const NON_COST_FIELDS = SHARED_LOADING_FIELDS.filter((f) => f !== 'projectCostLoading');
 
 export function useDelayedPageWarmup(enabled: boolean, parsedData: ParsedData): void {
   const { dispatch } = useDiag();
@@ -273,4 +284,17 @@ export function useDelayedPageWarmup(enabled: boolean, parsedData: ParsedData): 
       cancelIdle(handle);
     };
   }, [enabled, parsedData.codeEnvsLoading]);
+
+  // Deferred Cost/CRU autostart: fire once the other aggregate fields settle so
+  // the global "Analysis complete" can resolve without a visit to the Cost page.
+  // Guarded on the store's own `scanStarted`, so the Cost page's mount-load
+  // becomes a no-op fast-path when this has already kicked it off (and vice
+  // versa). One-shot per session because `scanStarted` stays true thereafter.
+  const othersLc = resolveLifecycleFromFields(NON_COST_FIELDS, parsedData);
+  useEffect(() => {
+    if (!enabled) return;
+    if (othersLc.phase !== 'done' && othersLc.phase !== 'error') return;
+    if (projectCostScan.store.get().scanStarted) return;
+    void projectCostScan.load();
+  }, [enabled, othersLc.phase]);
 }

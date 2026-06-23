@@ -8,6 +8,24 @@ import type {
   HealthSeverity,
 } from '../types';
 import { useThresholds, type ThresholdSettings } from './useThresholds';
+import type { LifecycleFieldName } from '../utils/moduleRegistry';
+
+// Single source of truth for the lifecycle fields the health score actually
+// consumes. `calculateHealthScore` reads code-envs, system/security settings,
+// filesystem, memory, project footprint — and nothing else. The Summary score
+// gate aggregates over THESE fields, not the global `analysisLoading` (which
+// waits on all ~19 modules, including Cost/CRU, which the score never touches).
+// IMPORTANT: when adding a new input to `calculateHealthScore`, add its
+// lifecycle field here too — this link is a human convention the compiler
+// cannot infer.
+export const SCORE_LIFECYCLE_FIELDS: readonly LifecycleFieldName[] = [
+  'summaryLoading',
+  'settingsLoading',
+  'filesystemLoading',
+  'memoryLoading',
+  'codeEnvsLoading',
+  'projectFootprintLoading',
+];
 
 /**
  * Category weights for overall score calculation

@@ -472,6 +472,24 @@ def _client_perform_json(client: Any, method: str, path: str) -> Optional[Any]:
     return None
 
 
+def _git_log_last_activity_ms(log: Any) -> Optional[int]:
+    """Last *user* activity (ms since epoch) from a project git log.
+
+    Skips DSS upgrade migration commits. On every version upgrade DSS re-saves each
+    project and writes a bookkeeping commit (author 'no:auth', message
+    'Migration to DSS version X'). That is not user activity — DSS itself excludes
+    the 'no:auth' author from its contributor stats — so it must not count as the
+    project's last activity (otherwise dormant projects look active as of the upgrade
+    date). Returns the newest non-migration commit; falls back to the newest commit if
+    every entry is a migration."""
+    entries = log['entries']
+    for entry in entries:
+        if entry.get('author') == 'no:auth' and str(entry.get('message') or '').startswith('Migration to DSS version'):
+            continue
+        return int(dtparser.isoparse(entry['timestamp']).timestamp() * 1000)
+    return int(dtparser.isoparse(entries[0]['timestamp']).timestamp() * 1000)
+
+
 def _list_projects_catalog(client: Any) -> List[Dict[str, str]]:
     t_total = time.time()
     projects = _sdk_fetch(
@@ -543,8 +561,7 @@ def _list_projects_catalog(client: Any) -> List[Dict[str, str]]:
         ts_map: Dict[str, Optional[int]] = {}
         for key, log in all_logs.items():
             try:
-                ts_str = log['entries'][0]['timestamp']
-                ts_map[key] = int(dtparser.isoparse(ts_str).timestamp() * 1000)
+                ts_map[key] = _git_log_last_activity_ms(log)
             except Exception:
                 ts_map[key] = None
         for entry in out:

@@ -5,8 +5,10 @@ Source of truth: backend.py:10000 api_tools_inactive_projects (+ _list_projects_
 Run inside a DSS Jupyter notebook (admin-toolkit code env). No API key / host needed.
 
 NOTE: lastModifiedOn is derived from a per-project git-log walk
-(get_project_git().log() → entries[0].timestamp), matching _list_projects_catalog —
-NOT list_projects().lastModifiedOn, which does not reflect webapp edits. The
+(newest non-migration commit timestamp), matching _list_projects_catalog —
+NOT list_projects().lastModifiedOn, which does not reflect webapp edits. DSS upgrade
+migration commits (author 'no:auth', "Migration to DSS version X") are skipped so a
+version upgrade does not look like project activity. The
 threshold is the INACTIVE_THRESHOLD_DAYS constant below (default 180) — edit it
 in the cell to change which projects are flagged.
 """
@@ -18,6 +20,19 @@ from adk_notebook import get_client, ui
 
 # Projects untouched longer than this many days are flagged. Override here.
 INACTIVE_THRESHOLD_DAYS = 180
+
+
+def _git_log_last_activity_ms(log):
+    """Newest *user*-activity timestamp (ms) from a project git log, skipping DSS
+    upgrade migration commits (author 'no:auth', "Migration to DSS version X").
+    Matches _git_log_last_activity_ms in adk_backend/clients.py. Falls back to the
+    newest commit if every entry is a migration."""
+    entries = log["entries"]
+    for entry in entries:
+        if entry.get("author") == "no:auth" and str(entry.get("message") or "").startswith("Migration to DSS version"):
+            continue
+        return int(dtparser.isoparse(entry["timestamp"]).timestamp() * 1000)
+    return int(dtparser.isoparse(entries[0]["timestamp"]).timestamp() * 1000)
 
 
 def _list_projects_catalog(client):
@@ -38,8 +53,7 @@ def _list_projects_catalog(client):
         }
         try:
             log = client.get_project(key).get_project_git().log()
-            ts_str = log["entries"][0]["timestamp"]
-            entry["lastModifiedOn"] = int(dtparser.isoparse(ts_str).timestamp() * 1000)
+            entry["lastModifiedOn"] = _git_log_last_activity_ms(log)
         except Exception:
             pass
         out.append(entry)

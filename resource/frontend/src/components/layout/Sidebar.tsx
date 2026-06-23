@@ -815,10 +815,10 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
       }
       const nav = navRef.current;
       if (!nav) return;
-      const ids: PageId[] = Array.from(nav.querySelectorAll<HTMLElement>('[data-page-id]'))
+      const els = Array.from(nav.querySelectorAll<HTMLElement>('[data-page-id]'))
         .filter((el) => el.closest('.collapse-content')?.getAttribute('data-state') !== 'closed')
-        .map((el) => el.dataset.pageId as PageId)
-        .filter((id) => id !== 'sanity-check');
+        .filter((el) => (el.dataset.pageId as PageId) !== 'sanity-check');
+      const ids: PageId[] = els.map((el) => el.dataset.pageId as PageId);
       if (ids.length === 0) return;
       const dir = e.key === 'ArrowDown' ? 1 : -1;
       const i = ids.indexOf(activePageRef.current);
@@ -828,6 +828,9 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
       if (nav.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
       setKeyboardNav(true);
       setActivePage(ids[next]);
+      // Keep the newly-active item in view when navigating past the visible
+      // edge of the scrollable nav (matches the combobox/palette pattern).
+      els[next]?.scrollIntoView({ block: 'nearest' });
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

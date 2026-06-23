@@ -266,8 +266,10 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
   const skippedEnvCount = parsedData.skippedEnvCount;
   const loading = parsedData.codeEnvsLoading;
   const isLoading = loading?.phase === 'running' || loading?.phase === 'queued';
-  const analysisLoading = parsedData.analysisLoading;
-  const showAnalysisProgress = Boolean(analysisLoading?.active);
+  // Drive the "Analyzing code environments…" pulse off THIS page's own
+  // code-env lifecycle, not the global `analysisLoading` aggregate — the
+  // banner shouldn't linger until every unrelated module finishes.
+  const showAnalysisProgress = isLoading;
 
   const baseUrl = useMemo(() => getDssBaseUrl(), []);
 
@@ -593,15 +595,15 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
           {showAnalysisProgress && (
             <div>
               <div className="flex items-center justify-between text-xs text-[var(--text-secondary)]">
-                <span>{analysisLoading?.message || 'Analyzing code environments…'}</span>
+                <span>{(loading?.phase === 'running' ? loading.message : '') || 'Analyzing code environments…'}</span>
               </div>
               {/* Indeterminate pulse — no progress % (binary spinner semantics). */}
               <div className="mt-2 h-2 rounded-full bg-[var(--bg-glass)] overflow-hidden">
                 <div className="h-full w-full rounded-full bg-gradient-to-r from-[var(--neon-cyan)] to-[var(--neon-green)] animate-pulse motion-reduce:animate-none" />
               </div>
-              {analysisLoading?.phase && (
+              {loading?.phase && (
                 <div className="mt-1 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
-                  {analysisLoading.phase.replace(/_/g, ' ')}
+                  {loading.phase.replace(/_/g, ' ')}
                 </div>
               )}
             </div>

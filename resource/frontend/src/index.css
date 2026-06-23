@@ -15,6 +15,47 @@
   /* src: url('/fonts/soehne-mono.woff2') format('woff2'); */
 }
 
+/* SourceSansPro — the native Dataiku DSS UI font, bundled from the DSS 14.5
+   on-box woff files (static/dataiku/fonts/). DSS's own @font-face maps
+   Regular→400, Semibold→500, Bold→600; we keep 700 on Bold so plugin headings
+   stay heavy. Activated in light mode only (see --font-display/-heading under
+   [data-theme="light"]); dark mode keeps Roboto/Bricolage. */
+@font-face {
+  font-family: 'SourceSansPro';
+  font-style: normal;
+  font-weight: 200;
+  font-display: swap;
+  src: url('./assets/fonts/SourceSansPro-ExtraLight.woff') format('woff');
+}
+@font-face {
+  font-family: 'SourceSansPro';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('./assets/fonts/SourceSansPro-Light.woff') format('woff');
+}
+@font-face {
+  font-family: 'SourceSansPro';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/SourceSansPro-Regular.woff') format('woff');
+}
+@font-face {
+  font-family: 'SourceSansPro';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/SourceSansPro-Semibold.woff') format('woff');
+}
+@font-face {
+  font-family: 'SourceSansPro';
+  font-style: normal;
+  font-weight: 600 700;
+  font-display: swap;
+  src: url('./assets/fonts/SourceSansPro-Bold.woff') format('woff');
+}
+
 /* =============================================================================
    Refined Dark Design System
    Inspired by Linear, Vercel, Grafana
@@ -206,29 +247,30 @@
    ============================================================================= */
 
 [data-theme="light"] {
-  /* Backgrounds — three clear tiers */
-  --bg-app:       #ffffff;   /* content/canvas pure white (255,255,255) — matches DSS */
-  --bg-sidebar:   #f2f2f2;   /* DISTINCT gray panel — Dataiku panel gray */
-  --bg-surface:   #ffffff;   /* white cards pop against gray sidebar */
+  /* === Native DSS light theme (DSS 14.5 variables.css + rendered ground truth) === */
+  /* Backgrounds — DSS: page #F2F2F2, content/cards white */
+  --bg-app:       #ffffff;   /* content/canvas pure white — matches DSS content */
+  --bg-sidebar:   #f2f2f2;   /* DSS grey panel (--grey-lighten-7 / --grey-background) */
+  --bg-surface:   #ffffff;   /* white cards pop against the grey sidebar */
   --bg-elevated:  #ffffff;   /* clean white modals */
-  --bg-hover:     #ececec;   /* a touch deeper */
-  --bg-active:    #e3e3e3;
+  --bg-hover:     #f2f2f2;   /* DSS row/control hover = light grey */
+  --bg-active:    #e7f3ff;   /* DSS blue-lighten-5 selection tint */
 
-  /* Text — Dataiku's softer-but-crisp grays */
-  --text-primary:   #333333;
-  --text-secondary: #5e5e5e;
+  /* Text — DSS grey ramp (#333 / #666 / #888) */
+  --text-primary:   #333333;   /* --grey-lighten-1 */
+  --text-secondary: #666666;   /* --grey-lighten-3 */
   --text-tertiary:  #888888;
 
-  /* Borders — slightly more visible */
-  --border-default: #dcdcdc;
-  --border-hover:   #c4c4c4;
+  /* Borders — DSS control hairlines (#DDD), hover one step darker (#CCC) */
+  --border-default: #dddddd;   /* --grey-lighten-6 — input/table/card border */
+  --border-hover:   #cccccc;   /* --grey-lighten-5 */
 
-  /* Accent — Dataiku blue (#3b99fc, the native UI accent) */
+  /* Accent — DSS blue ramp (base #3B99FC, darken-3 #267CFB, darken-4 #196BFA) */
   --accent:         #3b99fc;
-  --accent-muted:   rgba(59, 153, 252, 0.12);
-  --success:        #16a34a;
-  --warning:        #d97706;
-  --danger:         #dc2626;
+  --accent-muted:   rgba(59, 153, 252, 0.10);   /* ~ blue-lighten-5 #E7F3FF tint */
+  --success:        #4caf50;   /* DSS --success-green */
+  --warning:        #f28c37;   /* DSS --warning-orange */
+  --danger:         #ce1228;   /* DSS --error-red */
 
   /* Backward compat aliases for light */
   --bg-void: var(--bg-app);
@@ -251,10 +293,25 @@
   --border-glow: var(--accent);
   --border-glow-intense: var(--accent);
 
-  /* Shadows - subtle */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.1);
+  /* Typography — SourceSansPro (native DSS UI font). Dark theme keeps Roboto/
+     Bricolage; here display + heading both use DSS's single UI face. */
+  --font-display: 'SourceSansPro', system-ui, -apple-system, sans-serif;
+  --font-heading: 'SourceSansPro', system-ui, -apple-system, sans-serif;
+
+  /* Shape — DSS is square: every core control renders border-radius 0px. We
+     keep a 2–3px hair so surfaces aren't razor-sharp but still read as native
+     DSS. Dark theme keeps its rounded personality (radii defined in :root). */
+  --radius-sm:  2px;
+  --radius-md:  2px;
+  --radius-lg:  3px;
+  --radius-xl:  3px;
+  --radius-2xl: 4px;
+
+  /* Shadows — DSS separates with borders, not shadows. Near-flat hairlines;
+     only floating surfaces (modal/popover) get a soft lift via --shadow-lg. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.12);
   --shadow-glow: none;
   --glow-sm: none;
   --glow-md: none;
@@ -263,30 +320,30 @@
   --glow-amber: none;
   --glow-green: none;
 
-  /* Status colors */
-  --status-critical-bg: rgba(220, 38, 38, 0.1);
-  --status-critical-border: rgba(220, 38, 38, 0.25);
-  --status-warning-bg: rgba(217, 119, 6, 0.1);
-  --status-warning-border: rgba(217, 119, 6, 0.25);
-  --status-success-bg: rgba(22, 163, 74, 0.1);
-  --status-success-border: rgba(22, 163, 74, 0.25);
-  --status-info-bg: rgba(59, 153, 252, 0.1);
+  /* Status colors — DSS semantics (success #4CAF50, warning #F28C37, error #CE1228) */
+  --status-critical-bg: rgba(206, 18, 40, 0.08);
+  --status-critical-border: rgba(206, 18, 40, 0.22);
+  --status-warning-bg: rgba(242, 140, 55, 0.10);
+  --status-warning-border: rgba(242, 140, 55, 0.25);
+  --status-success-bg: rgba(76, 175, 80, 0.10);
+  --status-success-border: rgba(76, 175, 80, 0.25);
+  --status-info-bg: rgba(59, 153, 252, 0.10);
   --status-info-border: rgba(59, 153, 252, 0.25);
 
-  /* Health gauge gradient colors */
-  --health-green-start: #16a34a;
+  /* Health gauge gradient colors — DSS green → blue, amber, error red */
+  --health-green-start: #4caf50;
   --health-green-end: #3b99fc;
-  --health-amber-start: #d97706;
-  --health-amber-end: #b45309;
-  --health-red-start: #dc2626;
-  --health-red-end: #b91c1c;
+  --health-amber-start: #f28c37;
+  --health-amber-end: #d97706;
+  --health-red-start: #ce1228;
+  --health-red-end: #a50f20;
 
   /* Chart colors for light */
   --chart-cyan-solid: #3b99fc;
   --chart-magenta-solid: #7c3aed;
-  --chart-green-solid: #059669;
-  --chart-red-solid: #dc2626;
-  --chart-amber-solid: #d97706;
+  --chart-green-solid: #4caf50;
+  --chart-red-solid: #ce1228;
+  --chart-amber-solid: #f28c37;
   --chart-purple-solid: #7c3aed;
 
   /* Header */
@@ -314,10 +371,10 @@
 [data-theme="light"] .app-topbar .topbar-menu {
   --bg-surface:     #ffffff;
   --text-primary:   #333333;
-  --text-secondary: #5e5e5e;
+  --text-secondary: #666666;
   --text-tertiary:  #888888;
-  --bg-hover:       #ececec;
-  --border-default: #dcdcdc;
+  --bg-hover:       #f2f2f2;
+  --border-default: #dddddd;
   background-image: none;
 }
 
@@ -338,9 +395,11 @@
   --bg-hover:       rgba(255, 255, 255, 0.08);
 }
 
+/* DSS primary button: flat blue, square, darkens on hover/active (blue ramp
+   base #3B99FC → darken-3 #267CFB → darken-4 #196BFA). No shadow. */
 [data-theme="light"] .btn-primary {
   background: var(--accent);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 }
 
 /* Light mode: White backgrounds for better contrast on badges and status items */
@@ -363,7 +422,13 @@
 }
 
 [data-theme="light"] .btn-primary:hover {
-  box-shadow: var(--shadow-md);
+  background: #267cfb;
+  box-shadow: none;
+}
+
+[data-theme="light"] .btn-primary:active {
+  background: #196bfa;
+  box-shadow: none;
 }
 
 [data-theme="light"] .btn-preview {
@@ -1376,6 +1441,27 @@ h1, h2, h3, h4 {
   color: transparent;
   -webkit-text-fill-color: transparent;
   animation: premium-shimmer 7s linear infinite;
+}
+
+/* Light mode: keep the shimmer but swap the gradient to stay within a readable
+   red range against the light sidebar (#f2f2f2). The dark-tuned base used a
+   near-white pink midpoint (#ffe0e0) that dissolved into the light background
+   mid-sweep; here the glint is a vivid saturated red instead. Base/edges from
+   the DSS light red ramp (--danger #ce1228, --health-red-end ~#a50f20). */
+[data-theme="light"] .premium-shine-text {
+  background: linear-gradient(
+    100deg,
+    #b00d20 0%,
+    #ce1228 30%,
+    #ff3b4f 50%,
+    #ce1228 70%,
+    #b00d20 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
 @media (prefers-reduced-motion: reduce) {

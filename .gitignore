@@ -154,3 +154,6 @@ getaudittam.sh
 CRU.md
 # Local API-key scratch files — live credentials, never commit (repo is public).
 *.key
+
+# Local DSS visual reference assets (HTML/CSS/JS/screenshots) — untracked
+.dss-reference/

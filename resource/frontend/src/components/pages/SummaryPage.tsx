@@ -10,7 +10,8 @@ import {
   DisabledFeaturesTable,
   DataTable,
 } from '../index';
-import { useHealthScore, useModal, useSharedHealthFactors } from '../../hooks';
+import { useHealthScore, useModal, useSharedHealthFactors, SCORE_LIFECYCLE_FIELDS } from '../../hooks';
+import { resolveLifecycleFromFields } from '../../utils/pageLifecycle';
 import type { HealthIssue, ParsedData } from '../../types';
 
 interface RuntimeCard {
@@ -57,9 +58,13 @@ export function SummaryPage() {
   const { healthFactorToggles, toggleHealthFactor } = useSharedHealthFactors();
   const healthScore = useHealthScore(parsedData, healthFactorToggles);
 
-  // Don't reveal a real score while analysis is still streaming in.
-  const al = parsedData.analysisLoading;
-  const scoreReady = al?.phase === 'done' || al?.phase === 'error';
+  // Don't reveal a real score while ITS OWN inputs are still streaming in.
+  // Gate on the score's actual lifecycle fields (code-envs + footprint are the
+  // long poles), not the global `analysisLoading` aggregate — that waits on all
+  // ~19 modules including Cost/CRU, which the score never consumes, so it would
+  // needlessly stall the reveal until the slowest unrelated scan finished.
+  const scoreLc = resolveLifecycleFromFields(SCORE_LIFECYCLE_FIELDS, parsedData);
+  const scoreReady = scoreLc.phase === 'done' || scoreLc.phase === 'error';
 
   const flaggedRuntimeCards = useMemo(
     () => pickFlaggedRuntimeCards(healthScore.issues, parsedData),

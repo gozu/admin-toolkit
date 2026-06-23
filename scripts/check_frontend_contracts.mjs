@@ -491,6 +491,50 @@ if (/liftLoadingProgress\b/.test(pageLifecycle)) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Health-score gating contracts — the score (and per-page progress banners)
+// must NOT gate on the global `analysisLoading` aggregate, which only goes
+// terminal once ALL ~19 modules (incl. Cost/CRU) settle. See the "health score
+// never finishes" fix.
+// ─────────────────────────────────────────────────────────────────────────
+
+// C1) Global-aggregate containment. Reading `.analysisLoading` is correct ONLY
+//     in MissionControlPage (the whole-instance NOC indicator). Any other
+//     component gating UI on the global aggregate re-introduces the bug.
+//     Writers/exporters of the field live in hooks/ + utils/ (outside
+//     components/), so a components-scoped scan needs no writer allowlist.
+const ANALYSIS_LOADING_ALLOWLIST = new Set([
+  'src/components/pages/MissionControlPage.tsx',
+]);
+for (const file of walkSources('src/components')) {
+  if (ANALYSIS_LOADING_ALLOWLIST.has(file)) continue;
+  if (/\.analysisLoading\b/.test(read(file))) {
+    fail(
+      `${file} reads the global \`.analysisLoading\` aggregate — only ${[...ANALYSIS_LOADING_ALLOWLIST].join(', ')} may. ` +
+        'Gate on the page/feature\'s own lifecycle fields (e.g. resolveLifecycleFromFields) instead.',
+    );
+  }
+}
+
+// C2) The Summary score must gate on its own field set via the field resolver,
+//     not the global aggregate.
+const summaryPage = read('src/components/pages/SummaryPage.tsx');
+if (!summaryPage.includes('resolveLifecycleFromFields(SCORE_LIFECYCLE_FIELDS')) {
+  fail('SummaryPage.tsx must gate the score on resolveLifecycleFromFields(SCORE_LIFECYCLE_FIELDS, ...).');
+}
+
+// C3) Cost/CRU must have an init-time starter outside the Cost page, so the
+//     global aggregate can complete without a visit to the page (Class B fix).
+const costStarterFiles = walkSources('src').filter(
+  (f) => f !== 'src/components/pages/ProjectCostPage.tsx' && /projectCostScan\.load\s*\(/.test(read(f)),
+);
+if (costStarterFiles.length === 0) {
+  fail(
+    'projectCostScan.load() is referenced only in ProjectCostPage.tsx — Cost/CRU needs a deferred init ' +
+      'starter (e.g. useDelayedPageWarmup) so the global aggregate completes without visiting the Cost page.',
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Flat-table contract: flat row/column tables must render through the unified
 // DataGrid engine (src/components/common/DataGrid.tsx). Any raw <table> in
 // src/components/** must be either the engine itself, the transposed key/value

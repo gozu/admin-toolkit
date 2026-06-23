@@ -1443,6 +1443,27 @@ h1, h2, h3, h4 {
   animation: premium-shimmer 7s linear infinite;
 }
 
+/* Light mode: keep the shimmer but swap the gradient to stay within a readable
+   red range against the light sidebar (#f2f2f2). The dark-tuned base used a
+   near-white pink midpoint (#ffe0e0) that dissolved into the light background
+   mid-sweep; here the glint is a vivid saturated red instead. Base/edges from
+   the DSS light red ramp (--danger #ce1228, --health-red-end ~#a50f20). */
+[data-theme="light"] .premium-shine-text {
+  background: linear-gradient(
+    100deg,
+    #b00d20 0%,
+    #ce1228 30%,
+    #ff3b4f 50%,
+    #ce1228 70%,
+    #b00d20 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .premium-shine-text {
     animation: none;

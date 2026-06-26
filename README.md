@@ -166,7 +166,7 @@ Pure DSS API operations talk to the instance directly. Anything host-bound (file
 
 ### Install the plugin
 
-1. The repo is private — send your SSH public key to the author to be granted read access.
+1. Ensure you are able to pull from DSS to this repo — send your SSH public key to the author to be granted read access if necessary.
 2. In DSS: **Plugins → Add plugin → Fetch from Git repository** → `git@github.com:gozu/admin-toolkit.git`. Future upgrades are then one click: **Update from repository**.
 3. When prompted, **build the plugin code environment** (the webapp backend runs in it).
 4. In a project of your choice: **Webapps → New webapp → Plugin webapp → Admin Toolkit**, then start the backend.

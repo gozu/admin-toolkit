@@ -110,6 +110,10 @@ build-frontend: $(FRONTEND_STAMP)
 field-kit:
 	@bash scripts/field_kit.sh
 
+.PHONY: maintenance-audit
+maintenance-audit:
+	@node scripts/maintenance_audit.mjs
+
 # ----------------------------
 # Build plugin ZIP (prod/dev)
 # ----------------------------

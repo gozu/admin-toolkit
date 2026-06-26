@@ -6,6 +6,8 @@
 _archive/ export-ignore
 _archive/** export-ignore
 AGENTS.md export-ignore
+.agents/ export-ignore
+.agents/** export-ignore
 plugins/admin-toolkit-consistency/ export-ignore
 plugins/admin-toolkit-consistency/** export-ignore
 docs/ export-ignore

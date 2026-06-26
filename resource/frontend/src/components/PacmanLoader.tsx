@@ -1,23 +1,14 @@
+import dataikuBirdPelletLoader from '../assets/dataiku-bird-pellet-loader.svg';
+
 export function PacmanLoader() {
   return (
-    <div
-      className="loader-container"
-      style={{
-        width: '100px',
-        height: '100px',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        margin: '0 auto',
-      }}
-    >
-      <div className="loader-inner pacman">
-        <div></div>
-        <div></div>
-        <div></div>
-        <div></div>
-        <div></div>
-      </div>
+    <div className="loader-container dataiku-bird-loader" aria-hidden="true">
+      <img
+        src={dataikuBirdPelletLoader}
+        alt=""
+        className="dataiku-bird-loader__art"
+        draggable={false}
+      />
     </div>
   );
 }

@@ -304,7 +304,7 @@ export function FeedbackPage() {
         <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">Send Feedback</h1>
         <p className="text-sm text-[var(--text-secondary)] max-w-2xl">
           Found a bug, have an idea, or anything else? This goes straight to the toolkit author.
-          While the Admin Toolkit is in Early Access Preview, your feedback is the #1 way it gets
+          While the Admin Toolkit is in Beta, your feedback is the #1 way it gets
           better.
         </p>
       </div>

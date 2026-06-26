@@ -193,10 +193,13 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
             </span>
           </button>
           <span
-            title="This toolkit is an Early Access Preview — features may change."
-            className="px-1.5 py-0.5 text-[10px] font-mono font-medium rounded border bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)] border-[var(--neon-cyan)]/30 cursor-default select-none"
+            title="This toolkit is in Beta — features may change."
+            className="px-1 py-0.5 text-[9px] font-mono font-semibold uppercase tracking-wide rounded border bg-[var(--bg-glass)] text-[var(--text-tertiary)] border-[var(--border-default)] cursor-default select-none"
           >
-            Early Access Preview
+            Beta
+          </span>
+          <span className="text-[10px] font-mono text-[var(--text-tertiary)] select-none">
+            v{__APP_VERSION__}
           </span>
           <button
             type="button"

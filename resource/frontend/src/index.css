@@ -440,15 +440,10 @@
   background: rgba(37, 99, 235, 0.2);
 }
 
-[data-theme="light"] .pacman > div:nth-child(1),
-[data-theme="light"] .pacman > div:nth-child(2) {
-  filter: none;
-}
-
-[data-theme="light"] .pacman > div:nth-child(3),
-[data-theme="light"] .pacman > div:nth-child(4),
-[data-theme="light"] .pacman > div:nth-child(5) {
-  box-shadow: none;
+[data-theme="light"] .dataiku-bird-loader__art {
+  filter:
+    drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45))
+    drop-shadow(0 0 1px rgba(0, 0, 0, 0.35));
 }
 
 [data-theme="light"] .loading-spinner {
@@ -1015,7 +1010,7 @@ h1, h2, h3, h4 {
 }
 
 /* =============================================================================
-   Pacman Loader
+   Dataiku Bird Loader
    ============================================================================= */
 
 .loader-container {
@@ -1027,18 +1022,16 @@ h1, h2, h3, h4 {
   margin: 0 auto;
 }
 
-.pacman > div:nth-child(1),
-.pacman > div:nth-child(2) {
-  border-top-color: var(--accent) !important;
-  border-left-color: var(--accent) !important;
-  border-bottom-color: var(--accent) !important;
+.dataiku-bird-loader {
+  overflow: visible;
 }
 
-.pacman > div:nth-child(3),
-.pacman > div:nth-child(4),
-.pacman > div:nth-child(5) {
-  background-color: var(--accent) !important;
-  box-shadow: none;
+.dataiku-bird-loader__art {
+  display: block;
+  width: 96px;
+  height: 60px;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 /* =============================================================================

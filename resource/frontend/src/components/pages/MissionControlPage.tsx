@@ -1,10 +1,10 @@
 import { useCallback, useMemo } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useDiag } from '../../context/DiagContext';
-import { useHealthScore, useSharedHealthFactors } from '../../hooks';
+import { useHealthScore, useSharedHealthFactors, SCORE_LIFECYCLE_FIELDS } from '../../hooks';
 import type { Lifecycle, PageId } from '../../types';
 import { buildConnectionInsightsRows } from '../../utils/connectionInsights';
-import { resolveLifecycleById } from '../../utils/pageLifecycle';
+import { resolveLifecycleById, resolveLifecycleFromFields } from '../../utils/pageLifecycle';
 import {
   selectCodeEnvs,
   selectConnHealth,
@@ -52,7 +52,6 @@ const GRID_AREAS = [
   '"logs logs logs sanity sanity sanity dbh dbh dbh envcmp envcmp envcmp"',
 ].join(' ');
 
-const EPOCH = '1970-01-01T00:00:00.000Z';
 // Stable fallback so memoized tiles don't see a fresh lifecycle object each render.
 const QUEUED: Lifecycle = { phase: 'queued' };
 
@@ -98,26 +97,26 @@ export function MissionControlPage() {
   const { healthFactorToggles } = useSharedHealthFactors();
   const healthScore = useHealthScore(parsedData, healthFactorToggles);
 
-  // The health tile gates on the global analysis aggregate (like SummaryPage):
-  // no real score is revealed while modules are still streaming in.
-  const analysisLifecycle = useMemo<Lifecycle>(() => {
-    const al = parsedData.analysisLoading;
-    if (!al) return { phase: 'queued' };
-    const startedAt = al.startedAt || EPOCH;
-    if (al.phase === 'done' || al.phase === 'error') {
-      return { phase: 'done', startedAt, finishedAt: al.updatedAt || startedAt, isEmpty: false };
-    }
-    if (al.active) {
-      return {
-        phase: 'running',
-        startedAt,
-        progressPct: al.progressPct ?? 0,
-        message: al.message,
-        updatedAt: al.updatedAt || startedAt,
-      };
-    }
-    return { phase: 'queued' };
-  }, [parsedData.analysisLoading]);
+  // Reveal the score as soon as ITS OWN inputs settle — gate on the score's
+  // lifecycle fields (like SummaryPage), NOT the global `analysisLoading`
+  // aggregate. That aggregate waits on all ~26 modules incl. Cost/CRU, which the
+  // score never reads and which auto-starts last, so gating on it would skeleton
+  // the ring until an unrelated scan finished. Memoized so the tile sees a stable
+  // lifecycle object once parsedData settles.
+  const scoreLc = useMemo(
+    () => resolveLifecycleFromFields(SCORE_LIFECYCLE_FIELDS, parsedData),
+    [parsedData],
+  );
+  // TileShell renders a red error state (not children) on phase 'error', so a
+  // single failed score input would replace the ring with an error message.
+  // Normalize a failed input to a terminal `done` so the score still shows.
+  const tileLc = useMemo<Lifecycle>(
+    () =>
+      scoreLc.phase === 'error'
+        ? { phase: 'done', startedAt: scoreLc.startedAt, finishedAt: scoreLc.finishedAt, isEmpty: false }
+        : scoreLc,
+    [scoreLc],
+  );
 
   // Live mode loads the directory tree into apiDirTree; dirTree is zip-mode.
   const liveDirTree = state.apiDirTree?.tree;
@@ -223,7 +222,7 @@ export function MissionControlPage() {
         animate="show"
       >
         <HealthTile
-          lifecycle={analysisLifecycle}
+          lifecycle={tileLc}
           onNavigate={setActivePage}
           health={healthScore}
           dssVersion={dssVersion}

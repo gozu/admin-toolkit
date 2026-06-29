@@ -276,14 +276,6 @@ const DUST_MS = 4650; // particle flight (~1.5x slower); HOLD + DUST ≈ 6.15s t
 const DUST_WAVE_MS = 1140; // left-to-right disintegration stagger (~1.5x slower)
 const DUST_BOX = 28; // canvas overlay (css px) — larger than the 14px glyph so dust scatters
 
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    !!window.matchMedia &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  );
-}
-
 interface DustParticle {
   x: number;
   y: number;
@@ -425,18 +417,18 @@ function runPixelDust(canvas: HTMLCanvasElement, color: string, onDone: () => vo
 }
 
 // Green check that holds, then disintegrates into pixel dust and vanishes.
-// Honors prefers-reduced-motion by leaving the static green check in place.
+// The dust always plays — regardless of prefers-reduced-motion — so a completed
+// row never keeps a permanent static check.
 function PixelDustCheck() {
-  const [reduced] = useState(prefersReducedMotion);
   const [stage, setStage] = useState<'hold' | 'dust' | 'gone'>('hold');
   const wrapRef = useRef<HTMLSpanElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (reduced) return; // reduced motion: keep the static green check
+    // Always arm the hold → dust timer so the check dissolves and clears.
     const id = window.setTimeout(() => setStage('dust'), DUST_HOLD_MS);
     return () => window.clearTimeout(id);
-  }, [reduced]);
+  }, []);
 
   useEffect(() => {
     if (stage !== 'dust') return;
@@ -511,7 +503,7 @@ interface SidebarItemStatusProps {
 // pixel-dust disintegration (PixelDustCheck): the green check holds, then
 // explodes into its pixels and the row settles glyph-free.
 // motion-reduce:transition-none disables transitions for users who set
-// `prefers-reduced-motion: reduce` (PixelDustCheck also skips the dust then).
+// `prefers-reduced-motion: reduce` (the dust itself always plays).
 const CROSSFADE_MS = 200;
 
 type GlyphKind = 'queued' | 'running' | 'done' | 'error';

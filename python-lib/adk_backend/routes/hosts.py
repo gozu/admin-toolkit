@@ -77,9 +77,11 @@ def _install_error_message(exc: Exception) -> str:
     msg = str(exc)
     if 'currentUser' in msg and 'null' in msg:
         return ("This host's API key has no associated DSS user (it looks like a "
-                "global API key), so DSS can't resolve git credentials for the "
-                "clone. Use a personal API key in this host's preset, or switch "
-                "to Upload .zip (which needs no user).")
+                "global API key from Settings → Security → Global API keys), "
+                "so DSS can't resolve git credentials for the clone. The key must "
+                "belong to a user: have an admin create one from their own profile "
+                "→ API keys → New API key, then paste that into this host's "
+                "preset. Or switch to Upload .zip (which needs no user).")
     return f'{type(exc).__name__}: {str(exc)[:300]}'
 
 

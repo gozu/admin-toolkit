@@ -13,7 +13,7 @@
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4.1-38BDF8?logo=tailwindcss&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-backend-3776AB?logo=python&logoColor=white)
 
-<img src="docs/screenshots/overview.png" alt="Admin Toolkit overview — composite health score, category scores, detected issues" width="900" />
+<img src="docs/screenshots/mission-control.png" alt="Mission Control — the dense operations wall: health, filesystem, memory, connections, projects, users, code envs, K8s and more as live tiles" width="900" />
 
 </div>
 

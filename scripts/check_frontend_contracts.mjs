@@ -497,19 +497,22 @@ if (/liftLoadingProgress\b/.test(pageLifecycle)) {
 // never finishes" fix.
 // ─────────────────────────────────────────────────────────────────────────
 
-// C1) Global-aggregate containment. Reading `.analysisLoading` is correct ONLY
-//     in MissionControlPage (the whole-instance NOC indicator). Any other
-//     component gating UI on the global aggregate re-introduces the bug.
-//     Writers/exporters of the field live in hooks/ + utils/ (outside
-//     components/), so a components-scoped scan needs no writer allowlist.
-const ANALYSIS_LOADING_ALLOWLIST = new Set([
-  'src/components/pages/MissionControlPage.tsx',
-]);
+// C1) Global-aggregate containment. NO component may gate UI on the global
+//     `.analysisLoading` aggregate — it only goes terminal once ALL ~26 modules
+//     (incl. Cost/CRU, which auto-starts last) settle, so gating any reveal on
+//     it re-introduces the "never finishes" bug. MissionControlPage's HealthTile
+//     used to be the sole exception; it now gates the score ring on the score's
+//     own fields (resolveLifecycleFromFields(SCORE_LIFECYCLE_FIELDS, ...)), like
+//     SummaryPage, so the allowlist is empty. The global aggregate is for the
+//     whole-instance "Analysis complete" indicator only. Writers/exporters of
+//     the field live in hooks/ + utils/ (outside components/), so this
+//     components-scoped scan needs no writer allowlist.
+const ANALYSIS_LOADING_ALLOWLIST = new Set();
 for (const file of walkSources('src/components')) {
   if (ANALYSIS_LOADING_ALLOWLIST.has(file)) continue;
   if (/\.analysisLoading\b/.test(read(file))) {
     fail(
-      `${file} reads the global \`.analysisLoading\` aggregate — only ${[...ANALYSIS_LOADING_ALLOWLIST].join(', ')} may. ` +
+      `${file} reads the global \`.analysisLoading\` aggregate — no component may. ` +
         'Gate on the page/feature\'s own lifecycle fields (e.g. resolveLifecycleFromFields) instead.',
     );
   }

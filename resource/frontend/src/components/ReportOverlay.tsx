@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { ParsedData } from '../types';
-import type { ReportData } from '../utils/prepareReportData';
+import { filterRealMounts, type ReportData } from '../utils/prepareReportData';
 import { useHealthScore } from '../hooks/useHealthScore';
 import { useTheme } from '../hooks/useTheme';
 import { exportReportAsHtml } from '../utils/exportReport';
@@ -19,9 +19,26 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
   const { theme } = useTheme();
   const healthScore = useHealthScore(parsedData);
   const slides = reportData.slides;
-  const totalSlides = 18;
 
-  const next = useCallback(() => setCurrentSlide(i => Math.min(i + 1, totalSlides - 1)), []);
+  // Optional module slides (Adoption, Compute & Cost) only exist when their
+  // data is loaded, so every index after Users & Activity is computed.
+  const adoptionTotals = parsedData.adoptionData?.totals;
+  const costTotals = parsedData.projectCostData?.totals;
+  let cursor = 12;
+  const adoptionIdx = adoptionTotals ? cursor++ : -1;
+  const costIdx = costTotals ? cursor++ : -1;
+  const logsIdx = cursor++;
+  const recCriticalIdx = cursor++;
+  const recImportantIdx = cursor++;
+  const recNiceIdx = cursor++;
+  const actionIdx = cursor++;
+  const closingIdx = cursor++;
+  const totalSlides = cursor;
+
+  const next = useCallback(
+    () => setCurrentSlide(i => Math.min(i + 1, totalSlides - 1)),
+    [totalSlides],
+  );
   const prev = useCallback(() => setCurrentSlide(i => Math.max(i - 1, 0)), []);
 
   useEffect(() => {
@@ -54,6 +71,21 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
   const company = parsedData.company || 'Unknown Instance';
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   const progressPct = ((currentSlide + 1) / totalSlides) * 100;
+  const pad = (n: number) => String(n).padStart(2, '0');
+
+  // Lean live mode loads no basic project list — fall back to counts the
+  // adoption / footprint scans measured.
+  const totalProjects =
+    parsedData.projects?.length ||
+    adoptionTotals?.projectCount ||
+    parsedData.projectFootprintSummary?.projectCount ||
+    parsedData.projectFootprint?.length ||
+    0;
+
+  // Real disk mounts, worst-first (df order starts with tmpfs noise)
+  const topMounts = [...filterRealMounts(parsedData.filesystemInfo)]
+    .sort((a, b) => (parseInt(b['Use%']) || 0) - (parseInt(a['Use%']) || 0))
+    .slice(0, 4);
 
   return createPortal(
     <div className="report-overlay" data-theme={theme} ref={overlayRef}>
@@ -87,6 +119,16 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
               <div className={`report-badge report-badge-${healthScore.status === 'healthy' ? 'nice' : healthScore.status === 'warning' ? 'important' : 'critical'}`}>
                 {healthScore.status}
               </div>
+              {healthScore.categories.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem', width: '100%' }}>
+                  {healthScore.categories.map((cat, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.75rem', background: 'rgba(254,254,249,0.05)', borderRadius: '0.4rem', fontSize: '0.85rem' }}>
+                      <span style={{ color: 'rgba(254,254,249,0.7)' }}>{cat.label}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: cat.score < 50 ? '#ef4444' : cat.score < 80 ? '#EDAB4F' : '#3EDAB2' }}>{Math.round(cat.score)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="report-exec-content">
               <NarrativeText text={slides?.executive_summary?.overall_status} />
@@ -116,7 +158,7 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
         {/* ── Slide 4: Projects Overview ──────────────────────────── */}
         <DataSlide index={3} slideNum="03" active={currentSlide === 3} title="Projects Overview"
           metrics={[
-            { value: String(parsedData.projects?.length ?? '—'), label: 'Total Projects' },
+            { value: String(totalProjects || '—'), label: 'Total Projects' },
             { value: String(healthScore.categories.find(c => c.category === 'project_footprint')?.score ?? '—'), label: 'Project Health', color: scoreColor(healthScore.categories.find(c => c.category === 'project_footprint')?.score) },
           ]}
           narrative={slides?.projects?.narrative}
@@ -174,7 +216,7 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
         {/* ── Slide 8: Filesystem ─────────────────────────────────── */}
         <DataSlide index={7} slideNum="07" active={currentSlide === 7} title="Filesystem Health"
           metrics={
-            (parsedData.filesystemInfo || []).slice(0, 4).map(f => ({
+            topMounts.map(f => ({
               value: f['Use%'] || '—',
               label: f['Mounted on'] || f.Filesystem,
               color: pctColor(f['Use%'] || ''),
@@ -193,8 +235,8 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
         {/* ── Slide 9: Memory & JVM ───────────────────────────────── */}
         <DataSlide index={8} slideNum="08" active={currentSlide === 8} title="Memory & JVM"
           metrics={[
-            { value: parsedData.javaMemorySettings?.Xmx || parsedData.javaMemoryLimits?.Xmx || '—', label: 'Max Heap (Xmx)' },
-            { value: parsedData.javaMemorySettings?.Xms || parsedData.javaMemoryLimits?.Xms || '—', label: 'Init Heap (Xms)' },
+            { value: parsedData.javaMemorySettings?.BACKEND || parsedData.javaMemoryLimits?.BACKEND || parsedData.javaMemorySettings?.Xmx || '—', label: 'Backend Heap (Xmx)' },
+            { value: parsedData.javaMemorySettings?.JEK || parsedData.javaMemorySettings?.FEK || parsedData.javaMemorySettings?.Xms || '—', label: parsedData.javaMemorySettings?.JEK ? 'JEK Heap (Xmx)' : 'FEK Heap (Xmx)' },
             { value: parsedData.memoryInfo?.total || parsedData.memoryInfo?.['Mem:total'] || '—', label: 'System RAM' },
             { value: parsedData.memoryInfo?.available || parsedData.memoryInfo?.['Mem:available'] || '—', label: 'Available' },
           ]}
@@ -239,14 +281,54 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
           metrics={[
             { value: String(parsedData.users?.length ?? '—'), label: 'Total Users' },
             { value: String(parsedData.users?.filter(u => u.enabled !== false).length ?? '—'), label: 'Active Users' },
-            { value: String(parsedData.users?.filter(u => u.userProfile === 'DATA_SCIENTIST' || u.userProfile === 'DESIGNER').length ?? '—'), label: 'Designers' },
-            { value: String(parsedData.projects?.length ?? '—'), label: 'Projects' },
+            { value: String(parsedData.users?.filter(u => (u.userProfile || '').includes('DESIGNER') || u.userProfile === 'DATA_SCIENTIST').length ?? '—'), label: 'Designers' },
+            { value: String(totalProjects || '—'), label: 'Projects' },
           ]}
           narrative={slides?.users?.narrative}
         />
 
-        {/* ── Slide 13: Log Analysis ──────────────────────────────── */}
-        <DataSlide index={12} slideNum="12" active={currentSlide === 12} title="Log Analysis"
+        {/* ── Adoption & Engagement (only when the Adoption module has data) ── */}
+        {adoptionTotals && (
+          <DataSlide index={adoptionIdx} slideNum={pad(adoptionIdx)} active={currentSlide === adoptionIdx} title="Adoption & Engagement"
+            metrics={[
+              { value: String(adoptionTotals.builderCount ?? '—'), label: 'Builders (All Time)' },
+              { value: `${adoptionTotals.activeProjectCount}/${adoptionTotals.projectCount}`, label: 'Active / Total Projects' },
+              { value: adoptionTotals.avgPeoplePerProject != null ? adoptionTotals.avgPeoplePerProject.toFixed(1) : '—', label: 'People per Project' },
+              { value: parsedData.adoptionData?.repeatBuilders?.total ? `${Math.round((parsedData.adoptionData.repeatBuilders.repeat / parsedData.adoptionData.repeatBuilders.total) * 100)}%` : '—', label: 'Returning Builders' },
+            ]}
+            narrative={slides?.adoption?.narrative}
+            extras={slides?.adoption?.highlights?.length ? (
+              <div className="report-extras-list">
+                {slides.adoption.highlights.map((h, i) => (
+                  <div key={i} className="report-extras-item">• {h}</div>
+                ))}
+              </div>
+            ) : undefined}
+          />
+        )}
+
+        {/* ── Compute & Cost (only when the Cost/CRU module has data) ── */}
+        {costTotals && (
+          <DataSlide index={costIdx} slideNum={pad(costIdx)} active={currentSlide === costIdx} title="Compute & Cost"
+            metrics={[
+              { value: String(Math.round(costTotals.memGBh ?? 0)), label: 'Memory GB·h' },
+              { value: String(Math.round(costTotals.cpuH ?? 0)), label: 'CPU Hours' },
+              { value: costTotals.llmUSD != null ? `$${costTotals.llmUSD >= 100 ? Math.round(costTotals.llmUSD) : costTotals.llmUSD.toFixed(2)}` : '—', label: 'LLM Spend' },
+              { value: String(costTotals.projectCount ?? '—'), label: 'Projects with Usage' },
+            ]}
+            narrative={slides?.compute_cost?.narrative}
+            extras={slides?.compute_cost?.drivers?.length ? (
+              <div className="report-extras-list">
+                {slides.compute_cost.drivers.map((d, i) => (
+                  <div key={i} className="report-extras-item">• {d}</div>
+                ))}
+              </div>
+            ) : undefined}
+          />
+        )}
+
+        {/* ── Log Analysis ────────────────────────────────────────── */}
+        <DataSlide index={logsIdx} slideNum={pad(logsIdx)} active={currentSlide === logsIdx} title="Log Analysis"
           metrics={[
             { value: String(parsedData.logStats?.['Unique Errors'] ?? '—'), label: 'Unique Errors' },
             { value: String(parsedData.logStats?.['Total Lines'] ?? '—'), label: 'Total Log Lines' },
@@ -263,31 +345,31 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
           ) : undefined}
         />
 
-        {/* ── Slide 14: Recommendations - Critical ────────────────── */}
-        <RecSlide index={13} slideNum="13" active={currentSlide === 13}
+        {/* ── Recommendations - Critical ──────────────────────────── */}
+        <RecSlide index={recCriticalIdx} slideNum={pad(recCriticalIdx)} active={currentSlide === recCriticalIdx}
           title="Critical Recommendations"
           badgeClass="report-badge-critical" badgeText="CRITICAL" numberClass="report-rec-number-critical"
           items={slides?.rec_critical?.items || []}
         />
 
-        {/* ── Slide 15: Recommendations - Important ───────────────── */}
-        <RecSlide index={14} slideNum="14" active={currentSlide === 14}
+        {/* ── Recommendations - Important ─────────────────────────── */}
+        <RecSlide index={recImportantIdx} slideNum={pad(recImportantIdx)} active={currentSlide === recImportantIdx}
           title="Important Recommendations"
           badgeClass="report-badge-important" badgeText="IMPORTANT" numberClass="report-rec-number-important"
           items={slides?.rec_important?.items || []}
         />
 
-        {/* ── Slide 16: Recommendations - Nice to Have ────────────── */}
-        <RecSlide index={15} slideNum="15" active={currentSlide === 15}
+        {/* ── Recommendations - Nice to Have ──────────────────────── */}
+        <RecSlide index={recNiceIdx} slideNum={pad(recNiceIdx)} active={currentSlide === recNiceIdx}
           title="Optimization Opportunities"
           badgeClass="report-badge-nice" badgeText="NICE TO HAVE" numberClass="report-rec-number-nice"
           items={slides?.rec_nice_to_have?.items || []}
         />
 
-        {/* ── Slide 17: Action Plan ───────────────────────────────── */}
-        <div className={`report-slide${currentSlide === 16 ? ' active' : ''}`} data-slide-index={16}>
+        {/* ── Action Plan ─────────────────────────────────────────── */}
+        <div className={`report-slide${currentSlide === actionIdx ? ' active' : ''}`} data-slide-index={actionIdx}>
           <div className="report-slide-header">
-            <div className="report-slide-number">16</div>
+            <div className="report-slide-number">{pad(actionIdx)}</div>
             <div>
               <div className="report-slide-title">Action Plan</div>
               <div className="report-slide-subtitle">Prioritized roadmap for the next quarter</div>
@@ -309,8 +391,8 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
           <SlideWatermark />
         </div>
 
-        {/* ── Slide 18: Closing ───────────────────────────────────── */}
-        <div className={`report-slide report-slide-hero${currentSlide === 17 ? ' active' : ''}`} data-slide-index={17}>
+        {/* ── Closing ─────────────────────────────────────────────── */}
+        <div className={`report-slide report-slide-hero${currentSlide === closingIdx ? ' active' : ''}`} data-slide-index={closingIdx}>
           <div className="report-title-center">
             <img src={dkulogo} alt="Dataiku" id="dku-logo-closing" className="report-title-logo" style={{ width: 56, height: 56 }} />
             <div style={{ fontSize: '2.25rem', fontWeight: 800, color: '#FEFEF9', letterSpacing: '-0.03em', fontFamily: 'var(--font-display)' }}>Next Steps</div>

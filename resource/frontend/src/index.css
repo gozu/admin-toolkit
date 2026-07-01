@@ -1927,12 +1927,15 @@ h1, h2, h3, h4 {
   font-family: 'Roboto', sans-serif;
 }
 
-/* Two-column layout for data slides — fills available space */
+/* Two-column layout for data slides — fills available space.
+   Columns are vertically CENTERED in the region so short content doesn't
+   pin to the top and leave the bottom half of the slide empty; dense
+   content still grows the row and scrolls via .report-slide. */
 .report-two-col {
   display: grid;
   grid-template-columns: 2fr 3fr;
   gap: 3rem;
-  align-items: start;
+  align-items: center;
   flex: 1;
   min-height: 0;
 }
@@ -2016,6 +2019,8 @@ h1, h2, h3, h4 {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  /* Center the status callout + findings in the full-height right column */
+  justify-content: center;
 }
 
 .report-health-score {
@@ -2066,14 +2071,18 @@ h1, h2, h3, h4 {
   flex-shrink: 0;
 }
 
-/* Recommendation cards */
+/* Recommendation cards.
+   Auto vertical margins center the card grid in the leftover slide height
+   without growing it (no clipped overflow — the grid keeps its own
+   max-height + scroll for dense decks). */
 .report-rec-list {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.25rem;
   max-height: calc(100vh - 160px);
   overflow-y: auto;
-  flex: 1;
+  margin-top: auto;
+  margin-bottom: auto;
   align-content: start;
 }
 
@@ -2163,7 +2172,9 @@ h1, h2, h3, h4 {
 .report-badge-effort-medium { background: rgba(237, 171, 79, 0.15); color: #EDAB4F; }
 .report-badge-effort-high { background: rgba(239, 68, 68, 0.12); color: #ef4444; }
 
-/* Action plan */
+/* Action plan — auto margins center the timeline both ways in the slide
+   (the ::before connector line stays sized to the rows, so the list must
+   not grow to fill the slide). */
 .report-action-list {
   display: flex;
   flex-direction: column;
@@ -2171,6 +2182,8 @@ h1, h2, h3, h4 {
   position: relative;
   padding-left: 1.25rem;
   max-width: 1000px;
+  width: 100%;
+  margin: auto;
 }
 
 /* Vertical connector line: teal-to-green gradient */

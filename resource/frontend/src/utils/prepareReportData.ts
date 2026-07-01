@@ -1,4 +1,4 @@
-import type { ParsedData } from '../types';
+import type { FilesystemInfo, ParsedData } from '../types';
 
 export interface ReportSlideData {
   executive_summary: { findings: string[]; overall_status: string };
@@ -12,6 +12,10 @@ export interface ReportSlideData {
   connections: { narrative: string };
   issues: { narrative: string; risk_level: string };
   users: { narrative: string };
+  /** Only present when the adoption module has data for this instance. */
+  adoption?: { narrative: string; highlights: string[] };
+  /** Only present when the Cost/CRU module has data for this instance. */
+  compute_cost?: { narrative: string; drivers: string[] };
   logs: { narrative: string; patterns: string[] };
   rec_critical: { items: ReportRecItem[] };
   rec_important: { items: ReportRecItem[] };
@@ -33,6 +37,19 @@ export interface ReportActionItem {
 
 export interface ReportData {
   slides: ReportSlideData;
+}
+
+/**
+ * Keep only real disk mounts: drop pseudo-filesystems (tmpfs, devtmpfs,
+ * efivarfs…) and kernel mount points so the deck and the LLM see /data and /
+ * instead of /dev/shm noise.
+ */
+export function filterRealMounts(mounts: FilesystemInfo[] | undefined): FilesystemInfo[] {
+  const junkFs = /^(tmpfs|devtmpfs|efivarfs|overlay|squashfs|shm|none)$/i;
+  const junkMount = /^\/(dev|sys|proc|run)(\/|$)/;
+  return (mounts || []).filter(
+    f => !junkFs.test(f.Filesystem || '') && !junkMount.test(f['Mounted on'] || ''),
+  );
 }
 
 /**
@@ -119,9 +136,10 @@ export function prepareReportData(parsedData: ParsedData): Record<string, unknow
     };
   }
 
-  // Filesystem
-  if (parsedData.filesystemInfo?.length) {
-    data.filesystem = parsedData.filesystemInfo.map(f => ({
+  // Filesystem — real disk mounts only (no tmpfs/devtmpfs noise)
+  const realMounts = filterRealMounts(parsedData.filesystemInfo);
+  if (realMounts.length) {
+    data.filesystem = realMounts.map(f => ({
       filesystem: f.Filesystem, size: f.Size, used: f.Used,
       available: f.Available, usePct: f['Use%'], mountedOn: f['Mounted on'],
     }));
@@ -175,6 +193,100 @@ export function prepareReportData(parsedData: ParsedData): Record<string, unknow
       stats: parsedData.logStats,
       // Take first 3K chars of formatted errors to stay within budget
       errorSample: parsedData.formattedLogErrors?.slice(0, 3000),
+    };
+  }
+
+  // Adoption & engagement — persistent git-history analytics (Adoption module)
+  const adoption = parsedData.adoptionData;
+  if (adoption?.totals) {
+    data.adoption = {
+      totals: adoption.totals,
+      monthlyTrend: adoption.monthlyTrend?.slice(-18),
+      repeatBuilders: adoption.repeatBuilders,
+      cohorts: adoption.cohorts?.slice(-12),
+      topProjectsByPeople: adoption.projectRows
+        ? [...adoption.projectRows]
+            .sort((a, b) => b.authorCount - a.authorCount)
+            .slice(0, 8)
+            .map(p => ({ key: p.projectKey, people: p.authorCount, commits: p.commits, active: p.active }))
+        : undefined,
+    };
+  }
+
+  // Compute & cost — CRU parsed from the instance audit-log window (Cost module)
+  const cost = parsedData.projectCostData;
+  if (cost?.totals) {
+    data.computeCost = {
+      auditWindow: cost.span ? { firstTs: cost.span.firstTs, lastTs: cost.span.lastTs } : undefined,
+      totals: cost.totals,
+      topProjects: cost.projects
+        ? [...cost.projects]
+            .sort((a, b) => b.memGBh - a.memGBh)
+            .slice(0, 10)
+            .map(p => ({
+              key: p.projectKey,
+              memGBh: +p.memGBh.toFixed(1),
+              cpuH: +p.cpuH.toFixed(1),
+              llmUSD: +p.llmUSD.toFixed(2),
+            }))
+        : undefined,
+      topUsers: cost.users
+        ? [...cost.users]
+            .sort((a, b) => b.memGBh - a.memGBh)
+            .slice(0, 8)
+            .map(u => ({
+              user: u.authIdentifier,
+              memGBh: +u.memGBh.toFixed(1),
+              cpuH: +u.cpuH.toFixed(1),
+              llmUSD: +u.llmUSD.toFixed(2),
+            }))
+        : undefined,
+      contextTypes: cost.contextTypes,
+      idleResourceCount: cost.idleResources?.length,
+    };
+  }
+
+  // LLM Mesh audit — obsolete / mispriced model findings
+  if (parsedData.llmAudit?.summary) {
+    data.llmMesh = {
+      summary: parsedData.llmAudit.summary,
+      flagged: parsedData.llmAudit.rows
+        ?.filter(r => r.status === 'obsolete' || r.status === 'ripoff')
+        .slice(0, 10)
+        .map(r => ({ llmId: r.llmId, status: r.status, model: r.effectiveModel })),
+    };
+  }
+
+  // K8s clusters
+  if (parsedData.clusters?.length) {
+    data.k8sClusters = parsedData.clusters
+      .slice(0, 10)
+      .map(c => ({ name: c.name, status: c.status, version: c.version }));
+  }
+
+  // Connection health probe results
+  if (parsedData.connectionHealth?.length) {
+    const failing = parsedData.connectionHealth.filter(c => c.status === 'fail');
+    data.connectionHealth = {
+      tested: parsedData.connectionHealth.length,
+      failCount: failing.length,
+      failing: failing.slice(0, 8).map(c => ({
+        name: c.name, type: c.type, error: c.error?.slice(0, 120),
+      })),
+    };
+  }
+
+  // Instance sanity check
+  if (parsedData.sanityCheck?.length) {
+    const counts: Record<string, number> = {};
+    parsedData.sanityCheck.forEach(m => { counts[m.severity] = (counts[m.severity] || 0) + 1; });
+    data.sanityCheck = {
+      counts,
+      maxSeverity: parsedData.sanityCheckMaxSeverity,
+      topIssues: parsedData.sanityCheck
+        .filter(m => m.severity === 'ERROR' || m.severity === 'WARNING')
+        .slice(0, 8)
+        .map(m => ({ severity: m.severity, title: m.title })),
     };
   }
 

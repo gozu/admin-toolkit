@@ -161,7 +161,14 @@ export function AdoptionPage() {
       align: 'right',
       mono: true,
       cellClassName: 'text-[var(--text-secondary)]',
-      render: (row) => row.commits.toLocaleString(),
+      render: (row) =>
+        row.truncated ? (
+          <span title="History deeper than the fetch cap — this count is a floor.">
+            ≥{row.commits.toLocaleString()}
+          </span>
+        ) : (
+          row.commits.toLocaleString()
+        ),
       sortValue: (row) => row.commits,
     },
     {

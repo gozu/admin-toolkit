@@ -584,6 +584,27 @@ def _git_commit_month(timestamp_iso: str) -> Optional[str]:
         return None
 
 
+def _fill_month_range(active_months: List[str], max_span: int = 600) -> List[str]:
+    """Contiguous 'YYYY-MM' sequence from the first to the last active month,
+    so zero-activity months exist as explicit data points. Falls back to the
+    active months as-is if the span is implausible (bogus commit timestamp)."""
+    if not active_months:
+        return []
+    first, last = active_months[0], active_months[-1]
+    y, m = int(first[:4]), int(first[5:7])
+    ly, lm = int(last[:4]), int(last[5:7])
+    span = (ly - y) * 12 + (lm - m) + 1
+    if span < 1 or span > max_span:
+        return active_months
+    out = []
+    while (y, m) <= (ly, lm):
+        out.append("%04d-%02d" % (y, m))
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+    return out
+
+
 def _classify_git_author(author: Optional[str]) -> Optional[Tuple[str, str]]:
     """Bucket a git-log author into ('human', login) or ('automation', id).
 
@@ -600,10 +621,45 @@ def _classify_git_author(author: Optional[str]) -> Optional[Tuple[str, str]]:
     return ('human', a)
 
 
+# .log() returns at most `count` entries plus a `nextCommit` cursor when more
+# remain (verified live: start_commit=nextCommit continues exactly, inclusive,
+# no dupes; the key is ABSENT once the log is complete). The page cap bounds a
+# pathological repo to ~30k commits; a log that still carries `nextCommit`
+# after fetching is provably incomplete and stays marked as such.
+_GIT_LOG_PAGE_COUNT = 1000
+_GIT_LOG_MAX_PAGES = 30
+
+
+def _continue_git_log(project_key: str, log: Dict[str, Any]) -> Tuple[str, Optional[Dict[str, Any]]]:
+    """Follow a log's `nextCommit` cursor until the history is complete (or the
+    page cap hits, in which case the returned log keeps its truncation marker)."""
+    try:
+        entries = list(log.get('entries') or [])
+        next_commit = log.get('nextCommit')
+        if not next_commit:
+            return (project_key, log)
+        git = _thread_client().get_project(project_key).get_project_git()
+        pages = 0
+        while next_commit and pages < _GIT_LOG_MAX_PAGES:
+            page = git.log(count=_GIT_LOG_PAGE_COUNT, start_commit=next_commit)
+            entries.extend(page.get('entries') or [])
+            next_commit = page.get('nextCommit')
+            pages += 1
+        out: Dict[str, Any] = {'entries': entries}
+        if next_commit:
+            out['nextCommit'] = next_commit
+        return (project_key, out)
+    except Exception:
+        return (project_key, None)
+
+
 def _fetch_all_git_logs(client: Any, keys: List[str]) -> Dict[str, Any]:
-    """Cache-aware bulk git-log fetch, reusing the same `project_git_log:<key>`
-    cache entries populated by `_list_projects_catalog` (L1 batch read → 8-worker
-    parallel fetch of misses → batch write). On a warm cache this is pure
+    """Cache-aware bulk git-log fetch of COMPLETE histories, reusing the same
+    `project_git_log:<key>` cache entries populated by `_list_projects_catalog`
+    (L1 batch read → 8-worker parallel fetch of misses → batch write). Cached
+    logs whose `nextCommit` marks them truncated (the catalog only needs the
+    newest commit, so it never paginates) get their tail pages topped up here
+    and the completed log written back. On a warm, complete cache this is pure
     aggregation with no API calls. Returns {projectKey: log}."""
     if not keys:
         return {}
@@ -613,26 +669,32 @@ def _fetch_all_git_logs(client: Any, keys: List[str]) -> Dict[str, Any]:
 
     cached_logs: Dict[str, Any] = {}
     uncached_keys: List[str] = []
+    truncated_keys: List[str] = []
     _get_mem = cache.get_mem if hasattr(cache, 'get_mem') else cache.get
     for key in keys:
         cached = _get_mem(iid, f'project_git_log:{key}', ttl)
         if cached is not None:
             cached_logs[key] = cached
+            if isinstance(cached, dict) and cached.get('nextCommit'):
+                truncated_keys.append(key)
         else:
             uncached_keys.append(key)
 
     fetched_logs: Dict[str, Any] = {}
-    if uncached_keys:
+    if uncached_keys or truncated_keys:
         def _fetch_git_log(project_key: str) -> Tuple[str, Optional[Any]]:
             try:
-                local_client = _thread_client()
-                return (project_key, local_client.get_project(project_key).get_project_git().log())
+                first = _thread_client().get_project(project_key).get_project_git().log(count=_GIT_LOG_PAGE_COUNT)
+                return _continue_git_log(project_key, first)
             except Exception:
                 return (project_key, None)
 
-        workers = min(8, len(uncached_keys))
+        tasks = [lambda k=k: _fetch_git_log(k) for k in uncached_keys] + [
+            lambda k=k: _continue_git_log(k, cached_logs[k]) for k in truncated_keys
+        ]
+        workers = min(8, len(tasks))
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(_fetch_git_log, k): k for k in uncached_keys}
+            futures = [pool.submit(t) for t in tasks]
             for future in as_completed(futures):
                 pk, log = future.result()
                 if log is not None:
@@ -727,11 +789,19 @@ def _adoption_git_aggregate(client: Any) -> Dict[str, Any]:
             'activeMonths': len(proj_months),
             'firstCommitMs': first_ms,
             'lastCommitMs': last_activity_ms,
+            # nextCommit surviving the paginated fetch == history deeper than the
+            # page cap; the row's counts are floors and the UI must say so.
+            'truncated': bool(isinstance(log, dict) and log.get('nextCommit')),
         })
 
+    # Zero-fill the trend: a month with no commits is a real data point (usage
+    # dropped to zero), and on a CategoryScale a skipped month would silently
+    # splice dormant periods out of the line — the exact dishonesty the
+    # window-honesty principle exists to prevent. The span cap guards against a
+    # clock-skewed commit (e.g. a 1970 timestamp) exploding the axis.
     monthly_trend = [
-        {'month': m, 'activeBuilders': len(month_builders.get(m, set())), 'commits': month_commits[m]}
-        for m in sorted(month_commits.keys())
+        {'month': m, 'activeBuilders': len(month_builders.get(m, ())), 'commits': month_commits.get(m, 0)}
+        for m in _fill_month_range(sorted(month_commits.keys()))
     ]
 
     single = sum(1 for months in builder_months.values() if len(months) == 1)
@@ -760,5 +830,6 @@ def _adoption_git_aggregate(client: Any) -> Dict[str, Any]:
             'firstCommitMs': global_first_ms,
             'lastCommitMs': global_last_ms,
             'avgPeoplePerProject': round(avg_people, 2),
+            'truncatedProjectCount': sum(1 for r in project_rows if r['truncated']),
         },
     }

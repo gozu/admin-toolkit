@@ -22,6 +22,7 @@ export interface AdoptionProjectRow {
   firstCommitMs: number | null;
   lastCommitMs: number | null; // newest non-migration commit (matches Inactive-Projects)
   active: boolean; // last activity within the inactive-project threshold
+  truncated: boolean; // history deeper than the paginated fetch cap — counts are floors
 }
 
 /** Onboarding cohort: users created in a given month. */
@@ -56,6 +57,7 @@ export interface AdoptionTotals {
   lastCommitMs: number | null;
   avgPeoplePerProject: number;
   inactiveThresholdDays: number;
+  truncatedProjectCount: number; // projects whose history exceeded the fetch cap
 }
 
 export interface AdoptionData {

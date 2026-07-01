@@ -211,7 +211,10 @@ export function ReportPage() {
     <div className="w-full py-4">
       {/* Header */}
       <div className="mb-6 px-6">
-        <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">
+        <h1
+          className="text-2xl font-bold text-[var(--text-primary)] mb-2"
+          style={{ fontFamily: 'var(--font-display)', letterSpacing: 'normal' }}
+        >
           Quarterly Health Check Report
         </h1>
         <p className="text-sm text-[var(--text-secondary)] max-w-2xl">

@@ -331,11 +331,19 @@ function shortMonth(ym: string): string {
 }
 
 // Cap the wall sparkline at 4 years of months; the Adoption page shows the
-// full spine. January points carry the year tick.
+// full spine. January points carry the year tick. The in-progress month is
+// dropped (same honesty rule as the Adoption page's Momentum stat) — a
+// partial month always renders as a fake cliff at the end of the line.
 export function selectAdoption(data: AdoptionData | null): AdoptionVm | null {
   const trend = data?.monthlyTrend;
   if (!data?.totals || !trend?.length) return null;
-  const points = trend.slice(-48);
+  const now = new Date();
+  const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const complete =
+    trend.length > 1 && trend[trend.length - 1].month === currentYm
+      ? trend.slice(0, -1)
+      : trend;
+  const points = complete.slice(-48);
   const axisFor = (ym: string, idx: number): string | undefined =>
     idx > 0 && ym.endsWith('-01') ? `'${ym.slice(2, 4)}` : undefined;
   const repeat = data.repeatBuilders;
@@ -386,6 +394,8 @@ export function selectPlugins(
 // Identical groups (green) mean "keep one, drop the rest": the reclaimable
 // floor is every group's total size minus its largest member. Near-dups are
 // deliberately excluded — merging those is a judgement call, not a delete.
+// codeEnvSizes is keyed "<language>:<name>" (see CodeEnvsTable); green groups
+// are Python-only.
 export function selectEnvReclaimBytes(
   compare: CodeEnvCompareResult | null | undefined,
   codeEnvSizes: Record<string, number> | undefined,
@@ -393,7 +403,7 @@ export function selectEnvReclaimBytes(
   if (!compare?.green?.length || !codeEnvSizes) return 0;
   let reclaim = 0;
   for (const group of compare.green) {
-    const sizes = group.envNames.map((n) => codeEnvSizes[n] || 0);
+    const sizes = group.envNames.map((n) => codeEnvSizes[`python:${n}`] ?? codeEnvSizes[n] ?? 0);
     if (sizes.length < 2) continue;
     reclaim += sizes.reduce((s, v) => s + v, 0) - Math.max(...sizes);
   }

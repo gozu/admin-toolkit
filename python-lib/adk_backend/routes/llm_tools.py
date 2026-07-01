@@ -44,7 +44,13 @@ def api_llms():
         project = _local_toolkit_project()
         llms = project.list_llms()
         return [
-            {'id': llm['id'], 'label': llm.get('friendlyName') or llm['id'], 'type': llm.get('type', '')}
+            {
+                'id': llm['id'],
+                'label': llm.get('friendlyName') or llm['id'],
+                'type': llm.get('type', ''),
+                'connection': llm.get('connection') or '',
+                'model': llm.get('friendlyNameShort') or llm.get('model') or llm.get('deployment') or llm['id'],
+            }
             for llm in llms if llm.get('type') != 'RETRIEVAL_AUGMENTED'
         ]
     try:

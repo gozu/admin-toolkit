@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useDiag } from '../../context/DiagContext';
 import { useReportGenerator } from '../../hooks/useReportGenerator';
-import { SearchableCombobox } from '../SearchableCombobox';
+import { ModelPicker } from '../ModelPicker';
 import { ReportOverlay } from '../ReportOverlay';
 import { exportReportAsHtml } from '../../utils/exportReport';
 import { extractAllCSS } from '../../utils/extractCSS';
@@ -19,8 +19,8 @@ export function ReportPage() {
     phase,
     llms,
     isLoadingLlms,
-    selectedLlmLabel,
-    setSelectedLlmLabel,
+    selectedLlmId,
+    setSelectedLlmId,
     generate,
     reportData,
     error,
@@ -116,9 +116,6 @@ export function ReportPage() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [status]);
-
-  const llmLabels = llms.map((l) => l.label);
-  const selectedLlmId = llms.find((l) => l.label === selectedLlmLabel)?.id ?? '';
 
   const handleGenerate = useCallback(() => {
     if (!selectedLlmId) return;
@@ -238,10 +235,10 @@ export function ReportPage() {
                 Loading models...
               </div>
             ) : (
-              <SearchableCombobox
-                value={selectedLlmLabel}
-                onChange={setSelectedLlmLabel}
-                options={llmLabels}
+              <ModelPicker
+                llms={llms}
+                selectedId={selectedLlmId}
+                onChange={setSelectedLlmId}
                 placeholder="Select an LLM model..."
                 className="w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-elevated)] text-[var(--text-primary)] px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                 onEnterWithClosed={handleGenerate}

@@ -15,4 +15,6 @@ export interface LlmOption {
   id: string;
   label: string;
   type: string;
+  connection: string;
+  model: string;
 }

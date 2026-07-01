@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { fetchRaw } from '../utils/api';
 import { parseSseStream } from '../utils/sseStream';
 import { prepareReportData, type ReportData } from '../utils/prepareReportData';
@@ -13,8 +13,8 @@ interface UseReportGeneratorReturn {
   phase: string;
   llms: LlmOption[];
   isLoadingLlms: boolean;
-  selectedLlmLabel: string;
-  setSelectedLlmLabel: (label: string) => void;
+  selectedLlmId: string;
+  setSelectedLlmId: (id: string) => void;
   generate: (parsedData: ParsedData) => void;
   reportData: ReportData | null;
   error: string;
@@ -46,7 +46,7 @@ export function useReportGenerator(): UseReportGeneratorReturn {
 
   const [status, setStatus] = useState<ReportStatus>('idle');
   const [phase, setPhase] = useState('');
-  const [selectedLlmLabel, setSelectedLlmLabel] = useState('');
+  const [selectedLlmId, setSelectedLlmId] = useState('');
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [error, setError] = useState('');
   const [isOverlayOpen, setIsOverlayOpen] = useState(false);
@@ -57,16 +57,11 @@ export function useReportGenerator(): UseReportGeneratorReturn {
   const timedOutRef = useRef(false);
   const lastParsedDataRef = useRef<ParsedData | null>(null);
 
-  // Label → ID mapping
-  const llmMap = useMemo(() => new Map(llms.map((l) => [l.label, l.id])), [llms]);
-
   // Default the selection to the first LLM, derived during render rather than
-  // seeded via an effect (avoids a throwaway render). The raw `selectedLlmLabel`
+  // seeded via an effect (avoids a throwaway render). The raw `selectedLlmId`
   // still holds the user's explicit pick; reads use the effective value.
-  const effectiveLlmLabel =
-    (selectedLlmLabel && llms.some((l) => l.label === selectedLlmLabel)
-      ? selectedLlmLabel
-      : llms[0]?.label) ?? '';
+  const effectiveLlmId =
+    (selectedLlmId && llms.some((l) => l.id === selectedLlmId) ? selectedLlmId : llms[0]?.id) ?? '';
 
   // Fetch LLMs on first selector open
   const fetchLlms = useCallback(async () => {
@@ -94,7 +89,7 @@ export function useReportGenerator(): UseReportGeneratorReturn {
 
   const generate = useCallback(
     (parsedData: ParsedData) => {
-      const llmId = llmMap.get(effectiveLlmLabel);
+      const llmId = effectiveLlmId;
       if (!llmId) return;
 
       lastParsedDataRef.current = parsedData;
@@ -235,7 +230,7 @@ export function useReportGenerator(): UseReportGeneratorReturn {
         }
       })();
     },
-    [effectiveLlmLabel, llmMap, setLifecycle],
+    [effectiveLlmId, setLifecycle],
   );
 
   const retry = useCallback(() => {
@@ -267,8 +262,8 @@ export function useReportGenerator(): UseReportGeneratorReturn {
     phase,
     llms: llms,
     isLoadingLlms,
-    selectedLlmLabel: effectiveLlmLabel,
-    setSelectedLlmLabel,
+    selectedLlmId: effectiveLlmId,
+    setSelectedLlmId,
     generate,
     reportData,
     error,

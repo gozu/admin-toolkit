@@ -1,0 +1,23 @@
+/* Mission Control categorical palette — validated (dataviz six-checks) against
+   the real surfaces: dark #141414, light #ffffff. Dark worst adjacent CVD ΔE is
+   10.3 (floor band), which is legal ONLY because every categorical mark on the
+   wall carries a direct label (type rows, profile chips, legend rows). Keep it
+   that way when reusing these slots. Slot order is the CVD-safety mechanism —
+   never reorder or generate a 7th hue; fold the tail into "other". */
+:root {
+  --viz-cat-1: #3987e5; /* blue   */
+  --viz-cat-2: #199e70; /* aqua   */
+  --viz-cat-3: #c98500; /* yellow */
+  --viz-cat-4: #008300; /* green  */
+  --viz-cat-5: #9085e9; /* violet */
+  --viz-cat-6: #e66767; /* red    */
+}
+
+[data-theme='light'] {
+  --viz-cat-1: #2a78d6;
+  --viz-cat-2: #1baf7a;
+  --viz-cat-3: #eda100;
+  --viz-cat-4: #008300;
+  --viz-cat-5: #4a3aa7;
+  --viz-cat-6: #e34948;
+}

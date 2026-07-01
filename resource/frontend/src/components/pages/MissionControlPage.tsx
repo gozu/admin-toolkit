@@ -3,7 +3,6 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { useDiag } from '../../context/DiagContext';
 import { useHealthScore, useSharedHealthFactors, SCORE_LIFECYCLE_FIELDS } from '../../hooks';
 import type { Lifecycle, PageId } from '../../types';
-import { buildConnectionInsightsRows } from '../../utils/connectionInsights';
 import { resolveLifecycleById, resolveLifecycleFromFields } from '../../utils/pageLifecycle';
 import {
   selectCodeEnvs,
@@ -12,20 +11,21 @@ import {
   selectConnUsage,
   selectMemory,
   selectMounts,
+  selectPlugins,
   selectProjects,
   selectSanity,
   selectTreemapItems,
   selectUsers,
 } from './missionControl/selectors';
 import {
+  AdoptionTile,
   CodeEnvsTile,
   ConnHealthTile,
-  ConnInsightsTile,
   ConnInventoryTile,
   ConnUsageTile,
   ContainerExecsTile,
+  CostTile,
   CpuTile,
-  DbHealthTile,
   EnvCompareTile,
   FilesystemTile,
   HealthTile,
@@ -39,17 +39,22 @@ import {
   SanityTile,
   UsersTile,
 } from './missionControl/tiles';
+import './missionControl/viz.css';
 
 // Mission Control — the entire Admin Toolkit on one zero-scroll wall.
 // 12 cols × 6 rows of named areas; every tile reads data the startup loaders
-// already fetched, so this page issues no requests of its own.
+// already fetched (adoption's single cached GET is the one wall-initiated
+// kick). Rows 3-4 give the wall its only time axis: the adoption spine.
+// Two panes were demoted to chips rather than tiles: worst connection-audit
+// severity rides on Conn Health, and runtime-DB health rides on Sanity —
+// both deep-link to their pages.
 const GRID_AREAS = [
   '"health health health fs fs fs mem mem coninv coninv conhlt conhlt"',
   '"health health health fs fs fs cpu cpu coninv coninv conuse conuse"',
-  '"proj proj proj proj users users users conins conins conins plug plug"',
-  '"proj proj proj proj users users users conins conins conins cenv cenv"',
+  '"proj proj proj users users users adopt adopt adopt adopt plug plug"',
+  '"proj proj proj users users users adopt adopt adopt adopt cenv cenv"',
   '"k8s k8s k8s cex cex cex llm llm llm pcomp pcomp pcomp"',
-  '"logs logs logs sanity sanity sanity dbh dbh dbh envcmp envcmp envcmp"',
+  '"logs logs logs sanity sanity sanity cost cost cost envcmp envcmp envcmp"',
 ].join(' ');
 
 // Stable fallback so memoized tiles don't see a fresh lifecycle object each render.
@@ -67,13 +72,12 @@ export function MissionControlPage() {
     cpuCores,
     connections,
     connectionHealth,
-    connectionDetails,
     connectionDatasetUsages,
     connectionLlmUsages,
-    connectionLocalFilesystemUsages,
     connectionAudit,
     connectionUsageScanned,
     connectionUsageTotal,
+    clusters,
     projects,
     projectFootprint,
     projectFootprintSummary,
@@ -127,7 +131,10 @@ export function MissionControlPage() {
   );
   const mem = useMemo(() => selectMemory(memoryInfo), [memoryInfo]);
   const connTypesVm = useMemo(() => selectConnTypes(connections), [connections]);
-  const connHealthVm = useMemo(() => selectConnHealth(connectionHealth), [connectionHealth]);
+  const connHealthVm = useMemo(
+    () => selectConnHealth(connectionHealth, connectionAudit),
+    [connectionHealth, connectionAudit],
+  );
   const connUsageVm = useMemo(
     () =>
       selectConnUsage({
@@ -146,24 +153,9 @@ export function MissionControlPage() {
     () => selectUsers({ users, projects, projectFootprint }),
     [users, projects, projectFootprint],
   );
-  const insightsRows = useMemo(
-    () =>
-      buildConnectionInsightsRows({
-        connectionDetails,
-        connectionDatasetUsages,
-        connectionLlmUsages,
-        connectionLocalFilesystemUsages,
-        connectionAudit,
-        connectionHealth,
-      }),
-    [
-      connectionDetails,
-      connectionDatasetUsages,
-      connectionLlmUsages,
-      connectionLocalFilesystemUsages,
-      connectionAudit,
-      connectionHealth,
-    ],
+  const pluginsVm = useMemo(
+    () => selectPlugins({ pluginDetails, pluginsCount }),
+    [pluginDetails, pluginsCount],
   );
   const codeEnvsVm = useMemo(
     () => selectCodeEnvs({ codeEnvs, codeEnvSizes, pythonVersionCounts }),
@@ -238,15 +230,15 @@ export function MissionControlPage() {
         <ConnUsageTile lifecycle={parsedData.connectionUsageLoading ?? QUEUED} onNavigate={setActivePage} vm={connUsageVm} />
         <ProjectsTile lifecycle={lc('projects')} onNavigate={setActivePage} vm={projectsVm} />
         <UsersTile lifecycle={lc('users')} onNavigate={setActivePage} vm={usersVm} onOwnerClick={handleOwnerClick} />
-        <ConnInsightsTile lifecycle={lc('connections-insights')} onNavigate={setActivePage} rows={insightsRows} />
+        <AdoptionTile lifecycle={lc('adoption')} onNavigate={setActivePage} />
         <PluginsTile
           lifecycle={lc('plugins-installed')}
           onNavigate={setActivePage}
-          count={pluginDetails?.length ?? pluginsCount ?? 0}
+          vm={pluginsVm}
           pending={Boolean(pluginUsagesPending)}
         />
         <CodeEnvsTile lifecycle={lc('code-envs-cleaner')} onNavigate={setActivePage} vm={codeEnvsVm} />
-        <K8sTile lifecycle={lc('k8s-insights')} onNavigate={setActivePage} />
+        <K8sTile lifecycle={lc('k8s-insights')} onNavigate={setActivePage} clusterCount={clusters?.length ?? 0} />
         <ContainerExecsTile lifecycle={lc('container-execs')} onNavigate={setActivePage} />
         <LlmAuditTile lifecycle={lc('llm-audit')} onNavigate={setActivePage} summary={llmAudit?.summary} />
         <ProjectComputeTile lifecycle={lc('project-compute')} onNavigate={setActivePage} />
@@ -254,11 +246,17 @@ export function MissionControlPage() {
           lifecycle={lc('logs')}
           onNavigate={setActivePage}
           unique={Number(logStats?.['Unique Errors'] ?? 0)}
+          totalLines={Number(logStats?.['Total Lines'] ?? 0)}
           snippet={rawLogErrors?.[0]?.data?.[0]}
         />
         <SanityTile lifecycle={lc('sanity-check')} onNavigate={setActivePage} vm={sanityVm} />
-        <DbHealthTile lifecycle={lc('db-health')} onNavigate={setActivePage} />
-        <EnvCompareTile lifecycle={lc('code-envs-comparison')} onNavigate={setActivePage} skippedEnvCount={skippedEnvCount} />
+        <CostTile lifecycle={lc('project-cost')} onNavigate={setActivePage} />
+        <EnvCompareTile
+          lifecycle={lc('code-envs-comparison')}
+          onNavigate={setActivePage}
+          skippedEnvCount={skippedEnvCount}
+          codeEnvSizes={codeEnvSizes}
+        />
       </motion.div>
     </div>
   );

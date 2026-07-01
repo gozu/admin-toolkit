@@ -147,19 +147,174 @@ export interface Segment {
   title?: string;
 }
 
+// 2px surface gap between fills (the dataviz spacer) — segments separate via
+// negative space, never a stroke. Proportions via flex-grow so gaps don't
+// distort the shares.
 export function SegmentBar({ segments, height = 5 }: { segments: Segment[]; height?: number }) {
-  const total = segments.reduce((s, x) => s + x.value, 0) || 1;
   return (
-    <div className="flex w-full overflow-hidden rounded-full bg-[var(--bg-elevated)]" style={{ height }}>
+    <div
+      className="flex w-full gap-[2px] overflow-hidden rounded-full bg-[var(--bg-elevated)]"
+      style={{ height }}
+    >
       {segments
         .filter((s) => s.value > 0)
         .map((s, i) => (
           <div
             key={i}
             title={s.title}
-            style={{ width: `${(s.value / total) * 100}%`, background: s.color }}
+            className="rounded-[1px]"
+            style={{ flexGrow: s.value, flexBasis: 0, background: s.color }}
           />
         ))}
+    </div>
+  );
+}
+
+export interface SparkPoint {
+  label: string; // hover title, e.g. "May '26 — 14 builders"
+  axisLabel?: string; // optional x-axis tick rendered under the plot (years)
+  value: number;
+}
+
+// Micro line+area chart (SVG, canvas-free): 2px non-scaling line, ~12% area
+// wash, endpoint dot with a 2px surface ring, endpoint direct-labeled. Hover
+// is a per-point column with a native title — the full-page chart carries the
+// real tooltip layer.
+export function Sparkline({
+  points,
+  color,
+  endLabel,
+}: {
+  points: SparkPoint[];
+  color: string;
+  endLabel?: string;
+}) {
+  const n = points.length;
+  if (n === 0) return null;
+  const max = Math.max(...points.map((p) => p.value), 1);
+  const X = (i: number) => ((i + 0.5) / n) * 100;
+  const Y = (v: number) => 34 - (v / max) * 30;
+  const line = points.map((p, i) => `${X(i).toFixed(2)},${Y(p.value).toFixed(2)}`).join(' ');
+  const area = `M ${X(0).toFixed(2)},34 L ${line.replace(/ /g, ' L ')} L ${X(n - 1).toFixed(2)},34 Z`;
+  const last = points[n - 1];
+  const ticks = points.map((p, i) => ({ i, label: p.axisLabel })).filter((t) => t.label);
+  const hasTicks = ticks.length > 0;
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div className="relative min-h-0 w-full flex-1">
+        <svg
+          className="absolute inset-0 h-full w-full"
+          viewBox="0 0 100 36"
+          preserveAspectRatio="none"
+          aria-hidden
+        >
+          {ticks.map((t) => (
+            <line
+              key={t.i}
+              x1={X(t.i)}
+              x2={X(t.i)}
+              y1={2}
+              y2={34}
+              stroke="var(--border-default)"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+          <line
+            x1={0}
+            x2={100}
+            y1={34}
+            y2={34}
+            stroke="var(--border-default)"
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
+          <path d={area} fill={color} opacity={0.12} />
+          <polyline
+            points={line}
+            fill="none"
+            stroke={color}
+            strokeWidth={2}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+        {/* Endpoint marker as HTML so the SVG's non-uniform scale can't squash it. */}
+        <span
+          aria-hidden
+          className="absolute h-2 w-2 rounded-full"
+          style={{
+            background: color,
+            boxShadow: '0 0 0 2px var(--bg-surface)',
+            left: `calc(${X(n - 1)}% - 4px)`,
+            top: `calc(${(Y(last.value) / 36) * 100}% - 4px)`,
+          }}
+        />
+        {endLabel && (
+          <span
+            className="absolute whitespace-nowrap font-mono text-[10px] font-semibold leading-none text-[var(--text-primary)]"
+            style={{
+              right: `${100 - X(n - 1)}%`,
+              marginRight: 8,
+              top: `calc(${(Y(last.value) / 36) * 100}% - 5px)`,
+            }}
+          >
+            {endLabel}
+          </span>
+        )}
+        {/* Hover columns: native titles, hit target = the full column height. */}
+        <div className="absolute inset-0 flex">
+          {points.map((p, i) => (
+            <span key={i} title={p.label} className="h-full min-w-0 flex-1" />
+          ))}
+        </div>
+      </div>
+      {hasTicks && (
+        <div className="relative h-[11px] w-full flex-shrink-0">
+          {ticks.map((t) => (
+            <span
+              key={t.i}
+              className="absolute top-[1px] font-mono text-[8px] leading-none text-[var(--text-tertiary)]"
+              style={{ left: `${X(t.i)}%`, transform: 'translateX(2px)' }}
+            >
+              {t.label}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Companion micro column strip (small-multiple under a Sparkline — same x
+// buckets, its own scale; never a second axis on the same plot).
+export function ColumnStrip({
+  points,
+  color,
+  height = 18,
+}: {
+  points: SparkPoint[];
+  color: string;
+  height?: number;
+}) {
+  const n = points.length;
+  if (n === 0) return null;
+  const max = Math.max(...points.map((p) => p.value), 1);
+  return (
+    <div className="flex w-full items-end" style={{ height, gap: n > 36 ? 1 : 2 }}>
+      {points.map((p, i) => (
+        <span
+          key={i}
+          title={p.label}
+          className="min-w-0 flex-1 rounded-t-[1px]"
+          style={{
+            height: `${Math.max(4, (p.value / max) * 100)}%`,
+            background: color,
+            opacity: p.value === 0 ? 0.15 : 0.55,
+          }}
+        />
+      ))}
     </div>
   );
 }

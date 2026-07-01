@@ -1,6 +1,9 @@
 import type {
+  AdoptionData,
+  ConnectionAuditResult,
   ConnectionCounts,
   ConnectionHealthResult,
+  CruCostData,
   DirTreeData,
   FilesystemInfo,
   MemoryInfo,
@@ -9,6 +12,7 @@ import type {
   ProjectFootprintRow,
   SanityCheckMessage,
 } from '../../../types';
+import type { CodeEnvCompareResult } from '../../../types';
 import { parseNumericValue, parseSizeToGB } from '../../../utils/formatters';
 import type { Tone } from './tokens';
 
@@ -123,10 +127,16 @@ export interface ConnHealthVm {
   fail: number;
   skipped: number;
   cells: { tone: Tone; title: string }[];
+  auditCritical: number; // config-audit findings (chip — the audit has no tile)
+  auditWarning: number;
 }
 
-export function selectConnHealth(health: ConnectionHealthResult[] | undefined): ConnHealthVm {
+export function selectConnHealth(
+  health: ConnectionHealthResult[] | undefined,
+  audit: ConnectionAuditResult[] | undefined,
+): ConnHealthVm {
   const rows = health || [];
+  const auditRows = audit || [];
   const toneOf = (s: ConnectionHealthResult['status']): Tone =>
     s === 'ok' ? 'ok' : s === 'fail' ? 'crit' : 'neutral';
   return {
@@ -137,6 +147,8 @@ export function selectConnHealth(health: ConnectionHealthResult[] | undefined): 
     cells: [...rows]
       .sort((a, b) => (a.status === 'fail' ? -1 : 0) - (b.status === 'fail' ? -1 : 0))
       .map((r) => ({ tone: toneOf(r.status), title: `${r.name} — ${r.status}` })),
+    auditCritical: auditRows.filter((r) => r.severity === 'critical').length,
+    auditWarning: auditRows.filter((r) => r.severity === 'warning').length,
   };
 }
 
@@ -248,6 +260,7 @@ export interface SanityVm {
   infos: number;
   maxTone: Tone;
   maxLabel: string;
+  topMessage: string | null; // headline of the worst message, for the wall
 }
 
 export function selectSanity(
@@ -258,6 +271,8 @@ export function selectSanity(
   const sev = (maxSeverity || '').toUpperCase();
   const maxTone: Tone =
     sev === 'ERROR' ? 'crit' : sev === 'WARNING' ? 'warn' : sev === 'INFO' ? 'info' : 'ok';
+  const top =
+    rows.find((m) => m.severity === 'ERROR') ?? rows.find((m) => m.severity === 'WARNING') ?? null;
   return {
     total: rows.length,
     errors: rows.filter((m) => m.severity === 'ERROR').length,
@@ -265,6 +280,7 @@ export function selectSanity(
     infos: rows.filter((m) => m.severity === 'INFO').length,
     maxTone,
     maxLabel: sev || 'OK',
+    topMessage: top ? top.title || top.message : null,
   };
 }
 
@@ -284,5 +300,137 @@ export function selectCodeEnvs(
     pyVersions: Object.entries(d.pythonVersionCounts || {})
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3),
+  };
+}
+
+// ── Adoption (persistent git-history spine) ───────────────────────────────
+interface SparkPointVm {
+  label: string;
+  axisLabel?: string;
+  value: number;
+}
+
+export interface AdoptionVm {
+  spark: SparkPointVm[]; // active builders per month
+  commits: SparkPointVm[]; // commit volume per month (own scale, small multiple)
+  builders: number;
+  currentMonthBuilders: number;
+  activeProjects: number;
+  totalProjects: number;
+  repeatPct: number | null; // share of builders active in >= 2 distinct months
+  avgPeople: number;
+  sinceLabel: string | null; // first month of the spine, e.g. "since Apr '23"
+}
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function shortMonth(ym: string): string {
+  const [y, m] = ym.split('-');
+  const abbr = MONTH_ABBR[Number.parseInt(m ?? '', 10) - 1] ?? m ?? '';
+  return `${abbr} '${(y ?? '').slice(2)}`;
+}
+
+// Cap the wall sparkline at 4 years of months; the Adoption page shows the
+// full spine. January points carry the year tick.
+export function selectAdoption(data: AdoptionData | null): AdoptionVm | null {
+  const trend = data?.monthlyTrend;
+  if (!data?.totals || !trend?.length) return null;
+  const points = trend.slice(-48);
+  const axisFor = (ym: string, idx: number): string | undefined =>
+    idx > 0 && ym.endsWith('-01') ? `'${ym.slice(2, 4)}` : undefined;
+  const repeat = data.repeatBuilders;
+  return {
+    spark: points.map((p, i) => ({
+      label: `${shortMonth(p.month)} — ${p.activeBuilders} active builders`,
+      axisLabel: axisFor(p.month, i),
+      value: p.activeBuilders,
+    })),
+    commits: points.map((p) => ({
+      label: `${shortMonth(p.month)} — ${p.commits.toLocaleString()} commits`,
+      value: p.commits,
+    })),
+    builders: data.totals.builderCount,
+    currentMonthBuilders: points[points.length - 1]?.activeBuilders ?? 0,
+    activeProjects: data.totals.activeProjectCount,
+    totalProjects: data.totals.projectCount,
+    repeatPct: repeat && repeat.total > 0 ? Math.round((repeat.repeat / repeat.total) * 100) : null,
+    avgPeople: data.totals.avgPeoplePerProject,
+    sinceLabel: points[0] ? `since ${shortMonth(points[0].month)}` : null,
+  };
+}
+
+// ── Plugins ───────────────────────────────────────────────────────────────
+export interface PluginsVm {
+  installed: number;
+  used: number; // >= 1 project uses it
+  unused: number; // usage scan done, zero projects
+  unknown: number; // usage not resolved (pending / errored)
+}
+
+export function selectPlugins(
+  d: Pick<ParsedData, 'pluginDetails' | 'pluginsCount'>,
+): PluginsVm {
+  const details = d.pluginDetails || [];
+  const installed = details.length || d.pluginsCount || 0;
+  let used = 0;
+  let unused = 0;
+  for (const p of details) {
+    if (p.projectsUsingCount == null) continue;
+    if (p.projectsUsingCount > 0) used += 1;
+    else unused += 1;
+  }
+  return { installed, used, unused, unknown: Math.max(0, installed - used - unused) };
+}
+
+// ── Code env comparison → reclaimable estimate ────────────────────────────
+// Identical groups (green) mean "keep one, drop the rest": the reclaimable
+// floor is every group's total size minus its largest member. Near-dups are
+// deliberately excluded — merging those is a judgement call, not a delete.
+export function selectEnvReclaimBytes(
+  compare: CodeEnvCompareResult | null | undefined,
+  codeEnvSizes: Record<string, number> | undefined,
+): number {
+  if (!compare?.green?.length || !codeEnvSizes) return 0;
+  let reclaim = 0;
+  for (const group of compare.green) {
+    const sizes = group.envNames.map((n) => codeEnvSizes[n] || 0);
+    if (sizes.length < 2) continue;
+    reclaim += sizes.reduce((s, v) => s + v, 0) - Math.max(...sizes);
+  }
+  return reclaim;
+}
+
+// ── Compute cost (CRU audit) ──────────────────────────────────────────────
+export interface CruVm {
+  memGBh: number;
+  cpuH: number;
+  llmUSD: number;
+  topProjects: { projectKey: string; memGBh: number }[];
+  maxMemGBh: number;
+  spanLabel: string | null; // audit window, e.g. "14d window"
+}
+
+export function selectCru(data: CruCostData | null): CruVm | null {
+  if (!data?.totals) return null;
+  const top = [...(data.projects || [])]
+    .sort((a, b) => b.memGBh - a.memGBh)
+    .slice(0, 3);
+  let spanLabel: string | null = null;
+  if (data.span?.firstTs && data.span.lastTs) {
+    const days = Math.max(
+      1,
+      Math.round(
+        (new Date(data.span.lastTs).getTime() - new Date(data.span.firstTs).getTime()) / 86_400_000,
+      ),
+    );
+    spanLabel = `${days}d window`;
+  }
+  return {
+    memGBh: data.totals.memGBh,
+    cpuH: data.totals.cpuH,
+    llmUSD: data.totals.llmUSD,
+    topProjects: top.map((p) => ({ projectKey: p.projectKey, memGBh: p.memGBh })),
+    maxMemGBh: top[0]?.memGBh || 0,
+    spanLabel,
   };
 }

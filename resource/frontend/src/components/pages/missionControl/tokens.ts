@@ -11,15 +11,17 @@ export const TONE_COLOR: Record<Tone, string> = {
   neutral: 'var(--text-tertiary)',
 };
 
-// Muted categorical palette — mirrors the readability palette used by the
-// full-page charts (ConnectionsChart) so type colors feel familiar.
+// Categorical palette — theme-scoped CSS vars defined in viz.css, validated
+// per mode against the real surfaces (dataviz six-checks). Fixed slot order is
+// the CVD-safety mechanism: assign in order, never cycle past 6 — fold the
+// tail into "other".
 export const CATEGORICAL_COLORS = [
-  'rgba(109, 163, 224, 0.85)', // blue
-  'rgba(153, 123, 224, 0.85)', // violet
-  'rgba(99, 198, 157, 0.85)', // mint
-  'rgba(224, 181, 97, 0.85)', // amber
-  'rgba(224, 109, 131, 0.85)', // rose
-  'rgba(101, 194, 217, 0.85)', // cyan
+  'var(--viz-cat-1)', // blue
+  'var(--viz-cat-2)', // aqua
+  'var(--viz-cat-3)', // yellow
+  'var(--viz-cat-4)', // green
+  'var(--viz-cat-5)', // violet
+  'var(--viz-cat-6)', // red
 ];
 
 // Tile entrance variants — names are inherited from the page-level stagger

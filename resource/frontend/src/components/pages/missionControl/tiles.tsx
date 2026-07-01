@@ -1,11 +1,12 @@
 import { memo, useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { HealthScore, Lifecycle, LlmAuditSummary, PageId } from '../../../types';
-import type { ConnectionInsightsRow } from '../../../utils/connectionInsights';
 import { formatAuto, formatSizeGb } from '../../../utils/formatters';
+import { adoptionScan } from '../../../state/adoptionScan';
 import { containerExecsScan } from '../../../state/containerExecsStore';
 import { codeEnvComparisonScan } from '../../../state/codeEnvComparisonStore';
 import { dbHealthConnectionsStore } from '../../../state/dbHealthConnectionsStore';
 import { k8sInsightsScan } from '../../../state/k8sInsightsStore';
+import { projectCostScan } from '../../../state/projectCostScan';
 import {
   getProcessMetrics,
   startProcessMetricsScan,
@@ -15,6 +16,7 @@ import { getSqlPushdownScan, subscribeSqlPushdownScan } from '../../../state/sql
 import {
   BarRow,
   BigStat,
+  ColumnStrip,
   CountChip,
   Dot,
   HeatStrip,
@@ -22,6 +24,7 @@ import {
   MiniTreemap,
   ScoreRing,
   SegmentBar,
+  Sparkline,
   UsageBar,
   type TreemapItem,
 } from './microViz';
@@ -29,6 +32,9 @@ import { CATEGORICAL_COLORS, type Tone } from './tokens';
 import { TileShell } from './TileShell';
 import {
   footprintTone,
+  selectAdoption,
+  selectCru,
+  selectEnvReclaimBytes,
   selectTopCpu,
   type CodeEnvsVm,
   type ConnHealthVm,
@@ -36,10 +42,26 @@ import {
   type ConnUsageVm,
   type MemoryVm,
   type MountVm,
+  type PluginsVm,
   type ProjectsVm,
   type SanityVm,
   type UsersVm,
 } from './selectors';
+
+// Compact figures for micro stats: 12.4k / $1.2k — proportional, no decimals
+// once the number is wide.
+function fmtK(n: number): string {
+  if (n >= 10_000) return `${Math.round(n / 1000)}k`;
+  if (n >= 1_000) return `${(n / 1000).toFixed(1)}k`;
+  if (n >= 100) return String(Math.round(n));
+  return n.toFixed(1);
+}
+
+function fmtUsd(n: number): string {
+  if (n >= 1_000) return `$${(n / 1000).toFixed(1)}k`;
+  if (n >= 10) return `$${Math.round(n)}`;
+  return `$${n.toFixed(2)}`;
+}
 
 // One component per wall tile, ~selector → microviz inside a TileShell.
 // Streaming stores are subscribed *inside* their tile so an SSE tick repaints
@@ -275,6 +297,12 @@ export const ConnHealthTile = memo(function ConnHealthTile({
           <CountChip label="ok" count={vm.ok} tone={vm.ok ? 'ok' : 'neutral'} />
           <CountChip label="fail" count={vm.fail} tone={vm.fail ? 'crit' : 'neutral'} />
           <CountChip label="skip" count={vm.skipped} tone="neutral" />
+          {/* Config-audit worst-case rides along — the audit has no tile. */}
+          {vm.auditCritical > 0 ? (
+            <CountChip label="audit crit" count={vm.auditCritical} tone="crit" />
+          ) : vm.auditWarning > 0 ? (
+            <CountChip label="audit warn" count={vm.auditWarning} tone="warn" />
+          ) : null}
         </div>
         <HeatStrip cells={vm.cells} max={22} />
       </div>
@@ -310,7 +338,7 @@ export const ConnUsageTile = memo(function ConnUsageTile({
   );
 });
 
-// ── PROJECTS (4×2) ────────────────────────────────────────────────────────
+// ── PROJECTS (3×2) ────────────────────────────────────────────────────────
 export const ProjectsTile = memo(function ProjectsTile({
   lifecycle,
   onNavigate,
@@ -321,8 +349,11 @@ export const ProjectsTile = memo(function ProjectsTile({
       <div className="flex h-full min-h-0 flex-col gap-2">
         <div className="flex items-end gap-5">
           <BigStat value={vm.count} label="projects" />
-          <BigStat value={formatAuto(vm.totalBytes)} label="total footprint" />
-          <BigStat value={`${vm.avgGb.toFixed(1)} GB`} label="avg / project" />
+          <BigStat
+            value={formatAuto(vm.totalBytes)}
+            sub={`· avg ${vm.avgGb.toFixed(1)} GB`}
+            label="total footprint"
+          />
         </div>
         <div className="flex min-h-0 flex-1 flex-col justify-evenly gap-1">
           {vm.top.map((r) => (
@@ -387,51 +418,64 @@ export const UsersTile = memo(function UsersTile({
   );
 });
 
-// ── CONNECTION INSIGHTS (3×2) ─────────────────────────────────────────────
-export const ConnInsightsTile = memo(function ConnInsightsTile({
-  lifecycle,
-  onNavigate,
-  rows,
-}: BaseTileProps & { rows: ConnectionInsightsRow[] }) {
-  const top = useMemo(
-    () =>
-      [...rows]
-        .sort((a, b) => b.projectCount - a.projectCount || b.datasetCount - a.datasetCount)
-        .slice(0, 6),
-    [rows],
-  );
-  const max = top[0]?.projectCount || 1;
-  const auditTone = (r: ConnectionInsightsRow): Tone =>
-    r.auditSeverity === 'critical' ? 'crit' : r.auditSeverity === 'warning' ? 'warn' : r.auditSeverity === 'info' ? 'info' : 'neutral';
-  const healthTone = (r: ConnectionInsightsRow): Tone =>
-    r.healthStatus === 'ok' ? 'ok' : r.healthStatus === 'fail' ? 'crit' : 'neutral';
+// ── ADOPTION (4×2) — the wall's only time axis ────────────────────────────
+// Persistent git-history spine: active builders/month (line+wash) over a
+// commits/month strip (small multiple, own scale — never a second axis).
+export const AdoptionTile = memo(function AdoptionTile({ lifecycle, onNavigate }: BaseTileProps) {
+  // Idempotent kick: adoption is outside the warmup queue (single cached GET),
+  // so the wall starts it on first paint — the Adoption page pattern.
+  useEffect(() => {
+    if (!adoptionScan.store.get().scanStarted) void adoptionScan.load();
+  }, []);
+  const { data } = adoptionScan.use();
+  const vm = useMemo(() => selectAdoption(data), [data]);
   return (
     <TileShell
-      title="Conn Insights"
-      area="conins"
-      target="connections-insights"
-      accent="connections"
+      title="Adoption"
+      area="adopt"
+      target="adoption"
+      accent="projects"
       lifecycle={lifecycle}
       onNavigate={onNavigate}
-      hasData={rows.length > 0}
-      titleRight={<span className="font-mono text-[9px] text-[var(--text-tertiary)]">audit · health</span>}
+      hasData={vm != null}
+      titleRight={
+        vm?.sinceLabel ? (
+          <span className="font-mono text-[9px] text-[var(--text-tertiary)]">{vm.sinceLabel}</span>
+        ) : undefined
+      }
     >
-      <div className="flex h-full min-h-0 flex-col justify-center gap-1.5">
-        {top.map((r) => (
-          <div key={r.name} className="flex min-w-0 items-center gap-1.5">
-            <span className="w-24 flex-shrink-0 truncate text-[10px] text-[var(--text-secondary)]">{r.name}</span>
-            <div className="min-w-0 flex-1">
-              <UsageBar pct={(r.projectCount / max) * 100} tone="info" />
+      {vm ? (
+        <div className="flex h-full min-h-0 gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <div className="min-h-0 flex-1">
+              <Sparkline
+                points={vm.spark}
+                color="var(--viz-cat-1)"
+                endLabel={`${vm.currentMonthBuilders}`}
+              />
             </div>
-            <span className="w-6 flex-shrink-0 text-right font-mono text-[9px] text-[var(--text-tertiary)]">
-              {r.projectCount}
-            </span>
-            <Dot tone={auditTone(r)} title={r.auditSeverity ? `audit: ${r.auditSeverity}` : 'audit: clean'} />
-            <Dot tone={healthTone(r)} title={r.healthStatus ? `health: ${r.healthStatus}` : 'health: untested'} />
+            <ColumnStrip points={vm.commits} color="var(--text-tertiary)" height={16} />
+            <div className="flex items-center gap-3 text-[8px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+              <span className="flex items-center gap-1">
+                <span className="h-[2px] w-3 rounded-full" style={{ background: 'var(--viz-cat-1)' }} />
+                builders / mo
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="h-2 w-1.5 rounded-[1px] bg-[var(--text-tertiary)] opacity-55" />
+                commits / mo
+              </span>
+            </div>
           </div>
-        ))}
-        {top.length === 0 && <span className="text-[11px] text-[var(--text-tertiary)]">No connections</span>}
-      </div>
+          <div className="flex flex-shrink-0 flex-col justify-center gap-2.5">
+            <BigStat value={vm.builders} label="builders" />
+            <BigStat value={`${vm.activeProjects}/${vm.totalProjects}`} label="active projects" />
+            {vm.repeatPct != null && <BigStat value={`${vm.repeatPct}%`} label="returning" />}
+            <BigStat value={vm.avgPeople.toFixed(1)} label="ppl / project" />
+          </div>
+        </div>
+      ) : (
+        <span className="text-[11px] text-[var(--text-tertiary)]">No data</span>
+      )}
     </TileShell>
   );
 });
@@ -440,14 +484,32 @@ export const ConnInsightsTile = memo(function ConnInsightsTile({
 export const PluginsTile = memo(function PluginsTile({
   lifecycle,
   onNavigate,
-  count,
+  vm,
   pending,
-}: BaseTileProps & { count: number; pending: boolean }) {
+}: BaseTileProps & { vm: PluginsVm; pending: boolean }) {
+  const resolved = vm.used + vm.unused > 0;
   return (
-    <TileShell title="Plugins" area="plug" target="plugins-installed" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate} hasData={count > 0}>
-      <div className="flex h-full items-center justify-between gap-2">
-        <BigStat value={count} label="installed" />
-        {pending && <CountChip label="usage scan" count="…" tone="warn" pulse />}
+    <TileShell title="Plugins" area="plug" target="plugins-installed" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate} hasData={vm.installed > 0}>
+      <div className="flex h-full flex-col justify-center gap-1.5">
+        <div className="flex items-end justify-between gap-2">
+          <BigStat value={vm.installed} label="installed" />
+          {pending && <CountChip label="usage scan" count="…" tone="warn" pulse />}
+          {!pending && resolved && (
+            <div className="flex flex-wrap justify-end gap-1">
+              <CountChip label="used" count={vm.used} tone="info" />
+              <CountChip label="unused" count={vm.unused} tone={vm.unused > vm.used ? 'warn' : 'neutral'} />
+            </div>
+          )}
+        </div>
+        {resolved && (
+          <SegmentBar
+            segments={[
+              { value: vm.used, color: 'var(--viz-cat-1)', title: `${vm.used} used by ≥1 project` },
+              { value: vm.unused, color: 'var(--text-tertiary)', title: `${vm.unused} used by no project` },
+              { value: vm.unknown, color: 'var(--bg-elevated)', title: `${vm.unknown} usage unknown` },
+            ]}
+          />
+        )}
       </div>
     </TileShell>
   );
@@ -478,8 +540,17 @@ export const CodeEnvsTile = memo(function CodeEnvsTile({
 });
 
 // ── K8S INSIGHTS (3×1) ────────────────────────────────────────────────────
-export const K8sTile = memo(function K8sTile({ lifecycle, onNavigate }: BaseTileProps) {
+export const K8sTile = memo(function K8sTile({
+  lifecycle,
+  onNavigate,
+  clusterCount,
+}: BaseTileProps & { clusterCount: number }) {
   const { data } = k8sInsightsScan.use();
+  const sev = useMemo(() => {
+    const findings = data?.findings || [];
+    const urgent = findings.filter((f) => f.severity === 'critical' || f.severity === 'high').length;
+    return { urgent, rest: findings.length - urgent };
+  }, [data]);
   return (
     <TileShell
       title="K8s Insights"
@@ -488,13 +559,21 @@ export const K8sTile = memo(function K8sTile({ lifecycle, onNavigate }: BaseTile
       accent="compute"
       lifecycle={lifecycle}
       onNavigate={onNavigate}
-      idleText="No scan yet — open to scan"
+      idleText={
+        clusterCount > 0
+          ? `${clusterCount} cluster${clusterCount === 1 ? '' : 's'} configured — open to scan nodes, pods & cost`
+          : 'No scan yet — open to scan'
+      }
       hasData={data != null}
     >
       {data && data.ok ? (
-        <div className="flex h-full items-center gap-5">
-          <BigStat value={data.findingsCount} label="findings" tone={data.findingsCount ? 'warn' : 'ok'} />
+        <div className="flex h-full min-w-0 items-center gap-4">
+          <BigStat value={data.findingsCount} label="findings" tone={sev.urgent ? 'crit' : data.findingsCount ? 'warn' : 'ok'} />
+          {sev.urgent > 0 && <CountChip label="crit/high" count={sev.urgent} tone="crit" />}
           <BigStat value={data.podSummary?.total ?? 0} label="pods" />
+          {(data.podSummary?.failed ?? 0) > 0 && (
+            <CountChip label="failed" count={data.podSummary.failed} tone="crit" />
+          )}
           {data.costSnapshot?.currentMonthly != null && (
             <BigStat value={`$${Math.round(data.costSnapshot.currentMonthly)}`} label="est / month" />
           )}
@@ -515,20 +594,37 @@ export const ContainerExecsTile = memo(function ContainerExecsTile({ lifecycle, 
   const { data } = containerExecsScan.use();
   const summary = data?.summary;
   const topModes = useMemo(
-    () => Object.entries(summary?.byMode || {}).sort((a, b) => b[1] - a[1]).slice(0, 2),
+    () => Object.entries(summary?.byMode || {}).sort((a, b) => b[1] - a[1]).slice(0, 3),
     [summary],
   );
   return (
     <TileShell title="Container Execs" area="cex" target="container-execs" accent="compute" lifecycle={lifecycle} onNavigate={onNavigate} hasData={summary != null}>
       {summary ? (
-        <div className="flex h-full min-w-0 items-center gap-4">
-          <BigStat value={summary.configCount} label="configs" />
-          <BigStat value={summary.usageCount} label="usages" />
-          <div className="flex min-w-0 flex-1 flex-wrap justify-end gap-1">
-            {topModes.map(([mode, count]) => (
-              <CountChip key={mode} label={mode.toLowerCase()} count={count} tone="neutral" />
-            ))}
+        <div className="flex h-full min-w-0 flex-col justify-center gap-1.5">
+          <div className="flex min-w-0 items-end gap-4">
+            <BigStat value={summary.configCount} label="configs" />
+            <BigStat value={summary.usageCount} label="usages" />
+            <div className="flex min-w-0 flex-1 flex-wrap justify-end gap-1">
+              {topModes.map(([mode, count], i) => (
+                <span key={mode} className="inline-flex items-center gap-1 font-mono text-[9px] text-[var(--text-secondary)]">
+                  <span
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ background: CATEGORICAL_COLORS[i % CATEGORICAL_COLORS.length] }}
+                  />
+                  {mode.toLowerCase()} {count}
+                </span>
+              ))}
+            </div>
           </div>
+          {topModes.length > 0 && (
+            <SegmentBar
+              segments={topModes.map(([mode, count], i) => ({
+                value: count,
+                color: CATEGORICAL_COLORS[i % CATEGORICAL_COLORS.length],
+                title: `${mode}: ${count}`,
+              }))}
+            />
+          )}
         </div>
       ) : (
         <span className="text-[11px] text-[var(--text-tertiary)]">No data</span>
@@ -545,15 +641,29 @@ export const LlmAuditTile = memo(function LlmAuditTile({
 }: BaseTileProps & { summary: LlmAuditSummary | undefined }) {
   const obsolete = summary?.countsByStatus?.obsolete ?? 0;
   const ripoff = summary?.countsByStatus?.ripoff ?? 0;
+  const current = summary?.countsByStatus?.current ?? 0;
+  const other = Math.max(0, (summary?.llmsTotal ?? 0) - current - obsolete - ripoff);
   return (
     <TileShell title="Model Audit" area="llm" target="llm-audit" accent="compute" lifecycle={lifecycle} onNavigate={onNavigate} hasData={summary != null}>
       {summary ? (
-        <div className="flex h-full items-center gap-4">
-          <BigStat value={summary.llmsTotal} label="llms in use" />
-          <div className="flex flex-wrap gap-1.5">
-            <CountChip label="obsolete" count={obsolete} tone={obsolete ? 'warn' : 'neutral'} />
-            <CountChip label="ripoff" count={ripoff} tone={ripoff ? 'crit' : 'neutral'} />
+        <div className="flex h-full min-w-0 flex-col justify-center gap-1.5">
+          <div className="flex min-w-0 items-end gap-4">
+            <BigStat value={summary.llmsTotal} label="llms in use" />
+            <div className="flex min-w-0 flex-wrap gap-1.5">
+              <CountChip label="obsolete" count={obsolete} tone={obsolete ? 'warn' : 'neutral'} />
+              <CountChip label="ripoff" count={ripoff} tone={ripoff ? 'crit' : 'neutral'} />
+            </div>
           </div>
+          {/* Status distribution — status colors, not series colors: this bar
+              means good/stale/overpriced, never identity. */}
+          <SegmentBar
+            segments={[
+              { value: current, color: 'var(--neon-green)', title: `${current} current` },
+              { value: obsolete, color: 'var(--neon-amber)', title: `${obsolete} obsolete` },
+              { value: ripoff, color: 'var(--neon-red)', title: `${ripoff} ripoff pricing` },
+              { value: other, color: 'var(--text-tertiary)', title: `${other} unknown / n/a` },
+            ]}
+          />
         </div>
       ) : (
         <span className="text-[11px] text-[var(--text-tertiary)]">No data</span>
@@ -569,12 +679,22 @@ export const ProjectComputeTile = memo(function ProjectComputeTile({ lifecycle, 
     () => state.ownerGroups.reduce((s, g) => s + g.totalRecipes, 0),
     [state.ownerGroups],
   );
+  const topOwner = useMemo(
+    () => [...state.ownerGroups].sort((a, b) => b.totalRecipes - a.totalRecipes)[0],
+    [state.ownerGroups],
+  );
   return (
-    <TileShell title="Project Compute" area="pcomp" target="project-compute" accent="compute" lifecycle={lifecycle} onNavigate={onNavigate} hasData={recipes > 0}>
+    <TileShell title="SQL Pushdown" area="pcomp" target="project-compute" accent="compute" lifecycle={lifecycle} onNavigate={onNavigate} hasData={recipes > 0}>
       <div className="flex h-full min-w-0 items-center gap-4">
         <BigStat value={recipes} label="pushdown findings" tone={recipes ? 'warn' : 'ok'} />
         <BigStat value={state.ownerGroups.length} label="owners" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
+          {topOwner && (
+            <span className="truncate text-right text-[10px] text-[var(--text-secondary)]">
+              top: {topOwner.ownerDisplayName || topOwner.ownerLogin}
+              <span className="ml-1 font-mono text-[var(--text-primary)]">{topOwner.totalRecipes}</span>
+            </span>
+          )}
           <UsageBar pct={state.total ? ((state.scanned ?? 0) / state.total) * 100 : 0} tone="info" />
           <span className="text-right font-mono text-[9px] text-[var(--text-tertiary)]">
             {state.scanned ?? 0}/{state.total ?? '—'} projects
@@ -591,67 +711,137 @@ export const LogsTile = memo(function LogsTile({
   onNavigate,
   unique,
   snippet,
-}: BaseTileProps & { unique: number; snippet?: string }) {
+  totalLines,
+}: BaseTileProps & { unique: number; snippet?: string; totalLines: number }) {
   return (
-    <TileShell title="Log Errors" area="logs" target="logs" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate} hasData={unique > 0 || snippet != null}>
+    <TileShell title="Log Errors" area="logs" target="logs" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate} hasData={unique > 0 || totalLines > 0 || snippet != null}>
       <div className="flex h-full min-w-0 items-center gap-4">
-        <BigStat value={unique} label="unique errors" tone={unique > 0 ? 'warn' : 'ok'} />
-        {snippet && (
+        <BigStat
+          value={unique}
+          label="unique errors"
+          tone={unique > 0 ? 'warn' : 'ok'}
+          sub={totalLines > 0 ? `/ ${fmtK(totalLines)} lines` : undefined}
+        />
+        {/* Only quote the log when there IS an error — the raw tail's first
+            block can be an innocent DEBUG line, which read as a fake alarm. */}
+        {unique > 0 && snippet ? (
           <code className="line-clamp-3 min-w-0 flex-1 font-mono text-[9px] leading-snug text-[var(--text-tertiary)]">
             {snippet}
           </code>
-        )}
+        ) : unique === 0 ? (
+          <span className="flex items-center gap-1.5 text-[10px] text-[var(--text-tertiary)]">
+            <Dot tone="ok" />
+            backend log tail clean
+          </span>
+        ) : null}
       </div>
     </TileShell>
   );
 });
 
-// ── SANITY CHECK (3×1) ────────────────────────────────────────────────────
+// ── SANITY CHECK + RUNTIME DB (3×1) ───────────────────────────────────────
+// DB health rides along as a chip: it is rarely populated before its page is
+// opened, so it no longer owns a whole tile — the chip deep-links instead.
 export const SanityTile = memo(function SanityTile({
   lifecycle,
   onNavigate,
   vm,
 }: BaseTileProps & { vm: SanityVm }) {
+  const db = dbHealthConnectionsStore.use();
+  const configured = db.configuredConnection;
+  const detail = configured ? db.detailsByConnection[configured] : undefined;
+  const dbLabel = configured
+    ? detail?.overview
+      ? `pg ${detail.overview.dbSize} · ${detail.overview.tableCount} tables`
+      : `pg: ${configured}`
+    : db.loaded
+      ? 'no runtime pg'
+      : null;
   return (
     <TileShell title="Sanity Check" area="sanity" target="sanity-check" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate} hasData={vm.total > 0}>
-      <div className="flex h-full items-center gap-4">
-        <BigStat value={vm.total} label="messages" tone={vm.maxTone} />
-        <div className="flex flex-wrap gap-1.5">
-          <CountChip label="err" count={vm.errors} tone={vm.errors ? 'crit' : 'neutral'} />
-          <CountChip label="warn" count={vm.warnings} tone={vm.warnings ? 'warn' : 'neutral'} />
-          <CountChip label="info" count={vm.infos} tone="neutral" />
+      <div className="flex h-full min-h-0 flex-col justify-center gap-1">
+        <div className="flex items-end gap-4">
+          <BigStat value={vm.total} label="messages" tone={vm.maxTone} />
+          <div className="flex flex-wrap gap-1.5">
+            <CountChip label="err" count={vm.errors} tone={vm.errors ? 'crit' : 'neutral'} />
+            <CountChip label="warn" count={vm.warnings} tone={vm.warnings ? 'warn' : 'neutral'} />
+            <CountChip label="info" count={vm.infos} tone="neutral" />
+          </div>
+        </div>
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          {vm.topMessage ? (
+            <span className="min-w-0 flex-1 truncate text-[10px] text-[var(--text-secondary)]">
+              {vm.topMessage}
+            </span>
+          ) : (
+            <span />
+          )}
+          {dbLabel && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onNavigate('db-health');
+              }}
+              className="-my-0.5 flex-shrink-0 rounded border border-[var(--border-default)] px-1.5 py-0.5 font-mono text-[9px] text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
+              title="Open DB Health"
+            >
+              {dbLabel}
+            </button>
+          )}
         </div>
       </div>
     </TileShell>
   );
 });
 
-// ── DB HEALTH (3×1) ───────────────────────────────────────────────────────
-export const DbHealthTile = memo(function DbHealthTile({ lifecycle, onNavigate }: BaseTileProps) {
-  const state = dbHealthConnectionsStore.use();
-  const configured = state.configuredConnection;
-  const detail = configured ? state.detailsByConnection[configured] : undefined;
+// ── COMPUTE COST / CRU (3×1) ──────────────────────────────────────────────
+export const CostTile = memo(function CostTile({ lifecycle, onNavigate }: BaseTileProps) {
+  const { data } = projectCostScan.use();
+  const vm = useMemo(() => selectCru(data), [data]);
+  const topShare = vm && vm.memGBh > 0 && vm.topProjects[0]
+    ? (vm.topProjects[0].memGBh / vm.memGBh) * 100
+    : 0;
   return (
     <TileShell
-      title="DB Health"
-      area="dbh"
-      target="db-health"
-      accent="hygiene"
+      title="Compute Cost"
+      area="cost"
+      target="project-cost"
+      accent="compute"
       lifecycle={lifecycle}
       onNavigate={onNavigate}
-      idleText="Not loaded yet — open to inspect"
-      emptyText="No Postgres connection configured"
-      hasData={configured != null}
+      idleText="Queued — runs after the primary scans"
+      hasData={vm != null}
+      titleRight={
+        vm?.spanLabel ? (
+          <span className="font-mono text-[9px] text-[var(--text-tertiary)]">{vm.spanLabel}</span>
+        ) : undefined
+      }
     >
-      <div className="flex h-full min-w-0 items-center gap-4">
-        <BigStat value={state.connections.length} label="pg connections" />
-        {detail?.overview && (
-          <>
-            <BigStat value={detail.overview.dbSize} label={configured ?? 'runtime db'} />
-            <BigStat value={detail.overview.tableCount} label="tables" />
-          </>
-        )}
-      </div>
+      {vm ? (
+        <div className="flex h-full min-h-0 flex-col justify-center gap-1">
+          <div className="flex items-end gap-4">
+            <BigStat value={fmtK(vm.memGBh)} sub="GB·h" label="memory" />
+            <BigStat value={fmtK(vm.cpuH)} sub="h" label="cpu" />
+            <BigStat value={fmtUsd(vm.llmUSD)} label="llm spend" />
+          </div>
+          {vm.topProjects[0] && (
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 truncate text-[10px] text-[var(--text-secondary)]">
+                top: {vm.topProjects[0].projectKey}
+              </span>
+              <div className="min-w-0 flex-1">
+                <UsageBar pct={topShare} tone="info" />
+              </div>
+              <span className="flex-shrink-0 font-mono text-[9px] text-[var(--text-tertiary)]">
+                {Math.round(topShare)}%
+              </span>
+            </div>
+          )}
+        </div>
+      ) : (
+        <span className="text-[11px] text-[var(--text-tertiary)]">No data</span>
+      )}
     </TileShell>
   );
 });
@@ -661,13 +851,21 @@ export const EnvCompareTile = memo(function EnvCompareTile({
   lifecycle,
   onNavigate,
   skippedEnvCount,
-}: BaseTileProps & { skippedEnvCount?: number }) {
+  codeEnvSizes,
+}: BaseTileProps & { skippedEnvCount?: number; codeEnvSizes?: Record<string, number> }) {
   const { data } = codeEnvComparisonScan.use();
+  const reclaimBytes = useMemo(
+    () => selectEnvReclaimBytes(data, codeEnvSizes),
+    [data, codeEnvSizes],
+  );
   return (
     <TileShell title="Env Comparison" area="envcmp" target="code-envs-comparison" accent="hygiene" lifecycle={lifecycle} onNavigate={onNavigate} hasData={data != null}>
       {data ? (
         <div className="flex h-full min-w-0 items-center gap-4">
           <BigStat value={data.analyzedCount} label="envs compared" />
+          {reclaimBytes > 0 && (
+            <BigStat value={`≈${formatAuto(reclaimBytes)}`} label="in dup envs" tone="warn" />
+          )}
           <div className="flex min-w-0 flex-wrap gap-1.5">
             <CountChip label="identical" count={data.green.length} tone={data.green.length ? 'warn' : 'neutral'} />
             <CountChip label="near-dup" count={data.blue.length} tone={data.blue.length ? 'info' : 'neutral'} />

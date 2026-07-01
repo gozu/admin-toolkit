@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useState, useRef } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { ParsedData } from '../types';
 import { filterRealMounts, type ReportData } from '../utils/prepareReportData';
@@ -6,6 +7,24 @@ import { useHealthScore } from '../hooks/useHealthScore';
 import { useTheme } from '../hooks/useTheme';
 import { exportReportAsHtml } from '../utils/exportReport';
 import dkulogo from '../assets/dkulogo.png';
+
+/* Editorial annual-report deck. The LLM writes the words (narratives,
+   headlines, recommendations); everything visual — charts, stat bands,
+   spec sheets — is computed deterministically from parsedData. One CSS
+   system (.rpt-* in index.css) serves both this overlay and the exported
+   standalone HTML, so keep everything pure DOM + CSS (no JS-driven layout). */
+
+const MINT = '#3EDAB2';
+const AMBER = '#EDAB4F';
+const RED = '#FF6B5E';
+
+const rv = (n: number) => ({ '--rv': n } as CSSProperties);
+const pad = (n: number) => String(n).padStart(2, '0');
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const fmtMonth = (m: string) => {
+  const [y, mo] = m.split('-');
+  return `${MONTH_NAMES[((+mo || 1) - 1) % 12]} ${y ? y.slice(2) : ''}`;
+};
 
 interface ReportOverlayProps {
   reportData: ReportData;
@@ -43,6 +62,8 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Don't hijack arrows/space while the user edits deck text inline
+      if ((e.target as HTMLElement)?.isContentEditable) return;
       if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); next(); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
       else if (e.key === 'Escape') onClose();
@@ -57,21 +78,17 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
     }
   }, [parsedData.company, theme]);
 
-  // Color helpers
-  const pctColor = (s: string): MetricItem['color'] => {
-    const n = parseInt(s);
-    if (isNaN(n)) return undefined;
-    return n >= 90 ? 'danger' : n >= 70 ? 'warning' : 'success';
-  };
-  const scoreColor = (n: number | undefined): MetricItem['color'] => {
+  const scoreColor = (n: number | undefined): string | undefined => {
     if (n == null) return undefined;
-    return n < 50 ? 'danger' : n < 80 ? 'warning' : 'success';
+    return n < 50 ? RED : n < 80 ? AMBER : MINT;
   };
 
   const company = parsedData.company || 'Unknown Instance';
-  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const now = new Date();
+  const date = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const quarter = `Q${Math.floor(now.getMonth() / 3) + 1}`;
+  const quarterLong = `${quarter} ${now.getFullYear()}`;
   const progressPct = ((currentSlide + 1) / totalSlides) * 100;
-  const pad = (n: number) => String(n).padStart(2, '0');
 
   // Lean live mode loads no basic project list — fall back to counts the
   // adoption / footprint scans measured.
@@ -82,326 +99,421 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
     parsedData.projectFootprint?.length ||
     0;
 
+  /* ── Chart data, all derived from parsedData ─────────────────── */
+
   // Real disk mounts, worst-first (df order starts with tmpfs noise)
-  const topMounts = [...filterRealMounts(parsedData.filesystemInfo)]
+  const mountBars: BarRow[] = [...filterRealMounts(parsedData.filesystemInfo)]
     .sort((a, b) => (parseInt(b['Use%']) || 0) - (parseInt(a['Use%']) || 0))
-    .slice(0, 4);
+    .slice(0, 5)
+    .map(f => {
+      const pct = parseInt(f['Use%'] || '') || 0;
+      return {
+        label: f['Mounted on'] || f.Filesystem || '',
+        value: pct,
+        display: f.Size ? `${pct}% of ${f.Size}` : `${pct}%`,
+        color: pct >= 90 ? RED : pct >= 70 ? AMBER : MINT,
+      };
+    });
+
+  const pyBars: BarRow[] = Object.entries(parsedData.pythonVersionCounts || {})
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 6)
+    .map(([v, c]) => ({
+      label: `Python ${v}`,
+      value: c,
+      display: String(c),
+      color: /^3\.[0-7]$/.test(v) ? AMBER : MINT,
+    }));
+
+  const connBars: BarRow[] = Object.entries(parsedData.connectionCounts || {})
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 7)
+    .map(([t, c]) => ({ label: t, value: c, display: String(c) }));
+
+  const fpBars: BarRow[] = [...(parsedData.projectFootprint || [])]
+    .sort((a, b) => b.totalBytes - a.totalBytes)
+    .slice(0, 6)
+    .map(p => ({
+      label: p.projectKey,
+      value: p.totalGB,
+      display: `${p.totalGB >= 10 ? Math.round(p.totalGB) : p.totalGB.toFixed(1)} GB`,
+      color: p.projectSizeHealth === 'red' ? RED : p.projectSizeHealth === 'orange' ? AMBER : MINT,
+    }));
+
+  const profCounts: Record<string, number> = {};
+  (parsedData.users || []).forEach(u => {
+    const p = u.userProfile || 'UNKNOWN';
+    profCounts[p] = (profCounts[p] || 0) + 1;
+  });
+  const profBars: BarRow[] = Object.entries(profCounts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5)
+    .map(([p, c]) => ({ label: p.replace(/_/g, ' '), value: c, display: String(c) }));
+
+  const trendPoints = (parsedData.adoptionData?.monthlyTrend || [])
+    .slice(-24)
+    .map(m => ({ label: fmtMonth(m.month), value: m.activeBuilders }));
+
+  const costBars: BarRow[] = [...(parsedData.projectCostData?.projects || [])]
+    .sort((a, b) => b.memGBh - a.memGBh)
+    .slice(0, 6)
+    .map(p => ({ label: p.projectKey, value: p.memGBh, display: `${Math.round(p.memGBh)} GB·h` }));
+
+  const li = (parsedData.licenseInfo || {}) as Record<string, unknown>;
+  const specRows: SpecRow[] = [
+    { k: 'DSS Version', v: parsedData.dssVersion },
+    { k: 'Operating System', v: parsedData.osInfo },
+    { k: 'CPU Cores', v: parsedData.cpuCores },
+    { k: 'Python', v: parsedData.pythonVersion },
+    { k: 'Last Restart', v: parsedData.lastRestartTime },
+    { k: 'License', v: typeof li.licenseType === 'string' ? li.licenseType : undefined },
+    { k: 'License Expires', v: typeof li.expiresOn === 'string' ? li.expiresOn : undefined },
+  ].filter((r): r is SpecRow => !!r.v);
+
+  const riskLevel = (slides?.issues?.risk_level || '').toLowerCase();
+  const riskColor = riskLevel.includes('high') || riskLevel.includes('critical') ? RED
+    : riskLevel.includes('medium') || riskLevel.includes('moderate') ? AMBER : MINT;
+
+  const repeatPct = parsedData.adoptionData?.repeatBuilders?.total
+    ? `${Math.round((parsedData.adoptionData.repeatBuilders.repeat / parsedData.adoptionData.repeatBuilders.total) * 100)}%`
+    : '—';
+
+  const envScore = healthScore.categories.find(c => c.category === 'code_envs')?.score;
+  const fpScore = healthScore.categories.find(c => c.category === 'project_footprint')?.score;
+
+  const meta = { company, date };
 
   return createPortal(
     <div className="report-overlay" data-theme={theme} ref={overlayRef}>
       <div className="report-slides-container">
 
-        {/* ── Slide 1: Title ──────────────────────────────────────── */}
+        {/* ── Title ───────────────────────────────────────────────── */}
         <div className={`report-slide report-slide-hero${currentSlide === 0 ? ' active' : ''}`} data-slide-index={0}>
-          <div className="report-title-center">
-            <img src={dkulogo} alt="Dataiku" id="dku-logo" className="report-title-logo" />
-            <div className="report-title-company">{company}</div>
-            <div className="report-title-divider" />
-            <div className="report-title-sub">Quarterly Health Check</div>
-            <div className="report-title-meta">
-              {parsedData.dssVersion && `DSS ${parsedData.dssVersion}`}{parsedData.dssVersion ? ' · ' : ''}{date}
+          <div className="rpt-ghost rpt-ghost-hero" aria-hidden="true">{quarter}</div>
+          <div className="rpt-hero">
+            <div className="rpt-hero-top" data-reveal style={rv(0)}>
+              <img src={dkulogo} alt="Dataiku" id="dku-logo" className="rpt-hero-logo" />
+              <span className="rpt-hero-brand">Dataiku</span>
             </div>
+            <div className="rpt-hero-mid">
+              <div className="rpt-eyebrow" data-reveal style={rv(1)}>Quarterly Health Check · {quarterLong}</div>
+              <h1 className="rpt-hero-title" data-reveal style={rv(2)} contentEditable suppressContentEditableWarning>{company}</h1>
+              <div className="rpt-rule" data-reveal style={rv(3)} />
+              <div className="rpt-hero-meta" data-reveal style={rv(4)}>
+                {[
+                  parsedData.dssVersion && `DSS ${parsedData.dssVersion}`,
+                  date,
+                  totalProjects ? `${totalProjects} projects` : null,
+                  parsedData.users?.length ? `${parsedData.users.length} users` : null,
+                ].filter(Boolean).join('  ·  ')}
+              </div>
+            </div>
+            <div className="rpt-hero-bottom" data-reveal style={rv(5)}>Prepared by your Dataiku Technical Account Manager</div>
           </div>
         </div>
 
-        {/* ── Slide 2: Executive Summary ──────────────────────────── */}
-        <div className={`report-slide${currentSlide === 1 ? ' active' : ''}`} data-slide-index={1}>
-          <div className="report-slide-header">
-            <div className="report-slide-number">01</div>
-            <div className="report-slide-title">Executive Summary</div>
-          </div>
-          <div className="report-exec-layout">
-            <div className="report-exec-score">
-              <div className={`report-health-score ${healthScore.status}`}>
-                {healthScore.overall}
-              </div>
-              <div className="report-metric-label" style={{ textAlign: 'center' }}>Health Score</div>
-              <div className={`report-badge report-badge-${healthScore.status === 'healthy' ? 'nice' : healthScore.status === 'warning' ? 'important' : 'critical'}`}>
-                {healthScore.status}
-              </div>
+        {/* ── 01 Executive Summary ────────────────────────────────── */}
+        <Slide index={1} active={currentSlide === 1} section="Executive Summary"
+          headline={slides?.executive_summary?.headline || 'The quarter in review'} meta={meta}>
+          <div className="rpt-exec">
+            <div className="rpt-exec-left" data-reveal style={rv(2)}>
+              <Gauge score={healthScore.overall} status={healthScore.status} />
               {healthScore.categories.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem', width: '100%' }}>
+                <div className="rpt-cats">
                   {healthScore.categories.map((cat, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.75rem', background: 'rgba(254,254,249,0.05)', borderRadius: '0.4rem', fontSize: '0.85rem' }}>
-                      <span style={{ color: 'rgba(254,254,249,0.7)' }}>{cat.label}</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: cat.score < 50 ? '#ef4444' : cat.score < 80 ? '#EDAB4F' : '#3EDAB2' }}>{Math.round(cat.score)}</span>
+                    <div key={i} className="rpt-cat">
+                      <span className="rpt-cat-label">{cat.label}</span>
+                      <span className="rpt-cat-track">
+                        <span className="rpt-cat-fill" style={{ width: `${Math.max(2, Math.min(100, cat.score))}%`, background: scoreColor(cat.score) }} />
+                      </span>
+                      <span className="rpt-cat-score" style={{ color: scoreColor(cat.score) }}>{Math.round(cat.score)}</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-            <div className="report-exec-content">
-              <NarrativeText text={slides?.executive_summary?.overall_status} />
-              <div className="report-findings-grid">
+            <div className="rpt-exec-right">
+              <div className="rpt-exec-status" data-reveal style={rv(3)} contentEditable suppressContentEditableWarning>
+                {slides?.executive_summary?.overall_status || 'No summary available.'}
+              </div>
+              <div className="rpt-findings">
                 {(slides?.executive_summary?.findings || []).slice(0, 3).map((f, i) => (
-                  <div key={i} className="report-finding-card">
-                    <div className="report-finding-number">{i + 1}</div>
-                    <div contentEditable suppressContentEditableWarning>{f}</div>
+                  <div key={i} className="rpt-finding" data-reveal style={rv(4 + i)}>
+                    <span className="rpt-finding-num">{pad(i + 1)}</span>
+                    <span contentEditable suppressContentEditableWarning>{f}</span>
                   </div>
                 ))}
               </div>
             </div>
           </div>
-        </div>
+        </Slide>
 
-        {/* ── Slide 3: Instance Overview ──────────────────────────── */}
-        <DataSlide index={2} slideNum="02" active={currentSlide === 2} title="Instance Overview"
-          metrics={[
-            { value: parsedData.dssVersion || '—', label: 'DSS Version' },
-            { value: parsedData.cpuCores || '—', label: 'CPU Cores' },
-            { value: parsedData.pythonVersion || '—', label: 'Python' },
-            { value: parsedData.osInfo?.split(' ')[0] || '—', label: 'OS' },
-          ]}
-          narrative={slides?.instance_overview?.narrative}
-        />
+        {/* ── 02 Instance Overview ────────────────────────────────── */}
+        <Slide index={2} active={currentSlide === 2} section="The Platform"
+          headline={slides?.instance_overview?.headline || 'Instance Overview'} meta={meta}>
+          <div className="rpt-split">
+            <Narrative text={slides?.instance_overview?.narrative} rvi={2} />
+            <Spec rows={specRows} base={3} />
+          </div>
+        </Slide>
 
-        {/* ── Slide 4: Projects Overview ──────────────────────────── */}
-        <DataSlide index={3} slideNum="03" active={currentSlide === 3} title="Projects Overview"
-          metrics={[
-            { value: String(totalProjects || '—'), label: 'Total Projects' },
-            { value: String(healthScore.categories.find(c => c.category === 'project_footprint')?.score ?? '—'), label: 'Project Health', color: scoreColor(healthScore.categories.find(c => c.category === 'project_footprint')?.score) },
-          ]}
-          narrative={slides?.projects?.narrative}
-          extras={slides?.projects?.highlights?.length ? (
-            <div className="report-extras-list">
-              {slides.projects.highlights.map((h, i) => (
-                <div key={i} className="report-extras-item">• {h}</div>
-              ))}
+        {/* ── 03 Projects ─────────────────────────────────────────── */}
+        <Slide index={3} active={currentSlide === 3} section="The Platform"
+          headline={slides?.projects?.headline || 'Projects Overview'} meta={meta}>
+          <div className="rpt-split-wide">
+            <div data-reveal style={rv(2)}>
+              <div className="rpt-bignum" contentEditable suppressContentEditableWarning>{totalProjects || '—'}</div>
+              <div className="rpt-bignum-label" contentEditable suppressContentEditableWarning>Projects on this instance</div>
+              {fpScore != null && (
+                <div className="rpt-bignum-sub" style={{ color: scoreColor(fpScore) }}>
+                  Project health {Math.round(fpScore)} / 100
+                </div>
+              )}
             </div>
-          ) : undefined}
-        />
+            <div>
+              <Narrative text={slides?.projects?.narrative} compact rvi={3} />
+              {!!slides?.projects?.highlights?.length && <EList items={slides.projects.highlights} base={4} />}
+            </div>
+          </div>
+        </Slide>
 
-        {/* ── Slide 5: Project Footprint ──────────────────────────── */}
-        <DataSlide index={4} slideNum="04" active={currentSlide === 4} title="Project Footprint"
-          metrics={[
+        {/* ── 04 Project Footprint ────────────────────────────────── */}
+        <Slide index={4} active={currentSlide === 4} section="The Platform"
+          headline={slides?.project_footprint?.headline || 'Project Footprint'} meta={meta}>
+          <Stats base={2} items={[
             { value: String(parsedData.projectFootprintSummary?.projectCount ?? parsedData.projectFootprint?.length ?? '—'), label: 'Projects Analyzed' },
-            { value: parsedData.projectFootprintSummary?.instanceAvgProjectGB != null ? `${parsedData.projectFootprintSummary.instanceAvgProjectGB.toFixed(1)} GB` : '—', label: 'Avg Project Size' },
-          ]}
-          narrative={slides?.project_footprint?.narrative}
-          extras={slides?.project_footprint?.risks?.length ? (
-            <div className="report-extras-badges">
-              {slides.project_footprint.risks.map((r, i) => (
-                <span key={i} className="report-badge report-badge-important">{r}</span>
-              ))}
+            { value: parsedData.projectFootprintSummary?.instanceAvgProjectGB != null ? `${parsedData.projectFootprintSummary.instanceAvgProjectGB.toFixed(2)} GB` : '—', label: 'Avg Project Size' },
+            ...(fpBars[0] ? [{ value: fpBars[0].display, label: 'Largest Project', color: fpBars[0].color }] : []),
+          ]} />
+          <div className="rpt-split">
+            {fpBars.length > 0 ? <Bars rows={fpBars} base={5} /> : <div />}
+            <div>
+              <Narrative text={slides?.project_footprint?.narrative} compact rvi={6} />
+              {!!slides?.project_footprint?.risks?.length && <Tags items={slides.project_footprint.risks} color={AMBER} base={7} />}
             </div>
-          ) : undefined}
-        />
+          </div>
+        </Slide>
 
-        {/* ── Slide 6: Code Environments ──────────────────────────── */}
-        <DataSlide index={5} slideNum="05" active={currentSlide === 5} title="Code Environments"
-          metrics={[
-            { value: String(parsedData.codeEnvs?.length ?? '—'), label: 'Total Envs' },
+        {/* ── 05 Code Environments ────────────────────────────────── */}
+        <Slide index={5} active={currentSlide === 5} section="Code Environments"
+          headline={slides?.code_envs?.headline || 'Code Environments'} meta={meta}>
+          <Stats base={2} items={[
+            { value: String(parsedData.codeEnvs?.length ?? '—'), label: 'Total Environments' },
             { value: String(Object.keys(parsedData.pythonVersionCounts || {}).length), label: 'Python Versions' },
             { value: String(Object.keys(parsedData.rVersionCounts || {}).length || '0'), label: 'R Versions' },
-          ]}
-          narrative={slides?.code_envs?.narrative}
-        />
+          ]} />
+          <div className="rpt-split">
+            {pyBars.length > 0 ? <Bars rows={pyBars} base={5} /> : <div />}
+            <Narrative text={slides?.code_envs?.narrative} compact rvi={6} />
+          </div>
+        </Slide>
 
-        {/* ── Slide 7: Code Env Health ────────────────────────────── */}
-        <DataSlide index={6} slideNum="06" active={currentSlide === 6} title="Code Environment Health"
-          metrics={[
-            { value: String(healthScore.categories.find(c => c.category === 'code_envs')?.score ?? '—'), label: 'Env Health Score', color: scoreColor(healthScore.categories.find(c => c.category === 'code_envs')?.score) },
-            { value: String(parsedData.codeEnvs?.filter(e => e.usageCount === 0).length ?? '0'), label: 'Unused Envs' },
-          ]}
-          narrative={slides?.code_env_health?.narrative}
-          extras={slides?.code_env_health?.upgrade_paths?.length ? (
-            <div className="report-extras-list">
-              {slides.code_env_health.upgrade_paths.map((u, i) => (
-                <div key={i} className="report-extras-item">→ {u}</div>
-              ))}
+        {/* ── 06 Code Env Health ──────────────────────────────────── */}
+        <Slide index={6} active={currentSlide === 6} section="Code Environments"
+          headline={slides?.code_env_health?.headline || 'Code Environment Health'} meta={meta}>
+          <Stats base={2} items={[
+            { value: envScore != null ? String(Math.round(envScore)) : '—', label: 'Env Health Score', color: scoreColor(envScore) },
+            { value: String(parsedData.codeEnvs?.filter(e => e.usageCount === 0).length ?? '0'), label: 'Unused Environments' },
+          ]} />
+          <div className="rpt-split">
+            <Narrative text={slides?.code_env_health?.narrative} compact rvi={4} />
+            {!!slides?.code_env_health?.upgrade_paths?.length && (
+              <EList items={slides.code_env_health.upgrade_paths} mono arrow base={5} />
+            )}
+          </div>
+        </Slide>
+
+        {/* ── 07 Filesystem ───────────────────────────────────────── */}
+        <Slide index={7} active={currentSlide === 7} section="Infrastructure"
+          headline={slides?.filesystem?.headline || 'Filesystem Health'} meta={meta}>
+          <div className="rpt-split">
+            {mountBars.length > 0 ? <Bars rows={mountBars} thick base={2} /> : <div />}
+            <div>
+              <Narrative text={slides?.filesystem?.narrative} compact rvi={3} />
+              {!!slides?.filesystem?.warnings?.length && <Tags items={slides.filesystem.warnings} color={RED} base={4} />}
             </div>
-          ) : undefined}
-        />
+          </div>
+        </Slide>
 
-        {/* ── Slide 8: Filesystem ─────────────────────────────────── */}
-        <DataSlide index={7} slideNum="07" active={currentSlide === 7} title="Filesystem Health"
-          metrics={
-            topMounts.map(f => ({
-              value: f['Use%'] || '—',
-              label: f['Mounted on'] || f.Filesystem,
-              color: pctColor(f['Use%'] || ''),
-            }))
-          }
-          narrative={slides?.filesystem?.narrative}
-          extras={slides?.filesystem?.warnings?.length ? (
-            <div className="report-extras-badges">
-              {slides.filesystem.warnings.map((w, i) => (
-                <span key={i} className="report-badge report-badge-critical">{w}</span>
-              ))}
-            </div>
-          ) : undefined}
-        />
-
-        {/* ── Slide 9: Memory & JVM ───────────────────────────────── */}
-        <DataSlide index={8} slideNum="08" active={currentSlide === 8} title="Memory & JVM"
-          metrics={[
+        {/* ── 08 Memory & JVM ─────────────────────────────────────── */}
+        <Slide index={8} active={currentSlide === 8} section="Infrastructure"
+          headline={slides?.memory?.headline || 'Memory & JVM'} meta={meta}>
+          <Stats base={2} items={[
             { value: parsedData.javaMemorySettings?.BACKEND || parsedData.javaMemoryLimits?.BACKEND || parsedData.javaMemorySettings?.Xmx || '—', label: 'Backend Heap (Xmx)' },
             { value: parsedData.javaMemorySettings?.JEK || parsedData.javaMemorySettings?.FEK || parsedData.javaMemorySettings?.Xms || '—', label: parsedData.javaMemorySettings?.JEK ? 'JEK Heap (Xmx)' : 'FEK Heap (Xmx)' },
             { value: parsedData.memoryInfo?.total || parsedData.memoryInfo?.['Mem:total'] || '—', label: 'System RAM' },
             { value: parsedData.memoryInfo?.available || parsedData.memoryInfo?.['Mem:available'] || '—', label: 'Available' },
-          ]}
-          narrative={slides?.memory?.narrative}
-          extras={slides?.memory?.tuning_recs?.length ? (
-            <div className="report-extras-list">
-              {slides.memory.tuning_recs.map((r, i) => (
-                <div key={i} className="report-extras-item">• {r}</div>
-              ))}
+          ]} />
+          <div className="rpt-split">
+            <Narrative text={slides?.memory?.narrative} compact rvi={6} />
+            {!!slides?.memory?.tuning_recs?.length && <EList items={slides.memory.tuning_recs} base={7} />}
+          </div>
+        </Slide>
+
+        {/* ── 09 Connections ──────────────────────────────────────── */}
+        <Slide index={9} active={currentSlide === 9} section="Connectivity"
+          headline={slides?.connections?.headline || 'Connections'} meta={meta}>
+          <Stats base={2} items={[
+            { value: String(parsedData.connectionDetails?.length ?? (Object.values(parsedData.connectionCounts || {}).reduce((a, b) => a + b, 0) || '—')), label: 'Total Connections' },
+            { value: String(Object.keys(parsedData.connectionCounts || {}).length), label: 'Connection Types' },
+          ]} />
+          <div className="rpt-split">
+            {connBars.length > 0 ? <Bars rows={connBars} base={4} /> : <div />}
+            <Narrative text={slides?.connections?.narrative} compact rvi={5} />
+          </div>
+        </Slide>
+
+        {/* ── 10 Issues & Risks ───────────────────────────────────── */}
+        <Slide index={10} active={currentSlide === 10} section="Governance & Risk"
+          headline={slides?.issues?.headline || 'Issues & Risks'} meta={meta}>
+          <div className="rpt-split-wide">
+            <div data-reveal style={rv(2)}>
+              <div className="rpt-risk-label">Assessed risk level</div>
+              <div className="rpt-risk-word" style={{ color: riskColor }} contentEditable suppressContentEditableWarning>
+                {slides?.issues?.risk_level || 'unknown'}
+              </div>
+              <div className="rpt-risk-stats">
+                {[
+                  { value: String(Object.keys(parsedData.disabledFeatures || {}).length), label: 'Disabled Features' },
+                  { value: String(parsedData.pluginDetails?.length ?? parsedData.plugins?.length ?? '—'), label: 'Plugins' },
+                  { value: String(parsedData.clusters?.length ?? '0'), label: 'Clusters' },
+                ].map((s, i) => (
+                  <div key={i} className="rpt-ministat">
+                    <span className="rpt-ministat-value">{s.value}</span>
+                    <span className="rpt-ministat-label">{s.label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          ) : undefined}
-        />
+            <Narrative text={slides?.issues?.narrative} rvi={3} />
+          </div>
+        </Slide>
 
-        {/* ── Slide 10: Connections ────────────────────────────────── */}
-        <DataSlide index={9} slideNum="09" active={currentSlide === 9} title="Connections"
-          metrics={(() => {
-            const counts = parsedData.connectionCounts || {};
-            const topTypes = Object.entries(counts).sort(([,a],[,b]) => b - a).slice(0, 2);
-            return [
-              { value: String(parsedData.connectionDetails?.length ?? (Object.values(counts).reduce((a, b) => a + b, 0) || '—')), label: 'Total Connections' },
-              { value: String(Object.keys(counts).length), label: 'Connection Types' },
-              ...(topTypes[0] ? [{ value: String(topTypes[0][1]), label: topTypes[0][0] }] : []),
-              ...(topTypes[1] ? [{ value: String(topTypes[1][1]), label: topTypes[1][0] }] : []),
-            ];
-          })()}
-          narrative={slides?.connections?.narrative}
-        />
-
-        {/* ── Slide 11: Issues & Risks ────────────────────────────── */}
-        <DataSlide index={10} slideNum="10" active={currentSlide === 10} title="Issues & Risks"
-          metrics={[
-            { value: String(Object.keys(parsedData.disabledFeatures || {}).length), label: 'Disabled Features' },
-            { value: slides?.issues?.risk_level?.toUpperCase() || '—', label: 'Risk Level' },
-            { value: String(parsedData.pluginDetails?.length ?? parsedData.plugins?.length ?? '—'), label: 'Plugins' },
-            { value: String(parsedData.clusters?.length ?? '0'), label: 'Clusters' },
-          ]}
-          narrative={slides?.issues?.narrative}
-        />
-
-        {/* ── Slide 12: Users & Activity ──────────────────────────── */}
-        <DataSlide index={11} slideNum="11" active={currentSlide === 11} title="Users & Activity"
-          metrics={[
+        {/* ── 11 Users & Activity ─────────────────────────────────── */}
+        <Slide index={11} active={currentSlide === 11} section="People"
+          headline={slides?.users?.headline || 'Users & Activity'} meta={meta}>
+          <Stats base={2} items={[
             { value: String(parsedData.users?.length ?? '—'), label: 'Total Users' },
             { value: String(parsedData.users?.filter(u => u.enabled !== false).length ?? '—'), label: 'Active Users' },
             { value: String(parsedData.users?.filter(u => (u.userProfile || '').includes('DESIGNER') || u.userProfile === 'DATA_SCIENTIST').length ?? '—'), label: 'Designers' },
             { value: String(totalProjects || '—'), label: 'Projects' },
-          ]}
-          narrative={slides?.users?.narrative}
-        />
+          ]} />
+          <div className="rpt-split">
+            {profBars.length > 0 ? <Bars rows={profBars} base={6} /> : <div />}
+            <Narrative text={slides?.users?.narrative} compact rvi={7} />
+          </div>
+        </Slide>
 
         {/* ── Adoption & Engagement (only when the Adoption module has data) ── */}
         {adoptionTotals && (
-          <DataSlide index={adoptionIdx} slideNum={pad(adoptionIdx)} active={currentSlide === adoptionIdx} title="Adoption & Engagement"
-            metrics={[
+          <Slide index={adoptionIdx} active={currentSlide === adoptionIdx} section="People & Adoption"
+            headline={slides?.adoption?.headline || 'Adoption & Engagement'} meta={meta}>
+            {trendPoints.length > 1 && <Trend points={trendPoints} caption="Active builders per month — full git history" base={2} />}
+            <Stats base={3} items={[
               { value: String(adoptionTotals.builderCount ?? '—'), label: 'Builders (All Time)' },
               { value: `${adoptionTotals.activeProjectCount}/${adoptionTotals.projectCount}`, label: 'Active / Total Projects' },
               { value: adoptionTotals.avgPeoplePerProject != null ? adoptionTotals.avgPeoplePerProject.toFixed(1) : '—', label: 'People per Project' },
-              { value: parsedData.adoptionData?.repeatBuilders?.total ? `${Math.round((parsedData.adoptionData.repeatBuilders.repeat / parsedData.adoptionData.repeatBuilders.total) * 100)}%` : '—', label: 'Returning Builders' },
-            ]}
-            narrative={slides?.adoption?.narrative}
-            extras={slides?.adoption?.highlights?.length ? (
-              <div className="report-extras-list">
-                {slides.adoption.highlights.map((h, i) => (
-                  <div key={i} className="report-extras-item">• {h}</div>
-                ))}
-              </div>
-            ) : undefined}
-          />
+              { value: repeatPct, label: 'Returning Builders', color: MINT },
+            ]} />
+            <div className="rpt-split">
+              <Narrative text={slides?.adoption?.narrative} compact rvi={7} />
+              {!!slides?.adoption?.highlights?.length && <EList items={slides.adoption.highlights} base={8} />}
+            </div>
+          </Slide>
         )}
 
         {/* ── Compute & Cost (only when the Cost/CRU module has data) ── */}
         {costTotals && (
-          <DataSlide index={costIdx} slideNum={pad(costIdx)} active={currentSlide === costIdx} title="Compute & Cost"
-            metrics={[
+          <Slide index={costIdx} active={currentSlide === costIdx} section="Compute & Cost"
+            headline={slides?.compute_cost?.headline || 'Compute & Cost'} meta={meta}>
+            <Stats base={2} items={[
               { value: String(Math.round(costTotals.memGBh ?? 0)), label: 'Memory GB·h' },
               { value: String(Math.round(costTotals.cpuH ?? 0)), label: 'CPU Hours' },
-              { value: costTotals.llmUSD != null ? `$${costTotals.llmUSD >= 100 ? Math.round(costTotals.llmUSD) : costTotals.llmUSD.toFixed(2)}` : '—', label: 'LLM Spend' },
+              { value: costTotals.llmUSD != null ? `$${costTotals.llmUSD >= 100 ? Math.round(costTotals.llmUSD) : costTotals.llmUSD.toFixed(2)}` : '—', label: 'LLM Spend', color: MINT },
               { value: String(costTotals.projectCount ?? '—'), label: 'Projects with Usage' },
-            ]}
-            narrative={slides?.compute_cost?.narrative}
-            extras={slides?.compute_cost?.drivers?.length ? (
-              <div className="report-extras-list">
-                {slides.compute_cost.drivers.map((d, i) => (
-                  <div key={i} className="report-extras-item">• {d}</div>
-                ))}
+            ]} />
+            <div className="rpt-split">
+              {costBars.length > 0 ? <Bars rows={costBars} base={6} /> : <div />}
+              <div>
+                <Narrative text={slides?.compute_cost?.narrative} compact rvi={7} />
+                {!!slides?.compute_cost?.drivers?.length && <EList items={slides.compute_cost.drivers} base={8} />}
               </div>
-            ) : undefined}
-          />
+            </div>
+          </Slide>
         )}
 
         {/* ── Log Analysis ────────────────────────────────────────── */}
-        <DataSlide index={logsIdx} slideNum={pad(logsIdx)} active={currentSlide === logsIdx} title="Log Analysis"
-          metrics={[
+        <Slide index={logsIdx} active={currentSlide === logsIdx} section="Operations"
+          headline={slides?.logs?.headline || 'Log Analysis'} meta={meta}>
+          <Stats base={2} items={[
             { value: String(parsedData.logStats?.['Unique Errors'] ?? '—'), label: 'Unique Errors' },
             { value: String(parsedData.logStats?.['Total Lines'] ?? '—'), label: 'Total Log Lines' },
             { value: String(parsedData.logStats?.['Displayed Errors'] ?? '—'), label: 'Displayed' },
-            { value: parsedData.rawLogErrors?.length ? String(parsedData.rawLogErrors.length) : '—', label: 'Error Blocks' },
-          ]}
-          narrative={slides?.logs?.narrative}
-          extras={slides?.logs?.patterns?.length ? (
-            <div className="report-extras-list">
-              {slides.logs.patterns.slice(0, 5).map((p, i) => (
-                <div key={i} className="report-extras-item" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.85rem', color: '#816948' }}>{p}</div>
-              ))}
-            </div>
-          ) : undefined}
-        />
-
-        {/* ── Recommendations - Critical ──────────────────────────── */}
-        <RecSlide index={recCriticalIdx} slideNum={pad(recCriticalIdx)} active={currentSlide === recCriticalIdx}
-          title="Critical Recommendations"
-          badgeClass="report-badge-critical" badgeText="CRITICAL" numberClass="report-rec-number-critical"
-          items={slides?.rec_critical?.items || []}
-        />
-
-        {/* ── Recommendations - Important ─────────────────────────── */}
-        <RecSlide index={recImportantIdx} slideNum={pad(recImportantIdx)} active={currentSlide === recImportantIdx}
-          title="Important Recommendations"
-          badgeClass="report-badge-important" badgeText="IMPORTANT" numberClass="report-rec-number-important"
-          items={slides?.rec_important?.items || []}
-        />
-
-        {/* ── Recommendations - Nice to Have ──────────────────────── */}
-        <RecSlide index={recNiceIdx} slideNum={pad(recNiceIdx)} active={currentSlide === recNiceIdx}
-          title="Optimization Opportunities"
-          badgeClass="report-badge-nice" badgeText="NICE TO HAVE" numberClass="report-rec-number-nice"
-          items={slides?.rec_nice_to_have?.items || []}
-        />
-
-        {/* ── Action Plan ─────────────────────────────────────────── */}
-        <div className={`report-slide${currentSlide === actionIdx ? ' active' : ''}`} data-slide-index={actionIdx}>
-          <div className="report-slide-header">
-            <div className="report-slide-number">{pad(actionIdx)}</div>
-            <div>
-              <div className="report-slide-title">Action Plan</div>
-              <div className="report-slide-subtitle">Prioritized roadmap for the next quarter</div>
-            </div>
-          </div>
-          <div className="report-action-list">
-            {(slides?.action_plan?.priorities || []).map((p, i) => (
-              <div key={i} className="report-action-row">
-                <div className="report-action-step">{i + 1}</div>
-                <span className="action-text" contentEditable suppressContentEditableWarning>{p.action}</span>
-                <span className="action-timeline">{p.timeline}</span>
-                <span className={`report-badge report-badge-effort-${p.effort || 'medium'}`}>{p.effort || 'medium'}</span>
+          ]} />
+          <div className="rpt-split">
+            <Narrative text={slides?.logs?.narrative} compact rvi={5} />
+            {!!slides?.logs?.patterns?.length && (
+              <div className="rpt-terminal" data-reveal style={rv(6)}>
+                {slides.logs.patterns.slice(0, 5).map((p, i) => (
+                  <div key={i} className="rpt-terminal-line" contentEditable suppressContentEditableWarning>{p}</div>
+                ))}
               </div>
-            ))}
-            {(!slides?.action_plan?.priorities?.length) && (
-              <div style={{ color: '#816948', fontSize: '0.9rem', paddingLeft: '1rem' }}>No action items generated.</div>
             )}
           </div>
-          <SlideWatermark />
-        </div>
+        </Slide>
+
+        {/* ── Recommendations ─────────────────────────────────────── */}
+        <RecSlide index={recCriticalIdx} active={currentSlide === recCriticalIdx} meta={meta}
+          section="Recommendations" title="Address these first" tone="critical" toneLabel="Critical"
+          items={slides?.rec_critical?.items || []} />
+        <RecSlide index={recImportantIdx} active={currentSlide === recImportantIdx} meta={meta}
+          section="Recommendations" title="Plan for this quarter" tone="important" toneLabel="Important"
+          items={slides?.rec_important?.items || []} />
+        <RecSlide index={recNiceIdx} active={currentSlide === recNiceIdx} meta={meta}
+          section="Recommendations" title="Worth the polish" tone="nice" toneLabel="Nice to Have"
+          items={slides?.rec_nice_to_have?.items || []} />
+
+        {/* ── Action Plan ─────────────────────────────────────────── */}
+        <Slide index={actionIdx} active={currentSlide === actionIdx} section="The Road Ahead"
+          headline={slides?.action_plan?.headline || 'Action Plan'} meta={meta}>
+          <div className="rpt-actions">
+            <div className="rpt-actions-head" data-reveal style={rv(2)}>
+              <span>№</span><span>Action</span><span className="rpt-right">Timeline</span><span className="rpt-right">Effort</span>
+            </div>
+            {(slides?.action_plan?.priorities || []).map((p, i) => (
+              <div key={i} className="rpt-action" data-reveal style={rv(3 + i)}>
+                <span className="rpt-action-num">{pad(i + 1)}</span>
+                <span className="rpt-action-text" contentEditable suppressContentEditableWarning>{p.action}</span>
+                <span className="rpt-action-when" contentEditable suppressContentEditableWarning>{p.timeline}</span>
+                <span className={`rpt-effort rpt-effort-${p.effort || 'medium'}`}><i />{p.effort || 'medium'}</span>
+              </div>
+            ))}
+            {!slides?.action_plan?.priorities?.length && (
+              <div className="rpt-empty" data-reveal style={rv(3)}>No action items generated.</div>
+            )}
+          </div>
+        </Slide>
 
         {/* ── Closing ─────────────────────────────────────────────── */}
         <div className={`report-slide report-slide-hero${currentSlide === closingIdx ? ' active' : ''}`} data-slide-index={closingIdx}>
-          <div className="report-title-center">
-            <img src={dkulogo} alt="Dataiku" id="dku-logo-closing" className="report-title-logo" style={{ width: 56, height: 56 }} />
-            <div style={{ fontSize: '2.25rem', fontWeight: 800, color: '#FEFEF9', letterSpacing: '-0.03em', fontFamily: 'var(--font-display)' }}>Next Steps</div>
-            <div className="report-title-divider" />
-            <div style={{ fontSize: '1rem', color: 'rgba(254,254,249,0.7)', maxWidth: 500, lineHeight: 1.7, textAlign: 'center' }}>
-              Review the recommendations with your team and prioritize based on your operational needs.
-              Your Technical Account Manager is available for follow-up discussions.
+          <div className="rpt-ghost rpt-ghost-hero" aria-hidden="true">{quarter}</div>
+          <div className="rpt-hero">
+            <div className="rpt-hero-top" data-reveal style={rv(0)}>
+              <img src={dkulogo} alt="Dataiku" id="dku-logo-closing" className="rpt-hero-logo" />
+              <span className="rpt-hero-brand">Dataiku</span>
             </div>
-            <div className="report-title-meta">{company} · {date}</div>
+            <div className="rpt-hero-mid">
+              <div className="rpt-eyebrow" data-reveal style={rv(1)}>Next Steps</div>
+              <h1 className="rpt-hero-title rpt-hero-title-sm" data-reveal style={rv(2)} contentEditable suppressContentEditableWarning>
+                Thank you.
+              </h1>
+              <div className="rpt-rule" data-reveal style={rv(3)} />
+              <div className="rpt-closing-note" data-reveal style={rv(4)} contentEditable suppressContentEditableWarning>
+                Review the recommendations with your team and prioritize based on your operational needs.
+                Your Technical Account Manager is available for follow-up discussions.
+              </div>
+            </div>
+            <div className="rpt-hero-bottom" data-reveal style={rv(5)}>{company} · {date}</div>
           </div>
         </div>
       </div>
@@ -409,24 +521,23 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
       {/* ── Navigation ─────────────────────────────────────────── */}
       <div className="report-nav">
         <div className="report-progress-bar" style={{ width: `${progressPct}%` }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div className="rpt-nav-group">
           <button type="button" className="report-nav-btn" onClick={prev} disabled={currentSlide === 0}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="15 18 9 12 15 6" /></svg>
           </button>
           <button type="button" className="report-nav-btn" onClick={next} disabled={currentSlide === totalSlides - 1}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="9 18 15 12 9 6" /></svg>
           </button>
-          <span style={{ fontSize: '0.85rem', color: 'rgba(254,254,249,0.6)', marginLeft: '0.75rem', fontWeight: 500, fontFamily: 'var(--font-mono)' }}>
+          <span className="rpt-nav-counter">
             {currentSlide + 1} <span style={{ opacity: 0.5 }}>/</span> {totalSlides}
           </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div className="rpt-nav-group">
           <button
             type="button"
             onClick={handleExport}
-            className="report-nav-btn"
-            style={{ width: 'auto', padding: '0.35rem 0.75rem', fontSize: '0.75rem', gap: '0.35rem', display: 'flex' }}
+            className="report-nav-btn rpt-nav-btn-wide"
             title="Download as HTML"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -448,100 +559,208 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
 
 /* ── Reusable sub-components ─────────────────────────────────── */
 
-interface MetricItem { value: string; label: string; color?: 'success' | 'warning' | 'danger' }
+interface SlideMeta { company: string; date: string }
+interface BarRow { label: string; value: number; display: string; color?: string }
+interface SpecRow { k: string; v: string }
+interface StatItem { value: string; label: string; color?: string }
 
 /** Format a string value to max 2 decimal places if it contains a decimal number */
 function fmt2dp(val: string): string {
   return val.replace(/\d+\.\d{3,}/g, match => parseFloat(match).toFixed(2));
 }
 
-/** Render narrative text with bullet points on separate lines, editable */
-function NarrativeText({ text }: { text?: string }) {
-  const content = text || 'No analysis available for this section.';
-  // Split on bullet character or newlines to ensure each bullet is its own line
-  const lines = content.split(/(?=\u2022)|(?:\n)+/).filter(l => l.trim());
+/** Editorial slide shell: numbered eyebrow, huge serif headline, hairline
+    header/footer rules, ghost numeral. Body vertically centers via auto
+    margins so dense content still scrolls instead of clipping. */
+function Slide({ index, active, section, headline, meta, children }: {
+  index: number; active: boolean; section: string; headline: string;
+  meta: SlideMeta; children: ReactNode;
+}) {
   return (
-    <div className="report-narrative" contentEditable suppressContentEditableWarning>
-      {lines.map((line, i) => (
-        <div key={i} style={{ marginBottom: i < lines.length - 1 ? '0.5em' : 0 }}>{line.trim()}</div>
+    <div className={`report-slide${active ? ' active' : ''}`} data-slide-index={index}>
+      <div className="rpt-ghost" aria-hidden="true">{pad(index)}</div>
+      <header className="rpt-head" data-reveal style={rv(0)}>
+        <span className="rpt-eyebrow"><span className="rpt-eyebrow-num">{pad(index)}</span>{section}</span>
+        <span className="rpt-head-meta">{meta.company}</span>
+      </header>
+      <h2 className="rpt-headline" data-reveal style={rv(1)} contentEditable suppressContentEditableWarning>{headline}</h2>
+      <div className="rpt-body">
+        <div className="rpt-body-in">{children}</div>
+      </div>
+      <footer className="rpt-foot" data-reveal style={rv(1)}>
+        <span>Dataiku · Quarterly Health Check</span>
+        <span>{meta.date}</span>
+      </footer>
+    </div>
+  );
+}
+
+/** Row of big serif numbers separated by hairlines — no boxes. */
+function Stats({ items, base = 2 }: { items: StatItem[]; base?: number }) {
+  return (
+    <div className="rpt-stats">
+      {items.map((s, i) => (
+        <div key={i} className="rpt-stat" data-reveal style={rv(base + i)}>
+          <div className="rpt-stat-value" style={s.color ? { color: s.color } : undefined} contentEditable suppressContentEditableWarning>{fmt2dp(s.value)}</div>
+          <div className="rpt-stat-label" contentEditable suppressContentEditableWarning>{s.label}</div>
+        </div>
       ))}
     </div>
   );
 }
 
-function SlideWatermark() {
+/** LLM narrative as serif paragraphs (bullet chars split into paragraphs). */
+function Narrative({ text, compact, rvi = 3 }: { text?: string; compact?: boolean; rvi?: number }) {
+  const content = text || 'No analysis available for this section.';
+  const lines = content
+    .split(/(?=•)|\n+/)
+    .map(l => l.replace(/^\s*•\s*/, '').trim())
+    .filter(Boolean);
   return (
-    <div className="report-watermark">
-      <div style={{ width: 14, height: 14, opacity: 0.5 }}>
-        <img src={dkulogo} alt="" style={{ width: '100%', height: '100%' }} />
-      </div>
-      <span style={{ fontFamily: 'var(--font-mono)', color: '#816948' }}>&copy;2026 Dataiku Inc.</span>
+    <div className={`rpt-narrative${compact ? ' rpt-narrative-compact' : ''}`} data-reveal style={rv(rvi)} contentEditable suppressContentEditableWarning>
+      {lines.map((line, i) => <p key={i}>{line}</p>)}
     </div>
   );
 }
 
-function DataSlide({ index, slideNum, active, title, metrics, narrative, extras }: {
-  index: number; slideNum: string; active: boolean; title: string;
-  metrics: MetricItem[]; narrative?: string; extras?: React.ReactNode;
-}) {
+/** Horizontal bar chart: mono label · hairline track · mono value. */
+function Bars({ rows, base = 3, thick }: { rows: BarRow[]; base?: number; thick?: boolean }) {
+  const max = Math.max(...rows.map(r => r.value), 1e-9);
   return (
-    <div className={`report-slide${active ? ' active' : ''}`} data-slide-index={index}>
-      <div className="report-slide-header">
-        <div className="report-slide-number">{slideNum}</div>
-        <div className="report-slide-title">{title}</div>
-      </div>
-      <div className="report-two-col">
-        <div className="report-metrics-grid">
-          {metrics.map((m, i) => (
-            <div key={i} className="report-metric">
-              <div className="report-metric-value" style={m.color ? { color: `var(--${m.color})` } : undefined}>{fmt2dp(m.value)}</div>
-              <div className="report-metric-label">{m.label}</div>
-            </div>
-          ))}
+    <div className={`rpt-bars${thick ? ' rpt-bars-thick' : ''}`}>
+      {rows.map((r, i) => (
+        <div key={i} className="rpt-bar-row" data-reveal style={rv(base + i)}>
+          <span className="rpt-bar-label" contentEditable suppressContentEditableWarning>{r.label}</span>
+          <span className="rpt-bar-track">
+            <span className="rpt-bar-fill" style={{ width: `${Math.max(1.5, (r.value / max) * 100)}%`, background: r.color || MINT, ...rv(i) }} />
+          </span>
+          <span className="rpt-bar-value" contentEditable suppressContentEditableWarning>{r.display}</span>
         </div>
-        <div>
-          <NarrativeText text={narrative} />
-          {extras}
-        </div>
-      </div>
-      <SlideWatermark />
+      ))}
     </div>
   );
 }
 
-function RecSlide({ index, slideNum, active, title, badgeClass, badgeText, numberClass, items }: {
-  index: number; slideNum: string; active: boolean; title: string;
-  badgeClass: string; badgeText: string; numberClass: string;
+/** Area trend chart (adoption): mint line, gradient fill, draw-in animation. */
+function Trend({ points, caption, base = 2 }: { points: { label: string; value: number }[]; caption?: string; base?: number }) {
+  const W = 880, H = 200, PX = 6, PT = 26, PB = 26;
+  const max = Math.max(...points.map(p => p.value), 1);
+  const x = (i: number) => PX + (i * (W - 2 * PX)) / (points.length - 1);
+  const y = (v: number) => PT + (1 - v / max) * (H - PT - PB);
+  const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(' ');
+  const area = `${line} L ${x(points.length - 1).toFixed(1)} ${H - PB} L ${x(0).toFixed(1)} ${H - PB} Z`;
+  const tickEvery = Math.max(1, Math.ceil(points.length / 8));
+  const last = points[points.length - 1];
+  return (
+    <div className="rpt-trend" data-reveal style={rv(base)}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="rpt-trend-svg">
+        <defs>
+          <linearGradient id="rptTrendFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={MINT} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={MINT} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <line x1={PX} y1={H - PB} x2={W - PX} y2={H - PB} className="rpt-trend-axis" />
+        <path d={area} fill="url(#rptTrendFill)" className="rpt-trend-area" />
+        <path d={line} className="rpt-trend-line" pathLength={1} />
+        <circle cx={x(points.length - 1)} cy={y(last.value)} r="4" className="rpt-trend-dot" />
+        <text x={x(points.length - 1) - 10} y={y(last.value) - 12} textAnchor="end" className="rpt-trend-val">{last.value}</text>
+        {points.map((p, i) => (
+          (i % tickEvery === 0 || i === points.length - 1) && (
+            <text key={i} x={x(i)} y={H - 8} textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'} className="rpt-trend-tick">{p.label}</text>
+          )
+        ))}
+      </svg>
+      {caption && <div className="rpt-trend-caption" contentEditable suppressContentEditableWarning>{caption}</div>}
+    </div>
+  );
+}
+
+/** Health score ring with the score set in the serif display face. */
+function Gauge({ score, status }: { score: number; status: string }) {
+  const R = 84, C = 2 * Math.PI * R;
+  const color = status === 'healthy' ? MINT : status === 'warning' ? AMBER : RED;
+  const clamped = Math.max(0, Math.min(100, score));
+  return (
+    <div className="rpt-gauge">
+      <svg viewBox="0 0 200 200">
+        <circle cx="100" cy="100" r={R} className="rpt-gauge-track" />
+        <circle
+          cx="100" cy="100" r={R} className="rpt-gauge-arc"
+          style={{ stroke: color, strokeDasharray: `${(clamped / 100) * C} ${C}` }}
+          transform="rotate(-90 100 100)"
+        />
+      </svg>
+      <div className="rpt-gauge-center">
+        <div className="rpt-gauge-score" style={{ color }}>{Math.round(score)}</div>
+        <div className="rpt-gauge-status">{status}</div>
+      </div>
+    </div>
+  );
+}
+
+/** Em-dash editorial list (highlights, drivers, tuning recs, upgrade paths). */
+function EList({ items, mono, arrow, base = 3 }: { items: string[]; mono?: boolean; arrow?: boolean; base?: number }) {
+  return (
+    <div className={`rpt-elist${mono ? ' rpt-elist-mono' : ''}${arrow ? ' rpt-elist-arrow' : ''}`}>
+      {items.map((item, i) => (
+        <div key={i} className="rpt-elist-item" data-reveal style={rv(base + i)} contentEditable suppressContentEditableWarning>{item}</div>
+      ))}
+    </div>
+  );
+}
+
+/** Outlined warning chips (filesystem warnings, footprint risks). */
+function Tags({ items, color, base = 3 }: { items: string[]; color: string; base?: number }) {
+  return (
+    <div className="rpt-tags">
+      {items.map((t, i) => (
+        <span key={i} className="rpt-tag" style={{ borderColor: color, color, ...rv(base + i) }} data-reveal contentEditable suppressContentEditableWarning>{t}</span>
+      ))}
+    </div>
+  );
+}
+
+/** Spec-sheet definition list (instance overview). */
+function Spec({ rows, base = 3 }: { rows: SpecRow[]; base?: number }) {
+  return (
+    <div className="rpt-spec">
+      {rows.map((r, i) => (
+        <div key={i} className="rpt-spec-row" data-reveal style={rv(base + i)}>
+          <span className="rpt-spec-k" contentEditable suppressContentEditableWarning>{r.k}</span>
+          <span className="rpt-spec-v" contentEditable suppressContentEditableWarning>{r.v}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Recommendation slide: hairline-separated editorial list, outlined numerals. */
+function RecSlide({ index, active, section, title, tone, toneLabel, items, meta }: {
+  index: number; active: boolean; section: string; title: string;
+  tone: 'critical' | 'important' | 'nice'; toneLabel: string;
   items: Array<{ title: string; description: string; impact: string }>;
+  meta: SlideMeta;
 }) {
   return (
-    <div className={`report-slide${active ? ' active' : ''}`} data-slide-index={index}>
-      <div className="report-slide-header">
-        <div className="report-slide-number">{slideNum}</div>
-        <div className="report-slide-title">{title}</div>
-        <span className={`report-badge ${badgeClass}`}>{badgeText}</span>
+    <Slide index={index} active={active} section={section} headline={title} meta={meta}>
+      <div className="rpt-rec-head" data-reveal style={rv(2)}>
+        <span className={`rpt-rec-tone rpt-rec-tone-${tone}`}>{toneLabel}</span>
+        <span className="rpt-rec-count">{items.length} item{items.length === 1 ? '' : 's'}</span>
       </div>
-      <div className="report-rec-list">
+      <div className={`rpt-rec-list${items.length > 3 ? ' rpt-rec-cols' : ''}`}>
         {items.map((item, i) => (
-          <div key={i} className="report-rec-card">
-            <div className={`report-rec-number ${numberClass}`}>{i + 1}</div>
-            <div style={{ flex: 1 }}>
+          <div key={i} className="rpt-rec" data-reveal style={rv(3 + i)}>
+            <div className={`rpt-rec-num rpt-rec-num-${tone}`}>{pad(i + 1)}</div>
+            <div className="rpt-rec-body">
               <h4 contentEditable suppressContentEditableWarning>{item.title}</h4>
               <p contentEditable suppressContentEditableWarning>{item.description}</p>
-              {item.impact && (
-                <div className="report-rec-impact">
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><polyline points="20 6 9 17 4 12" /></svg>
-                  {item.impact}
-                </div>
-              )}
+              {item.impact && <div className="rpt-rec-impact" contentEditable suppressContentEditableWarning>{item.impact}</div>}
             </div>
           </div>
         ))}
-        {items.length === 0 && (
-          <div style={{ color: '#816948', fontSize: '0.9rem' }}>No recommendations in this category.</div>
-        )}
+        {items.length === 0 && <div className="rpt-empty">No recommendations in this category.</div>}
       </div>
-      <SlideWatermark />
-    </div>
+    </Slide>
   );
 }

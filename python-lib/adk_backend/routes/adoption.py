@@ -80,17 +80,57 @@ def _adoption_data(client: Any) -> Dict[str, Any]:
     cohort_counts: Dict[str, int] = {}
     creation_by_login: Dict[str, Any] = {}
     display_by_login: Dict[str, str] = {}
+    groups_by_login: Dict[str, List[str]] = {}
     for u in users:
         login = u.get('login') or ''
         if not login:
             continue
         display_by_login[login] = u.get('displayName') or login
+        groups_by_login[login] = [g for g in (u.get('groups') or []) if g]
         created = u.get('creationDate')
         creation_by_login[login] = created
         month = _creation_month(created)
         if month:
             cohort_counts[month] = cohort_counts.get(month, 0) + 1
     cohorts = [{'month': m, 'newUsers': cohort_counts[m]} for m in sorted(cohort_counts.keys())]
+
+    # Most active groups — roll each builder's git activity up to their DSS
+    # groups (`user.groups` is a plain list of names). A builder in N groups
+    # counts toward all N (commit shares can overlap, like the native DSS
+    # group model itself). Builders whose account is gone have no groups row —
+    # their work still counts in totals/trend, just not here.
+    builder_stats: List[Dict[str, Any]] = agg.get('builderStats', [])
+    builder_projects: Dict[str, Any] = agg.get('builderProjects', {})
+    stats_by_login = {b['login']: b for b in builder_stats}
+    group_rows: Dict[str, Dict[str, Any]] = {}
+    for login, group_names in groups_by_login.items():
+        stat = stats_by_login.get(login)
+        for name in group_names:
+            row = group_rows.setdefault(name, {
+                'name': name, 'memberCount': 0, 'builderCount': 0, 'commits': 0,
+                'projects': set(), 'lastCommitMs': None,
+            })
+            row['memberCount'] += 1
+            if stat is None:
+                continue
+            row['builderCount'] += 1
+            row['commits'] += stat['commits']
+            row['projects'].update(builder_projects.get(login, ()))
+            last = stat.get('lastCommitMs')
+            if last is not None and (row['lastCommitMs'] is None or last > row['lastCommitMs']):
+                row['lastCommitMs'] = last
+    groups = []
+    for row in group_rows.values():
+        row['projectCount'] = len(row.pop('projects'))
+        groups.append(row)
+    groups.sort(key=lambda r: (-r['commits'], -r['memberCount'], r['name']))
+
+    # Top builders — leaderboard with display names joined in (a departed
+    # builder keeps their login as the display name).
+    top_builders = [
+        {**b, 'displayName': display_by_login.get(b['login'], b['login'])}
+        for b in builder_stats
+    ]
 
     # Login recency reframed (#1) — persistent snapshot presented as "last active",
     # never a fabricated login count (login-success events undercount 10-100x).
@@ -121,6 +161,8 @@ def _adoption_data(client: Any) -> Dict[str, Any]:
         'cohorts': cohorts,
         'repeatBuilders': agg.get('repeatBuilders', {'total': 0, 'single': 0, 'repeat': 0}),
         'builderRecency': builder_recency,
+        'groups': groups,
+        'builderStats': top_builders,
     }
 
 

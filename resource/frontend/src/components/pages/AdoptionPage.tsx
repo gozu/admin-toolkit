@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useDiag } from '../../context/DiagContext';
 import { adoptionScan } from '../../state/adoptionScan';
 import { resolveLifecycleById } from '../../utils/pageLifecycle';
 import { DataGrid } from '../common/DataGrid';
 import { ProgressIndicator } from '../common/ProgressIndicator';
 import { BigStat, BarRow, SegmentBar, UsageBar } from './missionControl/microViz';
+import { CATEGORICAL_COLORS } from './missionControl/tokens';
 import { AdoptionTrendChart } from './AdoptionTrendChart';
 import type { ColumnDef } from '../../utils/dataGridTypes';
-import type { AdoptionProjectRow } from '../../types';
+import type { AdoptionMonthPoint, AdoptionProjectRow } from '../../types';
 
 const EMPTY: never[] = [];
 
@@ -22,6 +23,63 @@ function PersistentPill() {
     >
       Persistent · full history
     </span>
+  );
+}
+
+const MONTH_INITIALS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+
+/** GitHub-style calendar of monthly commit intensity: one row per year, one
+ * cell per month. Same data as the trend line, different lens — the grid makes
+ * seasonal rhythm and dormant stretches readable at a glance. */
+function ActivityHeatGrid({ points }: { points: AdoptionMonthPoint[] }) {
+  if (points.length < 2) return null;
+  const maxCommits = Math.max(1, ...points.map((p) => p.commits));
+  const byMonth = new Map(points.map((p) => [p.month, p]));
+  const years = [...new Set(points.map((p) => Number(p.month.slice(0, 4))))].sort();
+  return (
+    <div className="border-t border-[var(--border-glass)] px-4 pb-3 pt-2.5">
+      <div
+        className="grid items-center gap-[3px]"
+        style={{ gridTemplateColumns: 'auto repeat(12, minmax(0, 1fr))' }}
+      >
+        <span />
+        {MONTH_INITIALS.map((m, i) => (
+          <span
+            key={i}
+            className="text-center font-mono text-[8px] leading-none text-[var(--text-tertiary)]"
+          >
+            {m}
+          </span>
+        ))}
+        {years.map((y) => (
+          <Fragment key={y}>
+            <span className="pr-2 text-right font-mono text-[9px] leading-none text-[var(--text-tertiary)]">
+              {y}
+            </span>
+            {MONTH_INITIALS.map((_, i) => {
+              const key = `${y}-${String(i + 1).padStart(2, '0')}`;
+              const p = byMonth.get(key);
+              if (!p) {
+                // outside the tracked span — visually absent, not "zero"
+                return <span key={key} className="h-3 rounded-[2px]" />;
+              }
+              const alpha = p.commits === 0 ? 0 : 0.14 + 0.86 * Math.sqrt(p.commits / maxCommits);
+              return (
+                <span
+                  key={key}
+                  title={`${key} · ${p.commits.toLocaleString()} commits · ${p.activeBuilders} builders`}
+                  className="h-3 rounded-[2px]"
+                  style={{
+                    background:
+                      p.commits === 0 ? 'var(--bg-elevated)' : `rgba(109, 163, 224, ${alpha})`,
+                  }}
+                />
+              );
+            })}
+          </Fragment>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -98,7 +156,8 @@ export function AdoptionPage() {
   const recency = data?.builderRecency ?? EMPTY;
   const nowMs = data?.generatedAtMs ?? 0;
   const projects = data?.projectRows ?? EMPTY;
-  const monthsSpan = trend.length;
+  const groups = data?.groups ?? EMPTY;
+  const builders = data?.builderStats ?? EMPTY;
   const peopleMax = Math.max(1, ...projects.map((p) => p.authorCount));
   const cohortMax = Math.max(1, ...cohorts.map((c) => c.newUsers));
   const expandedRowKeys = new Set(selectedKey ? [selectedKey] : []);
@@ -106,6 +165,26 @@ export function AdoptionPage() {
     .filter((r) => r.lastSessionActivity != null)
     .sort((a, b) => (b.lastSessionActivity ?? 0) - (a.lastSessionActivity ?? 0))
     .slice(0, 10);
+
+  // Momentum (customer's "is usage increasing?"): mean active builders over the
+  // last 3 COMPLETE months vs the 3 before — the current month is partial and
+  // would always read as a dip, so it is excluded.
+  const completeTrend = trend.slice(0, -1);
+  let momentumPct: number | null = null;
+  if (completeTrend.length >= 6) {
+    const mean = (pts: AdoptionMonthPoint[]) =>
+      pts.reduce((s, p) => s + p.activeBuilders, 0) / pts.length;
+    const recent = mean(completeTrend.slice(-3));
+    const prior = mean(completeTrend.slice(-6, -3));
+    momentumPct = prior > 0 ? ((recent - prior) / prior) * 100 : null;
+  }
+
+  const topGroups = groups.slice(0, 8);
+  const groupCommitsMax = Math.max(1, ...topGroups.map((g) => g.commits));
+  const groupColor = (i: number) =>
+    i < CATEGORICAL_COLORS.length ? CATEGORICAL_COLORS[i] : 'var(--text-tertiary)';
+  const topBuilders = builders.slice(0, 12);
+  const builderCommitsMax = Math.max(1, ...topBuilders.map((b) => b.commits));
 
   const columns: ColumnDef<AdoptionProjectRow>[] = [
     {
@@ -230,7 +309,17 @@ export function AdoptionPage() {
               label="Avg people / project"
             />
             <BigStat value={totals ? totals.commitCount.toLocaleString() : '—'} label="Commits" />
-            <BigStat value={monthsSpan || '—'} label="Months tracked" />
+            <BigStat
+              value={
+                momentumPct == null
+                  ? '—'
+                  : `${momentumPct >= 0 ? '+' : ''}${momentumPct.toFixed(0)}%`
+              }
+              label="Momentum (3m vs prior 3m)"
+              tone={
+                momentumPct == null ? undefined : momentumPct >= 2 ? 'ok' : momentumPct <= -2 ? 'warn' : undefined
+              }
+            />
             <BigStat
               value={repeat ? repeat.repeat : '—'}
               sub={repeat ? `/${repeat.total}` : undefined}
@@ -248,6 +337,113 @@ export function AdoptionPage() {
             <PersistentPill />
           </div>
           <AdoptionTrendChart points={trend} />
+          <ActivityHeatGrid points={trend} />
+        </div>
+
+        {/* Who drives the activity: DSS groups + individual builders */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="chart-container">
+            <div className="chart-header flex items-center justify-between gap-3">
+              <h4 title="Git activity rolled up to DSS groups. A builder in several groups counts in each, so shares can overlap. Builders whose account was deleted are not attributable to a group.">
+                Most active groups
+              </h4>
+              <PersistentPill />
+            </div>
+            <div className="px-4 py-3">
+              {topGroups.length === 0 ? (
+                <div className="text-xs text-[var(--text-muted)]">No group activity yet.</div>
+              ) : (
+                <>
+                  <SegmentBar
+                    height={6}
+                    segments={topGroups.map((g, i) => ({
+                      value: g.commits,
+                      color: groupColor(i),
+                      title: `${g.name} · ${g.commits.toLocaleString()} commits`,
+                    }))}
+                  />
+                  <div className="mt-3 max-h-64 space-y-1.5 overflow-y-auto">
+                    {topGroups.map((g, i) => (
+                      <div key={g.name} className="flex items-center gap-2">
+                        <span
+                          className="h-2 w-2 flex-shrink-0 rounded-[2px]"
+                          style={{ background: groupColor(i) }}
+                        />
+                        <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
+                          {g.name}
+                          <span className="ml-1.5 text-[10px] text-[var(--text-tertiary)]">
+                            {g.builderCount}/{g.memberCount} building · {g.projectCount}{' '}
+                            {g.projectCount === 1 ? 'project' : 'projects'} ·{' '}
+                            {relDays(g.lastCommitMs, nowMs).text}
+                          </span>
+                        </span>
+                        <span className="h-1 w-14 flex-shrink-0 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+                          <span
+                            className="block h-full rounded-full"
+                            style={{
+                              width: `${(g.commits / groupCommitsMax) * 100}%`,
+                              background: groupColor(i),
+                            }}
+                          />
+                        </span>
+                        <span className="w-14 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
+                          {g.commits.toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                    {groups.length > topGroups.length && (
+                      <div className="pt-0.5 text-[10px] text-[var(--text-tertiary)]">
+                        +{groups.length - topGroups.length} more{' '}
+                        {groups.length - topGroups.length === 1 ? 'group' : 'groups'}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="chart-container">
+            <div className="chart-header flex items-center justify-between gap-3">
+              <h4 title="Individual builders ranked by human commits across all projects.">
+                Top builders
+              </h4>
+              <PersistentPill />
+            </div>
+            <div className="max-h-[19rem] space-y-1.5 overflow-y-auto px-4 py-3">
+              {topBuilders.length === 0 && (
+                <div className="text-xs text-[var(--text-muted)]">No builder activity yet.</div>
+              )}
+              {topBuilders.map((b, i) => (
+                <div key={b.login} className="flex items-center gap-2">
+                  <span className="w-5 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]">
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
+                    {b.displayName}
+                    <span className="ml-1.5 text-[10px] text-[var(--text-tertiary)]">
+                      {b.projectCount} proj · {b.activeMonths} mo ·{' '}
+                      {relDays(b.lastCommitMs, nowMs).text}
+                    </span>
+                  </span>
+                  <span className="h-1 w-14 flex-shrink-0 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+                    <span
+                      className="block h-full rounded-full bg-[var(--accent)]"
+                      style={{ width: `${(b.commits / builderCommitsMax) * 100}%` }}
+                    />
+                  </span>
+                  <span className="w-14 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
+                    {b.commits.toLocaleString()}
+                  </span>
+                </div>
+              ))}
+              {builders.length > topBuilders.length && (
+                <div className="pt-0.5 text-[10px] text-[var(--text-tertiary)]">
+                  +{builders.length - topBuilders.length} more builders
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Project leaderboard — people per project */}

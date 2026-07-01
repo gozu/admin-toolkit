@@ -682,19 +682,25 @@ def api_report_generate():
         "- Cite exact numbers, project names, config values. Never be vague.\n"
         "- Reference doc.dataiku.com links where relevant.\n\n"
         "=== SLIDE LAYOUT DETAILS ===\n"
-        "Your output populates 18 slides. Here is exactly how each slide renders:\n\n"
+        "The deck is an editorial, annual-report-style presentation: dark green paper, serif "
+        "headlines, real charts drawn from the data. Your output populates its slides:\n\n"
         "SLIDE 1 (Title): Static - company name, date, DSS version. You don't write this.\n\n"
-        "SLIDE 2 (Executive Summary): LEFT COLUMN shows a large health score number (computed separately). "
-        "RIGHT COLUMN shows your 'overall_status' text in a callout box. BELOW both columns, "
-        "your 3 'findings' display as numbered cards in a row. Each finding should be ONE bullet point "
+        "HEADLINES: Every slide object may include a 'headline' - a short editorial headline "
+        "(4-9 words, sentence case, no trailing period) rendered as the slide's large serif "
+        "title. Make it SPECIFIC to this instance's data, like a magazine pull-line: "
+        "'/data is 77% full and climbing', 'Python 3.6 refuses to die', '451 projects, "
+        "little governance'. NEVER generic ('Overview of projects'). Always include it.\n\n"
+        "SLIDE 2 (Executive Summary): LEFT shows a large health-score gauge (computed separately). "
+        "RIGHT shows your 'overall_status' as a large italic pull-quote, then your 3 'findings' "
+        "as numbered editorial rows. Each finding should be ONE bullet point "
         "(1-2 sentences max) that a VP can read in 5 seconds.\n\n"
-        "DATA SLIDES (Instance Overview through Log Analysis): Each has this layout:\n"
-        "  LEFT COLUMN: 4 large metric cards showing numbers from the actual data (you don't write these).\n"
-        "  RIGHT COLUMN: Your 'narrative' text in a callout box. This is the ONLY text you control on these slides.\n"
-        "  BELOW the callout: optional extras (highlights, risks, warnings, upgrade_paths) shown as badges or bullet items.\n\n"
-        "  CRITICAL: The narrative is displayed in a tall callout box with large font (1.25rem). "
-        "Use BULLET POINTS (with bullet char), NOT paragraphs. 3-5 bullets per slide. "
-        "Each bullet: one clear observation with a specific number or finding.\n"
+        "DATA SLIDES (Instance Overview through Log Analysis): Each pairs a chart or stat band "
+        "computed from the actual data (you don't write those) with your 'narrative'. "
+        "The narrative renders as elegant serif paragraphs - each of your bullets becomes "
+        "one short paragraph. Optional extras (highlights, risks, warnings, upgrade_paths) "
+        "render as an em-dash list or warning chips beside it.\n\n"
+        "  CRITICAL: Use BULLET POINTS (with bullet char), NOT prose paragraphs. 3-5 bullets "
+        "per slide. Each bullet: one clear observation with a specific number or finding.\n"
         "  Format example:\n"
         "    '\\u2022 42 projects with healthy adoption across the organization\\n"
         "\\u2022 ML Pipeline (PROJ1) leads with 156 versions, indicating critical production use\\n"
@@ -726,12 +732,12 @@ def api_report_generate():
         "(live connection probe failures -> Connections), 'sanityCheck' (DSS instance "
         "sanity-check findings -> Issues & Risks).\n\n"
         "  For 'highlights', 'risks', 'warnings', 'upgrade_paths' arrays: "
-        "these render as small badge pills. Keep each item UNDER 10 words.\n"
+        "these render as short list items or warning chips. Keep each item UNDER 10 words.\n"
         "  For 'patterns' array: renders in monospace. Keep each under 80 chars.\n\n"
-        "RECOMMENDATION SLIDES (three, after Log Analysis): Each shows a 2-column grid of cards.\n"
-        "  Each card has: a numbered indicator, a bold TITLE (Spectral serif, ~5 words), "
-        "a DESCRIPTION paragraph (Roboto, 1-2 sentences with specific action), "
-        "and an IMPACT badge (green pill, ~5-8 words on business value).\n"
+        "RECOMMENDATION SLIDES (three, after Log Analysis): Each is an editorial numbered list.\n"
+        "  Each item has: a large outlined numeral, a bold serif TITLE (~5 words), "
+        "a DESCRIPTION paragraph (1-2 sentences with specific action), "
+        "and an IMPACT line (~5-8 words on business value).\n"
         "  Critical (2-3 items) - production stability / data loss risks\n"
         "  Important (3-5 items) - address this quarter to prevent escalation\n"
         "  Nice-to-Have (2-3 items) - efficiency and governance optimizations\n\n"
@@ -750,21 +756,22 @@ def api_report_generate():
         '        "One-sentence finding for card 2",\n'
         '        "One-sentence finding for card 3"\n'
         '      ],\n'
-        '      "overall_status": "STATUS_LABEL - one sentence summary"\n'
+        '      "overall_status": "STATUS_LABEL - one sentence summary",\n'
+        '      "headline": "Editorial headline, 4-9 words"\n'
         '    },\n'
-        '    "instance_overview": { "narrative": "bullet point text with newlines" },\n'
-        '    "projects": { "narrative": "...", "highlights": ["short badge text", "..."] },\n'
-        '    "project_footprint": { "narrative": "...", "risks": ["short risk badge", "..."] },\n'
-        '    "code_envs": { "narrative": "..." },\n'
-        '    "code_env_health": { "narrative": "...", "upgrade_paths": ["short path", "..."] },\n'
-        '    "filesystem": { "narrative": "...", "warnings": ["short warning", "..."] },\n'
-        '    "memory": { "narrative": "...", "tuning_recs": ["short rec", "..."] },\n'
-        '    "connections": { "narrative": "..." },\n'
-        '    "issues": { "narrative": "...", "risk_level": "low|medium|high|critical" },\n'
-        '    "users": { "narrative": "..." },\n'
-        '    "adoption": { "narrative": "...", "highlights": ["short badge text", "..."] },\n'
-        '    "compute_cost": { "narrative": "...", "drivers": ["short cost driver", "..."] },\n'
-        '    "logs": { "narrative": "...", "patterns": ["error pattern < 80 chars", "..."] },\n'
+        '    "instance_overview": { "headline": "...", "narrative": "bullet point text with newlines" },\n'
+        '    "projects": { "headline": "...", "narrative": "...", "highlights": ["short badge text", "..."] },\n'
+        '    "project_footprint": { "headline": "...", "narrative": "...", "risks": ["short risk badge", "..."] },\n'
+        '    "code_envs": { "headline": "...", "narrative": "..." },\n'
+        '    "code_env_health": { "headline": "...", "narrative": "...", "upgrade_paths": ["short path", "..."] },\n'
+        '    "filesystem": { "headline": "...", "narrative": "...", "warnings": ["short warning", "..."] },\n'
+        '    "memory": { "headline": "...", "narrative": "...", "tuning_recs": ["short rec", "..."] },\n'
+        '    "connections": { "headline": "...", "narrative": "..." },\n'
+        '    "issues": { "headline": "...", "narrative": "...", "risk_level": "low|medium|high|critical" },\n'
+        '    "users": { "headline": "...", "narrative": "..." },\n'
+        '    "adoption": { "headline": "...", "narrative": "...", "highlights": ["short badge text", "..."] },\n'
+        '    "compute_cost": { "headline": "...", "narrative": "...", "drivers": ["short cost driver", "..."] },\n'
+        '    "logs": { "headline": "...", "narrative": "...", "patterns": ["error pattern < 80 chars", "..."] },\n'
         '    "rec_critical": { "items": [{\n'
         '      "title": "Short Title (3-5 words)",\n'
         '      "description": "Specific action: what to change, where, and why. 1-2 sentences.",\n'
@@ -772,7 +779,7 @@ def api_report_generate():
         '    }] },\n'
         '    "rec_important": { "items": [{ "title": "...", "description": "...", "impact": "..." }] },\n'
         '    "rec_nice_to_have": { "items": [{ "title": "...", "description": "...", "impact": "..." }] },\n'
-        '    "action_plan": { "priorities": [{\n'
+        '    "action_plan": { "headline": "...", "priorities": [{\n'
         '      "action": "Specific task an admin can execute",\n'
         '      "timeline": "Concrete timeframe",\n'
         '      "effort": "low|medium|high"\n'

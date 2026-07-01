@@ -730,6 +730,12 @@ def _adoption_git_aggregate(client: Any) -> Dict[str, Any]:
     month_builders: Dict[str, set] = {}
     # human login -> set of active months (across all projects)
     builder_months: Dict[str, set] = {}
+    # human login -> commit count / touched projects / first & last commit ms —
+    # feeds the top-builders leaderboard and the per-group activity roll-up
+    builder_commits: Dict[str, int] = {}
+    builder_projects: Dict[str, set] = {}
+    builder_first_ms: Dict[str, int] = {}
+    builder_last_ms: Dict[str, int] = {}
     automation_ids: set = set()
     total_human_commits = 0
     global_first_ms: Optional[int] = None
@@ -768,10 +774,16 @@ def _adoption_git_aggregate(client: Any) -> Dict[str, Any]:
             proj_commits += 1
             total_human_commits += 1
             proj_authors.add(ident)
+            builder_commits[ident] = builder_commits.get(ident, 0) + 1
+            builder_projects.setdefault(ident, set()).add(key)
             if ms is not None:
                 first_ms = ms if first_ms is None else min(first_ms, ms)
                 global_first_ms = ms if global_first_ms is None else min(global_first_ms, ms)
                 global_last_ms = ms if global_last_ms is None else max(global_last_ms, ms)
+                if ident not in builder_first_ms or ms < builder_first_ms[ident]:
+                    builder_first_ms[ident] = ms
+                if ident not in builder_last_ms or ms > builder_last_ms[ident]:
+                    builder_last_ms[ident] = ms
                 month = _git_commit_month(ts_iso)
                 if month:
                     proj_months.add(month)
@@ -808,6 +820,21 @@ def _adoption_git_aggregate(client: Any) -> Dict[str, Any]:
     repeat = sum(1 for months in builder_months.values() if len(months) >= 2)
     builders = sorted(builder_months.keys())
 
+    builder_stats = sorted(
+        (
+            {
+                'login': login,
+                'commits': commits,
+                'projectCount': len(builder_projects.get(login, ())),
+                'activeMonths': len(builder_months.get(login, ())),
+                'firstCommitMs': builder_first_ms.get(login),
+                'lastCommitMs': builder_last_ms.get(login),
+            }
+            for login, commits in builder_commits.items()
+        ),
+        key=lambda r: -r['commits'],
+    )
+
     projects_with_people = [r for r in project_rows if r['authorCount'] > 0]
     avg_people = (
         sum(r['authorCount'] for r in projects_with_people) / len(projects_with_people)
@@ -822,6 +849,10 @@ def _adoption_git_aggregate(client: Any) -> Dict[str, Any]:
         'monthlyTrend': monthly_trend,
         'repeatBuilders': {'total': len(builders), 'single': single, 'repeat': repeat},
         'builders': builders,
+        'builderStats': builder_stats,
+        # internal (login -> set of project keys): the route unions these per
+        # DSS group; never serialized to the frontend
+        'builderProjects': builder_projects,
         'totals': {
             'projectCount': len(keys),
             'builderCount': len(builders),

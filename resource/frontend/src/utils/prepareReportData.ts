@@ -1,26 +1,29 @@
 import type { FilesystemInfo, ParsedData } from '../types';
 
 export interface ReportSlideData {
-  executive_summary: { findings: string[]; overall_status: string };
-  instance_overview: { narrative: string };
-  projects: { narrative: string; highlights: string[] };
-  project_footprint: { narrative: string; risks: string[] };
-  code_envs: { narrative: string };
-  code_env_health: { narrative: string; upgrade_paths: string[] };
-  filesystem: { narrative: string; warnings: string[] };
-  memory: { narrative: string; tuning_recs: string[] };
-  connections: { narrative: string };
-  issues: { narrative: string; risk_level: string };
-  users: { narrative: string };
+  // Every slide may carry an optional editorial `headline` (short, punchy,
+  // specific to this instance's data). Older saved reports don't have it —
+  // the renderer falls back to the slide's canonical title.
+  executive_summary: { findings: string[]; overall_status: string; headline?: string };
+  instance_overview: { narrative: string; headline?: string };
+  projects: { narrative: string; highlights: string[]; headline?: string };
+  project_footprint: { narrative: string; risks: string[]; headline?: string };
+  code_envs: { narrative: string; headline?: string };
+  code_env_health: { narrative: string; upgrade_paths: string[]; headline?: string };
+  filesystem: { narrative: string; warnings: string[]; headline?: string };
+  memory: { narrative: string; tuning_recs: string[]; headline?: string };
+  connections: { narrative: string; headline?: string };
+  issues: { narrative: string; risk_level: string; headline?: string };
+  users: { narrative: string; headline?: string };
   /** Only present when the adoption module has data for this instance. */
-  adoption?: { narrative: string; highlights: string[] };
+  adoption?: { narrative: string; highlights: string[]; headline?: string };
   /** Only present when the Cost/CRU module has data for this instance. */
-  compute_cost?: { narrative: string; drivers: string[] };
-  logs: { narrative: string; patterns: string[] };
+  compute_cost?: { narrative: string; drivers: string[]; headline?: string };
+  logs: { narrative: string; patterns: string[]; headline?: string };
   rec_critical: { items: ReportRecItem[] };
   rec_important: { items: ReportRecItem[] };
   rec_nice_to_have: { items: ReportRecItem[] };
-  action_plan: { priorities: ReportActionItem[] };
+  action_plan: { priorities: ReportActionItem[]; headline?: string };
 }
 
 export interface ReportRecItem {

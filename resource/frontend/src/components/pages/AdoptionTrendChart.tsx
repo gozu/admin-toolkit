@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
-import { Line } from 'react-chartjs-2';
+import { Chart } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   LineElement,
   PointElement,
+  BarElement,
   LinearScale,
   CategoryScale,
   Filler,
@@ -19,7 +20,22 @@ import type { AdoptionMonthPoint } from '../../types';
 // doughnut/bar/treemap). No date adapter is bundled, so the x-axis is a plain
 // CategoryScale over 'YYYY-MM' buckets — discrete months, which also reads more
 // honestly than an interpolated time axis for a monthly count.
-ChartJS.register(LineElement, PointElement, LinearScale, CategoryScale, Filler, Tooltip, Legend);
+ChartJS.register(
+  LineElement,
+  PointElement,
+  BarElement,
+  LinearScale,
+  CategoryScale,
+  Filler,
+  Tooltip,
+  Legend,
+);
+
+// Commit volume renders as muted violet bars BEHIND the builders line — a
+// second line (dashed mint over the blue area) was near-invisible; bars keep
+// the two series in separate visual channels (volume vs people).
+const COMMITS_BAR = 'rgba(153, 123, 224, 0.32)';
+const COMMITS_BAR_HOVER = 'rgba(153, 123, 224, 0.6)';
 
 const MONTH_ABBR = [
   'Jan',
@@ -53,31 +69,31 @@ export function AdoptionTrendChart({ points }: { points: AdoptionMonthPoint[] })
       labels: points.map((p) => p.month),
       datasets: [
         {
+          type: 'line' as const,
           label: 'Active builders',
           data: points.map((p) => p.activeBuilders),
           borderColor: CHART_PALETTE.blueBorder,
-          backgroundColor: CHART_PALETTE.blue,
+          backgroundColor: 'rgba(109, 163, 224, 0.16)',
           fill: 'origin' as const,
           tension: 0.35,
           borderWidth: 2,
           pointRadius: points.length > 24 ? 0 : 2,
           pointHoverRadius: 4,
           yAxisID: 'y',
-          order: 2,
+          order: 0, // drawn last — always on top of the bars
         },
         {
+          type: 'bar' as const,
           label: 'Commits',
           data: points.map((p) => p.commits),
-          borderColor: CHART_PALETTE.mintBorder,
-          backgroundColor: 'transparent',
-          fill: false,
-          tension: 0.35,
-          borderWidth: 1.5,
-          borderDash: [4, 3],
-          pointRadius: 0,
-          pointHoverRadius: 3,
+          backgroundColor: COMMITS_BAR,
+          hoverBackgroundColor: COMMITS_BAR_HOVER,
+          borderWidth: 0,
+          borderRadius: 2,
+          barPercentage: 0.85,
+          categoryPercentage: 0.95,
           yAxisID: 'y1',
-          order: 1,
+          order: 2,
         },
       ],
     }),
@@ -94,9 +110,10 @@ export function AdoptionTrendChart({ points }: { points: AdoptionMonthPoint[] })
         tooltip: {
           ...BASE_TOOLTIP_STYLE,
           callbacks: {
-            title: (items: TooltipItem<'line'>[]) =>
+            title: (items: TooltipItem<'line' | 'bar'>[]) =>
               items.length ? monthLabel(String(items[0].label)) : '',
-            label: (ctx: TooltipItem<'line'>) => `${ctx.dataset.label}: ${ctx.formattedValue}`,
+            label: (ctx: TooltipItem<'line' | 'bar'>) =>
+              `${ctx.dataset.label}: ${ctx.formattedValue}`,
           },
         },
       },
@@ -151,7 +168,7 @@ export function AdoptionTrendChart({ points }: { points: AdoptionMonthPoint[] })
 
   return (
     <div className="chart-body" style={{ height: '300px' }}>
-      <Line data={chartData} options={options} />
+      <Chart type="line" data={chartData} options={options} />
     </div>
   );
 }

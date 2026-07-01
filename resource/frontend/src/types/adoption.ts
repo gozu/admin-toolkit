@@ -38,6 +38,27 @@ export interface AdoptionRepeatBuilders {
   repeat: number; // active in >= 2 distinct months
 }
 
+/** DSS group activity roll-up — a builder in N groups counts toward all N. */
+export interface AdoptionGroupRow {
+  name: string;
+  memberCount: number; // users carrying this group
+  builderCount: number; // members with git activity
+  commits: number; // sum of member builders' commits (shares can overlap)
+  projectCount: number; // distinct projects touched by member builders
+  lastCommitMs: number | null;
+}
+
+/** Per-builder leaderboard row (sorted by commits desc server-side). */
+export interface AdoptionBuilderRow {
+  login: string;
+  displayName: string;
+  commits: number;
+  projectCount: number;
+  activeMonths: number;
+  firstCommitMs: number | null;
+  lastCommitMs: number | null;
+}
+
 /** Per-user recency from list_users_activity() — "last active", never a count. */
 export interface AdoptionBuilderRecency {
   login: string;
@@ -70,4 +91,6 @@ export interface AdoptionData {
   cohorts?: AdoptionCohort[];
   repeatBuilders?: AdoptionRepeatBuilders;
   builderRecency?: AdoptionBuilderRecency[];
+  groups?: AdoptionGroupRow[];
+  builderStats?: AdoptionBuilderRow[];
 }

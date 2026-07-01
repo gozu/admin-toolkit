@@ -90,9 +90,9 @@ export async function exportReportAsHtml(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Health Check - ${company} - ${date}</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Roboto:wght@400..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&display=swap');
 ${combinedCSS}
-body { margin: 0; padding: 0; overflow: hidden; font-family: 'Roboto', sans-serif; }
+body { margin: 0; padding: 0; overflow: hidden; font-family: 'Fraunces', 'Georgia', serif; }
 </style>
 </head>
 <body>

@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { Chart } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
+  LineController,
+  BarController,
   LineElement,
   PointElement,
   BarElement,
@@ -20,7 +22,13 @@ import type { AdoptionMonthPoint } from '../../types';
 // doughnut/bar/treemap). No date adapter is bundled, so the x-axis is a plain
 // CategoryScale over 'YYYY-MM' buckets — discrete months, which also reads more
 // honestly than an interpolated time axis for a monthly count.
+// The generic <Chart> component (needed for the mixed line+bar chart) does NOT
+// auto-register controllers the way the typed <Line>/<Bar> components do —
+// both controllers must be registered explicitly or Chart.js throws
+// '"line" is not a registered controller' at mount.
 ChartJS.register(
+  LineController,
+  BarController,
   LineElement,
   PointElement,
   BarElement,

@@ -407,9 +407,9 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
         {/* ── Adoption & Engagement (only when the Adoption module has data) ── */}
         {adoptionTotals && (
           <Slide index={adoptionIdx} active={currentSlide === adoptionIdx} section="People & Adoption"
-            headline={slides?.adoption?.headline || 'Adoption & Engagement'} meta={meta}>
+            headline={slides?.adoption?.headline || 'Adoption & Engagement'} meta={meta} dense>
             {trendPoints.length > 1 && <Trend points={trendPoints} caption="Active builders per month — full git history" base={2} />}
-            <Stats base={3} items={[
+            <Stats base={3} small items={[
               { value: String(adoptionTotals.builderCount ?? '—'), label: 'Builders (All Time)' },
               { value: `${adoptionTotals.activeProjectCount}/${adoptionTotals.projectCount}`, label: 'Active / Total Projects' },
               { value: adoptionTotals.avgPeoplePerProject != null ? adoptionTotals.avgPeoplePerProject.toFixed(1) : '—', label: 'People per Project' },
@@ -572,9 +572,9 @@ function fmt2dp(val: string): string {
 /** Editorial slide shell: numbered eyebrow, huge serif headline, hairline
     header/footer rules, ghost numeral. Body vertically centers via auto
     margins so dense content still scrolls instead of clipping. */
-function Slide({ index, active, section, headline, meta, children }: {
+function Slide({ index, active, section, headline, meta, dense, children }: {
   index: number; active: boolean; section: string; headline: string;
-  meta: SlideMeta; children: ReactNode;
+  meta: SlideMeta; dense?: boolean; children: ReactNode;
 }) {
   return (
     <div className={`report-slide${active ? ' active' : ''}`} data-slide-index={index}>
@@ -584,7 +584,7 @@ function Slide({ index, active, section, headline, meta, children }: {
         <span className="rpt-head-meta">{meta.company}</span>
       </header>
       <h2 className="rpt-headline" data-reveal style={rv(1)} contentEditable suppressContentEditableWarning>{headline}</h2>
-      <div className="rpt-body">
+      <div className={`rpt-body${dense ? ' rpt-body-dense' : ''}`}>
         <div className="rpt-body-in">{children}</div>
       </div>
       <footer className="rpt-foot" data-reveal style={rv(1)}>
@@ -596,9 +596,9 @@ function Slide({ index, active, section, headline, meta, children }: {
 }
 
 /** Row of big serif numbers separated by hairlines — no boxes. */
-function Stats({ items, base = 2 }: { items: StatItem[]; base?: number }) {
+function Stats({ items, base = 2, small }: { items: StatItem[]; base?: number; small?: boolean }) {
   return (
-    <div className="rpt-stats">
+    <div className={`rpt-stats${small ? ' rpt-stats-sm' : ''}`}>
       {items.map((s, i) => (
         <div key={i} className="rpt-stat" data-reveal style={rv(base + i)}>
           <div className="rpt-stat-value" style={s.color ? { color: s.color } : undefined} contentEditable suppressContentEditableWarning>{fmt2dp(s.value)}</div>
@@ -643,7 +643,7 @@ function Bars({ rows, base = 3, thick }: { rows: BarRow[]; base?: number; thick?
 
 /** Area trend chart (adoption): mint line, gradient fill, draw-in animation. */
 function Trend({ points, caption, base = 2 }: { points: { label: string; value: number }[]; caption?: string; base?: number }) {
-  const W = 880, H = 200, PX = 6, PT = 26, PB = 26;
+  const W = 1320, H = 200, PX = 6, PT = 26, PB = 26;
   const max = Math.max(...points.map(p => p.value), 1);
   const x = (i: number) => PX + (i * (W - 2 * PX)) / (points.length - 1);
   const y = (v: number) => PT + (1 - v / max) * (H - PT - PB);
@@ -666,7 +666,9 @@ function Trend({ points, caption, base = 2 }: { points: { label: string; value: 
         <circle cx={x(points.length - 1)} cy={y(last.value)} r="4" className="rpt-trend-dot" />
         <text x={x(points.length - 1) - 10} y={y(last.value) - 12} textAnchor="end" className="rpt-trend-val">{last.value}</text>
         {points.map((p, i) => (
-          (i % tickEvery === 0 || i === points.length - 1) && (
+          // Regular ticks skip the tail so they can't collide with the
+          // always-rendered last-month label.
+          (i === points.length - 1 || (i % tickEvery === 0 && points.length - 1 - i >= tickEvery / 2)) && (
             <text key={i} x={x(i)} y={H - 8} textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'} className="rpt-trend-tick">{p.label}</text>
           )
         ))}

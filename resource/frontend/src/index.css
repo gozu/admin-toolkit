@@ -2003,9 +2003,10 @@ h1, h2, h3, h4 {
   z-index: 1;
 }
 
+/* flex-basis auto (not 0) so oversized content grows the slide and the
+   slide's own overflow-y scrolls it — never spills over the footer. */
 .rpt-body {
-  flex: 1;
-  min-height: 0;
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
   z-index: 1;
@@ -2020,6 +2021,18 @@ h1, h2, h3, h4 {
   gap: 2.4rem;
   padding: 2rem 0 1.5rem;
 }
+
+/* Dense variant for chart-heavy slides (adoption) */
+.rpt-body-dense .rpt-body-in {
+  gap: 1.6rem;
+  padding: 1.25rem 0 1rem;
+}
+
+/* Compact stat band variant */
+.rpt-stats-sm .rpt-stat { padding: 0.1rem 1.75rem; }
+.rpt-stats-sm .rpt-stat:first-child { padding-left: 0; }
+.rpt-stats-sm .rpt-stat-value { font-size: 2.4rem; }
+.rpt-stats-sm .rpt-stat-label { margin-top: 0.45rem; font-size: 0.58rem; }
 
 .rpt-foot {
   display: flex;

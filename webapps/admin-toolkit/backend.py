@@ -163,6 +163,7 @@ def _handle_remote_keys_locked(_exc: RemoteKeysLocked):
 # client attach / host-ready / red-unlock gates, @errorhandler for
 # CacheLoaderTimeout and MacroProjectMissing) apply to blueprint views too.
 # ─────────────────────────────────────────────────────────────────────────
+from adk_backend.routes.adoption import bp as adoption_bp
 from adk_backend.routes.algorithm_review import bp as algorithm_review_bp
 from adk_backend.routes.auth import bp as auth_bp
 from adk_backend.routes.code_env_replace import bp as code_env_replace_bp
@@ -189,6 +190,7 @@ from adk_backend.routes.plugins import bp as plugins_bp
 from adk_backend.routes.projects import bp as projects_bp
 from adk_backend.routes.settings import bp as settings_bp
 
+app.register_blueprint(adoption_bp)
 app.register_blueprint(algorithm_review_bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(code_env_replace_bp)

@@ -87,6 +87,10 @@ export const MODULES: readonly ModuleDefinition[] = [
     'codeEnvsLoading',
     'llmAuditLoading',
   ] } },
+  // On-demand deep dive (loads on mount, like k8s-insights): noLoadGlyph keeps
+  // adoptionLoading out of SHARED_LOADING_FIELDS so the global "Analysis
+  // complete" aggregate never waits on a page the user may not visit.
+  { id: 'adoption', label: 'Adoption', section: 'Users', navSection: 'USERS', keywords: ['adoption', 'engagement', 'usage', 'logins', 'active', 'trend', 'cohort', 'retention', 'builders', 'people', 'commits', 'growth'], reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['adoptionLoading'] } },
 
   // PLUGINS
   { id: 'plugins-installed', label: 'Installed', section: 'Plugins', navSection: 'PLUGINS', keywords: ['plugin', 'installed', 'list', 'version', 'projects', 'usage'], reachability: 'always', lifecycle: { fields: ['pluginsLoading'] } },
@@ -124,7 +128,7 @@ export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'OVERVIEW', items: ['mission-control', 'summary', 'filesystem', 'memory', 'cpu'] },
   { title: 'CONNECTIONS', items: ['connections-inventory', 'connections-insights', 'connections-health', 'connections-fs-migration'] },
   { title: 'PROJECTS', items: ['project-cleaner', 'projects', 'project-compute', 'project-cost'] },
-  { title: 'USERS', items: ['users'] },
+  { title: 'USERS', items: ['users', 'adoption'] },
   { title: 'PLUGINS', items: ['plugins-installed', 'plugins'] },
   { title: 'CODE ENVS', items: ['code-envs', 'code-envs-cleaner', 'code-envs-comparison'] },
   { title: 'AI COMPUTE', items: ['container-execs', 'image-cleaner', 'cs-template-replacement', 'llm-audit', 'k8s-insights'] },

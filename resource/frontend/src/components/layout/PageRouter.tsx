@@ -36,6 +36,7 @@ import { CpuUsagePage } from '../pages/CpuUsagePage';
 import { ProjectsPage } from '../pages/ProjectsPage';
 import { ProjectComputePage } from '../pages/ProjectComputePage';
 import { ProjectCostPage } from '../pages/ProjectCostPage';
+import { AdoptionPage } from '../pages/AdoptionPage';
 import { UsersPage } from '../pages/UsersPage';
 import { CodeEnvsInsightsPage } from '../pages/CodeEnvsPage';
 import { CodeEnvsComparisonPage } from '../pages/CodeEnvsComparisonPage';
@@ -121,6 +122,8 @@ function renderPage(activePage: PageId): React.ReactNode {
       return <ProjectCostPage />;
     case 'users':
       return <UsersPage />;
+    case 'adoption':
+      return <AdoptionPage />;
     case 'code-envs':
       return <CodeEnvsInsightsPage />;
     case 'code-envs-cleaner':

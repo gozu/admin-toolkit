@@ -1,3 +1,4 @@
+import type { AdoptionData } from './adoption';
 import type { CodeEnv, CodeEnvCompareResult, ProvisionalCodeEnv } from './codeEnvs';
 import type { ComparisonResult, ComparisonViewMode } from './comparison';
 import type {
@@ -136,6 +137,7 @@ export interface ParsedData {
   projectFootprint?: ProjectFootprintRow[];
   projectFootprintSummary?: ProjectFootprintSummary;
   projectCostData?: CruCostData;
+  adoptionData?: AdoptionData;
   plugins?: string[];
   pluginDetails?: PluginInfo[];
   pluginsCount?: number;
@@ -166,6 +168,7 @@ export interface ParsedData {
   projectFootprintLoading?: Lifecycle;
   projectComputeLoading?: Lifecycle;
   projectCostLoading?: Lifecycle;
+  adoptionLoading?: Lifecycle;
   usersLoading?: Lifecycle;
   pluginsLoading?: Lifecycle;
   pluginSyncLoading?: Lifecycle;
@@ -287,6 +290,7 @@ export type PageId =
   | 'cpu'
   | 'projects'
   | 'users'
+  | 'adoption'
   | 'code-envs'
   | 'code-envs-cleaner'
   | 'code-envs-comparison'

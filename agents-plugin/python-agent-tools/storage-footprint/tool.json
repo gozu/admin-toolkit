@@ -1,0 +1,9 @@
+/* Agent tool: project storage footprint + cleanup candidates */
+{
+    "meta": {
+        "label": "Admin Toolkit: Storage footprint",
+        "description": "Per-project storage totals, the largest projects, and inactive+large cleanup candidates for one DSS host.",
+        "icon": "icon-hdd"
+    },
+    "params": []
+}

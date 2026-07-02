@@ -1,0 +1,9 @@
+/* Agent tool: grouped backend.log error signatures + raw-tail grep */
+{
+    "meta": {
+        "label": "Admin Toolkit: Log errors",
+        "description": "Parsed error/warning groups from a DSS host's backend.log, or a targeted regex grep over the recent raw tail.",
+        "icon": "icon-file-text"
+    },
+    "params": []
+}

@@ -1,0 +1,33 @@
+{
+    "meta": {
+        "label": "Agents: daily health triage sweep",
+        "description": "Deterministically scores every configured DSS host with the toolkit health score, drafts LLM recommendations for hosts under the threshold, persists to story.agent_triage_daily, and emails a digest. RAISES if any host errors, so the scheduling scenario's failure reporter fires.",
+        "icon": "icon-stethoscope"
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": [
+        {
+            "name": "hosts",
+            "label": "Hosts (csv, empty = all)",
+            "type": "STRING",
+            "defaultValue": "",
+            "mandatory": false
+        },
+        {
+            "name": "skip_email",
+            "label": "Skip digest email",
+            "type": "BOOLEAN",
+            "defaultValue": false,
+            "mandatory": false
+        },
+        {
+            "name": "skip_llm",
+            "label": "Skip LLM recommendations",
+            "type": "BOOLEAN",
+            "defaultValue": false,
+            "mandatory": false
+        }
+    ]
+}

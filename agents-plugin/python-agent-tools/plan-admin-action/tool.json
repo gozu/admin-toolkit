@@ -1,0 +1,9 @@
+/* Agent tool: plan (dry-run) an admin action — read-only, mints the confirm token */
+{
+    "meta": {
+        "label": "Admin Toolkit: Plan admin action",
+        "description": "Read-only planning step for admin actions: gathers exact targets and blast radius, and mints the confirm token execute-admin-action requires. Never mutates anything.",
+        "icon": "icon-list-ol"
+    },
+    "params": []
+}

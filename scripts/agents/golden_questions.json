@@ -1,0 +1,56 @@
+{
+  "description": "Phase C groundedness gate for the scoping-architect agent. Expected values verified against live tam-global payloads on 2026-07-02 (shapes dir). Every agent answer must cite host + tool; checker greps for the expected facts.",
+  "host": "local (tam-global hub)",
+  "questions": [
+    {
+      "q": "What DSS version and OS does the hub run, and when was it last restarted?",
+      "expect": ["14.7.0", "AlmaLinux 9.8"],
+      "source": "instance_health system"
+    },
+    {
+      "q": "Which Claude models are available in the LLM Mesh and on which connections?",
+      "expect": ["kaosclaude", "Claude 4.8 Opus", "bhavikbedrock"],
+      "source": "config_inspect llms name_filter=claude"
+    },
+    {
+      "q": "How many code environments run deprecated Python versions, and name three.",
+      "expect": ["3.6", "transfer_conn"],
+      "source": "config_inspect code-envs (pythonVersionCounts: 3.6=16, 3.7=4)"
+    },
+    {
+      "q": "What is the largest project by storage and how big is it?",
+      "expect": ["DIAG_PARSER_BRANCH1", "12.2"],
+      "source": "storage_footprint topProjects"
+    },
+    {
+      "q": "How many Kubernetes clusters does the hub know about and how many are actually reachable?",
+      "expect": ["22", "dns"],
+      "source": "k8s_health (reachability sweep: 0 ok, dns failures)"
+    },
+    {
+      "q": "What did we spend on LLMs in the covered audit window, and which project drives it?",
+      "expect": ["1.9", "DIAG_PARSER_BRANCH1"],
+      "source": "compute_cost totals.llmUSD=1.94, topLlmSpendUSD"
+    },
+    {
+      "q": "Is the DSS runtime database on PostgreSQL?",
+      "expect": ["PostgreSQL"],
+      "source": "instance_health score path / settings raw internalDatabase"
+    },
+    {
+      "q": "How many builders are active and how many projects are actively worked on?",
+      "expect": ["135", "132"],
+      "source": "adoption_metrics totals (builderCount=135, activeProjectCount=132)"
+    },
+    {
+      "q": "Is Agent Hub installed on the hub and at what version?",
+      "expect": ["agent-hub", "1.4.1"],
+      "source": "config_inspect plugins name_filter=agent"
+    },
+    {
+      "q": "Which remote hosts can this toolkit reach, and is the Admin Toolkit installed on them?",
+      "expect": ["akaos-vm", "0.4.629"],
+      "source": "list_hosts probe=true"
+    }
+  ]
+}

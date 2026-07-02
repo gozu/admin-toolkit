@@ -1,0 +1,9 @@
+/* Agent tool: runtime-database (PostgreSQL) health */
+{
+    "meta": {
+        "label": "Admin Toolkit: DB health",
+        "description": "RuntimeDB PostgreSQL health for a DSS host: size/version overview, bloat and dead-tuple table offenders, per-project usage.",
+        "icon": "icon-database"
+    },
+    "params": []
+}

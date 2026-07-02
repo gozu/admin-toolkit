@@ -259,6 +259,50 @@ drive-upload:
 	$$PY scripts/upload_to_drive.py "dist/$(archive_file_name)"
 
 # ----------------------------
+# Agents plugin (agents-plugin/ — independent plugin, independent targets)
+# ----------------------------
+agents_plugin_id := $(shell python3 -c "import json; print(json.load(open('agents-plugin/plugin.json'))['id'])")
+agents_plugin_version = $(shell python3 -c "import json; print(json.load(open('agents-plugin/plugin.json'))['version'])")
+agents_archive_file_name = dss-plugin-$(agents_plugin_id)-$(agents_plugin_version).zip
+
+.PHONY: agents-plugin agents-zip agents-deploy-dev
+
+agents-zip:
+	@python3 -c "import json; json.load(open('agents-plugin/plugin.json'))" || (echo "[ERROR] Invalid agents-plugin/plugin.json"; exit 1)
+	@mkdir -p dist
+	@rm -f "dist/$(agents_archive_file_name)"
+	@cd agents-plugin && zip -q -9 -r "../dist/$(agents_archive_file_name)" . \
+		--exclude "__pycache__/*" --exclude "*/__pycache__/*" --exclude "*.pyc" --exclude "*.DS_Store"
+	@echo "[SUCCESS] Agents plugin archive: dist/$(agents_archive_file_name)"
+
+agents-plugin:
+	@echo "[START] Bumping agents plugin version..."
+	@python3 -c "import json,pathlib; pf=pathlib.Path('agents-plugin/plugin.json'); d=json.loads(pf.read_text()); p=d['version'].split('.'); b=int(p[2])+1; nv=('%s.%d.%03d'%(p[0],int(p[1])+1,0)) if b>999 else ('%s.%s.%03d'%(p[0],p[1],b)); print('agents-plugin/plugin.json: %s -> %s'%(d['version'],nv)); d['version']=nv; pf.write_text(json.dumps(d,indent=4)+chr(10))"
+	@$(MAKE) agents-zip
+
+agents-deploy-dev: agents-plugin
+	@echo "[START] Deploying agents plugin to DEV server..."
+	@if [ -z "$(DSS_URL)" ] || [ -z "$(DSS_API_KEY)" ]; then \
+		echo "[ERROR] Missing .dss-url or .dss-api-key"; exit 1; \
+	fi
+	@UPDATE_RESPONSE=$$(DSS_URL="$(DSS_URL)" DSS_API_KEY="$(DSS_API_KEY)" bash scripts/dss_api.sh POST "/public/api/plugins/$(agents_plugin_id)/actions/updateFromZip" \
+		--form "file=@dist/$(agents_archive_file_name)"); \
+	UPDATE_CODE=$$(echo "$$UPDATE_RESPONSE" | tail -n1); \
+	if [ "$$UPDATE_CODE" = "204" ] || [ "$$UPDATE_CODE" = "200" ]; then \
+		echo "[SUCCESS] Agents plugin updated on DEV!"; \
+	else \
+		echo "[INFO] Update failed (HTTP $$UPDATE_CODE), attempting install..."; \
+		INSTALL_RESPONSE=$$(DSS_URL="$(DSS_URL)" DSS_API_KEY="$(DSS_API_KEY)" bash scripts/dss_api.sh POST "/public/api/plugins/actions/installFromZip" \
+			--form "file=@dist/$(agents_archive_file_name)"); \
+		INSTALL_CODE=$$(echo "$$INSTALL_RESPONSE" | tail -n1); \
+		if [ "$$INSTALL_CODE" = "204" ] || [ "$$INSTALL_CODE" = "200" ]; then \
+			echo "[SUCCESS] Agents plugin installed on DEV!"; \
+		else \
+			echo "[ERROR] Agents DEV deploy failed (update: $$UPDATE_CODE, install: $$INSTALL_CODE)"; exit 1; \
+		fi; \
+	fi
+
+# ----------------------------
 # Dual-LLM pre-push security gate (all logic lives in scripts/secure-push.sh)
 # ----------------------------
 .PHONY: secure-push install-hooks

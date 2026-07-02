@@ -1,0 +1,4 @@
+requests
+langchain
+langchain-core
+psycopg2-binary

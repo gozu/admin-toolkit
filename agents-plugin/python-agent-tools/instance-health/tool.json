@@ -1,0 +1,9 @@
+/* Agent tool: deterministic instance-health snapshot (system, sanity, java, issues) */
+{
+    "meta": {
+        "label": "Admin Toolkit: Instance health",
+        "description": "System capacity, sanity-check results, Java heap sizing and threshold-derived issues for one DSS host.",
+        "icon": "icon-stethoscope"
+    },
+    "params": []
+}

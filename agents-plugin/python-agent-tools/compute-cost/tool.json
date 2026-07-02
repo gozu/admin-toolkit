@@ -1,0 +1,9 @@
+/* Agent tool: compute + LLM cost from Compute Resource Usage audit records */
+{
+    "meta": {
+        "label": "Admin Toolkit: Compute cost",
+        "description": "Per-project / per-user / per-context compute usage (CPU-hours, memory GB-hours) and LLM spend from CRU audit records.",
+        "icon": "icon-money"
+    },
+    "params": []
+}

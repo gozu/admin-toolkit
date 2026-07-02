@@ -1,0 +1,9 @@
+/* Agent tool: Kubernetes cluster reachability + deep audit */
+{
+    "meta": {
+        "label": "Admin Toolkit: K8s health",
+        "description": "Kubernetes clusters known to a DSS host: reachability sweep, and per-cluster deep audit (pressure, unhealthy pods, rule findings).",
+        "icon": "icon-cloud"
+    },
+    "params": []
+}

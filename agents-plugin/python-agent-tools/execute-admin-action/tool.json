@@ -1,0 +1,9 @@
+/* Agent tool: execute a previously planned + human-confirmed admin action */
+{
+    "meta": {
+        "label": "Admin Toolkit: Execute admin action",
+        "description": "Executes an admin action previously planned by plan-admin-action and explicitly confirmed by a human. Gated by the plugin kill-switch, a bound confirm token, and the backend's own red gate. Fully audited.",
+        "icon": "icon-bolt"
+    },
+    "params": []
+}

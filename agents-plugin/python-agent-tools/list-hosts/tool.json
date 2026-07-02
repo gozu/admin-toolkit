@@ -1,0 +1,9 @@
+/* Agent tool: list configured DSS hosts (the fleet the other tools can target) */
+{
+    "meta": {
+        "label": "Admin Toolkit: List hosts",
+        "description": "List the DSS hosts (local + remote presets) the Admin Toolkit can reach, optionally probing reachability.",
+        "icon": "icon-sitemap"
+    },
+    "params": []
+}

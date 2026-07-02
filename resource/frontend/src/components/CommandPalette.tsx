@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useDiag } from '../context/DiagContext';
 import type { PageId } from '../types';
-import { COMMAND_PALETTE_MODULES } from '../utils/moduleRegistry';
+import { COMMAND_PALETTE_MODULES, EXPERIMENTAL_PAGES } from '../utils/moduleRegistry';
+import { SHOW_EXPERIMENTAL_STORAGE_KEY } from './pages/SettingsPage';
+import { useToggleFlag } from '../hooks/useToggleFlag';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -25,6 +27,7 @@ const SECTION_ICONS: Record<string, string> = {
   Plugins: '\u2692',
   'Code Envs': '\u2318',
   'AI Compute': '\u25A3',
+  Story: '\u2726',
   Misc: '\u2699',
 };
 
@@ -75,21 +78,32 @@ function CommandPaletteContent({ onClose }: { onClose: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
+  // Hidden experimental pages must not be ⌘K-discoverable either — same
+  // gate the sidebar and PageRouter apply.
+  const [showExperimental] = useToggleFlag(
+    SHOW_EXPERIMENTAL_STORAGE_KEY,
+    'experimental-flag-changed',
+  );
+  const visibleDefs = useMemo(
+    () => (showExperimental ? PAGE_DEFS : PAGE_DEFS.filter((d) => !EXPERIMENTAL_PAGES.has(d.id))),
+    [showExperimental],
+  );
+
   // Snapshot recents once per palette open (content remounts each time)
   const recentDefs = useMemo(() => {
     const defs: PageDef[] = [];
     for (const id of loadRecentPageIds()) {
-      const def = PAGE_DEFS.find((d) => d.id === id);
+      const def = visibleDefs.find((d) => d.id === id);
       if (def && !defs.includes(def)) defs.push(def);
       if (defs.length >= MAX_RECENT_SHOWN) break;
     }
     return defs;
-  }, []);
+  }, [visibleDefs]);
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return PAGE_DEFS;
-    return PAGE_DEFS.filter((def) => fuzzyMatch(query.trim(), def));
-  }, [query]);
+    if (!query.trim()) return visibleDefs;
+    return visibleDefs.filter((def) => fuzzyMatch(query.trim(), def));
+  }, [query, visibleDefs]);
 
   const showRecent = !query.trim() && recentDefs.length > 0;
 

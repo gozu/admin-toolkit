@@ -1,0 +1,48 @@
+{
+    "meta": {
+        "label": "Story: collect analytics",
+        "description": "Hub orchestrator for Story analytics: ensures the Postgres schema, then collects license / inventory / audit data from the local host and every remote-dss-host preset, writing to the configured Story PostgreSQL connection with per-(instance, source) transactional cursors. RAISES if any host or source fails, so the scheduling scenario's failure reporter fires.",
+        "icon": "icon-book"
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": [
+        {
+            "name": "hosts",
+            "label": "Hosts (csv, empty = all)",
+            "description": "Comma-separated host ids ('local' or remote preset names). Empty collects from every configured host.",
+            "type": "STRING",
+            "defaultValue": "",
+            "mandatory": false
+        },
+        {
+            "name": "collect_audit",
+            "label": "Collect audit activity",
+            "type": "BOOLEAN",
+            "defaultValue": true,
+            "mandatory": false
+        },
+        {
+            "name": "collect_license",
+            "label": "Collect license snapshots",
+            "type": "BOOLEAN",
+            "defaultValue": true,
+            "mandatory": false
+        },
+        {
+            "name": "collect_inventory",
+            "label": "Collect object inventory",
+            "type": "BOOLEAN",
+            "defaultValue": true,
+            "mandatory": false
+        },
+        {
+            "name": "lookback_days",
+            "label": "Audit lookback override (0 = plugin setting)",
+            "type": "INT",
+            "defaultValue": 0,
+            "mandatory": false
+        }
+    ]
+}

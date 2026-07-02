@@ -1,0 +1,34 @@
+{
+    "meta": {
+        "label": "Story: audit aggregate",
+        "description": "Stream the host audit logs ($DIP_HOME/run/audit/audit.log*) and aggregate human UI activity into per-UTC-day rows (viewing vs developing per user/project, plus raw msgType counts). Pure parse — no database access; the hub's 'Story: collect analytics' macro calls this on each host and persists the result.",
+        "icon": "icon-book"
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": [
+        {
+            "name": "since_day",
+            "label": "Cursor day (YYYY-MM-DD, exclusive)",
+            "description": "Days at or before this date are skipped — they are already final in the Story database.",
+            "type": "STRING",
+            "defaultValue": "",
+            "mandatory": false
+        },
+        {
+            "name": "lookback_days",
+            "label": "Lookback window (days)",
+            "type": "INT",
+            "defaultValue": 14,
+            "mandatory": false
+        },
+        {
+            "name": "max_files",
+            "label": "Max rotated files to read (0 = all)",
+            "type": "INT",
+            "defaultValue": 0,
+            "mandatory": false
+        }
+    ]
+}

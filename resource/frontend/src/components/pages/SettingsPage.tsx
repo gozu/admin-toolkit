@@ -199,7 +199,8 @@ export function SettingsPage() {
         <div>
           <h3 className="text-lg font-semibold text-[var(--text-primary)]">Experimental Features</h3>
           <p className="text-sm text-[var(--text-muted)]">
-            Reveals in-progress tools that are still rough: Docker Images and Model Audit.
+            Reveals in-progress tools that are still rough — currently the Story section
+            (scheduled, Postgres-backed user activity, license and inventory analytics).
           </p>
         </div>
         <label className="flex items-center gap-2 cursor-pointer">

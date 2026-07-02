@@ -4,6 +4,7 @@ name in `payload`, so we branch on it:
 
 - dataset_export_connection -> connections that can host a managed dataset
   (filesystem / cloud-object-store / SQL types), for "Save Tables as Datasets".
+- story_postgres_connection -> PostgreSQL connections only, for Story analytics.
 - dbhealth_connection (default) -> PostgreSQL connections only, for DB Health.
 
 Both list shapes mirror the discovery proven in backend.py.
@@ -42,6 +43,10 @@ def do(payload, config, plugin_config, inputs):
         allow = _MANAGED_DATASET_CONN_TYPES
         type_filter = lambda t: t in allow  # noqa: E731
         log_tag = "dataset-export"
+    elif param_name == "story_postgres_connection":
+        choices = [{"value": "", "label": "(None — Story disabled)"}]
+        type_filter = lambda t: t == "PostgreSQL"  # noqa: E731
+        log_tag = "story"
     else:
         choices = [{"value": "", "label": "(None — DB Health disabled)"}]
         type_filter = lambda t: t == "PostgreSQL"  # noqa: E731

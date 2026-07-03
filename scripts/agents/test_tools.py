@@ -21,7 +21,7 @@ import dataikuapi
 REPO = pathlib.Path(__file__).resolve().parents[2]
 PLUGIN_ID = "admin-toolkit-agents"
 TOOLS = ["list-hosts", "instance-health", "adoption-metrics", "compute-cost",
-         "config-inspect", "log-errors", "storage-footprint", "usage-analytics",
+         "config-inspect", "log-errors", "storage-footprint",
          "k8s-health", "db-health", "plan-admin-action", "execute-admin-action"]
 
 
@@ -91,7 +91,6 @@ def main():
     run_tool(handles["config-inspect"], "config-inspect connections", {"domain": "connections", "top_n": 8})
     run_tool(handles["log-errors"], "log-errors grouped", {"top_n": 5})
     run_tool(handles["storage-footprint"], "storage-footprint", {"top_n": 5})
-    run_tool(handles["usage-analytics"], "usage-analytics", {"metric": "event-counts", "days": 7})
     run_tool(handles["k8s-health"], "k8s-health clusters", {})
     run_tool(handles["db-health"], "db-health no-connection", {"view": "tables"})
     plan = run_tool(handles["plan-admin-action"], "plan k8s-exec-config-tune (PASSWORD-param check)",

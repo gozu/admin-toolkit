@@ -50,7 +50,7 @@ def main():
         cites = ('host=' in (answer or '')) or ('(list_hosts' in (answer or '')) or \
                 any(t in (answer or '') for t in ('instance_health', 'config_inspect', 'compute_cost',
                                                   'storage_footprint', 'k8s_health', 'adoption_metrics',
-                                                  'db_health', 'usage_analytics'))
+                                                  'db_health'))
         ok = not missing and cites
         passed += ok
         failed += (not ok)

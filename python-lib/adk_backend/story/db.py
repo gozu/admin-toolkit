@@ -1,13 +1,16 @@
-"""Story Postgres access — connection resolution via a DSS connection.
+"""Story-database Postgres access — connection resolution via a DSS connection.
+
+The Story analytics feature was removed; this module remains because the
+agents audit timeline (routes/agents.py) reads story.agent_actions, written
+by the agents plugin into the same Postgres.
 
 Same credential path proven in python-runnables/dbhealth-query/runnable.py:
 `client.get_connection(name).get_info()` (works for the `dataiku` service
 account without exposing get_definition()-level secrets).
 
 Transactions are the caller's job: connections are opened with
-autocommit=False and every (instance, source) collection unit commits its
-data + cursor atomically. All SQL through these connections must be
-parameterized (see sqlgen.py) — never interpolate values.
+autocommit=False. All SQL through these connections must be parameterized —
+never interpolate values.
 """
 from typing import Any, Optional
 
@@ -34,8 +37,7 @@ def connect(connection_name: str, client: Optional[Any] = None,
             statement_timeout_ms: int = DEFAULT_STATEMENT_TIMEOUT_MS) -> Any:
     """Open a psycopg2 connection (autocommit=False) to the Story database."""
     if not connection_name:
-        raise ValueError('Story is not configured: no PostgreSQL connection selected '
-                         "(plugin settings → Story → 'Story PostgreSQL Connection')")
+        raise ValueError('No agents-audit PostgreSQL connection selected in plugin settings')
     import psycopg2
     kwargs = resolve_connection_params(connection_name, client=client)
     conn = psycopg2.connect(

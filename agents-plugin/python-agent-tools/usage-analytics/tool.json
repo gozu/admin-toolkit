@@ -1,9 +1,0 @@
-/* Agent tool: Story (Postgres-persisted) usage analytics across the fleet */
-{
-    "meta": {
-        "label": "Admin Toolkit: Usage analytics",
-        "description": "Persistent daily usage analytics from Story: active users, event counts, licenses, inventory — across all instances the hub collects.",
-        "icon": "icon-bar-chart"
-    },
-    "params": []
-}

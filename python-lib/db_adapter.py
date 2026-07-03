@@ -36,45 +36,25 @@ def load_dbhealth_config() -> DbHealthConfig:
 
 @dataclass(frozen=True)
 class StoryConfig:
-    """Plugin-level configuration for the Story analytics layer.
+    """Postgres connection for the story schema (agents audit trail).
 
-    connection_name is None when Story is disabled (no Postgres connection
-    selected). All hub-side Story code (provisioning, collection, routes)
-    takes its knobs from here — plugin settings are the single source.
+    The Story analytics feature was removed; the agents audit timeline still
+    reads story.agent_actions through this connection. connection_name is
+    None when no Postgres connection is selected in plugin settings.
     """
     connection_name: Optional[str] = None
-    mail_channel: str = ''
-    alert_email: str = 'alex.kaos@dataiku.com'
-    audit_lookback_days: int = 14
-    collect_hour: int = 2
-    run_as_user: str = ''
-    inventory_items_retention_days: int = 30
 
 
 def load_story_config(client=None) -> StoryConfig:
-    """Read Story config from plugin settings. Pass a client to reuse one."""
+    """Read the story-database connection from plugin settings."""
     try:
         if client is None:
             import dataiku
             client = dataiku.api_client()
         raw = client.get_plugin('admin-toolkit').get_settings().get_raw()
         config = raw.get('config', {}) if isinstance(raw, dict) else {}
-
-        def _int(key, default):
-            try:
-                value = config.get(key)
-                return int(value) if value is not None and value != '' else default
-            except (TypeError, ValueError):
-                return default
-
         return StoryConfig(
             connection_name=(config.get('story_postgres_connection') or '').strip() or None,
-            mail_channel=(config.get('story_mail_channel') or '').strip(),
-            alert_email=(config.get('story_alert_email') or '').strip() or 'alex.kaos@dataiku.com',
-            audit_lookback_days=_int('story_audit_lookback_days', 14),
-            collect_hour=_int('story_collect_hour', 2),
-            run_as_user=(config.get('story_run_as_user') or '').strip(),
-            inventory_items_retention_days=_int('story_inventory_items_retention_days', 30),
         )
     except Exception as exc:
         _log.debug("Could not load story config: %s", exc)

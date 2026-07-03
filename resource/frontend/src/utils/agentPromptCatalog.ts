@@ -138,7 +138,7 @@ export const PROMPT_CATALOGS: Record<string, AgentCatalog> = {
         prompts: [
           { id: 'llm-inventory', label: 'LLM Mesh inventory', prompt: 'Inspect the LLM Mesh on this host (config_inspect domain=llms): which connections and models are configured, and are they healthy?' },
           { id: 'llm-cost', label: 'LLM cost check', prompt: 'What are we spending on LLMs? Pull compute_cost grouped by context type and highlight LLM usage cost, per project if possible.' },
-          { id: 'llm-usage', label: 'Who uses the LLM Mesh?', prompt: 'Which projects and users drive LLM Mesh usage on this host? Use compute_cost and usage analytics; cite the span the data covers.' },
+          { id: 'llm-usage', label: 'Who uses the LLM Mesh?', prompt: 'Which projects and users drive LLM Mesh usage on this host? Use compute_cost; cite the span the data covers.' },
         ],
       },
     ],
@@ -209,17 +209,6 @@ export const PROMPT_CATALOGS: Record<string, AgentCatalog> = {
           { id: 'cap-k8s', label: 'K8s capability', prompt: 'What Kubernetes capability does this fleet have? Clusters, states, what runs containerized today — and what a team planning heavy container workloads should know.' },
           { id: 'cap-db', label: 'Runtime DB capacity', prompt: 'How big is the runtime database and how fast is it growing (bloat, biggest tables)? Will it become a problem?' },
           { id: 'cap-bottleneck', label: 'Next bottleneck', prompt: 'Based on everything observable — health, storage, DB, cost — what is the next bottleneck this instance will hit, and what would you do about it?' },
-        ],
-      },
-      {
-        id: 'licensing',
-        title: 'Licensing & users',
-        blurb: 'Seats, profiles and user activity.',
-        eduId: 'tool.usage_analytics',
-        prompts: [
-          { id: 'lic-seats', label: 'License utilization', prompt: 'Pull license/seat analytics: how many seats do we have, how many are actually used, what profiles? Are we over- or under-licensed?' },
-          { id: 'lic-active', label: 'Really-active users', prompt: 'How many users are genuinely active (not just provisioned)? Compare user-activity analytics with adoption metrics and reconcile the two.' },
-          { id: 'lic-inventory', label: 'Instance inventory', prompt: 'Pull the persistent inventory analytics: what does the fleet look like over time — projects, users, datasets? Any notable inflection points?' },
         ],
       },
     ],

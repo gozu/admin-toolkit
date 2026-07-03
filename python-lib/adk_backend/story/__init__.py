@@ -1,6 +1,5 @@
-"""Story — Postgres-persisted, scheduled analytics (experimental).
+"""Story database access (residual).
 
-Pure-logic package: nothing here may import flask (or any request-scoped
-toolkit module) at module level, so the python-runnables/ macros can import
-it and the tests can run without DSS.
+The Story analytics feature was removed; only db.py remains, kept because the
+agents audit timeline reads story.agent_actions from the same Postgres.
 """

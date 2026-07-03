@@ -13,7 +13,7 @@ Does, in order:
   2. ensure code env plugin_admin-toolkit-agents_managed + install packages
   3. plugin settings: codeEnvName (kernel env resolution reads ONLY this) + params
      (backend_url, default_llm_id, optional passwords; enable_red_actions stays False)
-  4. ensure the ops project (containerMode NONE) + 12 tool instances + 3 agent instances
+  4. ensure the ops project (containerMode NONE) + 11 tool instances + 3 agent instances
   5. smoke: list-hosts probe + config-inspect through the real tool runtime
 """
 

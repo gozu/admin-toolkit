@@ -192,12 +192,6 @@ export interface ParsedData {
   // Agents chat loads on demand per conversation (noLoadGlyph); declared only
   // to satisfy the registry/lifecycle contract.
   agentsLoading?: Lifecycle;
-  // Story pages load on mount from storyStore (noLoadGlyph); declared only to
-  // satisfy the registry/lifecycle contract.
-  storySetupLoading?: Lifecycle;
-  storyUserActivityLoading?: Lifecycle;
-  storyLicensesLoading?: Lifecycle;
-  storyInventoryLoading?: Lifecycle;
   pythonVersionCounts?: Record<string, number>;
   rVersionCounts?: Record<string, number>;
   totalEnvCount?: number;
@@ -321,10 +315,6 @@ export type PageId =
   | 'image-cleaner'
   | 'llm-audit'
   | 'k8s-insights'
-  | 'story-setup'
-  | 'story-user-activity'
-  | 'story-licenses'
-  | 'story-inventory'
   | 'settings'
   | 'feedback'
   | 'agents';

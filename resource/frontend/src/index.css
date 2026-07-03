@@ -987,6 +987,66 @@ h1, h2, h3, h4 {
   margin: 1rem 0;
 }
 
+.ai-analysis-markdown h4,
+.ai-analysis-markdown h5,
+.ai-analysis-markdown h6 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0.6rem 0 0.25rem;
+  color: var(--text-secondary);
+}
+
+/* display:block lets a wide table scroll inside the chat column instead of
+   blowing out the layout */
+.ai-analysis-markdown table {
+  display: block;
+  max-width: 100%;
+  width: fit-content;
+  overflow-x: auto;
+  margin: 0.6rem 0;
+  border-collapse: collapse;
+  font-size: 0.85em;
+  line-height: 1.45;
+}
+
+.ai-analysis-markdown th {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ai-analysis-markdown th,
+.ai-analysis-markdown td {
+  border: 1px solid var(--border-default);
+  padding: 0.3rem 0.6rem;
+  vertical-align: top;
+  color: var(--text-secondary);
+}
+
+.ai-analysis-markdown tbody tr:nth-child(even) {
+  background-color: color-mix(in srgb, var(--bg-tertiary) 45%, transparent);
+}
+
+.ai-analysis-markdown a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.ai-analysis-markdown a:hover {
+  text-decoration-color: var(--accent);
+}
+
+.ai-analysis-markdown blockquote {
+  border-left: 3px solid var(--border-default);
+  margin: 0.5rem 0;
+  padding: 0.1rem 0 0.1rem 0.75rem;
+  color: var(--text-muted);
+}
+
 /* =============================================================================
    Syntax Highlighting Classes
    ============================================================================= */

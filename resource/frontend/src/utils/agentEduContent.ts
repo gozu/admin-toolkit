@@ -182,10 +182,6 @@ export const EDU: Record<string, EduEntry> = {
     title: 'storage_footprint',
     body: ['Project storage totals, largest projects, and inactive+large cleanup candidates. A heavy scan — may report scan_running while warming.'],
   },
-  'tool.usage_analytics': {
-    title: 'usage_analytics',
-    body: ['Persistent Story analytics: user activity, event counts, licenses, inventory — trends that outlive audit-log retention.'],
-  },
   'tool.k8s_health': {
     title: 'k8s_health',
     body: ['Kubernetes clusters for a host: states plus a reachability sweep; can run a deep audit of one cluster.'],

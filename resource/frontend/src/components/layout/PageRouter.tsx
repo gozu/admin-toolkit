@@ -75,18 +75,6 @@ const LlmAuditPage = lazy(() =>
 const K8sInsightsLazy = lazy(() =>
   import('../K8sInsights').then((m) => ({ default: m.K8sInsights })),
 );
-const StorySetupPageLazy = lazy(() =>
-  import('../pages/story/StorySetupPage').then((m) => ({ default: m.StorySetupPage })),
-);
-const StoryUserActivityPageLazy = lazy(() =>
-  import('../pages/story/StoryUserActivityPage').then((m) => ({ default: m.StoryUserActivityPage })),
-);
-const StoryLicensesPageLazy = lazy(() =>
-  import('../pages/story/StoryLicensesPage').then((m) => ({ default: m.StoryLicensesPage })),
-);
-const StoryInventoryPageLazy = lazy(() =>
-  import('../pages/story/StoryInventoryPage').then((m) => ({ default: m.StoryInventoryPage })),
-);
 const AgentsPageLazy = lazy(() =>
   import('../pages/AgentsPage').then((m) => ({ default: m.AgentsPage })),
 );
@@ -176,14 +164,6 @@ function renderPage(activePage: PageId): React.ReactNode {
       return <LlmAuditPage />;
     case 'k8s-insights':
       return <K8sInsightsLazy />;
-    case 'story-setup':
-      return <StorySetupPageLazy />;
-    case 'story-user-activity':
-      return <StoryUserActivityPageLazy />;
-    case 'story-licenses':
-      return <StoryLicensesPageLazy />;
-    case 'story-inventory':
-      return <StoryInventoryPageLazy />;
     case 'agents':
       return <AgentsPageLazy />;
     case 'settings':

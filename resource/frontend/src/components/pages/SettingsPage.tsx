@@ -27,11 +27,6 @@ export function SettingsPage() {
     loadFromStorage<string>(SELECTED_MAIL_CHANNEL_STORAGE_KEY, ''),
   );
 
-  const [showExperimental, setShowExperimental] = useToggleFlag(
-    SHOW_EXPERIMENTAL_STORAGE_KEY,
-    'experimental-flag-changed',
-  );
-
   const [showDeprecated, setShowDeprecated] = useToggleFlag(
     SHOW_DEPRECATED_STORAGE_KEY,
     'deprecated-flag-changed',
@@ -193,27 +188,6 @@ export function SettingsPage() {
             </span>
           </div>
         )}
-      </section>
-
-      <section className="glass-card p-4 space-y-3">
-        <div>
-          <h3 className="text-lg font-semibold text-[var(--text-primary)]">Experimental Features</h3>
-          <p className="text-sm text-[var(--text-muted)]">
-            Reveals in-progress tools that are still rough — currently the Story section
-            (scheduled, Postgres-backed user activity, license and inventory analytics).
-          </p>
-        </div>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={showExperimental}
-            onChange={(e) => setShowExperimental(e.target.checked)}
-            className="h-4 w-4 accent-[var(--accent)]"
-          />
-          <span className="text-sm font-medium text-[var(--text-primary)]">
-            Show experimental features
-          </span>
-        </label>
       </section>
 
       <section className="glass-card p-4 space-y-3">

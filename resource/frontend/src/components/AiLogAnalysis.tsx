@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { fetchJson, fetchRaw } from '../utils/api';
 import { parseSseStream } from '../utils/sseStream';
 import { loadFromStorage } from '../utils/storage';
@@ -428,7 +429,7 @@ export function AiLogAnalysis({ rawLogErrors }: AiLogAnalysisProps) {
             )}
           </div>
           <div className="ai-analysis-markdown">
-            <ReactMarkdown>{analysis.text}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{analysis.text}</ReactMarkdown>
           </div>
         </div>
       )}

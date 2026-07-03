@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.631",
+    "version": "0.4.632",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -73,66 +73,18 @@
         },
         {
             "name": "sep_story",
-            "label": "Story (experimental)",
-            "description": "Postgres-persisted scheduled analytics (user activity, licenses, inventory) across all configured hosts. Pages appear under 'Show experimental features'.",
+            "label": "Agents Audit Database",
+            "description": "PostgreSQL connection holding the agents audit trail (story.agent_actions), written by the agents plugin and shown in the Agents audit timeline.",
             "type": "SEPARATOR"
         },
         {
             "name": "story_postgres_connection",
-            "label": "Story PostgreSQL Connection",
-            "description": "PostgreSQL connection (on this hub) where Story persists its analytics. Select (None) to disable Story.",
+            "label": "Agents Audit PostgreSQL Connection",
+            "description": "PostgreSQL connection (on this hub) where the agents plugin records its audit trail. Select (None) if the agents plugin is not in use.",
             "type": "SELECT",
             "getChoicesFromPython": true,
             "mandatory": false,
             "defaultValue": ""
-        },
-        {
-            "name": "story_mail_channel",
-            "label": "Story Mail Channel ID",
-            "description": "DSS messaging channel ID used by the Story failure reporter. Leave empty to auto-select the first available mail channel.",
-            "type": "STRING",
-            "mandatory": false,
-            "defaultValue": ""
-        },
-        {
-            "name": "story_alert_email",
-            "label": "Story Alert Email",
-            "description": "Recipient of the failure email sent when any Story collection scenario fails at any level.",
-            "type": "STRING",
-            "mandatory": false,
-            "defaultValue": "alex.kaos@dataiku.com"
-        },
-        {
-            "name": "story_audit_lookback_days",
-            "label": "Story Audit Lookback (days)",
-            "description": "How far back the audit aggregation looks on each run. Days already finalized (at or before the stored cursor) are never rewritten.",
-            "type": "INT",
-            "mandatory": false,
-            "defaultValue": 14
-        },
-        {
-            "name": "story_collect_hour",
-            "label": "Story Collection Hour (0-23)",
-            "description": "Server-timezone hour for the daily 'Story: collect analytics' scenario trigger.",
-            "type": "INT",
-            "mandatory": false,
-            "defaultValue": 2
-        },
-        {
-            "name": "story_run_as_user",
-            "label": "Story Scenario Run-As User",
-            "description": "Optional DSS login the Story scenario runs as. Leave empty to keep the scenario's default identity.",
-            "type": "STRING",
-            "mandatory": false,
-            "defaultValue": ""
-        },
-        {
-            "name": "story_inventory_items_retention_days",
-            "label": "Story Inventory Item Retention (days)",
-            "description": "Item-level inventory rows older than this are pruned. Per-day counts are kept forever.",
-            "type": "INT",
-            "mandatory": false,
-            "defaultValue": 30
         },
         {
             "name": "sep_outreach_thresholds",

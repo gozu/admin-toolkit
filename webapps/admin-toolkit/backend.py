@@ -190,7 +190,6 @@ from adk_backend.routes.overview import bp as overview_bp
 from adk_backend.routes.plugins import bp as plugins_bp
 from adk_backend.routes.projects import bp as projects_bp
 from adk_backend.routes.settings import bp as settings_bp
-from adk_backend.routes.story import bp as story_bp
 
 app.register_blueprint(adoption_bp)
 app.register_blueprint(agents_bp)
@@ -219,7 +218,6 @@ app.register_blueprint(overview_bp)
 app.register_blueprint(plugins_bp)
 app.register_blueprint(projects_bp)
 app.register_blueprint(settings_bp)
-app.register_blueprint(story_bp)
 
 # Warm the heavy caches in the background so the first page load after a
 # backend (re)start hits hot data instead of paying the full scan cost.

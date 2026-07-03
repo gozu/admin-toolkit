@@ -108,15 +108,6 @@ export const MODULES: readonly ModuleDefinition[] = [
   { id: 'llm-audit', label: 'Model Audit', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['llm', 'model', 'audit', 'pricing'], reachability: 'always', lifecycle: { fields: ['llmAuditLoading'] } },
   { id: 'k8s-insights', label: 'K8s Insights', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['kubernetes', 'k8s', 'eks', 'cluster', 'gpu', 'cost', 'bin pack', 'autoscaler', 'nodes', 'pods', 'daemonset', 'findings', 'rules'], streamEndpoint: '/api/k8s-insights/stream', reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['k8sInsightsLoading'] } },
 
-  // STORY (experimental) — Postgres-persisted scheduled analytics. All pages
-  // load on mount from storyStore (noLoadGlyph keeps them out of the global
-  // "Analysis complete" aggregate) and stay hidden until the "Show
-  // experimental features" toggle is on.
-  { id: 'story-setup', label: 'Story Setup', navLabel: 'Setup', section: 'Story', navSection: 'STORY', keywords: ['story', 'setup', 'provision', 'scenario', 'postgres', 'collect', 'schedule', 'reporter'], experimental: true, reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['storySetupLoading'] } },
-  { id: 'story-user-activity', label: 'Story User Activity', navLabel: 'User Activity', section: 'Story', navSection: 'STORY', keywords: ['story', 'activity', 'dau', 'users', 'viewing', 'developing', 'audit', 'events', 'engagement'], experimental: true, reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['storyUserActivityLoading'] } },
-  { id: 'story-licenses', label: 'Story Licenses', navLabel: 'Licenses', section: 'Story', navSection: 'STORY', keywords: ['story', 'license', 'profiles', 'caps', 'utilization', 'expiry', 'seats'], experimental: true, reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['storyLicensesLoading'] } },
-  { id: 'story-inventory', label: 'Story Inventory', navLabel: 'Inventory', section: 'Story', navSection: 'STORY', keywords: ['story', 'inventory', 'objects', 'datasets', 'recipes', 'scenarios', 'trends', 'growth'], experimental: true, reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['storyInventoryLoading'] } },
-
   // AGENTS — conversational ops surface over the agents plugin (LLM Mesh
   // proxy). Loads per conversation, never through the startup ritual.
   { id: 'agents', label: 'Agents', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'chat', 'ops', 'actuator', 'triage', 'plan', 'approve', 'autonomous', 'ai'], reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
@@ -146,7 +137,6 @@ export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'PLUGINS', items: ['plugins-installed', 'plugins'] },
   { title: 'CODE ENVS', items: ['code-envs', 'code-envs-cleaner', 'code-envs-comparison'] },
   { title: 'AI COMPUTE', items: ['container-execs', 'image-cleaner', 'cs-template-replacement', 'llm-audit', 'k8s-insights'] },
-  { title: 'STORY', items: ['story-setup', 'story-user-activity', 'story-licenses', 'story-inventory'] },
   { title: 'MISC', items: ['settings', 'logs', 'sanity-check', 'db-health', 'report', 'feedback'] },
 ] as const;
 

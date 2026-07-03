@@ -27,7 +27,6 @@ const SECTION_ICONS: Record<string, string> = {
   Plugins: '\u2692',
   'Code Envs': '\u2318',
   'AI Compute': '\u25A3',
-  Story: '\u2726',
   Misc: '\u2699',
 };
 

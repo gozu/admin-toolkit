@@ -1,4 +1,5 @@
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { ActivityChips } from './ActivityChips';
 import { PlanCard } from './PlanCard';
 import { ExecutionCard } from './ExecutionCard';
@@ -42,7 +43,7 @@ export function MessageView({
         if (segment.type === 'text') {
           return (
             <div key={i} className="ai-analysis-markdown text-sm text-[var(--text-primary)]">
-              <ReactMarkdown>{segment.text}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{segment.text}</ReactMarkdown>
             </div>
           );
         }

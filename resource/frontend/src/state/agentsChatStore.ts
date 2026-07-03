@@ -5,6 +5,7 @@
 import { fetchRaw } from '../utils/api';
 import { parseSseStream } from '../utils/sseStream';
 import { createSyncStore } from './createSyncStore';
+import { subscribeSessionEpoch } from './sessionCache';
 
 export interface AgentInfo {
   id: string;
@@ -103,6 +104,73 @@ export const agentsChatStore = createSyncStore<AgentsChatState>(
   { conversations: {}, selectedAgentId: '' },
   { sessionScoped: true },
 );
+
+// Chats survive a hard refresh via localStorage; the in-app Refresh (session
+// epoch) keeps its clear-everything semantics, so the epoch bump also drops
+// the snapshot.
+const STORAGE_KEY = 'admin-toolkit:agentsChat';
+const STORAGE_VERSION = 1;
+
+/** A hard refresh kills any in-flight stream: stop spinners, drop a dangling
+ * empty assistant turn, and never rehydrate `streaming: true` (the abort
+ * controllers don't survive a reload). */
+function sanitizeStored(state: AgentsChatState): AgentsChatState {
+  const conversations: Record<string, Conversation> = {};
+  for (const [id, conv] of Object.entries(state.conversations || {})) {
+    let messages = conv.messages || [];
+    const last = messages[messages.length - 1];
+    if (conv.streaming && last?.role === 'assistant' && !last.segments?.length) {
+      messages = messages.slice(0, -1);
+    }
+    conversations[id] = {
+      ...conv,
+      messages: messages.map((m) => ({
+        ...m,
+        segments: (m.segments || []).map((s) =>
+          s.type === 'activity'
+            ? { ...s, items: s.items.map((it) => ({ ...it, running: false })) }
+            : s,
+        ),
+      })),
+      streaming: false,
+    };
+  }
+  return { conversations, selectedAgentId: state.selectedAgentId || '' };
+}
+
+function readStored(): AgentsChatState | null {
+  try {
+    const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { v?: number; state?: AgentsChatState };
+    if (parsed?.v !== STORAGE_VERSION || typeof parsed.state?.conversations !== 'object') return null;
+    return sanitizeStored(parsed.state);
+  } catch {
+    return null;
+  }
+}
+
+function persistStored(state: AgentsChatState): void {
+  // Skip mid-stream frames (per-token writes would jank); the final state
+  // lands when the stream flips `streaming` back to false.
+  if (Object.values(state.conversations).some((c) => c.streaming)) return;
+  try {
+    globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify({ v: STORAGE_VERSION, state }));
+  } catch {
+    // best effort — quota exceeded or storage unavailable
+  }
+}
+
+const storedState = readStored();
+if (storedState) agentsChatStore.set(storedState);
+agentsChatStore.subscribe(() => persistStored(agentsChatStore.get()));
+subscribeSessionEpoch(() => {
+  try {
+    globalThis.localStorage?.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+});
 
 export function selectAgent(agentId: string): void {
   agentsChatStore.patch({ selectedAgentId: agentId });

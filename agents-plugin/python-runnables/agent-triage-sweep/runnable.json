@@ -1,7 +1,7 @@
 {
     "meta": {
         "label": "Agents: daily health triage sweep",
-        "description": "Deterministically scores every configured DSS host with the toolkit health score, drafts LLM recommendations for hosts under the threshold, persists to story.agent_triage_daily, and emails a digest. RAISES if any host errors, so the scheduling scenario's failure reporter fires.",
+        "description": "Deterministically scores every configured DSS host with the toolkit health score, drafts LLM recommendations for hosts under the threshold, persists to agents.agent_triage_daily, and emails a digest. RAISES if any host errors, so the scheduling scenario's failure reporter fires.",
         "icon": "icon-stethoscope"
     },
     "impersonate": false,

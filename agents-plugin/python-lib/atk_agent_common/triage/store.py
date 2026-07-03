@@ -1,17 +1,19 @@
-"""Persistence for daily triage results → story.agent_triage_daily.
+"""Persistence for daily triage results → agents.agent_triage_daily.
 
-Same Postgres connection Story uses (plugin param `triage_connection`), same
-credential path as audit.py. One row per (day, host) per run; re-runs the same
-day overwrite (idempotent daily scenario)."""
+Same Postgres connection as the audit trail (plugin param
+`triage_connection`), same credential path as audit.py. One row per
+(day, host) per run; re-runs the same day overwrite (idempotent daily
+scenario)."""
 
 import json
 import logging
 
+from .. import audit
+
 logger = logging.getLogger('atk-agents')
 
-_SCHEMA_SQL = """
-CREATE SCHEMA IF NOT EXISTS story;
-CREATE TABLE IF NOT EXISTS story.agent_triage_daily (
+_SCHEMA_SQL = audit._MIGRATE_LEGACY_SQL + """
+CREATE TABLE IF NOT EXISTS agents.agent_triage_daily (
     day DATE NOT NULL,
     host_id TEXT NOT NULL,
     score INTEGER,
@@ -30,7 +32,6 @@ CREATE TABLE IF NOT EXISTS story.agent_triage_daily (
 def persist_sweep(connection_name, rows, run_id, llm_id=None):
     """Upsert one row per host for today. `rows` = sweep rows (+ optional
     'recommendation' added by the runnable). Returns count written."""
-    from .. import audit
     conn = audit._connect(connection_name)
     written = 0
     try:
@@ -38,7 +39,7 @@ def persist_sweep(connection_name, rows, run_id, llm_id=None):
             cur.execute(_SCHEMA_SQL)
             for row in rows:
                 cur.execute(
-                    'INSERT INTO story.agent_triage_daily '
+                    'INSERT INTO agents.agent_triage_daily '
                     '(day, host_id, score, status, category_scores, top_issues, '
                     ' recommendation, llm_id, run_id) '
                     'VALUES (CURRENT_DATE,%s,%s,%s,%s,%s,%s,%s,%s) '

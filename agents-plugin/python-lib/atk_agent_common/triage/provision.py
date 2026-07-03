@@ -1,9 +1,9 @@
 """Daily triage scenario provisioning — 'Agents — Daily health triage'.
 
-Copies the proven Story provisioning pattern exactly (adk_backend/story/
-provision.py): idempotent ensure-or-repair, one runnable step with
-proceedOnFailure=False, one daily trigger, one END_OF_RUN failure reporter,
-save → re-fetch → verify with a fallback reporter shape.
+Idempotent ensure-or-repair (the pattern proven by the toolkit's removed
+Story feature): one runnable step with proceedOnFailure=False, one daily
+trigger, one END_OF_RUN failure reporter, save → re-fetch → verify with a
+fallback reporter shape.
 """
 
 import logging
@@ -20,7 +20,7 @@ REPORTER_MESSAGE = (
     'The daily agent health triage failed.\n\n'
     'Scenario: ${scenarioName}\nOutcome: ${outcome}\n\n'
     'Check the scenario run log; per-host rows (when written) are in '
-    'story.agent_triage_daily.'
+    'agents.agent_triage_daily.'
 )
 
 
@@ -144,7 +144,7 @@ def ensure_triage_scenario(project, channel_id, recipient, hour=7, reporter=None
 
 def provision_all(client, settings, hour=7):
     """settings = resolved plugin settings dict (config.resolve). Returns the
-    same {'ok', 'steps', 'reporterVerified', 'reporterShape'} contract Story uses."""
+    same {'ok', 'steps', 'reporterVerified', 'reporterShape'} contract as before."""
     steps = []
     if not settings.get('triage_connection'):
         steps.append({'step': 'config', 'status': 'error',

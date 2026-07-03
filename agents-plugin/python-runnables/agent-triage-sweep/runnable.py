@@ -6,7 +6,7 @@ Flow per run:
   2. deterministic sweep — health.py scores every host, no LLM in ranking;
   3. one LLM Mesh completion per flagged host drafts a recommendation,
      grounded ONLY in that host's issues + signals;
-  4. persist rows to story.agent_triage_daily (upsert on day+host);
+  4. persist rows to agents.agent_triage_daily (upsert on day+host);
   5. email a digest via the configured mail channel;
   6. RAISE if any host errored, so the scenario reporter fires.
 

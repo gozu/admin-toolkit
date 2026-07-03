@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit-agents",
-    "version": "0.1.009",
+    "version": "0.1.010",
     "meta": {
         "label": "Admin Toolkit Agents",
         "description": "AI-native field ops on the Dataiku agentic framework: agent tools + agents over the Admin Toolkit's fleet-aware sensor APIs (health, adoption, cost, config) and gated admin actions.",
@@ -102,7 +102,7 @@
         {
             "name": "triage_connection",
             "label": "Triage PostgreSQL connection",
-            "description": "Postgres connection where daily triage results persist (same connection the toolkit's Story uses). Empty disables the triage loop.",
+            "description": "Postgres connection where daily triage results and the agent-action audit trail persist (same connection as the toolkit's Agents Audit setting). Empty disables the triage loop.",
             "type": "STRING",
             "mandatory": false,
             "defaultValue": ""

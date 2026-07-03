@@ -1,9 +1,10 @@
-"""Agent-action audit trail → Postgres (same connection Story uses).
+"""Agent-action audit trail → Postgres (plugin param `triage_connection`).
 
-Every execute-admin-action call lands one row in story.agent_actions —
+Every execute-admin-action call lands one row in agents.agent_actions —
 success or failure — before the result is returned to the agent. Connection
-resolution mirrors adk_backend/story/db.py (client.get_connection().get_info(),
-the credential path proven for the dataiku service account).
+resolution mirrors the toolkit's adk_backend/agents_db.py
+(client.get_connection().get_info(), the credential path proven for the
+dataiku service account).
 """
 
 import json
@@ -11,9 +12,25 @@ import logging
 
 logger = logging.getLogger('atk-agents')
 
-_SCHEMA_SQL = """
-CREATE SCHEMA IF NOT EXISTS story;
-CREATE TABLE IF NOT EXISTS story.agent_actions (
+# One-time move of tables written under the removed Story feature's schema.
+# Runs in every schema-ensure; the guards make it a no-op once migrated.
+_MIGRATE_LEGACY_SQL = """
+CREATE SCHEMA IF NOT EXISTS agents;
+DO $$
+BEGIN
+    IF to_regclass('story.agent_actions') IS NOT NULL
+       AND to_regclass('agents.agent_actions') IS NULL THEN
+        EXECUTE 'ALTER TABLE story.agent_actions SET SCHEMA agents';
+    END IF;
+    IF to_regclass('story.agent_triage_daily') IS NOT NULL
+       AND to_regclass('agents.agent_triage_daily') IS NULL THEN
+        EXECUTE 'ALTER TABLE story.agent_triage_daily SET SCHEMA agents';
+    END IF;
+END $$;
+"""
+
+_SCHEMA_SQL = _MIGRATE_LEGACY_SQL + """
+CREATE TABLE IF NOT EXISTS agents.agent_actions (
     id BIGSERIAL PRIMARY KEY,
     ts TIMESTAMPTZ NOT NULL DEFAULT now(),
     agent TEXT NOT NULL,
@@ -62,7 +79,7 @@ def record(connection_name, agent, llm_id, host, action, target, params, token_h
         with conn.cursor() as cur:
             cur.execute(_SCHEMA_SQL)
             cur.execute(
-                'INSERT INTO story.agent_actions '
+                'INSERT INTO agents.agent_actions '
                 '(agent, llm_id, host, action, target, params, token_hash, status, result_snippet) '
                 'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id',
                 (agent, llm_id, host, action, json.dumps(target, default=str),

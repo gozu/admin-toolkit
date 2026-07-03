@@ -75,7 +75,7 @@ configuration, deployment, testing, and the traps we hit so you don't have to.
             ├── action_items.py  propose_action_items (validation only)
             ├── actuator.py      plan/execute + per-action planners/executors
             ├── confirm.py       HMAC confirm tokens (mint/verify)
-            ├── audit.py         story.agent_actions audit rows
+            ├── audit.py         agents.agent_actions audit rows
             ├── shaping.py       output budget (~12KB cap per tool result)
             ├── health.py        exact Python port of the UI health score
             └── triage/          deterministic fleet sweep + daily scenario
@@ -500,7 +500,7 @@ Every `execute_admin_action` that gets past the kill-switch writes exactly one
 row — success or failure — *before* the result returns to the agent:
 
 ```sql
-CREATE TABLE IF NOT EXISTS story.agent_actions (
+CREATE TABLE IF NOT EXISTS agents.agent_actions (
     id BIGSERIAL PRIMARY KEY,
     ts TIMESTAMPTZ NOT NULL DEFAULT now(),
     agent TEXT NOT NULL,        -- 'ops-actuator'
@@ -515,8 +515,8 @@ CREATE TABLE IF NOT EXISTS story.agent_actions (
 );
 ```
 
-Connection = the plugin's `triage_connection` (same Postgres the Story layer
-uses). If the audit write fails, the action result carries `auditWarning` —
+Connection = the plugin's `triage_connection` (same Postgres as the toolkit's
+Agents Audit setting). If the audit write fails, the action result carries `auditWarning` —
 the action still ran; check backend logs.
 
 The webapp reads it via `GET /api/agents/actions` (`@local_only`, limit ≤500,
@@ -761,7 +761,7 @@ tolerance ±2, Δ=0.00 in every category on tam-global at last check.
 Daily loop: `python-runnables/agent-triage-sweep` (global admin) — deterministic
 sweep (`triage/sweep.py`, no LLM in the ranking) → one Mesh completion per
 flagged host drafts a grounded recommendation → upsert into
-`story.agent_triage_daily` → digest email → raises on host errors so the
+`agents.agent_triage_daily` → digest email → raises on host errors so the
 scenario's failure reporter fires. Provisioning is ensure-or-repair (daily
 trigger, END_OF_RUN reporter, save→refetch→verify).
 
@@ -780,7 +780,7 @@ trigger, END_OF_RUN reporter, save→refetch→verify).
 | `default_llm_id` | Mesh LLM for agents when the instance doesn't set one. |
 | `enable_red_actions` | **Master kill-switch** for execute-admin-action. Default false. Only a human admin flips it. |
 | `verify_tls` / `http_timeout_s` / `heavy_timeout_s` | Client knobs (default true / 30 / 420). |
-| `triage_connection` | Postgres connection for triage rows + the audit trail (same as Story's). |
+| `triage_connection` | Postgres connection for triage rows + the audit trail (same as the toolkit's Agents Audit setting). |
 | `triage_score_threshold` / `triage_mail_channel` / `triage_recipient` | Daily sweep knobs. |
 
 Every setting has an `ATK_AGENTS_<UPPERCASE>` env override (`config.py`), so the

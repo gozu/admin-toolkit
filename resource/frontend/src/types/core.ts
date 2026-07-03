@@ -189,6 +189,9 @@ export interface ParsedData {
   // Static action page — never driven through a load ritual; declared only to
   // satisfy the registry/lifecycle contract (mirrors reportLoading/dbHealthLoading).
   feedbackLoading?: Lifecycle;
+  // Agents chat loads on demand per conversation (noLoadGlyph); declared only
+  // to satisfy the registry/lifecycle contract.
+  agentsLoading?: Lifecycle;
   // Story pages load on mount from storyStore (noLoadGlyph); declared only to
   // satisfy the registry/lifecycle contract.
   storySetupLoading?: Lifecycle;
@@ -323,7 +326,8 @@ export type PageId =
   | 'story-licenses'
   | 'story-inventory'
   | 'settings'
-  | 'feedback';
+  | 'feedback'
+  | 'agents';
 
 export type AppMode = 'landing' | 'single' | 'comparison' | 'tools' | 'settings';
 

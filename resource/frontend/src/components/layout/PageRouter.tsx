@@ -87,6 +87,9 @@ const StoryLicensesPageLazy = lazy(() =>
 const StoryInventoryPageLazy = lazy(() =>
   import('../pages/story/StoryInventoryPage').then((m) => ({ default: m.StoryInventoryPage })),
 );
+const AgentsPageLazy = lazy(() =>
+  import('../pages/AgentsPage').then((m) => ({ default: m.AgentsPage })),
+);
 
 function LoadingSpinner() {
   return (
@@ -181,6 +184,8 @@ function renderPage(activePage: PageId): React.ReactNode {
       return <StoryLicensesPageLazy />;
     case 'story-inventory':
       return <StoryInventoryPageLazy />;
+    case 'agents':
+      return <AgentsPageLazy />;
     case 'settings':
       return <SettingsPage />;
     case 'feedback':

@@ -35,6 +35,16 @@ const insightsIcon = (
 );
 
 const icons: Record<string, ReactNode> = {
+  agents: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="5" y="7" width="14" height="11" rx="2.5" />
+      <path d="M12 7V4" />
+      <circle cx="12" cy="3" r="1" fill="currentColor" stroke="none" />
+      <circle cx="9.25" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="14.75" cy="12" r="1" fill="currentColor" stroke="none" />
+      <path d="M9.5 15.25h5" />
+    </svg>
+  ),
   'mission-control': (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="9" />

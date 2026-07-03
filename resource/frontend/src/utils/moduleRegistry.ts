@@ -117,6 +117,10 @@ export const MODULES: readonly ModuleDefinition[] = [
   { id: 'story-licenses', label: 'Story Licenses', navLabel: 'Licenses', section: 'Story', navSection: 'STORY', keywords: ['story', 'license', 'profiles', 'caps', 'utilization', 'expiry', 'seats'], experimental: true, reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['storyLicensesLoading'] } },
   { id: 'story-inventory', label: 'Story Inventory', navLabel: 'Inventory', section: 'Story', navSection: 'STORY', keywords: ['story', 'inventory', 'objects', 'datasets', 'recipes', 'scenarios', 'trends', 'growth'], experimental: true, reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['storyInventoryLoading'] } },
 
+  // AGENTS — conversational ops surface over the agents plugin (LLM Mesh
+  // proxy). Loads per conversation, never through the startup ritual.
+  { id: 'agents', label: 'Agents', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'chat', 'ops', 'actuator', 'triage', 'plan', 'approve', 'autonomous', 'ai'], reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
+
   // MISC
   { id: 'settings', label: 'Settings', section: 'Misc', navSection: 'MISC', keywords: ['settings', 'mail', 'channel', 'email', 'config', 'preferences'], reachability: 'always', lifecycle: { fields: ['settingsLoading'] } },
   { id: 'logs', label: 'Errors', section: 'Misc', navSection: 'MISC', keywords: ['log', 'error', 'exception', 'stack'], badge: 'logs', reachability: 'always', lifecycle: { fields: ['logsLoading'] } },
@@ -142,6 +146,7 @@ export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'CODE ENVS', items: ['code-envs', 'code-envs-cleaner', 'code-envs-comparison'] },
   { title: 'AI COMPUTE', items: ['container-execs', 'image-cleaner', 'cs-template-replacement', 'llm-audit', 'k8s-insights'] },
   { title: 'STORY', items: ['story-setup', 'story-user-activity', 'story-licenses', 'story-inventory'] },
+  { title: 'AGENTS', items: ['agents'] },
   { title: 'MISC', items: ['settings', 'logs', 'sanity-check', 'db-health', 'report', 'feedback'] },
 ] as const;
 

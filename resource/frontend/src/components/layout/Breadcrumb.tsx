@@ -39,6 +39,7 @@ const PAGE_SECTION_MAP: Record<PageId, SectionInfo> = {
   'story-user-activity': { label: 'Story', firstPage: 'story-setup' },
   'story-licenses': { label: 'Story', firstPage: 'story-setup' },
   'story-inventory': { label: 'Story', firstPage: 'story-setup' },
+  agents: { label: 'Agents', firstPage: 'agents' },
   settings: { label: 'Misc', firstPage: 'settings' },
   logs: { label: 'Misc', firstPage: 'settings' },
   'sanity-check': { label: 'Misc', firstPage: 'settings' },
@@ -83,6 +84,7 @@ const PAGE_LABELS: Record<PageId, string> = {
   'story-inventory': 'Inventory',
   settings: 'Settings',
   feedback: 'Feedback',
+  agents: 'Agents',
 };
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];

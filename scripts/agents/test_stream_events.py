@@ -68,9 +68,10 @@ def main():
         'Action-item batch handoff (batch aib-test0001, 1 item selected by the user).\n'
         'Plan EVERY item below — one plan_admin_action call per item, passing its item_ref '
         'verbatim. Present each plan and WAIT for my approval. Do NOT execute anything.\n\n'
-        '1. [ai-test0001] ANALYZE a story table — action=db-analyze host=local '
-        'target={"connection": "kaosdb", "table": <call db_health view=tables connection=kaosdb '
-        'ONCE and use the exact name of the smallest table>} '
+        '1. [ai-test0001] ANALYZE a runtime-DB table — action=db-analyze host=local '
+        'target={"connection": <the runtime-DB connection reported by db_health>, "table": '
+        '<call db_health view=tables ONCE (no connection argument = default runtime DB) and use '
+        'the exact name of the smallest table it lists>} '
         'item_ref={"batchId": "aib-test0001", "itemId": "ai-test0001"}'))
     kinds = [k for k, _ in events]
     print('[actuator %.0fs] events: %s' % (time.time() - t0, kinds))

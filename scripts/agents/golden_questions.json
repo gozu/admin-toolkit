@@ -14,10 +14,10 @@
       "q": "Which Claude models are available in the LLM Mesh and on which connections?",
       "expect": [
         "kaosclaude",
-        "Claude 4.8 Opus",
-        "bhavikbedrock"
+        "bhavikbedrock",
+        "opus"
       ],
-      "source": "config_inspect llms name_filter=claude"
+      "source": "config_inspect llms name_filter=claude \u2014 expect connection names + the opus family only; model versions on the connections drift (4.8 was swapped for 4-5), don't pin them"
     },
     {
       "q": "How many code environments run deprecated Python versions, and name three.",
@@ -61,9 +61,9 @@
     {
       "q": "How many builders are active and how many projects are actively worked on?",
       "expect": [
-        "135"
+        "builder"
       ],
-      "source": "adoption_metrics totals (builderCount=135; activeProjectCount is a rolling window and drifts daily, don't pin it)"
+      "source": "adoption_metrics totals \u2014 builderCount grows with project git history (135\u2192136 within days) and activeProjectCount is a rolling window: pin neither"
     },
     {
       "q": "Is Agent Hub installed on the local host and at what version?",
@@ -76,9 +76,9 @@
       "q": "Which remote hosts can this toolkit reach, and is the Admin Toolkit installed on them?",
       "expect": [
         "akaos-vm",
-        "0.4.629"
+        "0.4."
       ],
-      "source": "list_hosts probe=true"
+      "source": "list_hosts probe=true \u2014 expect the host id + a real 0.4.x toolkit version; the patch number bumps on every deploy, don't pin it"
     }
   ]
 }

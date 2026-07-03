@@ -267,7 +267,6 @@ JSON-serialized into `ToolMessage` content).
 | `config_inspect` | One config domain: `connections\|code-envs\|plugins\|llms`, `detail=health\|usage`, `name_filter`. |
 | `log_errors` | backend.log error groups; `pattern=<regex>` greps the raw tail. |
 | `storage_footprint` | Project storage totals, largest projects, inactive+large cleanup candidates. Heavy scan. |
-| `usage_analytics` | Persistent Story analytics: `user-activity\|event-counts\|licenses\|inventory`. |
 | `k8s_health` | K8s clusters: states + reachability sweep; `cluster=<id>` runs a deep audit. |
 | `db_health` | Runtime PostgreSQL health: `overview\|tables\|per-project`. |
 
@@ -763,9 +762,8 @@ Daily loop: `python-runnables/agent-triage-sweep` (global admin) — determinist
 sweep (`triage/sweep.py`, no LLM in the ranking) → one Mesh completion per
 flagged host drafts a grounded recommendation → upsert into
 `story.agent_triage_daily` → digest email → raises on host errors so the
-scenario's failure reporter fires. Provisioning copies the Story scenario
-pattern exactly (ensure-or-repair, daily trigger, END_OF_RUN reporter,
-save→refetch→verify).
+scenario's failure reporter fires. Provisioning is ensure-or-repair (daily
+trigger, END_OF_RUN reporter, save→refetch→verify).
 
 ---
 

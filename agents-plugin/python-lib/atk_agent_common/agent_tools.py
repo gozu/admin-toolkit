@@ -55,9 +55,6 @@ def build_langchain_tools(client, names=None):
         'storage_footprint': (tools_impl.storage_footprint,
                               'Project storage totals, largest projects, inactive+large cleanup candidates '
                               '(host, top_n, min_size_gb). Heavy scan — may return scan_running.'),
-        'usage_analytics': (tools_impl.usage_analytics,
-                            'Persistent Story analytics (metric=user-activity|event-counts|licenses|inventory, '
-                            'host=instance filter, days). Use for trends beyond audit retention.'),
         'k8s_health': (tools_impl.k8s_health,
                        'K8s clusters for a host: states + reachability sweep; cluster=<id> runs a deep audit.'),
         'db_health': (tools_impl.db_health,

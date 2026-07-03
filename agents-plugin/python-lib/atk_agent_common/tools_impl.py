@@ -507,65 +507,6 @@ def storage_footprint(client, host='local', top_n=10, min_size_gb=0):
     return shaping.enforce_budget(out)
 
 
-# ── usage-analytics (Story) ──────────────────────────────────────────────────
-
-_STORY_METRICS = {
-    'user-activity': '/api/story/user-activity',
-    'event-counts': '/api/story/event-counts',
-    'licenses': '/api/story/licenses',
-    'inventory': '/api/story/inventory',
-}
-
-
-def _downsample(series, max_points=60):
-    if len(series) <= max_points:
-        return series
-    step = len(series) / max_points
-    return [series[int(i * step)] for i in range(max_points)]
-
-
-def usage_analytics(client, metric='user-activity', host=None, days=30):
-    """Story (Postgres-persisted) analytics. Story is hub-local: data for all
-    instances lives on the hub, filtered by instance id — `host` here selects
-    the instance_id filter, not an HTTP target."""
-    if metric not in _STORY_METRICS:
-        return {'error': {'code': 'bad-input',
-                          'message': 'metric must be one of: %s' % ', '.join(sorted(_STORY_METRICS))}}
-    status = client.get('/api/story/status')
-    if not status.get('configured') or not status.get('dbOk') or not status.get('schemaVersion'):
-        return {'error': {
-            'code': 'story-not-provisioned',
-            'message': ('Story analytics are not provisioned on this hub '
-                        '(configured=%s, dbOk=%s, schemaVersion=%s).'
-                        % (status.get('configured'), status.get('dbOk'), status.get('schemaVersion'))),
-            'remediation': ('An admin must configure the Story PostgreSQL connection in the Admin '
-                            'Toolkit plugin settings and run the "Story: collect analytics" scenario '
-                            '(Admin Toolkit → Story → Setup).'),
-        }}
-    params = {'days': days}
-    if host and host != 'local':
-        params['instance'] = host
-    try:
-        data = client.get(_STORY_METRICS[metric], params=params)
-    except ToolkitError as exc:
-        exc.remediation = exc.remediation or ('Story tables may be mid-provisioning; check the Story '
-                                              'setup page in the Admin Toolkit.')
-        raise
-    out = {'metric': metric, 'windowDays': days}
-    if metric == 'user-activity':
-        daily = data.get('days') or []
-        out['daily'] = _downsample(daily)
-        if daily:
-            actives = [d.get('active_users') or 0 for d in daily]
-            out['stats'] = {'days': len(daily), 'avgActiveUsers': round(sum(actives) / len(actives), 1),
-                            'peakActiveUsers': max(actives)}
-    elif metric == 'event-counts':
-        out['rows'] = _downsample(data.get('rows') or [], 120)
-    else:
-        out['data'] = data
-    return shaping.enforce_budget(out)
-
-
 # ── k8s-health ───────────────────────────────────────────────────────────────
 
 

@@ -121,16 +121,17 @@ def api_agents_actions():
     try:
         with conn.cursor() as cur:
             cur.execute(
-                'SELECT id, ts, agent, llm_id, host, action, target, status, result_snippet '
+                'SELECT id, ts, agent, llm_id, host, action, target, params, status, result_snippet '
                 'FROM story.agent_actions ORDER BY id DESC LIMIT %s', (limit,))
             cols = [d[0] for d in (cur.description or [])]
             rows = [dict(zip(cols, row)) for row in cur.fetchall()]
         for row in rows:
             row['ts'] = str(row.get('ts') or '')
-            try:
-                row['target'] = json.loads(row['target']) if row.get('target') else None
-            except ValueError:
-                pass
+            for field in ('target', 'params'):
+                try:
+                    row[field] = json.loads(row[field]) if row.get(field) else None
+                except ValueError:
+                    pass
         return jsonify({'available': True, 'actions': rows})
     except Exception as exc:
         # Table absent until the first executed action — normal empty state.

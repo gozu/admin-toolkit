@@ -20,6 +20,12 @@ export interface ActivityItem {
   error?: string;
 }
 
+/** Provenance ref linking a plan/execution back to a proposed action item. */
+export interface ItemRef {
+  batchId?: string;
+  itemId?: string;
+}
+
 export interface PlanCardData {
   action: string;
   host: string;
@@ -28,6 +34,7 @@ export interface PlanCardData {
   confirmToken: string;
   expiresAt: number; // epoch ms
   decision?: 'approved' | 'rejected';
+  itemRef?: ItemRef;
 }
 
 export interface ExecutionCardData {
@@ -37,13 +44,39 @@ export interface ExecutionCardData {
   auditId?: number | null;
   auditWarning?: string;
   result?: unknown;
+  target?: unknown;
+  itemRef?: ItemRef;
+}
+
+export type ActionItemRisk = 'red' | 'amber' | 'green';
+
+export interface ActionItemData {
+  id: string;
+  title: string;
+  why: string;
+  host: string;
+  risk: ActionItemRisk;
+  action: string | null;
+  target: Record<string, unknown> | null;
+  evidence: string[];
+  actionable: boolean;
+  validation: string | null;
+}
+
+export interface ActionItemsCardData {
+  batchId: string;
+  items: ActionItemData[];
+  /** Item ids already handed to the actuator (checkboxes lock afterwards). */
+  submittedIds: string[];
+  droppedCount?: number;
 }
 
 export type Segment =
   | { type: 'text'; text: string }
   | { type: 'activity'; items: ActivityItem[] }
   | { type: 'plan'; plan: PlanCardData }
-  | { type: 'execution'; execution: ExecutionCardData };
+  | { type: 'execution'; execution: ExecutionCardData }
+  | { type: 'action_items'; batch: ActionItemsCardData };
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -62,12 +95,18 @@ export interface Conversation {
 
 interface AgentsChatState {
   conversations: Record<string, Conversation>;
+  /** Store-owned so the action-item handoff can switch the visible agent. */
+  selectedAgentId: string;
 }
 
 export const agentsChatStore = createSyncStore<AgentsChatState>(
-  { conversations: {} },
+  { conversations: {}, selectedAgentId: '' },
   { sessionScoped: true },
 );
+
+export function selectAgent(agentId: string): void {
+  agentsChatStore.patch({ selectedAgentId: agentId });
+}
 
 const abortControllers = new Map<string, AbortController>();
 
@@ -153,6 +192,7 @@ function applyAgentEvent(segments: Segment[], kind: string, data: Record<string,
         plan: (data.plan as Record<string, unknown>) || {},
         confirmToken: String(data.confirm_token || ''),
         expiresAt: Date.now() + expiresIn * 1000,
+        itemRef: normalizeItemRef(data.itemRef),
       },
     });
   } else if (kind === 'execution') {
@@ -165,10 +205,65 @@ function applyAgentEvent(segments: Segment[], kind: string, data: Record<string,
         auditId: data.auditId as number | null,
         auditWarning: data.auditWarning ? String(data.auditWarning) : undefined,
         result: data.result,
+        target: data.target,
+        itemRef: normalizeItemRef(data.itemRef),
       },
     });
+  } else if (kind === 'action_items') {
+    const items = normalizeActionItems(data.items);
+    if (items.length > 0) {
+      segments.push({
+        type: 'action_items',
+        batch: {
+          batchId: String(data.batchId || `aib-${Date.now().toString(16)}`),
+          items,
+          submittedIds: [],
+          droppedCount: Number(data.droppedCount) || undefined,
+        },
+      });
+    }
   }
   return segments;
+}
+
+function normalizeItemRef(raw: unknown): ItemRef | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const ref = raw as Record<string, unknown>;
+  if (!ref.batchId && !ref.itemId) return undefined;
+  return {
+    batchId: ref.batchId ? String(ref.batchId) : undefined,
+    itemId: ref.itemId ? String(ref.itemId) : undefined,
+  };
+}
+
+/** Defensive normalization — the event payload is model-adjacent data. */
+function normalizeActionItems(raw: unknown): ActionItemData[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ActionItemData[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const item = entry as Record<string, unknown>;
+    const title = String(item.title || '').trim();
+    if (!title) continue;
+    const risk = String(item.risk || 'amber');
+    const action = item.action ? String(item.action) : null;
+    out.push({
+      id: String(item.id || `ai-${out.length}-${Date.now().toString(16)}`),
+      title,
+      why: String(item.why || ''),
+      host: String(item.host || 'local'),
+      risk: risk === 'red' || risk === 'green' ? risk : 'amber',
+      action,
+      target:
+        item.target && typeof item.target === 'object' && !Array.isArray(item.target)
+          ? (item.target as Record<string, unknown>)
+          : null,
+      evidence: Array.isArray(item.evidence) ? item.evidence.map(String).slice(0, 6) : [],
+      actionable: Boolean(item.actionable) && action !== null,
+      validation: item.validation ? String(item.validation) : null,
+    });
+  }
+  return out;
 }
 
 /** Mark a plan card approved/rejected (by confirm token) across the conversation. */
@@ -187,6 +282,96 @@ export function decidePlan(
     ),
   }));
   putConversation({ ...conv, messages });
+}
+
+/** One line of the batch handoff message the actuator receives per item. */
+function handoffLine(batchId: string, item: ActionItemData, index: number): string {
+  const ref = JSON.stringify({ batchId, itemId: item.id });
+  const head = `${index + 1}. [${item.id}] ${item.title} — action=${item.action} host=${item.host} target=${JSON.stringify(item.target)} item_ref=${ref}`;
+  const why = item.why ? `\n   why: ${item.why}` : '';
+  const evidence = item.evidence.length > 0 ? `\n   evidence: ${item.evidence.join(' | ')}` : '';
+  return head + why + evidence;
+}
+
+/**
+ * Hand checked action items to the ops-actuator: marks them submitted on the
+ * source conversation, switches the visible agent, and sends ONE synthetic
+ * message that asks the actuator to plan each item (fresh tokens + fresh blast
+ * radius — approval still happens per plan, in the actuator conversation).
+ */
+export function submitActionItemsToActuator(
+  sourceAgentId: string,
+  actuatorAgentId: string,
+  batchId: string,
+  items: ActionItemData[],
+): void {
+  const actionable = items.filter((item) => item.actionable && item.action);
+  if (actionable.length === 0) return;
+  // The actuator can only take the batch when idle — otherwise the items
+  // would be marked submitted while the message silently dropped.
+  if (getConversation(actuatorAgentId).streaming) return;
+
+  const source = getConversation(sourceAgentId);
+  const submitted = new Set(actionable.map((item) => item.id));
+  putConversation({
+    ...source,
+    messages: source.messages.map((msg) => ({
+      ...msg,
+      segments: msg.segments.map((seg) =>
+        seg.type === 'action_items' && seg.batch.batchId === batchId
+          ? {
+              ...seg,
+              batch: {
+                ...seg.batch,
+                submittedIds: [...new Set([...seg.batch.submittedIds, ...submitted])],
+              },
+            }
+          : seg,
+      ),
+    })),
+  });
+
+  const text =
+    `Action-item batch handoff (batch ${batchId}, ${actionable.length} item(s) selected by the user from another agent's findings).\n` +
+    `Plan EVERY item below — one plan_admin_action call per item, passing its item_ref verbatim. ` +
+    `Present each plan and WAIT for my approval. Do NOT execute anything yet.\n\n` +
+    actionable.map((item, i) => handoffLine(batchId, item, i)).join('\n');
+
+  selectAgent(actuatorAgentId);
+  void sendAgentMessage(actuatorAgentId, text);
+}
+
+/**
+ * Approve one or more pending plans in a single message: each plan keeps its
+ * own token, the actuator executes each independently (one audit row each).
+ */
+export function approvePlans(agentId: string, plans: PlanCardData[]): void {
+  if (plans.length === 0) return;
+  for (const plan of plans) decidePlan(agentId, plan.confirmToken, 'approved');
+  const text =
+    plans.length === 1
+      ? `Approved — I confirm. Execute the planned ${plans[0].action} on host ${plans[0].host} with the exact planned target, confirm=true and confirm_token ${plans[0].confirmToken}${plans[0].itemRef ? ` and item_ref ${JSON.stringify(plans[0].itemRef)}` : ''}. Report the outcome and the auditId.`
+      : `Approved — I confirm ALL ${plans.length} plans below. Execute each independently with its exact planned target, confirm=true, its own confirm_token (and its item_ref where given); report each outcome and auditId separately:\n` +
+        plans
+          .map(
+            (plan, i) =>
+              `${i + 1}. ${plan.action} on host ${plan.host} — confirm_token ${plan.confirmToken}${plan.itemRef ? ` item_ref=${JSON.stringify(plan.itemRef)}` : ''}`,
+          )
+          .join('\n');
+  void sendAgentMessage(agentId, text);
+}
+
+/** Reject one or more pending plans in a single message. */
+export function rejectPlans(agentId: string, plans: PlanCardData[]): void {
+  if (plans.length === 0) return;
+  for (const plan of plans) decidePlan(agentId, plan.confirmToken, 'rejected');
+  const text =
+    plans.length === 1
+      ? `Rejected — do NOT execute the planned ${plans[0].action}. Stand down and await further instructions.`
+      : `Rejected — do NOT execute ANY of the following ${plans.length} planned actions: ` +
+        plans.map((plan) => `${plan.action} on ${plan.host}`).join('; ') +
+        `. Stand down and await further instructions.`;
+  void sendAgentMessage(agentId, text);
 }
 
 export function abortAgentTurn(agentId: string): void {

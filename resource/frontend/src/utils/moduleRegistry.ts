@@ -139,6 +139,7 @@ export const MODULE_BY_ID: Readonly<Record<PageId, ModuleDefinition>> = Object.f
 
 export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'OVERVIEW', items: ['mission-control', 'summary', 'filesystem', 'memory', 'cpu'] },
+  { title: 'AGENTS', items: ['agents'] },
   { title: 'CONNECTIONS', items: ['connections-inventory', 'connections-insights', 'connections-health', 'connections-fs-migration'] },
   { title: 'PROJECTS', items: ['project-cleaner', 'projects', 'project-compute', 'project-cost'] },
   { title: 'USERS', items: ['users', 'adoption'] },
@@ -146,7 +147,6 @@ export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'CODE ENVS', items: ['code-envs', 'code-envs-cleaner', 'code-envs-comparison'] },
   { title: 'AI COMPUTE', items: ['container-execs', 'image-cleaner', 'cs-template-replacement', 'llm-audit', 'k8s-insights'] },
   { title: 'STORY', items: ['story-setup', 'story-user-activity', 'story-licenses', 'story-inventory'] },
-  { title: 'AGENTS', items: ['agents'] },
   { title: 'MISC', items: ['settings', 'logs', 'sanity-check', 'db-health', 'report', 'feedback'] },
 ] as const;
 

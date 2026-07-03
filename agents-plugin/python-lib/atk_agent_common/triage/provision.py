@@ -63,13 +63,12 @@ def _reporter(channel_id, recipient, fallback=False):
             },
         },
     }
-    if fallback:
-        base.update({'runConditionType': 'RUN_IF_STATUS_MATCH',
-                     'runConditionStatuses': ['FAILED', 'ABORTED'],
-                     'runConditionExpression': ''})
-    else:
-        base.update({'runConditionType': 'CUSTOM',
-                     'runConditionExpression': "outcome != 'SUCCESS'"})
+    # DSS 14.7 persists exactly these two fields (probed live on akaos); it
+    # silently drops runConditionType/runConditionStatuses/runConditionExpression
+    # and the phase key. Both shapes are identical now; the fallback branch in
+    # provision_all is kept as a retry for other DSS versions.
+    base.update({'runConditionEnabled': True,
+                 'runCondition': "outcome != 'SUCCESS'"})
     return base
 
 
@@ -88,11 +87,14 @@ def resolve_mail_channel(client, preferred_id=''):
 
 
 def _reporter_matches(entry, recipient):
-    if not isinstance(entry, dict) or str(entry.get('phase') or '') != 'END_OF_RUN':
+    # DSS strips the phase key on save; missing means END_OF_RUN.
+    if not isinstance(entry, dict) or str(entry.get('phase') or 'END_OF_RUN') != 'END_OF_RUN':
         return False
     configuration = (entry.get('messaging') or {}).get('configuration') or {}
     if recipient not in str(configuration.get('recipient') or ''):
         return False
+    if entry.get('runConditionEnabled') and 'outcome' in str(entry.get('runCondition') or ''):
+        return True
     if 'outcome' in str(entry.get('runConditionExpression') or ''):
         return True
     statuses = [str(s).upper() for s in (entry.get('runConditionStatuses') or [])]

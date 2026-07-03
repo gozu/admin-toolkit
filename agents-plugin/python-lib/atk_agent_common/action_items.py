@@ -33,10 +33,13 @@ PROMPT_ADDENDUM = """
 When your findings imply concrete admin work (cleanup, maintenance, tuning, deletions, \
 deploys), finish the investigation by calling propose_action_items ONCE with every piece of \
 work you identified (most important first, max {max_items}). Rules:
+- Propose only items at MEDIUM severity or higher (the severity rubric's digest floor), and \
+never items suppressed by the admin whitelist.
 - Set `action` + `target` ONLY when they map exactly to the actuator catalog ({actions}); \
 anything else stays advisory (title/why/evidence only, no action).
-- risk: 'red' for deletions and settings changes, 'amber' for locking/maintenance operations, \
-'green' for safe low-impact work.
+- risk: 'red' for anything destructive or settings-mutating (deletions, config/settings \
+changes — all require backup-first / prior-value recording downstream), 'amber' for \
+locking/maintenance operations, 'green' for safe low-impact work. Never soften a risk color.
 - Every item needs concrete `evidence` entries citing tool + host + the numbers that justify it.
 The items render as a checklist; the USER decides what is handed to the ops-actuator for \
 planning and approval. Never plan, never execute, never promise execution yourself.""".format(

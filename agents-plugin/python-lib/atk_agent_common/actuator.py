@@ -255,6 +255,21 @@ def _exec_k8s_exec_config_tune(client, host, target):
             'before': before, 'after': {k: resources.get(k) for k in _K8S_TUNABLE_KEYS}}
 
 
+# Settings-mutating actions record per-key history rows (agents.settings_changes,
+# K97 doctrine: prior value + last-50-per-item restore). The hook is generic —
+# add an entry when a future executor mutates settings and returns before/after.
+def _settings_changes_from_result(action, target, result):
+    if action != 'k8s-exec-config-tune' or not isinstance(result, dict) or not result.get('ok'):
+        return []
+    before = result.get('before') or {}
+    after = result.get('after') or {}
+    name = result.get('configName') or (target or {}).get('configName')
+    changed = (target or {}).get('changes') or {}
+    return [{'itemKey': 'execConfig:%s:%s' % (name, key),
+             'before': before.get(key), 'after': after.get(key)}
+            for key in changed]
+
+
 _EXECUTORS = {
     'k8s-exec-config-tune': _exec_k8s_exec_config_tune,
     'project-delete': _exec_project_delete,
@@ -348,4 +363,17 @@ def execute_admin_action(client, host='local', action=None, target=None,
     if audit_id is None:
         out['auditWarning'] = ('Audit row could not be written (no triage connection or DB error) '
                                '— the action still ran; check backend logs.')
+    changes = _settings_changes_from_result(action, target, result) if status == 'ok' else []
+    if changes:
+        written = audit.record_settings_changes(settings.get('triage_connection'), host, changes,
+                                                agent=agent_name, audit_id=audit_id)
+        if written is None:
+            out['historyWarning'] = ('Settings-change history NOT recorded (audit DB not '
+                                     'configured or unreachable) — this change will not be '
+                                     'restorable from history. Tell the admin.')
+        else:
+            out['settingsHistory'] = {
+                'recorded': written,
+                'note': 'Prior values recorded; restorable from the last 50 changes per item.',
+            }
     return shaping.enforce_budget(out)

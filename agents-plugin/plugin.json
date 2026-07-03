@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit-agents",
-    "version": "0.1.011",
+    "version": "0.1.012",
     "meta": {
         "label": "Admin Toolkit Agents",
         "description": "AI-native field ops on the Dataiku agentic framework: agent tools + agents over the Admin Toolkit's fleet-aware sensor APIs (health, adoption, cost, config) and gated admin actions.",

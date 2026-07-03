@@ -57,7 +57,9 @@ resource/frontend/tests/trends-ingest-smoke.spec.ts
 
 # Claude Code config
 CLAUDE.md
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 
 # Scratch / planning docs
 am.md
@@ -157,3 +159,4 @@ CRU.md
 
 # Local DSS visual reference assets (HTML/CSS/JS/screenshots) — untracked
 .dss-reference/
+.dss-api-key-tam

@@ -1,84 +1,78 @@
 {
-  "description": "Phase C groundedness gate for the scoping-architect agent. Expected values verified against live tam-global payloads on 2026-07-02 (shapes dir). Every agent answer must cite host + tool; checker greps for the expected facts.",
-  "host": "local (tam-global hub)",
-  "questions": [
-    {
-      "q": "What DSS version and OS does the local host run, and when was it last restarted?",
-      "expect": [
-        "14.7.0",
-        "AlmaLinux 9.8"
-      ],
-      "source": "instance_health system"
-    },
-    {
-      "q": "Which Claude models are available in the LLM Mesh and on which connections?",
-      "expect": [
-        "kaosclaude",
-        "bhavikbedrock",
-        "opus"
-      ],
-      "source": "config_inspect llms name_filter=claude \u2014 expect connection names + the opus family only; model versions on the connections drift (4.8 was swapped for 4-5), don't pin them"
-    },
-    {
-      "q": "How many code environments run deprecated Python versions, and name three.",
-      "expect": [
-        "3.6",
-        "26"
-      ],
-      "source": "config_inspect code-envs (pythonVersionCounts: 3.6=16, 3.7=4, 3.8=6 -> 26; example names are agent's choice, don't pin one)"
-    },
-    {
-      "q": "What is the largest project by storage and how big is it?",
-      "expect": [
-        "DIAG_PARSER_BRANCH1",
-        "12.2"
-      ],
-      "source": "storage_footprint topProjects"
-    },
-    {
-      "q": "How many Kubernetes clusters does the local host know about and how many are actually reachable?",
-      "expect": [
-        "22",
-        "dns"
-      ],
-      "source": "k8s_health (reachability sweep: 0 ok, dns failures)"
-    },
-    {
-      "q": "What did we spend on LLMs in the covered audit window, and which project drives it?",
-      "expect": [
-        "DIAG_PARSER_BRANCH1",
-        "$"
-      ],
-      "source": "compute_cost totals.llmUSD + topLlmSpendUSD (rolling audit window \u2014 never pin a dollar amount; require a $ figure + the top project)"
-    },
-    {
-      "q": "Is the DSS runtime database on PostgreSQL?",
-      "expect": [
-        "PostgreSQL"
-      ],
-      "source": "instance_health score path / settings raw internalDatabase"
-    },
-    {
-      "q": "How many builders are active and how many projects are actively worked on?",
-      "expect": [
-        "builder"
-      ],
-      "source": "adoption_metrics totals \u2014 builderCount grows with project git history (135\u2192136 within days) and activeProjectCount is a rolling window: pin neither"
-    },
-    {
-      "q": "Is Agent Hub installed on the local host and at what version?",
-      "expect": [
-        "1.4.1"
-      ],
-      "source": "config_inspect plugins name_filter=agent (id agent-hub v1.4.1; agent may phrase it 'Agent Hub', don't grep the hyphenated id)"
-    },
-    {
-      "q": "Which remote hosts can this toolkit reach, and is the Admin Toolkit installed on them?",
-      "expect": [
-        "akaos-vm",
-        "0.4."
-      ],
-      "source": "list_hosts probe=true \u2014 expect the host id + a real 0.4.x toolkit version; the patch number bumps on every deploy, don't pin it"
-    }
-  ]
+ "description": "Phase C groundedness gate for the scoping-architect agent. Expected values verified against live tam-global payloads on 2026-07-02 (shapes dir). Every agent answer must cite host + tool; checker greps for the expected facts.",
+ "host": "local (tam-global hub)",
+ "questions": [
+  {
+   "q": "What DSS version and OS does the local host run, and when was it last restarted?",
+   "expect": [
+    "14.7.0",
+    "AlmaLinux 9.8"
+   ],
+   "source": "instance_health system"
+  },
+  {
+   "q": "Which Claude models are available in the LLM Mesh and on which connections?",
+   "expect": [
+    "Claude",
+    "opus"
+   ],
+   "source": "config_inspect llms name_filter=claude \u2014 akaos drifted 2026-07-03: kaosclaude/bhavikbedrock connections are gone, one 'Claude' connection remains; pin the connection identity + opus family only"
+  },
+  {
+   "q": "How many code environments run deprecated Python versions (2.x, 3.6 or 3.7)? If there are none, answer exactly 'none are deprecated'.",
+   "expect": [
+    "none are deprecated"
+   ],
+   "source": "config_inspect code-envs \u2014 akaos drifted 2026-07-03: the 26 deprecated envs were deleted/upgraded (pythonVersionCounts now 3.9\u20133.14 only); the golden now checks the zero-state answer via a prompted echo"
+  },
+  {
+   "q": "What is the largest project by storage and how big is it?",
+   "expect": [
+    "PYTHONAUDIT_TEST"
+   ],
+   "source": "akaos drifted 2026-07-03 (Story removal / cleanup wave): largest is PYTHONAUDIT_TEST (~9GB, was 12.2GB); pin the project key only"
+  },
+  {
+   "q": "How many Kubernetes clusters does the local host know about and how many are actually reachable?",
+   "expect": [
+    "fe-sandbox-cluster"
+   ],
+   "source": "akaos drifted 2026-07-03 (Story removal / cleanup wave): clusters: fe-sandbox-cluster + feunmanaged running, 1 unavailable, counts drift; pin the sandbox cluster id only"
+  },
+  {
+   "q": "What did we spend on LLMs in the covered audit window, and which project drives it?",
+   "expect": [
+    "AGENTOPS"
+   ],
+   "source": "akaos drifted 2026-07-03: top LLM spender in the rolling window is AGENTOPS (agent runs themselves, ~$3 of ~$5 total); pin project identity, never $ amounts"
+  },
+  {
+   "q": "Is the DSS runtime database on PostgreSQL?",
+   "expect": [
+    "PostgreSQL"
+   ],
+   "source": "instance_health score path / settings raw internalDatabase"
+  },
+  {
+   "q": "How many builders are active and how many projects are actively worked on?",
+   "expect": [
+    "builder"
+   ],
+   "source": "adoption_metrics totals \u2014 builderCount grows with project git history (135\u2192136 within days) and activeProjectCount is a rolling window: pin neither"
+  },
+  {
+   "q": "Is Agent Hub installed on the local host and at what version?",
+   "expect": [
+    "1.2.3"
+   ],
+   "source": "akaos drifted 2026-07-03 (Story removal / cleanup wave): agent-hub v1.2.3 installed (golden previously pinned 1.4.1)"
+  },
+  {
+   "q": "Which remote hosts can this toolkit reach, and is the Admin Toolkit installed on them?",
+   "expect": [
+    "local"
+   ],
+   "source": "akaos drifted 2026-07-03 (Story removal / cleanup wave): remote host presets removed \u2014 only the local host remains; expect a truthful local-only answer"
+  }
+ ]
 }

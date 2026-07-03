@@ -2,7 +2,7 @@ import json
 
 from dataiku.llm.python import BaseLLM
 
-from atk_agent_common import action_items, adapter, agent_runtime, agent_tools
+from atk_agent_common import action_items, adapter, agent_runtime, agent_tools, rubric
 from atk_agent_common.errors import ToolkitError
 from atk_agent_common.triage import sweep
 
@@ -26,7 +26,10 @@ and the evidence (issue ids / log signatures you used).
 3. Close with a one-paragraph fleet summary.
 
 For ad-hoc questions, use the sensor tools directly and keep the same grounding rules.
-Health scores are 0-100 (higher is better); by default <80 is a warning, <50 critical.
+Health scores are 0-100 (higher is better); by default <80 is a warning, <50 critical. A \
+score capped at the critical band means one of the always-lead critical rules fired — name \
+the rule, don't just report the number.
+{severity_rubric}
 {action_items_addendum}"""
 
 
@@ -75,6 +78,7 @@ class HealthTriageAgent(BaseLLM):
             return
         prompt = SYSTEM_PROMPT.replace('{max_recommendations}',
                                        str(self.config.get('max_recommendations') or 5)) \
+                              .replace('{severity_rubric}', rubric.SEVERITY_RUBRIC) \
                               .replace('{action_items_addendum}', action_items.PROMPT_ADDENDUM)
         messages = agent_runtime.messages_from_query(query, prompt)
         async for chunk in agent_runtime.run_tool_loop(llm, tools, messages, trace):

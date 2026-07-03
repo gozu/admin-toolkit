@@ -12,24 +12,52 @@ first, or parity breaks):
     'open files') → the open-files factor always scores 100.
   * `enabledSettings['User Isolation']` never exists live (raw settings keys
     are camelCase) → the user-isolation factor never fires.
-  * `cgroupSettings['Enabled']` is the STRING 'Yes'/'No'; 'No' is truthy in
-    JS, so the cgroups-disabled penalty only fires when the raw settings have
-    no cgroupSettings key at all (parser returns {} → key undefined → falsy).
   * scoreFilesystem reads ALL mounts (incl. tmpfs) but skips rows whose
     parsed usage is <= 0 or > 100.
+(The historical `'No' is truthy` cgroups quirk was FIXED on both twins in the
+TAM-rubric recalibration: anything but an explicit 'Yes' counts as disabled.)
 """
 
 import math
 import re
 
+# Calibrated against the TAM severity rubric (docs/agent-workflows/
+# severity-rubric.md): infra/runtime dominate; security_isolation is
+# zero-weighted (its cgroups penalties moved into runtime_config).
 _DEFAULT_WEIGHTS = {
-    'code_envs': 0.35,
-    'project_footprint': 0.30,
-    'system_capacity': 0.15,
-    'security_isolation': 0.10,
-    'version_currency': 0.05,
-    'runtime_config': 0.05,
+    'system_capacity': 0.30,
+    'runtime_config': 0.30,
+    'code_envs': 0.15,
+    'project_footprint': 0.15,
+    'version_currency': 0.10,
+    'security_isolation': 0.0,
 }
+
+# Rubric size lines (interview C26/E46): code env >5GB, project >10GB.
+_LARGE_CODE_ENV_GB = 5
+_LARGE_PROJECT_GB = 10
+
+# Rules honoring the per-item admin whitelist (false-positive doctrine).
+WHITELISTABLE_RULES = ('project-size', 'project-code-envs', 'code-env-size',
+                       'python-env-lifecycle', 'disk-usage')
+
+
+def _whitelist_lookup(entries):
+    """entries: [{rule, item, ...}] → membership predicate (rule, item).
+    Tracks matches on `check.matched` so the score can report how many
+    findings the whitelist suppressed (count only, never the items)."""
+    keys = {'%s %s' % (e.get('rule'), e.get('item')) for e in (entries or [])}
+    matched = set()
+
+    def check(rule, item):
+        key = '%s %s' % (rule, item)
+        if key in keys:
+            matched.add(key)
+            return True
+        return False
+
+    check.matched = matched
+    return check
 
 _SEVERITY_ORDER = {'critical': 0, 'warning': 1, 'info': 2, 'good': 3}
 
@@ -66,13 +94,6 @@ def _parse_memory_size_to_gb(value):
             'b': num / (1024 ** 3)}.get(unit, num / (1024 * 1024))
 
 
-def _python_version_supported(version):
-    m = re.search(r'(\d+)\.(\d+)', str(version or ''))
-    if not m:
-        return False
-    return int(m.group(1)) >= 3 and int(m.group(2)) >= 10
-
-
 def _combine_enabled_scores(components, default_score=100):
     active = [c for c in components if c['enabled'] and isinstance(c['score'], (int, float))
               and math.isfinite(c['score']) and c['weight'] > 0]
@@ -96,32 +117,80 @@ def _issue(id, category, severity, title, recommendation='', **extra):
 # ── factor scorers (1:1 with the TS functions) ───────────────────────────────
 
 
-def _score_python_version(code_envs):
+def _score_python_version(code_envs, dss_version, t, is_whitelisted):
+    """Lifecycle-aware Python scorer (port of the TS scorePythonVersion):
+    in-use deprecated env → 20/critical; in-use 3.8 on DSS>=14 → 60/warning;
+    unreferenced deprecated env → info delete candidate, no score drag."""
     if not code_envs:
-        return 75, None
-    total = len(code_envs)
-    supported = sum(1 for e in code_envs if _python_version_supported(e.get('version')))
-    unsupported = total - supported
-    pct = supported / total * 100
-    if pct >= 90:
-        return 100, None
-    if pct >= 70:
-        return 80, _issue('python-versions-aging', 'version_currency', 'info',
-                          '%d of %d code envs on older Python' % (unsupported, total),
-                          'Consider upgrading older code environments to Python 3.10 or later.',
-                          value='%.0f%%' % pct)
-    if pct >= 50:
-        return 60, _issue('python-versions-old', 'version_currency', 'warning',
-                          '%d of %d code envs on older Python' % (unsupported, total),
-                          'Upgrade code environments to Python 3.10 or later.', value='%.0f%%' % pct)
-    if pct >= 30:
-        return 40, _issue('python-versions-critical', 'version_currency', 'warning',
-                          '%d of %d code envs on older Python' % (unsupported, total),
-                          'Prioritize upgrading code environments to Python 3.10 or later.',
-                          value='%.0f%%' % pct)
-    return 20, _issue('python-versions-critical', 'version_currency', 'critical',
-                      '%d of %d code envs on unsupported Python' % (unsupported, total),
-                      'Upgrade code environments to Python 3.10 or later ASAP.', value='%.0f%%' % pct)
+        return 75, []
+    prefixes = [p.strip() for p in
+                str((t or {}).get('deprecatedPythonPrefixes') or '2.,3.6,3.7').split(',')
+                if p.strip()]
+    m = re.match(r'\d+', str(dss_version or ''))
+    dss_major = int(m.group(0)) if m else 0
+
+    def deprecated(version):
+        return any(str(version or '').startswith(p) for p in prefixes)
+
+    def in_use(env):
+        count = env.get('usageCount')
+        return count > 0 if isinstance(count, (int, float)) else True
+
+    def names(envs):
+        return [str(e.get('name')) for e in envs]
+
+    python_envs = [e for e in code_envs if e.get('language') != 'r'
+                   and not is_whitelisted('python-env-lifecycle', e.get('name'))]
+    deprecated_in_use = [e for e in python_envs if deprecated(e.get('version')) and in_use(e)]
+    plan_in_use = [e for e in python_envs
+                   if str(e.get('version') or '').startswith('3.8') and in_use(e)] \
+        if dss_major >= 14 else []
+    deprecated_unused = [e for e in python_envs if deprecated(e.get('version')) and not in_use(e)]
+
+    issues = []
+    score = 100
+
+    def preview(envs, with_version=True):
+        names = ['%s (%s)' % (e.get('name'), e.get('version')) if with_version
+                 else str(e.get('name')) for e in envs[:5]]
+        more = ' and %d more' % (len(envs) - 5) if len(envs) > 5 else ''
+        return ', '.join(names) + more
+
+    if deprecated_in_use:
+        score = 20
+        n = len(deprecated_in_use)
+        issues.append(_issue(
+            'python-lifecycle-critical', 'version_currency', 'critical',
+            '%d in-use code env%s on deprecated Python' % (n, 's' if n > 1 else ''),
+            'Migrate the projects using these environments to a supported Python version now.',
+            description='%s. These Python versions are deprecated by Dataiku — projects using '
+                        'them must migrate now.' % preview(deprecated_in_use),
+            value=n, threshold='not %s' % '/'.join(prefixes),
+            whitelistRule='python-env-lifecycle', whitelistItems=names(deprecated_in_use)))
+    elif plan_in_use:
+        score = 60
+        n = len(plan_in_use)
+        issues.append(_issue(
+            'python-lifecycle-plan', 'version_currency', 'warning',
+            '%d in-use code env%s on Python 3.8 (deprecated in DSS 14)' % (n, 's' if n > 1 else ''),
+            'Plan the migration to a supported Python version before the removal release.',
+            description='%s. DSS 14 deprecates Python 3.8; support will be removed in a later '
+                        'release.' % preview(plan_in_use, with_version=False),
+            value=n,
+            whitelistRule='python-env-lifecycle', whitelistItems=names(plan_in_use)))
+
+    if deprecated_unused:
+        n = len(deprecated_unused)
+        issues.append(_issue(
+            'python-lifecycle-cleanup', 'version_currency', 'info',
+            '%d unreferenced code env%s on deprecated Python' % (n, 's' if n > 1 else ''),
+            'Delete these unused environments (backup-first via the code-env cleaner).',
+            description='%s. Nothing references these environments — they are delete '
+                        'candidates, not migration work.' % preview(deprecated_unused),
+            value=n,
+            whitelistRule='python-env-lifecycle', whitelistItems=names(deprecated_unused)))
+
+    return score, issues
 
 
 def _score_spark_version(spark_settings):
@@ -164,7 +233,7 @@ def _score_memory_availability(memory_info):
     return 100, None
 
 
-def _score_filesystem(filesystem_info):
+def _score_filesystem(filesystem_info, is_whitelisted):
     if not filesystem_info:
         return 75, []
     worst = 100
@@ -174,19 +243,23 @@ def _score_filesystem(filesystem_info):
         mount = fs.get('Mounted on') or fs.get('Filesystem')
         if usage > 100 or usage <= 0:
             continue
+        if is_whitelisted('disk-usage', str(mount)):
+            continue
         available = 100 - usage
         if available < 10:
             worst = min(worst, 30)
             issues.append(_issue('disk-critical-%s' % mount, 'system_capacity', 'critical',
                                  'Disk %d%% full on %s' % (usage, mount),
                                  'Free up disk space or expand storage immediately.',
-                                 value='%d%%' % usage))
+                                 value='%d%%' % usage,
+                                 whitelistRule='disk-usage', whitelistItems=[str(mount)]))
         elif available < 20:
             worst = min(worst, 70)
             issues.append(_issue('disk-warning-%s' % mount, 'system_capacity', 'warning',
                                  'Disk %d%% used on %s' % (usage, mount),
                                  'Monitor disk usage and plan for cleanup or expansion.',
-                                 value='%d%%' % usage))
+                                 value='%d%%' % usage,
+                                 whitelistRule='disk-usage', whitelistItems=[str(mount)]))
     return worst, issues
 
 
@@ -213,8 +286,9 @@ def _score_disabled_features(disabled_features):
 
 
 def _score_security_settings(parsed):
-    """Port of scoreSecuritySettings incl. the JS truthiness quirks (see module
-    docstring): 'No' is truthy; missing dicts skip checks entirely."""
+    """Port of scoreSecuritySettings incl. the remaining JS quirks (see module
+    docstring). The cgroups check is the FIXED version: anything but an
+    explicit 'Yes' counts as disabled (issues live in runtime_config)."""
     issues = []
     total = 100
     checks = 0
@@ -231,15 +305,17 @@ def _score_security_settings(parsed):
     cgroup_settings = parsed.get('cgroupSettings')
     if cgroup_settings is not None:  # {} is truthy in JS ⇒ `if (parsedData.cgroupSettings)` passes for {}
         checks += 1
-        if not cgroup_settings.get('Enabled'):  # 'Yes'/'No' both truthy; only missing/'' fires
+        if str(cgroup_settings.get('Enabled') or '') != 'Yes':
             total -= 15
-            issues.append(_issue('cgroups-disabled', 'security_isolation', 'info',
+            issues.append(_issue('cgroups-disabled', 'runtime_config', 'warning',
                                  'CGroups not enabled',
-                                 'Consider enabling CGroups for better resource isolation.'))
+                                 'Enable CGroups memory limits for kernels and jobs.',
+                                 description='CGroups resource limits are not configured — '
+                                             'runaway kernels/jobs can take down the host.'))
         empty_targets = cgroup_settings.get('Empty Target Types')
         if empty_targets and str(empty_targets).strip() != '':
             total -= 20
-            issues.append(_issue('cgroups-empty-targets', 'security_isolation', 'warning',
+            issues.append(_issue('cgroups-empty-targets', 'runtime_config', 'warning',
                                  'CGroups empty target types',
                                  'Configure cgroup settings for all target types.'))
     system_limits = parsed.get('systemLimits')
@@ -261,15 +337,19 @@ def _score_security_settings(parsed):
 
 
 def _score_runtime_database(general_settings):
-    db_type = (((general_settings or {}).get('internalDatabase') or {})
-               .get('connection') or {}).get('type')
-    if not db_type:
+    """Port of the cap-aware TS scorer: settings loaded but no PostgreSQL
+    connection type ⇒ embedded H2 ⇒ score 0 + cap-runtime-db critical."""
+    if not general_settings:
         return 75, None
+    db_type = ((general_settings.get('internalDatabase') or {})
+               .get('connection') or {}).get('type')
     if db_type == 'PostgreSQL':
         return 100, None
-    return 40, _issue('runtime-db-not-postgres', 'runtime_config', 'warning',
-                      'Runtime database is %s, not PostgreSQL' % db_type,
-                      'Migrate the DSS runtime database to PostgreSQL.', value=db_type)
+    label = db_type or 'internal H2'
+    return 0, _issue('cap-runtime-db', 'runtime_config', 'critical',
+                     'Runtime database is %s, not PostgreSQL' % label,
+                     'Migrate the DSS runtime database to PostgreSQL immediately.',
+                     value=label, threshold='PostgreSQL')
 
 
 def _score_java_memory(java_memory_settings):
@@ -313,25 +393,59 @@ def _normalize_project_size_index(total_gb, avg_gb):
     return max(0.0, min(1.0, 0.6 * abs_norm + 0.4 * rel_norm))
 
 
-def _group_issue(id, category, severity, count, noun_phrase, detail, recommendation, names):
+def _group_issue(id, category, severity, count, noun_phrase, detail, recommendation, names,
+                 whitelist_rule=None, whitelist_items=None):
     preview = ', '.join(names[:5])
     more = ' and %d more' % (len(names) - 5) if len(names) > 5 else ''
     plural = 's' if count > 1 else ''
+    extra = {}
+    if whitelist_rule and whitelist_items:
+        extra = {'whitelistRule': whitelist_rule, 'whitelistItems': whitelist_items}
     return _issue(id, category, severity,
                   ('%d project%s ' % (count, plural)) + noun_phrase,
-                  recommendation, description='%s%s. %s' % (preview, more, detail))
+                  recommendation, description='%s%s. %s' % (preview, more, detail), **extra)
 
 
-def _score_code_env_complexity(project_footprint):
+def _score_code_env_size(code_envs, is_whitelisted):
+    """Rubric C26: a single code env >5GB is a finding (whitelist-subject)."""
+    if not code_envs:
+        return 100, []
+    sized = [e for e in code_envs
+             if isinstance(e.get('sizeBytes'), (int, float)) and e['sizeBytes'] > 0]
+    if not sized:
+        return 100, []
+    large = [e for e in sized
+             if e['sizeBytes'] / (1024 ** 3) > _LARGE_CODE_ENV_GB
+             and not is_whitelisted('code-env-size', e.get('name'))]
+    if not large:
+        return 100, []
+    preview = ', '.join('%s (%.1fGB)' % (e.get('name'), e['sizeBytes'] / (1024 ** 3))
+                        for e in large[:5])
+    more = ' and %d more' % (len(large) - 5) if len(large) > 5 else ''
+    n = len(large)
+    return max(40, 100 - n * 15), [_issue(
+        'code-env-size-group', 'code_envs', 'warning',
+        '%d code env%s over %dGB' % (n, 's' if n > 1 else '', _LARGE_CODE_ENV_GB),
+        'Slim the environment (or whitelist it if the size is legitimate, e.g. CUDA).',
+        description='%s%s. Environments this large are usually over-pinned or carry unused '
+                    'heavy packages.' % (preview, more),
+        value=n, threshold='<=%dGB' % _LARGE_CODE_ENV_GB,
+        whitelistRule='code-env-size', whitelistItems=[str(e.get('name')) for e in large])]
+
+
+def _score_code_env_complexity(project_footprint, is_whitelisted):
     if not project_footprint:
         return 75, []
     risks, issues = [], []
-    critical, warning, info = [], [], []
+    critical, critical_keys, warning, info = [], [], [], []
     for row in project_footprint:
+        if is_whitelisted('project-code-envs', row.get('projectKey')):
+            continue
         count = row.get('codeEnvCount') or 0
         risks.append(_normalize_code_env_risk(count))
         if count >= 4:
             critical.append('%s (%d)' % (row.get('projectKey'), count))
+            critical_keys.append(row.get('projectKey'))
         elif count == 3:
             warning.append(row.get('projectKey'))
         elif count == 2:
@@ -340,30 +454,35 @@ def _score_code_env_complexity(project_footprint):
         issues.append(_group_issue('project-codenv-critical-group', 'code_envs', 'critical',
                                    len(critical), 'have 4+ code envs',
                                    'Each extra code environment multiplies size, fragility, deployment time, and failure surface.',
-                                   'Consolidate toward a single code environment per project.', critical))
+                                   'Consolidate toward a single code environment per project.', critical,
+                                   whitelist_rule='project-code-envs', whitelist_items=critical_keys))
     if warning:
         issues.append(_group_issue('project-codenv-warning-group', 'code_envs', 'warning',
                                    len(warning), 'have 3 code envs',
                                    'Multiple code environments increase maintenance overhead and drift risk.',
-                                   'Reduce project code environments to 1-2, ideally 1.', warning))
+                                   'Reduce project code environments to 1-2, ideally 1.', warning,
+                                   whitelist_rule='project-code-envs', whitelist_items=warning))
     if info:
         issues.append(_group_issue('project-codenv-info-group', 'code_envs', 'info',
                                    len(info), 'have 2 code envs',
                                    'Two code environments already increase rebuild and deployment complexity.',
-                                   'Consolidate to a single environment when possible.', info))
+                                   'Consolidate to a single environment when possible.', info,
+                                   whitelist_rule='project-code-envs', whitelist_items=info))
     avg_risk = sum(risks) / len(risks) if risks else 0
     return max(0, min(100, 100 * (1 - avg_risk))), issues
 
 
-def _score_project_size_pressure(project_footprint, summary):
+def _score_project_size_pressure(project_footprint, summary, is_whitelisted):
     if not project_footprint:
         return 75, []
     avg_gb = (summary or {}).get('instanceAvgProjectGB')
     if avg_gb is None:
         avg_gb = sum((r.get('totalBytes') or 0) / (1024 ** 3) for r in project_footprint) / len(project_footprint)
     risks, issues = [], []
-    huge, critical, high = [], [], []
+    huge, huge_keys, large, large_keys, critical, high = [], [], [], [], [], []
     for row in project_footprint:
+        if is_whitelisted('project-size', row.get('projectKey')):
+            continue
         total_gb = row.get('totalGB')
         if total_gb is None:
             total_gb = (row.get('totalBytes') or 0) / (1024 ** 3)
@@ -373,7 +492,11 @@ def _score_project_size_pressure(project_footprint, summary):
         risks.append(size_risk)
         if total_gb >= 40:
             huge.append('%s (%.1fGB)' % (row.get('projectKey'), total_gb))
+            huge_keys.append(row.get('projectKey'))
             continue
+        if total_gb > _LARGE_PROJECT_GB:
+            large.append('%s (%.1fGB)' % (row.get('projectKey'), total_gb))
+            large_keys.append(row.get('projectKey'))
         health = row.get('projectSizeHealth')
         if health == 'angry-red':
             critical.append(row.get('projectKey'))
@@ -383,17 +506,28 @@ def _score_project_size_pressure(project_footprint, summary):
         issues.append(_group_issue('project-size-huge-group', 'project_footprint', 'critical',
                                    len(huge), 'exceed 40GB',
                                    'Project size above 40GB is a severe storage and operational risk.',
-                                   'Prioritize cleanup or archival for these projects.', huge))
+                                   'Prioritize cleanup or archival for these projects.', huge,
+                                   whitelist_rule='project-size', whitelist_items=huge_keys))
+    if large:
+        issues.append(_group_issue('project-size-large-group', 'project_footprint', 'warning',
+                                   len(large), 'exceed %dGB' % _LARGE_PROJECT_GB,
+                                   'Projects this large usually hide accumulating webapp logs or '
+                                   'filesystem data that belongs on block storage.',
+                                   'Inspect what fills each project (or whitelist it if the size '
+                                   'is legitimate).', large,
+                                   whitelist_rule='project-size', whitelist_items=large_keys))
     if critical:
         issues.append(_group_issue('project-size-critical-group', 'project_footprint', 'critical',
                                    len(critical), 'have critical relative size',
                                    'These projects are significantly larger than peers on this instance.',
-                                   'Review managed data/folders and archive or purge stale assets.', critical))
+                                   'Review managed data/folders and archive or purge stale assets.', critical,
+                                   whitelist_rule='project-size', whitelist_items=critical))
     if high:
         issues.append(_group_issue('project-size-high-group', 'project_footprint', 'warning',
                                    len(high), 'have high project size',
                                    'These projects are above instance norm and add storage pressure.',
-                                   'Review large managed datasets/folders for cleanup.', high))
+                                   'Review large managed datasets/folders for cleanup.', high,
+                                   whitelist_rule='project-size', whitelist_items=high))
     avg_risk = sum(risks) / len(risks) if risks else 0
     return max(0, min(100, 100 * (1 - avg_risk))), issues
 
@@ -494,10 +628,12 @@ def build_parsed_data(overview, raw_settings, java_memory_settings, code_envs_pa
 # ── the score itself ─────────────────────────────────────────────────────────
 
 
-def calculate_health_score(parsed, thresholds=None):
+def calculate_health_score(parsed, thresholds=None, whitelist=None):
     """Port of calculateHealthScore with all factor toggles enabled (the
-    default) and weights from threshold settings when provided."""
+    default), weights from threshold settings when provided, and the per-item
+    finding whitelist applied inside the scorers."""
     t = thresholds or {}
+    is_whitelisted = _whitelist_lookup(whitelist)
     weights = dict(_DEFAULT_WEIGHTS)
     for cat, key in (('code_envs', 'weightCodeEnvs'), ('project_footprint', 'weightProjectFootprint'),
                      ('system_capacity', 'weightSystemCapacity'),
@@ -511,20 +647,21 @@ def calculate_health_score(parsed, thresholds=None):
     all_issues = []
 
     # VERSION CURRENCY
-    py_score, py_issue = _score_python_version(parsed.get('codeEnvs'))
+    py_score, py_issues = _score_python_version(parsed.get('codeEnvs'), parsed.get('dssVersion'),
+                                                t, is_whitelisted)
     spark_score, spark_issue = _score_spark_version(parsed.get('sparkSettings'))
     vc_score = _combine_enabled_scores([
         {'enabled': True, 'score': py_score, 'weight': 0.7},
         {'enabled': True, 'score': spark_score, 'weight': 0.3},
     ])
-    vc_issues = [i for i in (py_issue, spark_issue) if i]
+    vc_issues = list(py_issues) + ([spark_issue] if spark_issue else [])
     categories.append({'category': 'version_currency', 'label': 'Version Currency',
                        'score': vc_score, 'weight': weights['version_currency'], 'issues': vc_issues})
     all_issues.extend(vc_issues)
 
     # SYSTEM CAPACITY
     mem_score, mem_issue = _score_memory_availability(parsed.get('memoryInfo'))
-    fs_score, fs_issues = _score_filesystem(parsed.get('filesystemInfo'))
+    fs_score, fs_issues = _score_filesystem(parsed.get('filesystemInfo'), is_whitelisted)
     _, sec_issues = _score_security_settings(parsed)
     open_files_issue = next((i for i in sec_issues if i['id'] == 'open-files-low'), None)
     open_files_score = 30 if open_files_issue else 100
@@ -538,11 +675,39 @@ def calculate_health_score(parsed, thresholds=None):
         sc_issues.append(mem_issue)
     if open_files_issue:
         sc_issues.append(open_files_issue)
+
+    # Cap rules on the data mount (rubric A5/A6): DIP_HOME on NFS; data mount
+    # >= dataMountCriticalPct full. dipHomeStorage absent (older remote
+    # toolkits) ⇒ the rules silently skip.
+    dip_home = parsed.get('dipHomeStorage') or {}
+    if dip_home:
+        fs_type = str(dip_home.get('fsType') or '').lower()
+        if fs_type.startswith('nfs'):
+            sc_issues.append(_issue(
+                'cap-diphome-nfs', 'system_capacity', 'critical',
+                'DIP_HOME is on NFS (%s)' % dip_home.get('fsType'),
+                'Move DIP_HOME to local or block storage.',
+                description='The DSS data directory (%s) sits on an NFS mount (%s). NFS under '
+                            'DIP_HOME causes pervasive performance and locking problems.'
+                            % (dip_home.get('path') or 'DIP_HOME', dip_home.get('mount') or '?'),
+                value=dip_home.get('fsType')))
+        data_mount_critical = t.get('dataMountCriticalPct', 75)
+        used_pct = dip_home.get('usedPct')
+        if isinstance(used_pct, (int, float)) and used_pct >= data_mount_critical:
+            sc_issues.append(_issue(
+                'cap-data-mount-full', 'system_capacity', 'critical',
+                'Data mount %d%% full (%s)' % (used_pct, dip_home.get('mount') or 'DIP_HOME'),
+                'Free space now (job logs, exports, large managed folders) or expand the volume.',
+                description='The mount holding DIP_HOME is at %d%% — past the %d%% critical '
+                            'line. DSS misbehaves unpredictably when the data disk fills.'
+                            % (used_pct, data_mount_critical),
+                value='%d%%' % used_pct, threshold='<%d%%' % data_mount_critical))
+
     categories.append({'category': 'system_capacity', 'label': 'System Capacity',
                        'score': sc_score, 'weight': weights['system_capacity'], 'issues': sc_issues})
     all_issues.extend(sc_issues)
 
-    # SECURITY ISOLATION
+    # SECURITY ISOLATION (0-weight by default; issues still surface)
     iso_issue = next((i for i in sec_issues if i['id'] == 'impersonation-disabled'), None)
     cg_disabled = next((i for i in sec_issues if i['id'] == 'cgroups-disabled'), None)
     cg_empty = next((i for i in sec_issues if i['id'] == 'cgroups-empty-targets'), None)
@@ -551,44 +716,68 @@ def calculate_health_score(parsed, thresholds=None):
     if iso_issue:
         si_score -= 25
         si_issues.append(iso_issue)
-    if cg_disabled:
-        si_score -= 15
-        si_issues.append(cg_disabled)
-    if cg_empty:
-        si_score -= 20
-        si_issues.append(cg_empty)
     si_score = max(0, si_score)
     categories.append({'category': 'security_isolation', 'label': 'Security Isolation',
                        'score': si_score, 'weight': weights['security_isolation'], 'issues': si_issues})
     all_issues.extend(si_issues)
 
     # CODE ENVIRONMENTS
-    ce_score, ce_issues = _score_code_env_complexity(parsed.get('projectFootprint'))
+    ce_score, ce_issues = _score_code_env_complexity(parsed.get('projectFootprint'), is_whitelisted)
+    ces_score, ces_issues = _score_code_env_size(parsed.get('codeEnvs'), is_whitelisted)
+    ce_combined = _combine_enabled_scores([
+        {'enabled': True, 'score': ce_score, 'weight': 0.7},
+        {'enabled': True, 'score': ces_score, 'weight': 0.3},
+    ])
+    ce_all = list(ce_issues) + list(ces_issues)
     categories.append({'category': 'code_envs', 'label': 'Code Envs',
-                       'score': ce_score, 'weight': weights['code_envs'], 'issues': ce_issues})
-    all_issues.extend(ce_issues)
+                       'score': ce_combined, 'weight': weights['code_envs'], 'issues': ce_all})
+    all_issues.extend(ce_all)
 
     # PROJECT FOOTPRINT
     pf_score, pf_issues = _score_project_size_pressure(parsed.get('projectFootprint'),
-                                                       parsed.get('projectFootprintSummary'))
+                                                       parsed.get('projectFootprintSummary'),
+                                                       is_whitelisted)
     categories.append({'category': 'project_footprint', 'label': 'Project Footprint',
                        'score': pf_score, 'weight': weights['project_footprint'], 'issues': pf_issues})
     all_issues.extend(pf_issues)
 
-    # RUNTIME CONFIG
+    # RUNTIME CONFIG (cgroups component relocated here from security_isolation)
     df_score, df_issue = _score_disabled_features(parsed.get('disabledFeatures'))
     jm_score, jm_issues = _score_java_memory(parsed.get('javaMemorySettings'))
     rd_score, rd_issue = _score_runtime_database(parsed.get('generalSettings'))
+    cgroups_score = 100
+    rc_issues = []
+    if cg_disabled:
+        cgroups_score -= 60
+        rc_issues.append(cg_disabled)
+    if cg_empty:
+        cgroups_score -= 20
+        rc_issues.append(cg_empty)
+    cgroups_score = max(0, cgroups_score)
     rc_score = _combine_enabled_scores([
-        {'enabled': True, 'score': df_score, 'weight': 0.34},
-        {'enabled': True, 'score': jm_score, 'weight': 0.33},
-        {'enabled': True, 'score': rd_score, 'weight': 0.33},
+        {'enabled': True, 'score': df_score, 'weight': 0.25},
+        {'enabled': True, 'score': jm_score, 'weight': 0.25},
+        {'enabled': True, 'score': rd_score, 'weight': 0.25},
+        {'enabled': True, 'score': cgroups_score, 'weight': 0.25},
     ])
-    rc_issues = list(jm_issues)
+    rc_issues.extend(jm_issues)
     if df_issue:
         rc_issues.append(df_issue)
     if rd_issue:
         rc_issues.append(rd_issue)
+
+    # Cap rule (rubric A1): impersonation on but cgroups not configured.
+    impersonation_on = ((parsed.get('generalSettings') or {}).get('impersonation')
+                        or {}).get('enabled') is True
+    if cg_disabled and impersonation_on:
+        rc_issues.append(_issue(
+            'cap-cgroups-missing', 'runtime_config', 'critical',
+            'Multi-user isolation is on but cgroups are not configured',
+            'Configure cgroup memory limits for kernels and jobs now.',
+            description='User isolation (impersonation) is enabled but cgroup resource limits '
+                        'are not — a single runaway kernel or job can take down the host for '
+                        'every user.'))
+
     categories.append({'category': 'runtime_config', 'label': 'Runtime Config',
                        'score': rc_score, 'weight': weights['runtime_config'], 'issues': rc_issues})
     all_issues.extend(rc_issues)
@@ -600,6 +789,13 @@ def calculate_health_score(parsed, thresholds=None):
         if issue['id'] not in seen:
             seen.add(issue['id'])
             unique.append(issue)
+
+    # Critical cap (interview K100): any cap-* issue clamps the overall score
+    # into the critical band.
+    capped = any(i['id'].startswith('cap-') for i in unique)
+    if capped:
+        overall = min(overall, t.get('healthCriticalCapScore', 49))
+
     unique.sort(key=lambda i: _SEVERITY_ORDER.get(i['severity'], 9))
 
     critical_below = t.get('healthCriticalBelow', 50)
@@ -618,10 +814,23 @@ def calculate_health_score(parsed, thresholds=None):
         'criticalCount': sum(1 for i in unique if i['severity'] == 'critical'),
         'warningCount': sum(1 for i in unique if i['severity'] == 'warning'),
         'infoCount': sum(1 for i in unique if i['severity'] == 'info'),
+        'capped': capped,
+        'whitelistSuppressed': len(is_whitelisted.matched),
     }
 
 
 # ── one-call convenience for tools/triage ────────────────────────────────────
+
+
+def fetch_host_whitelist(client, host='local'):
+    """Whitelist entries applying to `host` (hub-stored; host='*' matches all).
+    Best-effort: an older backend without /api/whitelist yields []."""
+    try:
+        entries = (client.get('/api/whitelist') or {}).get('entries') or []
+    except Exception:
+        return []
+    eff = host or 'local'
+    return [e for e in entries if (e.get('host') or 'local') in (eff, '*')]
 
 
 def score_host(client, host='local'):
@@ -642,4 +851,5 @@ def score_host(client, host='local'):
     footprint = client.get('/api/project-footprint', host=host, heavy=True,
                            progress_path='/api/project-footprint/progress')
     parsed = build_parsed_data(overview, raw_settings, java, code_envs, footprint)
-    return calculate_health_score(parsed, thresholds)
+    return calculate_health_score(parsed, thresholds,
+                                  whitelist=fetch_host_whitelist(client, host))

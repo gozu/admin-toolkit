@@ -1,0 +1,338 @@
+TAM SEVERITY-CALIBRATION INTERVIEW — QUESTION BANK (100)
+Purpose: for each concrete fact the Admin Toolkit surfaces, capture the Principal-TAM
+verdict: how bad is it, at what value does it flip severity, what's the fix urgency,
+and when is it a false alarm. Answers become severity rubrics in the agent prompts
+(health-triage, ops-actuator, scoping-architect).
+Answer format per question (ideal): severity (ignore / cosmetic / watch / important /
+critical), the threshold(s) that flip it, and any "unless…" exceptions.
+
+== A. Host & OS-level (sanity check / instance health) ==
+1. How bad is it if cgroups are NOT configured/filled for DSS (no memory limits on kernels/jobs)?
+2. How bad is swap being actively used on the DSS host? Any swap at all, or only >X GB?
+3. At what load-average-to-core ratio does CPU become a finding (1x cores? 2x?)?
+4. How bad is a low ulimit (open files / max processes) — at what values does it become urgent?
+5. How bad is it if DIP_HOME sits on NFS? Which subdirs make it critical vs tolerable?
+6. How bad is <10% free on the data mount vs on the logs mount vs on /tmp — different thresholds per mount?
+7. How bad is inode exhaustion risk (e.g. >80% inodes used) vs plain disk-full?
+8. How bad is a missing/failing DSS backup (backed_up_to empty or stale)? At what staleness?
+9. How bad is the DSS host clock being off / NTP unsynced?
+10. How bad is running DSS as root, or wrong file ownership inside DIP_HOME?
+11. How bad is an old kernel/OS past EOL under a supported DSS version?
+12. What total-RAM-to-user-count ratio do you consider undersized (e.g. 64GB for 200 users)?
+
+== B. DSS process & JVM ==
+13. How bad is backend xmx at default (e.g. 2-4GB) on a large instance? What xmx per instance size?
+14. How bad is backend heap consistently >85% of xmx? Where's your GC red line?
+15. How many concurrent FEKs/JEKs is normal vs a leak? At what age is a JEK "stuck"?
+16. How bad is a jupyter kernel alive for 30 days? 90 days? With high RSS?
+17. How bad is >N webapp backends running simultaneously? What's N?
+18. How bad is a governDB/runtime-db process eating >X% CPU steadily?
+19. How bad are frequent backend restarts (found in logs) — what frequency flips severity?
+20. Which backend.log exception patterns are known-noise vs real (OOM, TooManyOpenFiles, GC overhead, broken pipe)?
+21. How bad is it if the backend runs with default -XX GC settings vs tuned on big heaps?
+22. What per-process RSS makes a single kernel/job "kill candidate" (absolute GB or % of host)?
+
+== C. Code envs ==
+23. How bad is a code env on Python 3.6? 3.7? 3.8? 3.9? — where's the "must migrate now" line?
+24. How bad is a code env that no project/recipe/notebook references (usageCount=0)? Delete after how long?
+25. How bad is 50 code envs on one instance? 100? At what count is sprawl itself the problem?
+26. How bad is a single env >10GB on disk? What size makes an env a finding?
+27. How bad are duplicate envs with near-identical packages but drifting versions?
+28. Which package pins actually cause incidents (pandas major, numpy 2.x, protobuf, urllib3...)? Which drifts are harmless?
+29. How bad is an env with no version pins at all (floating requirements)?
+30. How bad is a code env that fails rebuild but is still in use?
+31. How bad is the plugin/webapp running on builtin python instead of its managed env?
+32. How bad is R env presence generally (support burden) vs Python?
+33. How bad is conda vs virtualenv envs from a maintenance standpoint — do you flag conda?
+34. Containerized-execution envs: how bad is an env not pushed/synced to the cluster registry?
+
+== D. Connections ==
+35. How bad is a failing connection test on the runtime DB vs a data warehouse vs a filesystem connection?
+36. How bad is heavy use of filesystem_managed connections for team data (vs SQL/cloud storage)? When is it fine?
+37. How bad is an "Allow everyone" / no-group-restriction connection? Which connection types make that critical?
+38. How bad are credentials embedded per-connection vs per-user credentials mode?
+39. How bad is SSL disabled on a JDBC connection to a prod warehouse?
+40. How bad is a huge default fetch/batch size (or tiny one) on JDBC connections — which params do customers routinely get wrong?
+41. How bad is >N connections of the same type (e.g. 12 Snowflake connections) — governance smell at what count?
+42. How bad is a connection used by exactly 1 project (per-project connection sprawl)?
+43. How bad are orphaned connections (0 using projects)? Delete or keep?
+44. How bad is SQL pipelines / engine pushdown NOT enabled where the warehouse supports it?
+
+== E. Projects & storage footprint ==
+45. At what combination of (last commit age, last job age, owner status) is a project safely "abandoned"?
+46. How bad is a project >100GB internal (managed FS) storage? Where do size thresholds sit?
+47. How bad are huge uploaded files (CSV dumps) inside projects vs proper connections?
+48. How bad is a project owned by a disabled/deleted user? How fast must ownership transfer?
+49. How bad is everyone-is-admin permissions on a project? On how many projects before it's systemic?
+50. How bad are projects with 0 git commits ever (pure UI, never versioned)?
+51. How bad is jobs/ log accumulation — what retention (days/GB) do you recommend for job logs and scenario runs?
+52. How bad are >N versions kept of datasets/saved models (config history bloat)?
+53. How bad is exposed-to-everyone / public dashboards content on a governed instance?
+54. What dormant:active project ratio is normal (is 70% dormant fine)?
+55. How bad are cross-project dependencies (shared datasets) from a cleanup-risk perspective?
+
+== F. DB Health (runtime databases) ==
+56. How bad is running on internal H2 vs external Postgres — at what instance size is H2 disqualifying?
+57. Which runtime-DB tables bloating matter most (jobs, scenario_runs, audit, flow_state...) and at what row counts/GB?
+58. How bad is "last autovacuum = never" on a big table? Dead-tuple % threshold?
+59. How bad is runtime-DB total size >10GB? >50GB? What growth rate flips it?
+60. How bad is high connection count / pool exhaustion on the runtime Postgres?
+61. Is proposing VACUUM/ANALYZE safe for an agent? REINDEX? Or surface-only?
+62. Which DB symptoms map to user-visible slowness (slow UI lists, scenario lag) most directly?
+
+== G. Cost / CRU / compute ==
+63. What top-project cost concentration is normal (top 5 = 80%?) and what shape is a finding?
+64. How bad is a steady month-over-month CRU growth of 10%? 30%? When is growth "adoption" vs "waste"?
+65. How trustworthy is estimatedCostUSD for LLM usage — quote it to customers or hedge it?
+66. How bad are retry storms / failed-job loops in CRU data — what failure rate per project is a finding?
+67. How bad is an interactive-use (notebook) share of compute >X% vs scheduled jobs?
+68. How bad are containers requesting far more memory/CPU than they use — what utilization % is "oversized"?
+69. How bad is a webapp/API service running 24/7 with near-zero traffic?
+70. How bad is compute concentrated in one user's sandbox notebooks?
+
+== H. K8s / containerized execution ==
+71. How bad is NO resource requests/limits set on an exec config? Requests set but no limits?
+72. How bad is a cluster with autoscaler disabled/misconfigured for DSS workloads?
+73. How bad is poor bin-packing (many nodes <30% packed)? At what waste % do you act?
+74. How bad are GPU nodes sitting idle (allocated but 0 GPU jobs) — hours? days?
+75. How bad are pods in CrashLoopBackOff / Evicted states in the DSS namespaces — count threshold?
+76. How bad is one shared namespace for all DSS workloads vs per-team namespaces?
+77. How bad are stale/orphaned DSS pods (job finished, pod lingering)?
+78. How bad is image sprawl in the registry (hundreds of dssuser images) — what retention do you push?
+79. How bad is a base image several DSS versions old still being used by exec configs?
+80. How bad is spot/preemptible usage for JEKs — recommend or warn?
+
+== I. Users, adoption, licenses ==
+81. How bad is monthly active builders declining 2 months in a row? 3? What % drop matters?
+82. How bad is a repeat-usage rate (users returning week over week) below X%?
+83. How bad is 1-person projects dominating (people-per-project ~1) — silo smell or normal ramp-up?
+84. How bad is FULL_DESIGNER license utilization at 95%+ (blocked growth)? At <40% (shelfware)? Which is worse for renewal?
+85. How bad are users with designer seats and 0 commits/0 jobs in 90 days — reclaim after how long?
+86. How bad are enabled accounts of departed employees (no login >180d)? Security vs hygiene?
+87. How bad are users without email set (breaks outreach/notifications)?
+88. How bad is a spike of new users with no onboarding artifacts (no projects touched) — failed rollout signal?
+89. What people-per-project and projects-per-builder ranges read as "healthy collaboration"?
+90. Which single adoption number do you put in front of an exec, and what's its green/yellow/red banding?
+
+== J. Plugins & platform hygiene ==
+91. How bad is plugin version drift between design and automation nodes — which plugins must match exactly?
+92. How bad is an installed plugin with 0 usage — remove or ignore?
+93. How bad is a plugin pinned several major versions behind (e.g. connector plugins)?
+94. How bad is a dev plugin (editable, from git) on a production node?
+95. How bad is DSS itself 1 minor version behind? 2+ majors? Where's your upgrade-pressure line?
+96. How bad are deprecated features still in use (e.g. old ML backends, Hadoop/HDFS remnants, H2 audit)?
+
+== K. Agent action calibration ==
+97. For each destructive action class (delete project, delete code env, kill process, delete images, vacuum DB): approve-with-evidence, or never-autonomous even with human approval flow?
+98. What evidence bundle makes you comfortable approving a deletion (age + owner-ack + backup + usage=0 + ...)?
+99. In the daily triage digest, what severity floor makes the cut, and what's the max item count before you stop reading?
+100. Rank the top 10 findings from this whole list that should ALWAYS lead the digest when present.
+
+== ANSWERS LOG ==
+(filled in during interview; each entry: Q#, verdict, thresholds, exceptions)
+
+META (from Q1 answer): the current Summary health score is a PLACEHOLDER — it was
+never calibrated. This interview's rubrics are the intended replacement inputs for
+the score weights.
+
+A1 cgroups not configured: VERY BAD (important→critical on any multi-user instance).
+   Rationale: without cgroup memory limits, preventable issues (runaway kernels/jobs
+   taking down the host) can pop up "for no good reason". Do not wait for observed
+   memory pressure to flag it.
+
+C23 Python versions: severity is driven by the Dataiku deprecation lifecycle, not
+   the python.org EOL alone. Py 3.6 and 3.7: ALREADY DEPRECATED. DSS 14 deprecates
+   Py 3.8 (removal in a later release). Rubric must be version-aware: severity =
+   f(env python version, instance DSS version, deprecated-vs-removed stage).
+
+NEW RULE SET — DSS 14 deprecations (flag any of these in use on a DSS 14 instance;
+   escalate as "will be REMOVED in a later release"):
+   - Python 3.8 support (3.6/3.7 already deprecated earlier)
+   - Govern: PostgreSQL 12, 13, 14
+   - Time Series Forecasting: MXNet-based algorithms
+   - MLLib support
+   - AmazonLinux 2
+   - KSQL recipes
+   - API deployer infra: "Reporting to Graphite" + "Metrics charting server"
+     settings (replaced by native chart support)
+   - Deprecated plugins: "List folder Contents" (superseded by "List Folder
+     Contents"), "Azure AD Sync" (superseded by "Azure AD"), "EMR clusters",
+     "Dataproc clusters" (underlying support removed from DSS)
+
+A6 disk threshold: /data partition ≥75% full = the finding line.
+
+C23b Python banding (TAM delegated; Claude's proposal, accepted by default):
+   DSS 14 instance — in-use 3.6/3.7 env = IMPORTANT (migrate now); in-use 3.8 =
+   WARNING (plan migration before removal release); UNREFERENCED deprecated env =
+   reclassify as delete candidate (cleanup finding, lower severity than migration).
+
+A2 swap: TAM has no operational opinion on swap ("can't be that important") →
+   treat as LOW-WEIGHT supporting signal only; never a standalone/leading finding.
+
+B16 long-lived kernels/JEKs: VERY BAD when running on K8s (unnecessary cost accrues
+   directly); still BAD locally (resources held). Notebook jobs rarely legitimately
+   run for days → kernel/JEK alive beyond ~days = finding; containerized escalates
+   severity one band. High idle age matters more than RSS alone.
+
+D35 failing connection test: LOW by itself — usually test/abandoned connections;
+   existence breaks nothing, it's just mess (cleanup candidate). Severity flips on
+   usage × recency: an ACTIVELY-USED connection that broke RECENTLY = VERY HIGH
+   priority. Agents must join test status with the usage matrix before scoring.
+
+D36 filesystem_managed for real data: BAD — fills local filesystem unnecessarily,
+   not prod-friendly; S3/ADLS/etc preferred (scalability, pushdown, backup story).
+   No hard % threshold given; score by share of project data + growth.
+
+F56 internal H2 runtime DB: CRITICAL, unconditional — disqualifying at ALL sizes,
+   "must upgrade immediately to stop running a slow DSS unnecessarily". Always
+   leads the digest when present. (No sandbox exception.)
+
+B13 backend xmx: no fixed TAM sizing bands. DSS's own memory algorithm already
+   computes what xmx SHOULD be → the finding is "actual xmx < DSS-recommended
+   value"; apply common sense on the gap, don't invent absolute bands.
+
+E45 abandoned projects: use the Admin Toolkit's own configured inactivity cutoff
+   (default 180 days, user-configurable) — agents must read the configured value,
+   never hardcode their own.
+
+I84 designer licenses: audience = ADMIN → 95%+ utilization (growth blocked) is THE
+   issue; <40% shelfware is NOT a priority finding from the admin perspective.
+
+META: agents' primary audience/persona = the instance ADMIN (not account/renewal
+   management). Frame findings accordingly.
+
+E51 job/scenario logs: severity is RELATIVE — judged by % of the /data disk they
+   occupy (feeds the ≥75% pressure line), not by age. No absolute retention days
+   mandated; recommend purge when share is material.
+
+H71 exec configs w/o requests+limits: IMPORTANT (TAM: "pretty bad") — same
+   preventable-blowup class as missing cgroups locally. Escalate to critical if
+   the cluster shows OOMKilled/evictions.
+
+F57 runtime-DB table bloat: LOW by default — "typically not an issue unless the
+   instance has tons of users, like 1000+". Scale-gate this finding on user count.
+
+J95 DSS version lag: BAD at one MAJOR version behind — that's the line. (Minor lag
+   not called out as a finding.)
+
+E49 permission red flags (everyone-admin projects, open connections, etc.):
+   NOT IMPORTANT to this admin persona — do not surface as findings.
+
+A8 backups: NON-ISSUE — backups are taken by Fleet Manager; agents should never
+   flag backup staleness/absence on FM-managed instances.
+
+G68 oversized containers: TAM delegated → use known best practices. Codified:
+   sustained (p95) utilization <~50% of request = oversized; recommend shrinking
+   toward p95 + headroom; exempt genuinely spiky workloads.
+
+H78 registry image sprawl: BAD as unnecessary COST, but does NOT affect instance
+   health — classify under cost, never health score. Retention rule: DSS typically
+   needs no image older than the current one (align with the toolkit's
+   image-cleaner semantics).
+
+I81 adoption metrics in daily digest: EXCLUDED — QBR/report material only; the
+   digest stays purely operational for the admin.
+
+B20 log error patterns: DELEGATED to LLM judgment — no fixed real-vs-noise list;
+   the agent reads patterns in context and decides.
+
+G66 failing-job/retry spam: BAD ("we don't want things spamming the logs").
+   Cutoff: a failure/retry loop lasting MORE THAN ONE HOUR is worth mentioning.
+
+C24/J92 zero-usage code envs & plugins: surface as cleanup candidates after
+   3 MONTHS of no usage.
+
+K97 action-safety doctrine (verbatim intent):
+   - Agent MAY PROPOSE ALL types of destructive actions — nothing is off-limits
+     to propose — as long as a human approves.
+   - Every destructive deletion MUST take a restore/backup to block storage FIRST
+     (same pattern the toolkit already uses for project & code-env cleanups).
+   - Settings changes: record the old settings; offer restore from a history of
+     the LAST 50 changes for that item.
+   - If restore is NOT possible for something, say so explicitly in the action
+     presentation to the admin.
+   - Explicit admin CONFIRMATION required on all destructive actions (misclick
+     protection). Human-in-the-loop + restore-where-restorable = acceptable.
+
+K99 digest severity floor: MEDIUM and higher makes the cut.
+
+K100 always-lead findings CONFIRMED: H2 runtime DB; missing cgroups; /data ≥75%;
+   actively-used connection recently broken; deprecated Python in active use;
+   exec configs without limits; >1h retry/failure storms.
+
+G65 LLM costs: capability CONFIRMED to TAM (they didn't know it existed) — CRU
+   macro rolls up LLM_USAGE per project/user: estimatedCostUSD, tokens, queries,
+   model. Caveat: rolling audit-log horizon (days-weeks), recent-window only.
+   Quote $ as DSS's own estimate. TAM was pleased to learn this exists → agents
+   SHOULD use per-project LLM cost in findings.
+
+META (from rejected Q28/Q29): don't ask/assume "which data is useless" — if it's
+   in the toolkit, someone asked for it; relevance is decided per-signal by the
+   rubrics above, not by dropping whole panels.
+
+A5 DIP_HOME on NFS: VERY VERY BAD — critical finding, no filer exception given.
+
+H74 idle GPU nodes: finding after ONE HOUR idle. GPUs ~10x the cost of non-GPU
+   nodes → weight idle-GPU waste ~10x normal idle-compute criticality.
+
+B19 backend restarts: 2 UNEXPLAINED restarts (≈within a week) = real stability
+   finding, no longer "maintenance".
+
+-- FINAL CORRECTIONS ROUND (last interview pass) --
+
+A3 CPU load (corrected): the finding line is a SLIDING scale of sustained load
+   vs window — ≥90% of all cores for 10 min, OR ≥80% for 20 min, OR ≥70% for
+   30 min, "and so on": the lower the sustained level, the longer the window
+   must be before it counts.
+
+A9 clock/NTP drift (corrected): small drift = ignore. Past best-practice
+   tolerance (2026 norms: sub-second for TLS/Kerberos-sensitive setups;
+   minutes of drift = definitely broken) = VERY HIGH priority — clock skew
+   can break SSL certificate validation and Kerberos/auth.
+
+B22 kill candidates (corrected): a process using >~25% of host RAM = surface
+   as a kill CANDIDATE, but NEVER advise or perform a Linux-level kill of
+   DSS-managed processes (kernels, JEKs, webapp backends) — supervisord/DSS
+   respawns them; they must be stopped at the DSS level via DSS APIs
+   (unload kernel, abort job, stop webapp backend).
+
+C26 code env size (corrected): a single env >5GB on disk = likely too large →
+   finding, SUBJECT TO the per-item admin whitelist (see false-positive
+   doctrine) — some envs are legitimately huge (CUDA/torch).
+
+C27 duplicate-env drift (corrected): DON'T CARE — dropped entirely as a
+   finding class.
+
+C32 R envs (corrected): R included in a project code env but unused = bad
+   (support burden dragged in for nothing). Standing recommendation whenever
+   a DEFAULT R env is detected in admin settings: strongly recommend NOT
+   setting one — it drags R into projects that don't use it.
+
+D41 many same-type connections (corrected): FINE — not a finding at any
+   count. (Reverses the governance-smell hypothesis.)
+
+E46 project size (corrected): ANY project >10GB = finding — "typically bad
+   things are happening" in there (webapp logs accumulating, filesystem
+   files used instead of block storage). Subject to the per-item admin
+   whitelist.
+
+E50 zero-git-commit projects (corrected): LOW-priority warning (pure-UI,
+   never-versioned projects), not a leading finding.
+
+F60 connection-pool exhaustion (corrected): OBSERVED pool-exhaustion errors
+   on the runtime Postgres = VERY HIGH priority at ANY instance size — the
+   one exception to the 1000+-user scale gate on DB findings.
+
+F61 VACUUM proposals (corrected): the agent may PROPOSE VACUUM/ANALYZE only
+   on 1000+-user instances; below that scale, surface-only.
+
+I87 users without email (corrected): MEDIUM — all users should have an email
+   set (breaks outreach/notifications otherwise).
+
+META false-positive doctrine (corrected; TAM: "very important"): every
+   thresholded cleanup/size rule (code env >5GB, project >10GB, deprecated
+   env delete-candidates, disk-usage style rules...) must honor a PER-ITEM
+   admin whitelist so admins are not spammed with known-acceptable items.
+   Whitelisted items are silently skipped wherever the rule applies — score,
+   issue lists, agent findings, digest — and agents report only the count of
+   suppressed findings.

@@ -2,7 +2,7 @@ import json
 
 from dataiku.llm.python import BaseLLM
 
-from atk_agent_common import actuator, adapter, agent_runtime, agent_tools
+from atk_agent_common import actuator, adapter, agent_runtime, agent_tools, rubric
 from atk_agent_common.errors import ToolkitError
 
 SYSTEM_PROMPT = """You are the Admin Toolkit ops actuator: you carry out administrative actions on \
@@ -31,6 +31,7 @@ plans individually or in one batch message enumerating several tokens; execute e
 plans whose tokens they approved, one execute_admin_action per plan with its own item_ref, and \
 report each outcome + auditId separately. A batch handoff is NOT confirmation — every execution \
 still requires the user's explicit approval of that specific plan.
+{action_safety_rubric}
 Allowed actions for this agent: {allowed_actions}."""
 
 
@@ -113,7 +114,8 @@ class OpsActuatorAgent(BaseLLM):
                          'canonicalTarget from the plan, confirm=true, and the confirm_token; '
                          'pass the same item_ref as the plan when one was given.')))
 
-        prompt = SYSTEM_PROMPT.replace('{allowed_actions}', ', '.join(allowed))
+        prompt = SYSTEM_PROMPT.replace('{action_safety_rubric}', rubric.ACTION_SAFETY_RUBRIC) \
+                              .replace('{allowed_actions}', ', '.join(allowed))
         messages = agent_runtime.messages_from_query(query, prompt)
         async for chunk in agent_runtime.run_tool_loop(llm, tools, messages, trace):
             yield chunk

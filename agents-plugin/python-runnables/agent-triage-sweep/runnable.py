@@ -27,11 +27,15 @@ def _bool(value, default=False):
     return str(value).strip().lower() in ('true', '1', 'yes', 'y')
 
 
-RECOMMENDATION_PROMPT = """You are drafting ONE health recommendation for a Dataiku DSS instance a TAM \
-will review tomorrow morning. Ground every statement in the JSON below — do not invent \
-metrics or issues. Structure: one sentence of diagnosis, one concrete recommended action \
-(the single highest-impact next step), one sentence of evidence (cite issue ids or log \
-signatures). Max 120 words, no preamble.
+RECOMMENDATION_PROMPT = """You are drafting ONE health recommendation for a Dataiku DSS instance; the \
+instance ADMIN reads it in tomorrow's digest. Ground every statement in the JSON below — do \
+not invent metrics or issues. Severity doctrine: only medium+ findings matter; when an \
+always-lead critical is present (H2 runtime DB, DIP_HOME on NFS, missing cgroups, data \
+mount >=75% full, recently-broken active connection, deprecated Python in use, exec configs \
+without limits, >1h retry storms) it MUST be the subject of the recommendation. Ignore \
+whitelist-suppressed findings. Structure: one sentence of diagnosis, one concrete \
+recommended action (the single highest-impact next step), one sentence of evidence (cite \
+issue ids or log signatures). Max 120 words, no preamble.
 
 Host data:
 %s"""

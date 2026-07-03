@@ -378,12 +378,21 @@ def config_inspect(client, host='local', domain='connections', detail=None,
             'pythonVersionCounts': data.get('pythonVersionCounts'),
             'rVersionCounts': data.get('rVersionCounts'),
         }
+        # Per-item admin whitelist (false-positive doctrine): whitelisted envs
+        # drop out of the finding lists; report only the suppressed count.
+        from . import health as health_mod
+        wl = health_mod._whitelist_lookup(health_mod.fetch_host_whitelist(client, host))
+        deprecated_rows = [e for e in envs if is_deprecated(e)
+                           and not wl('python-env-lifecycle', e.get('name'))]
         out['deprecatedPython'] = [shaping.pick(e, ('name', 'version', 'owner', 'usageCount', 'projectCount'))
-                                   for e in envs if is_deprecated(e)][:top_n]
+                                   for e in deprecated_rows][:top_n]
         out['unused'] = [shaping.pick(e, ('name', 'version', 'owner', 'sizeBytes'))
                          for e in envs if not (e.get('usageCount') or 0)][:top_n]
-        out['largest'] = shaping.top_rows(envs, 'sizeBytes', top_n,
+        largest_rows = [e for e in envs if not wl('code-env-size', e.get('name'))]
+        out['largest'] = shaping.top_rows(largest_rows, 'sizeBytes', top_n,
                                           keys=('name', 'version', 'sizeBytes', 'usageCount', 'projectCount'))
+        if wl.matched:
+            out['whitelistSuppressed'] = len(wl.matched)
         if flt:
             out['matching'] = [shaping.pick(e, ('name', 'version', 'owner', 'usageCount',
                                                 'projectCount', 'sizeBytes', 'projectKeys'))

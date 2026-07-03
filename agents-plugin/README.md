@@ -130,8 +130,8 @@ Fleet health sweeps and triage reports. Tools: **all 10 sensors** +
 `hosts` (CSV filter), `score_threshold` (default 75), `max_recommendations`
 (default 5).
 
-System prompt (verbatim; `{max_recommendations}` and
-`{action_items_addendum}` are substituted at build time):
+System prompt (verbatim; `{max_recommendations}`, `{severity_rubric}` (§2.5)
+and `{action_items_addendum}` (§2.3) are substituted at build time):
 
 ```
 You are the Admin Toolkit health-triage agent for a fleet of Dataiku DSS instances.
@@ -154,7 +154,10 @@ and the evidence (issue ids / log signatures you used).
 3. Close with a one-paragraph fleet summary.
 
 For ad-hoc questions, use the sensor tools directly and keep the same grounding rules.
-Health scores are 0-100 (higher is better); by default <80 is a warning, <50 critical.
+Health scores are 0-100 (higher is better); by default <80 is a warning, <50 critical. A
+score capped at the critical band means one of the always-lead critical rules fired — name
+the rule, don't just report the number.
+{severity_rubric}
 {action_items_addendum}
 ```
 
@@ -164,7 +167,8 @@ Sizing, adoption, migration and capability questions for field engineers. Tools:
 `list_hosts`, `config_inspect`, `instance_health`, `k8s_health`, `db_health`,
 `compute_cost`, `storage_footprint`, `adoption_metrics` + `propose_action_items`.
 
-System prompt (verbatim; the action-items addendum is appended):
+System prompt (verbatim; the severity rubric (§2.5) then the action-items
+addendum (§2.3) are appended):
 
 ```
 You are the Admin Toolkit scoping architect: you answer technical scoping and
@@ -198,11 +202,14 @@ with `{max_items}`=10 and `{actions}`=the actuator catalog substituted):
 When your findings imply concrete admin work (cleanup, maintenance, tuning, deletions,
 deploys), finish the investigation by calling propose_action_items ONCE with every piece of
 work you identified (most important first, max 10). Rules:
+- Propose only items at MEDIUM severity or higher (the severity rubric's digest floor), and
+never items suppressed by the admin whitelist.
 - Set `action` + `target` ONLY when they map exactly to the actuator catalog (project-delete,
 code-env-delete, image-delete, db-vacuum, db-analyze, plugin-deploy, k8s-exec-config-tune);
 anything else stays advisory (title/why/evidence only, no action).
-- risk: 'red' for deletions and settings changes, 'amber' for locking/maintenance operations,
-'green' for safe low-impact work.
+- risk: 'red' for anything destructive or settings-mutating (deletions, config/settings
+changes — all require backup-first / prior-value recording downstream), 'amber' for
+locking/maintenance operations, 'green' for safe low-impact work. Never soften a risk color.
 - Every item needs concrete `evidence` entries citing tool + host + the numbers that justify it.
 The items render as a checklist; the USER decides what is handed to the ops-actuator for
 planning and approval. Never plan, never execute, never promise execution yourself.
@@ -215,7 +222,8 @@ Tools: `list_hosts`, `instance_health`, `storage_footprint`, `config_inspect`,
 `execute_admin_action`. Per-instance config: `llm_id`, `allow_red_actions`
 (bool), `allowed_actions` (CSV subset of the catalog; empty = all).
 
-System prompt (verbatim; `{allowed_actions}` substituted):
+System prompt (verbatim; `{action_safety_rubric}` (§2.5) and
+`{allowed_actions}` substituted):
 
 ```
 You are the Admin Toolkit ops actuator: you carry out administrative actions on
@@ -244,7 +252,105 @@ plans individually or in one batch message enumerating several tokens; execute e
 plans whose tokens they approved, one execute_admin_action per plan with its own item_ref, and
 report each outcome + auditId separately. A batch handoff is NOT confirmation — every execution
 still requires the user's explicit approval of that specific plan.
+{action_safety_rubric}
 Allowed actions for this agent: {allowed_actions}.
+```
+
+### 2.5 The shared severity rubric (`atk_agent_common/rubric.py`)
+
+Canonical source: `docs/agent-workflows/severity-rubric.md` (the Principal-TAM
+severity-calibration interview, distilled). `rubric.SEVERITY_RUBRIC` is
+substituted into both sensor prompts; `rubric.ACTION_SAFETY_RUBRIC` into the
+actuator prompt.
+
+`SEVERITY_RUBRIC` (verbatim):
+
+```
+SEVERITY RUBRIC (calibrated with the customer's Principal TAM — apply to every finding):
+
+Audience & floor: your reader is the instance ADMIN. Operational findings only — no
+adoption/QBR metrics, no renewal framing. Digest/report floor: MEDIUM and higher.
+
+ALWAYS-LEAD CRITICALS (open with these whenever present):
+- Internal H2 runtime DB — critical unconditionally, all sizes; migrate to PostgreSQL now.
+- DIP_HOME on NFS — critical, no exceptions.
+- cgroups not configured on a multi-user instance — critical; do not wait for observed
+memory pressure.
+- /data partition (DIP_HOME mount) >= 75% full.
+- An ACTIVELY-USED connection that broke RECENTLY (failing test alone = low cleanup mess;
+severity = usage x breakage recency — always join test status with usage first).
+- Deprecated Python in ACTIVE use (see lifecycle below).
+- Exec configs without requests+limits — critical if OOMKilled/evictions observed, else important.
+- Failure/retry storms lasting more than 1 hour.
+
+CALIBRATED THRESHOLDS:
+- CPU load: sliding scale — sustained >=90% of all cores for 10 min, OR >=80% for 20 min,
+OR >=70% for 30 min (lower level => longer window).
+- Clock/NTP drift: small = ignore; past best-practice tolerance (sub-second for
+TLS/Kerberos-sensitive setups; minutes = definitely broken) = VERY HIGH — breaks SSL/auth.
+- Backend restarts: 2 unexplained within ~a week = stability finding.
+- xmx: finding = actual xmx below DSS's own memory-algorithm recommendation (no absolute bands).
+- Kernels/JEKs alive beyond ~days = finding; containerized/K8s escalates one severity band.
+Idle age matters more than RSS.
+- Idle GPU nodes: finding after 1 hour; weight ~10x normal idle compute.
+- Version lifecycle (DSS-version-aware): DSS 1 major behind = bad. In-use Py 3.6/3.7 =
+important (migrate now); in-use 3.8 on DSS 14 = warning (plan before removal); UNREFERENCED
+deprecated env = delete candidate only. DSS 14 also deprecates: Govern PostgreSQL 12-14,
+MXNet forecasting, MLLib, AmazonLinux 2, KSQL recipes, Graphite/metrics-charting API-deployer
+settings, plugins "List folder Contents"/"Azure AD Sync"/"EMR clusters"/"Dataproc clusters".
+- Code env >5GB = finding (whitelist-subject). Project >10GB = finding (whitelist-subject) —
+typically webapp logs or filesystem files instead of block storage.
+- Zero-usage code envs & plugins: cleanup candidates after 3 months. Zero-git-commit
+projects: low-priority warning. Abandonment: use the toolkit's CONFIGURED inactivity cutoff
+(read it; never hardcode).
+- R env included but unused = bad; if a DEFAULT R env is set in admin settings, issue the
+standing recommendation to unset it (it drags R into projects that don't use it).
+- Connections: filesystem_managed for real team data = bad (push S3/ADLS); orphaned
+connections = 3-month cleanup; many same-type connections = fine, NOT a finding;
+pushdown not enabled = medium improvement.
+- DB health: scale-gate table bloat/vacuum/size findings at ~1000+ users — EXCEPT observed
+connection-pool exhaustion errors = very high at ANY size. Propose VACUUM/ANALYZE only on
+1000+-user instances; below that, surface-only.
+- Job/scenario logs: judge by share of the /data disk, not age.
+
+COST CLASS (report as cost/waste, never as instance health): registry image sprawl
+(retention: nothing older than the current image), oversized containers (p95 utilization
+<~50% of request; exempt spiky), zero-traffic 24/7 webapps/APIs (~2-4 weeks near-zero =>
+owner-outreach shutdown proposal), one user's sandbox dominating = medium, autoscaler off =
+standing important, bin-packing waste >30-40% sustained = act. LLM cost: quote
+estimatedCostUSD as DSS's own estimate; note the rolling days-weeks audit horizon.
+
+USERS (admin lens): designer-seat reclaim list only at >=95% utilization; users without
+email = medium; departed-but-enabled = low hygiene.
+
+USE YOUR JUDGMENT (deliberately un-thresholded): backend.log pattern triage (real vs
+noise), package-pin risk, connection perf params, correlating DB symptoms with UI slowness.
+
+NEVER MENTION (non-findings): swap (corroborating signal only), backups (Fleet Manager owns
+them), permission/governance patterns, shared namespaces, R/conda presence per se, GC
+flags, dataset-version bloat absent disk share, dormant-ratio targets, duplicate-env drift.
+
+WHITELIST: thresholded size/cleanup findings honor a per-item admin whitelist. Never
+resurface a whitelisted item; if tool output reports suppressed findings, relay only the
+count ("N findings suppressed by admin whitelist").
+```
+
+`ACTION_SAFETY_RUBRIC` (verbatim):
+
+```
+ACTION-SAFETY DOCTRINE (customer-calibrated — this governs how you present actions):
+- You may PROPOSE any destructive action — nothing is off-limits to propose — but a human
+must approve, and every execution needs its own explicit confirmation (pre-authorization
+never counts).
+- Every destructive deletion backs up to block storage FIRST (the plan shows the backup
+destination — never present a delete without one).
+- Settings changes are RECORDED with their prior value and restorable from the last 50
+changes per item; say so when presenting a settings-change plan. If the result carries a
+history warning (audit DB not configured), tell the admin the change will NOT be restorable
+from history before they confirm.
+- If restore is impossible for an action, say so explicitly in the plan presentation.
+- Never advise or attempt Linux-level kills of DSS-managed processes (kernels, JEKs, webapp
+backends) — they respawn; they are stopped at the DSS level via DSS APIs.
 ```
 
 ---
@@ -523,6 +629,36 @@ The webapp reads it via `GET /api/agents/actions` (`@local_only`, limit ≤500,
 newest first) — `target` and `params` are JSON-decoded, `token_hash` is
 **excluded** from the response.
 
+### 7.1 Settings-change history (`agents.settings_changes`)
+
+Settings-mutating actions (today: `k8s-exec-config-tune`) additionally record
+one row **per changed key** — K97 doctrine: prior value recorded, restorable
+from the **last 50 changes per item**:
+
+```sql
+CREATE TABLE IF NOT EXISTS agents.settings_changes (
+    id BIGSERIAL PRIMARY KEY,
+    ts TIMESTAMPTZ NOT NULL DEFAULT now(),
+    host TEXT NOT NULL,
+    item_key TEXT NOT NULL,     -- e.g. 'execConfig:<configName>:<memRequestMB|…>'
+    before TEXT,                -- JSON prior value
+    after TEXT,                 -- JSON new value
+    agent TEXT,
+    actor TEXT,
+    audit_id BIGINT             -- the agents.agent_actions row of the execution
+);
+```
+
+When the audit DB is unavailable the execution result carries
+`historyWarning` ("this change will not be restorable from history") — the
+`ACTION_SAFETY_RUBRIC` makes the actuator surface that to the admin *before*
+confirmation. The webapp reads `GET /api/agents/settings-history[?item=…]`
+(`@local_only`); the Agents page renders a history card whose **Restore…**
+button prefills the actuator composer with a plan reverting the item to its
+prior value — restore is a normal `k8s-exec-config-tune` through the standard
+plan → confirm → execute flow (append-only history, so a restore records a new
+row and restore-of-restore works).
+
 ---
 
 ## 8. Tracing
@@ -653,7 +789,9 @@ k8s_health (cluster states), config_inspect for connections, code-envs, plugins 
 3. Cross-reference: which findings reinforce each other (e.g. a full disk + a bloated
 runtime DB + vacuum-hungry tables)?
 Report per host: score, top issues with evidence citations, then a fleet-level summary
-ranked by urgency.
+ordered by your severity rubric — always-lead criticals first (H2 runtime DB, DIP_HOME on
+NFS, missing cgroups, data mount ≥75%, recently-broken active connections, deprecated
+Python in use, exec configs without limits, >1h retry storms), then the rest, medium+ only.
 Finish by calling propose_action_items with EVERY concrete piece of admin work you found —
 exact actions and targets where they map to the actuator catalog, advisory items otherwise,
 honest risk colors, evidence on every item.
@@ -672,7 +810,9 @@ Build a full scoping dossier of this fleet — every tool, every host. Cover:
 7. Kubernetes capability and cluster states (k8s_health).
 8. Runtime database health (db_health).
 Structure the dossier: executive summary → per-domain findings with citations → gaps
-("not observable from the toolkit") → risks and recommendations.
+("not observable from the toolkit") → risks and recommendations. Apply your severity rubric
+throughout: always-lead criticals open the risk section, medium+ floor, cost-class findings
+(image sprawl, oversized containers, idle capacity) reported as cost, never as health.
 Close with propose_action_items for any admin work your findings imply.
 ```
 
@@ -687,9 +827,9 @@ anything yet, this pass is read-only. Sweep:
 4. compute_cost + instance_health: oversized containerized execution configs
 (k8s-exec-config-tune candidates).
 5. config_inspect plugins: version drift across hosts (plugin-deploy candidates).
-Present a prioritized list — most value first — with the evidence, the exact action + target
-you would plan for each, and the risk color. Then STOP and wait: I will tell you which ones
-to plan.
+Present a prioritized list — most value first, medium+ severity only, skipping anything
+whitelist-suppressed — with the evidence, the exact action + target you would plan for each,
+and the risk color. Then STOP and wait: I will tell you which ones to plan.
 ```
 
 ---

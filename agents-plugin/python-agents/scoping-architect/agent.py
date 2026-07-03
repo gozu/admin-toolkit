@@ -1,6 +1,6 @@
 from dataiku.llm.python import BaseLLM
 
-from atk_agent_common import action_items, adapter, agent_runtime, agent_tools
+from atk_agent_common import action_items, adapter, agent_runtime, agent_tools, rubric
 from atk_agent_common.errors import ToolkitError
 
 SYSTEM_PROMPT = """You are the Admin Toolkit scoping architect: you answer technical scoping and \
@@ -23,7 +23,7 @@ with domain/name_filter) over broad pulls; issue independent tool calls in paral
 structure: direct answer first, then the observed evidence with citations, then caveats.
 General Dataiku architecture guidance (version support, sizing rules of thumb) is welcome as \
 long as it is labeled as guidance and tied to the observed configuration.
-""" + action_items.PROMPT_ADDENDUM
+""" + rubric.SEVERITY_RUBRIC + action_items.PROMPT_ADDENDUM
 
 
 class ScopingArchitectAgent(BaseLLM):

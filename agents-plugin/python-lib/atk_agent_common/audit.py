@@ -43,6 +43,19 @@ CREATE TABLE IF NOT EXISTS agents.agent_actions (
     status TEXT NOT NULL,
     result_snippet TEXT
 );
+CREATE TABLE IF NOT EXISTS agents.settings_changes (
+    id BIGSERIAL PRIMARY KEY,
+    ts TIMESTAMPTZ NOT NULL DEFAULT now(),
+    host TEXT NOT NULL,
+    item_key TEXT NOT NULL,
+    before TEXT,
+    after TEXT,
+    agent TEXT,
+    actor TEXT,
+    audit_id BIGINT
+);
+CREATE INDEX IF NOT EXISTS settings_changes_item_idx
+    ON agents.settings_changes (item_key, id DESC);
 """
 
 
@@ -61,6 +74,46 @@ def _connect(connection_name):
         **({'password': params['password']} if params.get('password') else {}))
     conn.autocommit = False
     return conn
+
+
+def record_settings_changes(connection_name, host, changes, agent=None, actor=None,
+                            audit_id=None):
+    """Persist settings-change history rows (K97 doctrine: prior value recorded,
+    restorable from the last 50 per item). `changes` = [{itemKey, before,
+    after}]. Returns the number of rows written, or None when the audit store
+    is unavailable — callers surface that as a history warning, never a block."""
+    if not connection_name or not changes:
+        if not connection_name:
+            logger.warning('settings-change history skipped: no triage_connection configured')
+        return None if not connection_name else 0
+    try:
+        conn = _connect(connection_name)
+    except Exception as exc:
+        logger.error('settings-change history connect failed: %s', exc)
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(_SCHEMA_SQL)
+            for change in changes:
+                cur.execute(
+                    'INSERT INTO agents.settings_changes '
+                    '(host, item_key, before, after, agent, actor, audit_id) '
+                    'VALUES (%s,%s,%s,%s,%s,%s,%s)',
+                    (host, change['itemKey'],
+                     json.dumps(change.get('before'), default=str),
+                     json.dumps(change.get('after'), default=str),
+                     agent, actor, audit_id))
+        conn.commit()
+        return len(changes)
+    except Exception as exc:
+        logger.error('settings-change history insert failed: %s', exc)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return None
+    finally:
+        conn.close()
 
 
 def record(connection_name, agent, llm_id, host, action, target, params, token_hash,

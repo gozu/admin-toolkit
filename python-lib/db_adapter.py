@@ -110,6 +110,8 @@ _THRESH_MAP = {
     'thresh_empty_project_kb': ('emptyProjectBytes', lambda v: int(v) * 1024),
     'thresh_health_warning_below': ('healthWarningBelow', int),
     'thresh_health_critical_below': ('healthCriticalBelow', int),
+    'thresh_health_critical_cap_score': ('healthCriticalCapScore', int),
+    'thresh_data_mount_critical_pct': ('dataMountCriticalPct', int),
     'thresh_deprecated_python_prefixes': ('deprecatedPythonPrefixes', str),
     'thresh_code_studio_count_unhealthy': ('codeStudioCountUnhealthy', int),
     'thresh_orphan_notebook_min': ('orphanNotebookMin', int),

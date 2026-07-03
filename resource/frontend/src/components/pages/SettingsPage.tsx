@@ -5,6 +5,7 @@ import { useToggleFlag } from '../../hooks/useToggleFlag';
 import { useRedState, forgetRed } from '../../state/redUnlockStore';
 import { UnlockModal } from '../UnlockModal';
 import { RemoteHostsCard } from '../RemoteHostsCard';
+import { FindingWhitelistCard } from '../FindingWhitelistCard';
 import { AlgorithmReviewCard } from '../AlgorithmReviewCard';
 import { PerfAutoTuneCard } from '../PerfAutoTuneCard';
 import { SupportBundleCard } from '../SupportBundleCard';
@@ -145,6 +146,8 @@ export function SettingsPage() {
       </section>
 
       <RemoteHostsCard />
+
+      <FindingWhitelistCard />
 
       <PerfAutoTuneCard />
 

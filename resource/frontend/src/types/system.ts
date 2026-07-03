@@ -8,6 +8,17 @@ export interface FilesystemInfo {
   'Mounted on': string;
 }
 
+/** The mount holding DIP_HOME (from `df -PT -B1 <DIP_HOME>`), served on
+ *  /api/overview as `dipHomeStorage`. Drives the NFS and data-mount-full
+ *  critical cap rules in the health score. */
+export interface DipHomeStorage {
+  path?: string;
+  mount?: string;
+  filesystem?: string;
+  fsType?: string;
+  usedPct?: number;
+}
+
 // Memory info
 export type MemoryInfo = Record<string, string>;
 

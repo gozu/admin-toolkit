@@ -134,6 +134,37 @@ def _read_java_mem_raw(dip_home):
     return None
 
 
+def _dip_home_storage(dip_home):
+    """Mount holding DIP_HOME via `df -PT -B1` (mirrors sysinfo._dip_home_storage);
+    feeds the health score's NFS / data-mount-full cap rules."""
+    if not dip_home:
+        return None
+    output = _run(['df', '-PT', '-B1', dip_home])
+    if not output or output.startswith('__error__'):
+        return None
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return None
+    parts = re.split(r'\s+', lines[1], maxsplit=6)
+    if len(parts) < 7:
+        return None
+    filesystem, fs_type, blocks, used, _available, capacity, mount_path = parts
+    try:
+        used_pct = int(str(capacity).rstrip('%'))
+    except ValueError:
+        try:
+            used_pct = round(int(used) * 100 / max(int(blocks), 1))
+        except ValueError:
+            used_pct = None
+    return {
+        'path': dip_home,
+        'mount': mount_path,
+        'filesystem': filesystem,
+        'fsType': fs_type.lower(),
+        'usedPct': used_pct,
+    }
+
+
 def _tail_supervisord_log(dip_home):
     if not dip_home:
         return ''
@@ -171,5 +202,6 @@ class MyRunnable(Runnable):
             'pythonVersion': platform.python_version(),
             'supervisordLog': _tail_supervisord_log(dip_home),
             'dipHome': dip_home,
+            'dipHomeStorage': _dip_home_storage(dip_home),
         }
         return json.dumps(result)

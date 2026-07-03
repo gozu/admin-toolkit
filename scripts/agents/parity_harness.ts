@@ -13,7 +13,7 @@ import { JavaMemoryParser } from '../../resource/frontend/src/parsers/JavaMemory
 import { GeneralSettingsParser } from '../../resource/frontend/src/parsers/GeneralSettingsParser';
 
 const payloads = JSON.parse(readFileSync(process.argv[2], 'utf-8'));
-const { overview, rawSettings, javaMemoryText, codeEnvs, footprint, thresholds } = payloads;
+const { overview, rawSettings, javaMemoryText, codeEnvs, footprint, thresholds, whitelist } = payloads;
 
 // useApiDataLoader: initialData = {...overview} (+ Spark Version)
 const parsedData: Record<string, unknown> = { ...overview };
@@ -49,10 +49,11 @@ parsedData.codeEnvs = codeEnvs.codeEnvs || [];
 parsedData.projectFootprint = footprint.projects || [];
 parsedData.projectFootprintSummary = footprint.summary || {};
 
-const score = calculateHealthScore(parsedData as never, undefined, thresholds);
+const score = calculateHealthScore(parsedData as never, undefined, thresholds, whitelist);
 console.log(JSON.stringify({
   overall: score.overall,
   status: score.status,
+  capped: score.capped,
   categories: score.categories.map((c) => ({ category: c.category, score: c.score, weight: c.weight })),
   issueIds: score.issues.map((i) => i.id),
 }, null, 1));

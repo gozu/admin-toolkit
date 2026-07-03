@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { RollingNumber } from './common/RollingNumber';
 import type { HealthScore, HealthIssue, HealthSeverity, HealthCategoryScore, HealthCategory } from '../types';
 import { HEALTH_FACTOR_CONTROLS, type HealthFactorKey, type HealthFactorToggles } from '../hooks/useHealthScore';
+import { useRedState } from '../state/redUnlockStore';
+import { addWhitelistEntry } from '../state/whitelistStore';
 
 interface HealthScoreCardProps {
   healthScore: HealthScore;
@@ -285,6 +287,56 @@ function CategoryBar({
   );
 }
 
+/** Per-item "Whitelist" buttons inside an expanded issue (false-positive
+ *  doctrine). Advanced-gated: rendered only when the red unlock is live —
+ *  the backend rejects the POST otherwise anyway. Whitelisting recomputes the
+ *  score immediately (the store feeds useHealthScore). */
+function IssueWhitelistItems({ issue }: { issue: HealthIssue }) {
+  const { authed } = useRedState();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  if (!authed || !issue.whitelistRule || !issue.whitelistItems?.length) return null;
+
+  const whitelist = async (item: string) => {
+    setBusy(item);
+    setError(null);
+    try {
+      await addWhitelistEntry(issue.whitelistRule as string, item);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="mt-2">
+      <div className="text-xs text-[var(--text-muted)] mb-1">
+        Whitelist an item to suppress this finding for it (admins only):
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {issue.whitelistItems.slice(0, 20).map((item) => (
+          <button
+            key={item}
+            onClick={() => void whitelist(item)}
+            disabled={busy !== null}
+            className="rounded border border-[var(--border-glass)] px-1.5 py-0.5 text-xs font-mono text-[var(--text-secondary)] transition-colors hover:border-[var(--neon-cyan)] hover:text-[var(--neon-cyan)] disabled:opacity-50"
+            title={`Whitelist ${item} under rule ${issue.whitelistRule}`}
+          >
+            {busy === item ? '…' : '✕'} {item}
+          </button>
+        ))}
+        {issue.whitelistItems.length > 20 && (
+          <span className="text-xs text-[var(--text-muted)]">
+            +{issue.whitelistItems.length - 20} more via Settings
+          </span>
+        )}
+      </div>
+      {error && <div className="mt-1 text-xs text-[var(--neon-red)]">{error}</div>}
+    </div>
+  );
+}
+
 function IssueItem({ issue, index }: { issue: HealthIssue; index: number }) {
   const [expanded, setExpanded] = useState(false);
   const config = severityConfig[issue.severity];
@@ -340,6 +392,7 @@ function IssueItem({ issue, index }: { issue: HealthIssue; index: number }) {
                   </span>
                 </div>
               )}
+              <IssueWhitelistItems issue={issue} />
             </div>
           </motion.div>
         )}

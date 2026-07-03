@@ -33,6 +33,11 @@ export interface ThresholdSettings {
   weightRuntimeConfig: number;
   healthCriticalBelow: number;
   healthWarningBelow: number;
+  /** Score the overall is clamped to when a critical cap rule fires
+   *  (49 ⇒ always lands in the critical band). */
+  healthCriticalCapScore: number;
+  /** DIP_HOME data mount used% at/above which the cap rule fires. */
+  dataMountCriticalPct: number;
 
   // Log parsing
   logLinesBefore: number;
@@ -69,14 +74,16 @@ const DEFAULT_THRESHOLDS: ThresholdSettings = {
   sparkVersionMinimum: 3,
   projectCountWarning: 500,
 
-  weightCodeEnvs: 0.35,
-  weightProjectFootprint: 0.30,
-  weightSystemCapacity: 0.15,
-  weightSecurityIsolation: 0.10,
-  weightVersionCurrency: 0.05,
-  weightRuntimeConfig: 0.05,
+  weightCodeEnvs: 0.15,
+  weightProjectFootprint: 0.15,
+  weightSystemCapacity: 0.30,
+  weightSecurityIsolation: 0,
+  weightVersionCurrency: 0.10,
+  weightRuntimeConfig: 0.30,
   healthCriticalBelow: 50,
   healthWarningBelow: 80,
+  healthCriticalCapScore: 49,
+  dataMountCriticalPct: 75,
 
   logLinesBefore: 10,
   logLinesAfter: 100,

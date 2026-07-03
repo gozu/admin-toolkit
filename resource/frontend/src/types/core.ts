@@ -43,7 +43,7 @@ import type {
   SecurityDefaultsSettings,
   SparkSettings,
 } from './settings';
-import type { DirEntry, DirTreeData, FilesystemInfo, MemoryInfo, SystemLimits } from './system';
+import type { DipHomeStorage, DirEntry, DirTreeData, FilesystemInfo, MemoryInfo, SystemLimits } from './system';
 
 // Diagnostic types
 export type DiagType = 'instance' | 'job' | 'fm' | 'unknown';
@@ -94,6 +94,9 @@ export interface ParsedData {
   memoryInfo?: MemoryInfo;
   systemLimits?: SystemLimits;
   filesystemInfo?: FilesystemInfo[];
+  /** Mount holding DIP_HOME (df -PT over the data dir) — drives the NFS and
+   *  data-mount-full critical cap rules. Absent on older remote toolkits. */
+  dipHomeStorage?: DipHomeStorage;
 
   // Settings
   enabledSettings?: EnabledSettings;

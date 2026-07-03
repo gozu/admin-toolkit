@@ -125,6 +125,38 @@ def _read_df_mount_usage() -> List[Dict[str, Any]]:
     return mounts
 
 
+def _dip_home_storage(dip_home: Optional[str]) -> Optional[Dict[str, Any]]:
+    """The mount holding DIP_HOME, via `df -PT -B1 <path>` — feeds the health
+    score's NFS and data-mount-full critical cap rules. None when the path or
+    the df flags are unavailable (e.g. macOS dev), which makes the rules skip."""
+    if not dip_home:
+        return None
+    output = _run_command(['df', '-PT', '-B1', dip_home])
+    if not output:
+        return None
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return None
+    parts = re.split(r"\s+", lines[1], maxsplit=6)
+    if len(parts) < 7:
+        return None
+    filesystem, fs_type, blocks, used, _available, capacity, mount_path = parts
+    try:
+        used_pct = int(str(capacity).rstrip('%'))
+    except ValueError:
+        try:
+            used_pct = round(int(used) * 100 / max(int(blocks), 1))
+        except ValueError:
+            used_pct = None
+    return {
+        'path': dip_home,
+        'mount': mount_path,
+        'filesystem': filesystem,
+        'fsType': fs_type.lower(),
+        'usedPct': used_pct,
+    }
+
+
 def _is_virtual_mount(mount: Dict[str, Any]) -> bool:
     fs_type = str(mount.get('fsType') or '').lower()
     mount_path = str(mount.get('path') or '')

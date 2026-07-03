@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.634",
+    "version": "0.4.635",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -249,6 +249,22 @@
             "defaultValue": 50
         },
         {
+            "name": "thresh_health_critical_cap_score",
+            "label": "Critical Cap Score",
+            "description": "Score the overall health is clamped to when a critical cap rule fires (H2 runtime DB, DIP_HOME on NFS, missing cgroups with impersonation, data mount full).",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 49
+        },
+        {
+            "name": "thresh_data_mount_critical_pct",
+            "label": "Data Mount Critical %",
+            "description": "DIP_HOME data mount usage at/above this percentage fires the data-mount critical cap rule.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 75
+        },
+        {
             "name": "thresh_deprecated_python_prefixes",
             "label": "Deprecated Python Prefixes",
             "description": "Comma-separated version prefixes to flag (e.g. 2.,3.6,3.7).",
@@ -267,7 +283,7 @@
             "description": "Weight for code environments category.",
             "type": "DOUBLE",
             "mandatory": false,
-            "defaultValue": 0.35
+            "defaultValue": 0.15
         },
         {
             "name": "weight_project_footprint",
@@ -275,7 +291,7 @@
             "description": "Weight for project footprint category.",
             "type": "DOUBLE",
             "mandatory": false,
-            "defaultValue": 0.3
+            "defaultValue": 0.15
         },
         {
             "name": "weight_system_capacity",
@@ -283,15 +299,15 @@
             "description": "Weight for system capacity category.",
             "type": "DOUBLE",
             "mandatory": false,
-            "defaultValue": 0.15
+            "defaultValue": 0.3
         },
         {
             "name": "weight_security_isolation",
             "label": "Weight: Security Isolation",
-            "description": "Weight for security isolation category.",
+            "description": "Weight for security isolation category (0 by default \u2014 its issues still surface; cgroups penalties live in runtime config).",
             "type": "DOUBLE",
             "mandatory": false,
-            "defaultValue": 0.1
+            "defaultValue": 0
         },
         {
             "name": "weight_version_currency",
@@ -299,7 +315,7 @@
             "description": "Weight for version currency category.",
             "type": "DOUBLE",
             "mandatory": false,
-            "defaultValue": 0.05
+            "defaultValue": 0.1
         },
         {
             "name": "weight_runtime_config",
@@ -307,7 +323,7 @@
             "description": "Weight for runtime config category.",
             "type": "DOUBLE",
             "mandatory": false,
-            "defaultValue": 0.05
+            "defaultValue": 0.3
         },
         {
             "name": "sep_log_analysis",
@@ -595,6 +611,14 @@
             "type": "INT",
             "mandatory": false,
             "defaultValue": 30
+        },
+        {
+            "name": "finding_whitelist",
+            "label": "Finding whitelist (managed by the webapp)",
+            "description": "JSON list of per-item whitelisted findings. Managed from the webapp's Settings page - do not edit by hand. Declared here so DSS does not prune it on settings save.",
+            "type": "STRING",
+            "mandatory": false,
+            "visibilityCondition": "false"
         }
     ]
 }

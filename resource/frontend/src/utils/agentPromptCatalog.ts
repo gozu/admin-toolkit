@@ -28,7 +28,7 @@ const TRIAGE_MEGAPROMPT = `Run an exhaustive fleet audit — every host, every d
 1. triage_sweep once for the deterministic fleet ranking.
 2. For EVERY host (worst first): instance_health (with issues), log_errors (top groups), storage_footprint (largest + inactive projects), db_health (overview, then worst tables), k8s_health (cluster states), config_inspect for connections, code-envs, plugins AND llms.
 3. Cross-reference: which findings reinforce each other (e.g. a full disk + a bloated runtime DB + vacuum-hungry tables)?
-Report per host: score, top issues with evidence citations, then a fleet-level summary ranked by urgency.
+Report per host: score, top issues with evidence citations, then a fleet-level summary ordered by your severity rubric — always-lead criticals first (H2 runtime DB, DIP_HOME on NFS, missing cgroups, data mount ≥75%, recently-broken active connections, deprecated Python in use, exec configs without limits, >1h retry storms), then the rest, medium+ only.
 Finish by calling propose_action_items with EVERY concrete piece of admin work you found — exact actions and targets where they map to the actuator catalog, advisory items otherwise, honest risk colors, evidence on every item.`;
 
 const SCOPING_MEGAPROMPT = `Build a full scoping dossier of this fleet — every tool, every host. Cover:
@@ -40,7 +40,7 @@ const SCOPING_MEGAPROMPT = `Build a full scoping dossier of this fleet — every
 6. Configuration: connections, code envs, plugins, LLM Mesh (config_inspect, each domain).
 7. Kubernetes capability and cluster states (k8s_health).
 8. Runtime database health (db_health).
-Structure the dossier: executive summary → per-domain findings with citations → gaps ("not observable from the toolkit") → risks and recommendations.
+Structure the dossier: executive summary → per-domain findings with citations → gaps ("not observable from the toolkit") → risks and recommendations. Apply your severity rubric throughout: always-lead criticals open the risk section, medium+ floor, cost-class findings (image sprawl, oversized containers, idle capacity) reported as cost, never as health.
 Close with propose_action_items for any admin work your findings imply.`;
 
 const ACTUATOR_MEGAPROMPT = `Take a full maintenance-opportunity inventory of this instance — DO NOT plan or execute anything yet, this pass is read-only. Sweep:
@@ -49,7 +49,7 @@ const ACTUATOR_MEGAPROMPT = `Take a full maintenance-opportunity inventory of th
 3. db_health: tables with the most dead tuples (db-vacuum) and stale-stats tables (db-analyze).
 4. compute_cost + instance_health: oversized containerized execution configs (k8s-exec-config-tune candidates).
 5. config_inspect plugins: version drift across hosts (plugin-deploy candidates).
-Present a prioritized list — most value first — with the evidence, the exact action + target you would plan for each, and the risk color. Then STOP and wait: I will tell you which ones to plan.`;
+Present a prioritized list — most value first, medium+ severity only, skipping anything whitelist-suppressed — with the evidence, the exact action + target you would plan for each, and the risk color. Then STOP and wait: I will tell you which ones to plan.`;
 
 export const PROMPT_CATALOGS: Record<string, AgentCatalog> = {
   'ATK Health Triage': {

@@ -1,8 +1,12 @@
 """Backend-settings routes: current/default perf settings + plugin threshold
-defaults. `_BACKEND_SETTINGS` (adk_backend.settings) is the ONE shared dict —
-read under its lock here; any mutation is in place, never a rebind."""
+defaults + the per-item finding whitelist (false-positive suppression).
+`_BACKEND_SETTINGS` (adk_backend.settings) is the ONE shared dict — read under
+its lock here; any mutation is in place, never a rebind."""
+import json
 import random
+import threading
 import time
+from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
 
@@ -222,3 +226,98 @@ def api_settings_threshold_defaults():
         return jsonify(load_plugin_threshold_defaults())
     except Exception:
         return jsonify({})
+
+
+# ── Finding whitelist (per-item false-positive suppression) ──────────────────
+# Rubric doctrine: every thresholded size/cleanup rule honors a per-item admin
+# whitelist; whitelisted items are silently skipped wherever the rule applies
+# (health score twins, issue lists, agent findings). Stored as a JSON plugin
+# param (`finding_whitelist`, declared in plugin.json so DSS doesn't prune it)
+# — shared across users, survives restarts, hub-local like all plugin config.
+
+_WHITELIST_RULES = {
+    'project-size': 'project key',
+    'project-code-envs': 'project key',
+    'code-env-size': 'code env name',
+    'python-env-lifecycle': 'code env name',
+    'disk-usage': 'mount point',
+}
+_WHITELIST_MAX = 500
+_whitelist_lock = threading.Lock()
+_whitelist_cache = {'entries': None}
+
+
+def _whitelist_load() -> list:
+    with _whitelist_lock:
+        if _whitelist_cache['entries'] is None:
+            from db_adapter import _get_plugin_config
+            entries = []
+            try:
+                raw = _get_plugin_config().get('finding_whitelist')
+                parsed = json.loads(raw) if raw else []
+                if isinstance(parsed, list):
+                    entries = [e for e in parsed if isinstance(e, dict) and e.get('rule') and e.get('item')]
+            except Exception:
+                entries = []
+            _whitelist_cache['entries'] = entries
+        return list(_whitelist_cache['entries'])
+
+
+def _whitelist_save(entries: list) -> None:
+    settings = _local_thread_client().get_plugin(_PLUGIN_ID).get_settings()
+    settings.get_raw().setdefault('config', {})['finding_whitelist'] = json.dumps(entries)
+    settings.save()
+    with _whitelist_lock:
+        _whitelist_cache['entries'] = entries
+
+
+def _whitelist_key(entry: dict) -> tuple:
+    return (entry.get('rule'), entry.get('item'), entry.get('host') or 'local')
+
+
+@bp.route('/api/whitelist', methods=['GET'])
+def api_whitelist_get():
+    return jsonify({'entries': _whitelist_load(),
+                    'rules': [{'rule': r, 'itemLabel': label} for r, label in _WHITELIST_RULES.items()]})
+
+
+@bp.route('/api/whitelist/add', methods=['POST'])
+@advanced
+def api_whitelist_add():
+    body = request.get_json(silent=True) or {}
+    rule = str(body.get('rule') or '').strip()
+    item = str(body.get('item') or '').strip()
+    if rule not in _WHITELIST_RULES:
+        return jsonify({'error': 'unknown-rule',
+                        'message': 'rule must be one of: %s' % ', '.join(sorted(_WHITELIST_RULES))}), 400
+    if not item:
+        return jsonify({'error': 'missing-item', 'message': 'item is required'}), 400
+    entry = {
+        'rule': rule,
+        'item': item,
+        'host': str(body.get('host') or 'local').strip() or 'local',
+        'note': str(body.get('note') or '').strip()[:300] or None,
+        'addedBy': str(body.get('addedBy') or 'admin').strip()[:80],
+        'addedAt': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+    }
+    entries = _whitelist_load()
+    if len(entries) >= _WHITELIST_MAX:
+        return jsonify({'error': 'whitelist-full',
+                        'message': 'Whitelist is at its %d-entry cap.' % _WHITELIST_MAX}), 400
+    entries = [e for e in entries if _whitelist_key(e) != _whitelist_key(entry)] + [entry]
+    _whitelist_save(entries)
+    return jsonify({'ok': True, 'entries': entries})
+
+
+@bp.route('/api/whitelist/remove', methods=['POST'])
+@advanced
+def api_whitelist_remove():
+    body = request.get_json(silent=True) or {}
+    key = (str(body.get('rule') or '').strip(), str(body.get('item') or '').strip(),
+           str(body.get('host') or 'local').strip() or 'local')
+    entries = _whitelist_load()
+    kept = [e for e in entries if _whitelist_key(e) != key]
+    if len(kept) == len(entries):
+        return jsonify({'error': 'not-found', 'message': 'No matching whitelist entry.'}), 404
+    _whitelist_save(kept)
+    return jsonify({'ok': True, 'entries': kept})

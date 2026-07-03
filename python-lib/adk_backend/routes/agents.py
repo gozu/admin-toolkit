@@ -102,6 +102,54 @@ def api_agents_chat():
     return _sse_response(generate)
 
 
+@bp.route('/api/agents/settings-history')
+@local_only
+def api_agents_settings_history():
+    """Settings-change history (agents.settings_changes, written by the agents
+    plugin's actuator). `?item=<item_key>` scopes to one item (last 50 — the
+    restore window per the K97 doctrine); without it, the most recent changes
+    across all items."""
+    item = (request.args.get('item') or '').strip()
+    limit = 50 if item else 100
+    cfg = load_agents_audit_config(client=g.client)
+    if not cfg.connection_name:
+        return jsonify({'available': False, 'changes': [], 'reason': 'audit-db-not-configured'})
+    try:
+        conn = agents_db.connect(cfg.connection_name, client=g.client)
+    except Exception as exc:
+        return jsonify({'available': False, 'changes': [],
+                        'reason': 'audit-db-unreachable: %s' % str(exc)[:200]})
+    try:
+        with conn.cursor() as cur:
+            if item:
+                cur.execute(
+                    'SELECT id, ts, host, item_key, before, after, agent, actor, audit_id '
+                    'FROM agents.settings_changes WHERE item_key = %s '
+                    'ORDER BY id DESC LIMIT %s', (item, limit))
+            else:
+                cur.execute(
+                    'SELECT id, ts, host, item_key, before, after, agent, actor, audit_id '
+                    'FROM agents.settings_changes ORDER BY id DESC LIMIT %s', (limit,))
+            cols = [d[0] for d in (cur.description or [])]
+            rows = [dict(zip(cols, row)) for row in cur.fetchall()]
+        for row in rows:
+            row['ts'] = str(row.get('ts') or '')
+            for field in ('before', 'after'):
+                try:
+                    row[field] = json.loads(row[field]) if row.get(field) else None
+                except (ValueError, TypeError):
+                    pass
+        return jsonify({'available': True, 'changes': rows})
+    except Exception as exc:
+        # Table absent until the first settings-mutating action — normal empty state.
+        return jsonify({'available': False, 'changes': [], 'reason': str(exc)[:200]})
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 @bp.route('/api/agents/actions')
 @local_only
 def api_agents_actions():

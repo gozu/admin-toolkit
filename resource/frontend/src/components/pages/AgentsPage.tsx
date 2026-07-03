@@ -6,6 +6,7 @@ import { MessageView } from '../agents/MessageView';
 import { PromptLibrary } from '../agents/PromptLibrary';
 import { PendingApprovalsBar } from '../agents/PendingApprovalsBar';
 import { AuditTimeline } from '../agents/AuditTimeline';
+import { SettingsHistoryCard } from '../agents/SettingsHistoryCard';
 import { catalogForAgent } from '../../utils/agentPromptCatalog';
 import {
   abortAgentTurn,
@@ -137,6 +138,17 @@ export function AgentsPage() {
     setDraft(prompt);
     composerRef.current?.focus();
   }, []);
+
+  // Settings-history "Restore…": hand the restore plan to the actuator —
+  // switch to it (restores are its job) and prefill the composer for review.
+  const onRestore = useCallback(
+    (prompt: string) => {
+      if (actuator && actuator.id !== selectedId) selectAgent(actuator.id);
+      setDraft(prompt);
+      composerRef.current?.focus();
+    },
+    [actuator, selectedId],
+  );
 
   const onPlanDecision = useCallback(
     (plan: PlanCardData, decision: 'approved' | 'rejected') => {
@@ -337,9 +349,10 @@ export function AgentsPage() {
             </div>
           </div>
 
-          {/* Audit trail — may stay wider than the chat column */}
-          <div className="w-full max-w-5xl mx-auto px-4">
+          {/* Audit trail + settings history — may stay wider than the chat column */}
+          <div className="w-full max-w-5xl mx-auto px-4 space-y-3">
             <AuditTimeline focusAuditId={focusAuditId} />
+            <SettingsHistoryCard onRestore={onRestore} />
           </div>
 
           <PromptLibrary

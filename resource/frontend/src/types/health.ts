@@ -26,6 +26,11 @@ export interface HealthIssue {
   docUrl?: string;
   value?: string | number;
   threshold?: string | number;
+  /** Whitelist rule this issue's items fall under (false-positive doctrine) —
+   *  present only on issues whose members can be whitelisted per item. */
+  whitelistRule?: string;
+  /** The concrete member items (project keys, env names, mounts). */
+  whitelistItems?: string[];
 }
 
 export interface HealthCategoryScore {
@@ -44,4 +49,10 @@ export interface HealthScore {
   criticalCount: number;
   warningCount: number;
   infoCount: number;
+  /** True when a critical cap rule (issue id `cap-*`) clamped the overall
+   *  score into the critical band. */
+  capped?: boolean;
+  /** Number of distinct (rule, item) pairs the admin whitelist suppressed
+   *  during this computation — agents report this count, never the items. */
+  whitelistSuppressed?: number;
 }

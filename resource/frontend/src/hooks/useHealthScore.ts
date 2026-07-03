@@ -8,6 +8,7 @@ import type {
   HealthSeverity,
 } from '../types';
 import { useThresholds, type ThresholdSettings } from './useThresholds';
+import { whitelistStore, activeHostWhitelist } from '../state/whitelistStore';
 import type { LifecycleFieldName } from '../utils/moduleRegistry';
 
 // Single source of truth for the lifecycle fields the health score actually
@@ -28,16 +29,19 @@ export const SCORE_LIFECYCLE_FIELDS: readonly LifecycleFieldName[] = [
 ];
 
 /**
- * Category weights for overall score calculation
- * Excludes license and log errors - focuses on system health only
+ * Category weights for overall score calculation — calibrated against the TAM
+ * severity rubric (docs/agent-workflows/severity-rubric.md): infra/runtime
+ * dominate; security_isolation is zero-weighted (its cgroups penalties moved
+ * into runtime_config so zero-weighting loses nothing) but its issues still
+ * surface.
  */
 const CATEGORY_WEIGHTS: Record<HealthCategory, number> = {
-  code_envs: 0.35,          // Highest priority
-  project_footprint: 0.30,  // Second highest priority
-  system_capacity: 0.15,
-  security_isolation: 0.10,
-  version_currency: 0.05,
-  runtime_config: 0.05,
+  system_capacity: 0.30,
+  runtime_config: 0.30,
+  code_envs: 0.15,
+  project_footprint: 0.15,
+  version_currency: 0.10,
+  security_isolation: 0,
   // Legacy categories kept for compatibility with older snapshots
   version: 0,
   system: 0,
@@ -47,6 +51,48 @@ const CATEGORY_WEIGHTS: Record<HealthCategory, number> = {
   license: 0,      // Not used
   errors: 0,       // Not used
 };
+
+/** Rubric size lines (interview C26/E46): code env >5GB, project >10GB. */
+const LARGE_CODE_ENV_GB = 5;
+const LARGE_PROJECT_GB = 10;
+
+/** One admin-whitelisted finding item: `rule` is a stable issue-id prefix,
+ *  `item` the concrete object (project key, env name). Whitelisted items are
+ *  exempted INSIDE the scorers — factor score and issue membership both. */
+export interface FindingWhitelistEntry {
+  rule: string;
+  item: string;
+  host?: string;
+  note?: string;
+  addedBy?: string;
+  addedAt?: string;
+}
+
+/** Rules that honor the per-item whitelist (false-positive doctrine). */
+export const WHITELISTABLE_RULES = [
+  { rule: 'project-size', label: 'Project size', itemLabel: 'project key' },
+  { rule: 'project-code-envs', label: 'Code envs per project', itemLabel: 'project key' },
+  { rule: 'code-env-size', label: 'Code env size', itemLabel: 'env name' },
+  { rule: 'python-env-lifecycle', label: 'Deprecated Python env', itemLabel: 'env name' },
+  { rule: 'disk-usage', label: 'Disk usage on mount', itemLabel: 'mount point' },
+] as const;
+
+type IsWhitelisted = ((rule: string, item: string) => boolean) & { matched: Set<string> };
+
+function buildWhitelistLookup(entries?: FindingWhitelistEntry[]): IsWhitelisted {
+  const keys = new Set((entries ?? []).map((e) => `${e.rule} ${e.item}`));
+  const matched = new Set<string>();
+  const check = ((rule: string, item: string) => {
+    const key = `${rule} ${item}`;
+    if (keys.has(key)) {
+      matched.add(key);
+      return true;
+    }
+    return false;
+  }) as IsWhitelisted;
+  check.matched = matched;
+  return check;
+}
 
 export const HEALTH_FACTOR_CONTROLS = [
   { key: 'python_versions', label: 'Python Versions' },
@@ -143,112 +189,96 @@ function parseMemorySizeToGB(value: string | undefined): number {
 }
 
 /**
- * Parse a Python version string and return major.minor as numbers
+ * Lifecycle-aware Python scorer (interview C23/C23b): severity follows the
+ * Dataiku deprecation lifecycle, conditioned on the instance DSS version.
+ * - IN-USE env on a deprecated version (2.x/3.6/3.7): score 20, critical.
+ * - IN-USE 3.8 env on DSS >= 14: score 60, warning (removal is coming).
+ * - UNREFERENCED deprecated env: info-only delete candidate, no score drag.
+ * Envs whitelisted under 'python-env-lifecycle' are skipped entirely.
  */
-function parsePythonVersion(version: string): { major: number; minor: number } | null {
-  const match = version.match(/(\d+)\.(\d+)/);
-  if (!match) return null;
-  return {
-    major: parseInt(match[1], 10),
-    minor: parseInt(match[2], 10),
-  };
-}
-
-/**
- * Check if a Python version is supported (>= 3.10)
- */
-function isPythonVersionSupported(version: string): boolean {
-  const parsed = parsePythonVersion(version);
-  if (!parsed) return false;
-  return parsed.major >= 3 && parsed.minor >= 10;
-}
-
-/**
- * Calculate Python version score based on percentage of code environments
- * with supported Python versions (>= 3.10)
- *
- * Scoring:
- * - 90%+ supported: 100
- * - 70-89% supported: 80
- * - 50-69% supported: 60
- * - 30-49% supported: 40
- * - <30% supported: 20
- */
-function scorePythonVersion(codeEnvs: ParsedData['codeEnvs']): { score: number; issue?: HealthIssue } {
+function scorePythonVersion(
+  codeEnvs: ParsedData['codeEnvs'],
+  dssVersion: ParsedData['dssVersion'],
+  t: Partial<ThresholdSettings> | undefined,
+  isWhitelisted: IsWhitelisted,
+): { score: number; issues: HealthIssue[] } {
   if (!codeEnvs || codeEnvs.length === 0) {
-    return { score: 75 }; // No code envs = neutral score
+    return { score: 75, issues: [] }; // No code envs = neutral score
   }
 
-  const total = codeEnvs.length;
-  const supported = codeEnvs.filter(env => isPythonVersionSupported(env.version)).length;
-  const unsupported = total - supported;
-  const supportedPercent = (supported / total) * 100;
+  const deprecatedPrefixes = String(t?.deprecatedPythonPrefixes ?? '2.,3.6,3.7')
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const dssMajor = parseInt(String(dssVersion ?? ''), 10) || 0;
+  const isDeprecated = (version: string) =>
+    deprecatedPrefixes.some((p) => String(version || '').startsWith(p));
+  // usageCount missing (older payloads / uploaded diags) counts as in-use.
+  const isInUse = (env: { usageCount?: number }) =>
+    typeof env.usageCount === 'number' ? env.usageCount > 0 : true;
 
-  if (supportedPercent >= 90) {
-    return { score: 100 };
-  }
+  const pythonEnvs = codeEnvs.filter(
+    (env) => env.language !== 'r' && !isWhitelisted('python-env-lifecycle', env.name),
+  );
+  const deprecatedInUse = pythonEnvs.filter((env) => isDeprecated(env.version) && isInUse(env));
+  const planInUse = dssMajor >= 14
+    ? pythonEnvs.filter((env) => String(env.version || '').startsWith('3.8') && isInUse(env))
+    : [];
+  const deprecatedUnused = pythonEnvs.filter((env) => isDeprecated(env.version) && !isInUse(env));
 
-  if (supportedPercent >= 70) {
-    return {
-      score: 80,
-      issue: {
-        id: 'python-versions-aging',
-        category: 'version_currency',
-        severity: 'info',
-        title: `${unsupported} of ${total} code envs on older Python`,
-        description: `${supportedPercent.toFixed(0)}% of code environments use Python 3.10+. ${unsupported} environment${unsupported > 1 ? 's' : ''} use older versions.`,
-        recommendation: 'Consider upgrading older code environments to Python 3.10 or later.',
-        value: `${supportedPercent.toFixed(0)}%`,
-        threshold: '≥90%',
-      },
-    };
-  }
+  const issues: HealthIssue[] = [];
+  let score = 100;
 
-  if (supportedPercent >= 50) {
-    return {
-      score: 60,
-      issue: {
-        id: 'python-versions-old',
-        category: 'version_currency',
-        severity: 'warning',
-        title: `${unsupported} of ${total} code envs on older Python`,
-        description: `Only ${supportedPercent.toFixed(0)}% of code environments use Python 3.10+. ${unsupported} environment${unsupported > 1 ? 's' : ''} use older, potentially unsupported versions.`,
-        recommendation: 'Upgrade code environments to Python 3.10 or later.',
-        value: `${supportedPercent.toFixed(0)}%`,
-        threshold: '≥90%',
-      },
-    };
-  }
-
-  if (supportedPercent >= 30) {
-    return {
-      score: 40,
-      issue: {
-        id: 'python-versions-critical',
-        category: 'version_currency',
-        severity: 'warning',
-        title: `${unsupported} of ${total} code envs on older Python`,
-        description: `Only ${supportedPercent.toFixed(0)}% of code environments use Python 3.10+. Most environments use older, potentially unsupported versions.`,
-        recommendation: 'Prioritize upgrading code environments to Python 3.10 or later.',
-        value: `${supportedPercent.toFixed(0)}%`,
-        threshold: '≥90%',
-      },
-    };
-  }
-
-  return {
-    score: 20,
-    issue: {
-      id: 'python-versions-critical',
+  if (deprecatedInUse.length > 0) {
+    score = 20;
+    const preview = deprecatedInUse.slice(0, 5).map((e) => `${e.name} (${e.version})`).join(', ');
+    const more = deprecatedInUse.length > 5 ? ` and ${deprecatedInUse.length - 5} more` : '';
+    issues.push({
+      id: 'python-lifecycle-critical',
       category: 'version_currency',
       severity: 'critical',
-      title: `${unsupported} of ${total} code envs on unsupported Python`,
-      description: `Only ${supportedPercent.toFixed(0)}% of code environments use Python 3.10+. Most environments use older, unsupported Python versions that no longer receive security updates.`,
-      recommendation: 'Upgrade code environments to Python 3.10 or later ASAP.',
-      value: `${supportedPercent.toFixed(0)}%`,
-      threshold: '≥90%',
-    },
-  };
+      title: `${deprecatedInUse.length} in-use code env${deprecatedInUse.length > 1 ? 's' : ''} on deprecated Python`,
+      description: `${preview}${more}. These Python versions are deprecated by Dataiku — projects using them must migrate now.`,
+      recommendation: 'Migrate the projects using these environments to a supported Python version now.',
+      value: deprecatedInUse.length,
+      threshold: `not ${deprecatedPrefixes.join('/')}`,
+      whitelistRule: 'python-env-lifecycle',
+      whitelistItems: deprecatedInUse.map((e) => e.name),
+    });
+  } else if (planInUse.length > 0) {
+    score = 60;
+    const preview = planInUse.slice(0, 5).map((e) => e.name).join(', ');
+    const more = planInUse.length > 5 ? ` and ${planInUse.length - 5} more` : '';
+    issues.push({
+      id: 'python-lifecycle-plan',
+      category: 'version_currency',
+      severity: 'warning',
+      title: `${planInUse.length} in-use code env${planInUse.length > 1 ? 's' : ''} on Python 3.8 (deprecated in DSS 14)`,
+      description: `${preview}${more}. DSS 14 deprecates Python 3.8; support will be removed in a later release.`,
+      recommendation: 'Plan the migration to a supported Python version before the removal release.',
+      value: planInUse.length,
+      whitelistRule: 'python-env-lifecycle',
+      whitelistItems: planInUse.map((e) => e.name),
+    });
+  }
+
+  if (deprecatedUnused.length > 0) {
+    const preview = deprecatedUnused.slice(0, 5).map((e) => `${e.name} (${e.version})`).join(', ');
+    const more = deprecatedUnused.length > 5 ? ` and ${deprecatedUnused.length - 5} more` : '';
+    issues.push({
+      id: 'python-lifecycle-cleanup',
+      category: 'version_currency',
+      severity: 'info',
+      title: `${deprecatedUnused.length} unreferenced code env${deprecatedUnused.length > 1 ? 's' : ''} on deprecated Python`,
+      description: `${preview}${more}. Nothing references these environments — they are delete candidates, not migration work.`,
+      recommendation: 'Delete these unused environments (backup-first via the code-env cleaner).',
+      value: deprecatedUnused.length,
+      whitelistRule: 'python-env-lifecycle',
+      whitelistItems: deprecatedUnused.map((e) => e.name),
+    });
+  }
+
+  return { score, issues };
 }
 
 /**
@@ -343,7 +373,10 @@ function scoreMemoryAvailability(memoryInfo: ParsedData['memoryInfo']): { score:
  * Calculate filesystem score based on worst mount point
  * >20% available: 100, 10-20%: 70, <10%: 30
  */
-function scoreFilesystem(filesystemInfo: ParsedData['filesystemInfo']): { score: number; issues: HealthIssue[] } {
+function scoreFilesystem(
+  filesystemInfo: ParsedData['filesystemInfo'],
+  isWhitelisted: IsWhitelisted,
+): { score: number; issues: HealthIssue[] } {
   if (!filesystemInfo || filesystemInfo.length === 0) return { score: 75, issues: [] };
 
   let worstScore = 100;
@@ -355,6 +388,7 @@ function scoreFilesystem(filesystemInfo: ParsedData['filesystemInfo']): { score:
 
     // Skip invalid entries
     if (usage > 100 || usage <= 0) continue;
+    if (isWhitelisted('disk-usage', String(mountPoint))) continue;
 
     const available = 100 - usage;
 
@@ -369,6 +403,8 @@ function scoreFilesystem(filesystemInfo: ParsedData['filesystemInfo']): { score:
         recommendation: 'Free up disk space or expand storage immediately.',
         value: `${usage}%`,
         threshold: '<80%',
+        whitelistRule: 'disk-usage',
+        whitelistItems: [String(mountPoint)],
       });
     } else if (available < 20) {
       worstScore = Math.min(worstScore, 70);
@@ -381,6 +417,8 @@ function scoreFilesystem(filesystemInfo: ParsedData['filesystemInfo']): { score:
         recommendation: 'Monitor disk usage and plan for cleanup or expansion.',
         value: `${usage}%`,
         threshold: '<80%',
+        whitelistRule: 'disk-usage',
+        whitelistItems: [String(mountPoint)],
       });
     }
   }
@@ -473,19 +511,24 @@ function scoreSecuritySettings(parsedData: ParsedData): { score: number; issues:
     }
   }
 
-  // Check cgroups setting
+  // Check cgroups setting. The parser serves 'Yes'/'No' strings — anything
+  // other than an explicit 'Yes' (missing key included) counts as disabled.
+  // (This deliberately fixes the old truthiness bug where the string 'No'
+  // passed the check and the penalty never fired live.)
+  // cgroups issues live in runtime_config per the TAM rubric: they are a
+  // runtime-blowup risk, not a security nicety.
   if (parsedData.cgroupSettings) {
     const cgroupsEnabled = parsedData.cgroupSettings['Enabled'];
     checksPerformed++;
-    if (!cgroupsEnabled) {
+    if (String(cgroupsEnabled ?? '') !== 'Yes') {
       totalScore -= 15;
       issues.push({
         id: 'cgroups-disabled',
-        category: 'security_isolation',
-        severity: 'info',
+        category: 'runtime_config',
+        severity: 'warning',
         title: 'CGroups not enabled',
-        description: 'CGroups resource limits are not configured.',
-        recommendation: 'Consider enabling CGroups for better resource isolation.',
+        description: 'CGroups resource limits are not configured — runaway kernels/jobs can take down the host.',
+        recommendation: 'Enable CGroups memory limits for kernels and jobs.',
       });
     }
 
@@ -495,7 +538,7 @@ function scoreSecuritySettings(parsedData: ParsedData): { score: number; issues:
       totalScore -= 20;
       issues.push({
         id: 'cgroups-empty-targets',
-        category: 'security_isolation',
+        category: 'runtime_config',
         severity: 'warning',
         title: 'CGroups empty target types',
         description: `Some target types have empty cgroup configurations: ${emptyTargets}`,
@@ -533,29 +576,33 @@ function scoreSecuritySettings(parsedData: ParsedData): { score: number; issues:
 }
 
 /**
- * Calculate runtime database score.
- * Production DSS instances should use PostgreSQL for the runtime database.
- * PostgreSQL: 100, other: 40 (warning), unknown: 75 (neutral).
+ * Calculate runtime database score (rubric F56: internal H2 is critical
+ * unconditionally and caps the overall score).
+ * PostgreSQL: 100. Settings loaded but no PostgreSQL connection type ⇒ the
+ * runtime DB is the embedded H2 (externalized runtime DBs always carry
+ * internalDatabase.connection.type) ⇒ score 0 + `cap-runtime-db` critical.
+ * Settings not loaded: 75 (neutral) — the guard against an empty payload.
  */
 function scoreRuntimeDatabase(
   generalSettings: ParsedData['generalSettings'],
 ): { score: number; issue?: HealthIssue } {
-  const internalDb = (
-    generalSettings as { internalDatabase?: { connection?: { type?: string } } } | undefined
-  )?.internalDatabase;
-  const type = internalDb?.connection?.type;
-  if (!type) return { score: 75 };
+  const settings = generalSettings as
+    | { internalDatabase?: { connection?: { type?: string } } }
+    | undefined;
+  if (!settings || Object.keys(settings).length === 0) return { score: 75 };
+  const type = settings.internalDatabase?.connection?.type;
   if (type === 'PostgreSQL') return { score: 100 };
+  const label = type || 'internal H2';
   return {
-    score: 40,
+    score: 0,
     issue: {
-      id: 'runtime-db-not-postgres',
+      id: 'cap-runtime-db',
       category: 'runtime_config',
-      severity: 'warning',
-      title: `Runtime database is ${type}, not PostgreSQL`,
-      description: `DSS runtime database connection type is '${type}'. Production DSS instances should use PostgreSQL for the runtime database.`,
-      recommendation: 'Migrate the DSS runtime database to PostgreSQL.',
-      value: type,
+      severity: 'critical',
+      title: `Runtime database is ${label}, not PostgreSQL`,
+      description: `DSS runtime database is '${label}'. The internal H2 runtime database is disqualifying at any instance size — DSS runs unnecessarily slowly until it is externalized.`,
+      recommendation: 'Migrate the DSS runtime database to PostgreSQL immediately.',
+      value: label,
       threshold: 'PostgreSQL',
     },
   };
@@ -619,7 +666,8 @@ function normalizeProjectSizeIndex(totalGb: number, avgGb: number): number {
 }
 
 function scoreCodeEnvComplexity(
-  projectFootprint: ParsedData['projectFootprint']
+  projectFootprint: ParsedData['projectFootprint'],
+  isWhitelisted: IsWhitelisted,
 ): { score: number; issues: HealthIssue[] } {
   if (!projectFootprint || projectFootprint.length === 0) {
     return { score: 75, issues: [] };
@@ -629,16 +677,19 @@ function scoreCodeEnvComplexity(
   const issues: HealthIssue[] = [];
 
   const criticalProjects: string[] = [];
+  const criticalKeys: string[] = [];
   const warningProjects: string[] = [];
   const infoProjects: string[] = [];
 
   for (const row of projectFootprint) {
+    if (isWhitelisted('project-code-envs', row.projectKey)) continue;
     const count = row.codeEnvCount || 0;
     const risk = normalizeCodeEnvRisk(count);
     risks.push(risk);
 
     if (count >= 4) {
       criticalProjects.push(`${row.projectKey} (${count})`);
+      criticalKeys.push(row.projectKey);
     } else if (count === 3) {
       warningProjects.push(row.projectKey);
     } else if (count === 2) {
@@ -656,6 +707,8 @@ function scoreCodeEnvComplexity(
       title: `${criticalProjects.length} project${criticalProjects.length > 1 ? 's' : ''} have 4+ code envs`,
       description: `${preview}${more}. Each extra code environment multiplies size, fragility, deployment time, and failure surface.`,
       recommendation: 'Consolidate toward a single code environment per project.',
+      whitelistRule: 'project-code-envs',
+      whitelistItems: criticalKeys,
     });
   }
 
@@ -669,6 +722,8 @@ function scoreCodeEnvComplexity(
       title: `${warningProjects.length} project${warningProjects.length > 1 ? 's' : ''} have 3 code envs`,
       description: `${preview}${more}. Multiple code environments increase maintenance overhead and drift risk.`,
       recommendation: 'Reduce project code environments to 1-2, ideally 1.',
+      whitelistRule: 'project-code-envs',
+      whitelistItems: warningProjects,
     });
   }
 
@@ -682,6 +737,8 @@ function scoreCodeEnvComplexity(
       title: `${infoProjects.length} project${infoProjects.length > 1 ? 's' : ''} have 2 code envs`,
       description: `${preview}${more}. Two code environments already increase rebuild and deployment complexity.`,
       recommendation: 'Consolidate to a single environment when possible.',
+      whitelistRule: 'project-code-envs',
+      whitelistItems: infoProjects,
     });
   }
 
@@ -690,9 +747,52 @@ function scoreCodeEnvComplexity(
   return { score, issues };
 }
 
+/**
+ * Rubric C26: a single code env >5GB on disk is a finding (whitelist-subject —
+ * some envs are legitimately huge, e.g. CUDA/torch). Modest score dent; the
+ * point is the issue, not the number.
+ */
+function scoreCodeEnvSize(
+  codeEnvs: ParsedData['codeEnvs'],
+  isWhitelisted: IsWhitelisted,
+): { score: number; issues: HealthIssue[] } {
+  if (!codeEnvs || codeEnvs.length === 0) return { score: 100, issues: [] };
+  const sized = codeEnvs.filter((env) => typeof env.sizeBytes === 'number' && env.sizeBytes > 0);
+  if (sized.length === 0) return { score: 100, issues: [] };
+
+  const large = sized.filter(
+    (env) =>
+      (env.sizeBytes as number) / (1024 * 1024 * 1024) > LARGE_CODE_ENV_GB &&
+      !isWhitelisted('code-env-size', env.name),
+  );
+  if (large.length === 0) return { score: 100, issues: [] };
+
+  const preview = large
+    .slice(0, 5)
+    .map((e) => `${e.name} (${((e.sizeBytes as number) / (1024 * 1024 * 1024)).toFixed(1)}GB)`)
+    .join(', ');
+  const more = large.length > 5 ? ` and ${large.length - 5} more` : '';
+  return {
+    score: Math.max(40, 100 - large.length * 15),
+    issues: [{
+      id: 'code-env-size-group',
+      category: 'code_envs',
+      severity: 'warning',
+      title: `${large.length} code env${large.length > 1 ? 's' : ''} over ${LARGE_CODE_ENV_GB}GB`,
+      description: `${preview}${more}. Environments this large are usually over-pinned or carry unused heavy packages.`,
+      recommendation: 'Slim the environment (or whitelist it if the size is legitimate, e.g. CUDA).',
+      value: large.length,
+      threshold: `≤${LARGE_CODE_ENV_GB}GB`,
+      whitelistRule: 'code-env-size',
+      whitelistItems: large.map((e) => e.name),
+    }],
+  };
+}
+
 function scoreProjectSizePressure(
   projectFootprint: ParsedData['projectFootprint'],
-  summary: ParsedData['projectFootprintSummary']
+  summary: ParsedData['projectFootprintSummary'],
+  isWhitelisted: IsWhitelisted,
 ): { score: number; issues: HealthIssue[] } {
   if (!projectFootprint || projectFootprint.length === 0) {
     return { score: 75, issues: [] };
@@ -706,10 +806,14 @@ function scoreProjectSizePressure(
   const issues: HealthIssue[] = [];
 
   const hugeProjects: string[] = [];
+  const hugeKeys: string[] = [];
+  const largeProjects: string[] = [];
+  const largeKeys: string[] = [];
   const criticalSizeProjects: string[] = [];
   const highSizeProjects: string[] = [];
 
   for (const row of projectFootprint) {
+    if (isWhitelisted('project-size', row.projectKey)) continue;
     const totalGb = row.totalGB ?? ((row.totalBytes || 0) / (1024 * 1024 * 1024));
     const sizeRisk = typeof row.projectSizeIndex === 'number'
       ? row.projectSizeIndex
@@ -718,7 +822,13 @@ function scoreProjectSizePressure(
 
     if (totalGb >= 40) {
       hugeProjects.push(`${row.projectKey} (${totalGb.toFixed(1)}GB)`);
+      hugeKeys.push(row.projectKey);
       continue;
+    }
+
+    if (totalGb > LARGE_PROJECT_GB) {
+      largeProjects.push(`${row.projectKey} (${totalGb.toFixed(1)}GB)`);
+      largeKeys.push(row.projectKey);
     }
 
     const sizeHealth = row.projectSizeHealth;
@@ -739,6 +849,24 @@ function scoreProjectSizePressure(
       title: `${hugeProjects.length} project${hugeProjects.length > 1 ? 's' : ''} exceed 40GB`,
       description: `${preview}${more}. Project size above 40GB is a severe storage and operational risk.`,
       recommendation: 'Prioritize cleanup or archival for these projects.',
+      whitelistRule: 'project-size',
+      whitelistItems: hugeKeys,
+    });
+  }
+
+  if (largeProjects.length > 0) {
+    const preview = largeProjects.slice(0, 5).join(', ');
+    const more = largeProjects.length > 5 ? ` and ${largeProjects.length - 5} more` : '';
+    issues.push({
+      id: 'project-size-large-group',
+      category: 'project_footprint',
+      severity: 'warning',
+      title: `${largeProjects.length} project${largeProjects.length > 1 ? 's' : ''} exceed ${LARGE_PROJECT_GB}GB`,
+      description: `${preview}${more}. Projects this large usually hide accumulating webapp logs or filesystem data that belongs on block storage.`,
+      recommendation: 'Inspect what fills each project (or whitelist it if the size is legitimate).',
+      threshold: `≤${LARGE_PROJECT_GB}GB`,
+      whitelistRule: 'project-size',
+      whitelistItems: largeKeys,
     });
   }
 
@@ -752,6 +880,8 @@ function scoreProjectSizePressure(
       title: `${criticalSizeProjects.length} project${criticalSizeProjects.length > 1 ? 's' : ''} have critical relative size`,
       description: `${preview}${more}. These projects are significantly larger than peers on this instance.`,
       recommendation: 'Review managed data/folders and archive or purge stale assets.',
+      whitelistRule: 'project-size',
+      whitelistItems: criticalSizeProjects,
     });
   }
 
@@ -765,6 +895,8 @@ function scoreProjectSizePressure(
       title: `${highSizeProjects.length} project${highSizeProjects.length > 1 ? 's' : ''} have high project size`,
       description: `${preview}${more}. These projects are above instance norm and add storage pressure.`,
       recommendation: 'Review large managed datasets/folders for cleanup.',
+      whitelistRule: 'project-size',
+      whitelistItems: highSizeProjects,
     });
   }
 
@@ -780,13 +912,15 @@ function scoreProjectSizePressure(
 export function calculateHealthScore(
   parsedData: ParsedData,
   factorToggles: Partial<HealthFactorToggles> = DEFAULT_HEALTH_FACTOR_TOGGLES,
-  thresholdOverrides?: Partial<ThresholdSettings>
+  thresholdOverrides?: Partial<ThresholdSettings>,
+  whitelist?: FindingWhitelistEntry[]
 ): HealthScore {
     const toggles: HealthFactorToggles = {
       ...DEFAULT_HEALTH_FACTOR_TOGGLES,
       ...factorToggles,
     };
     const t: ThresholdSettings = thresholdOverrides as ThresholdSettings;
+    const isWhitelisted = buildWhitelistLookup(whitelist);
     const categoryWeights: Record<HealthCategory, number> = t ? {
       ...CATEGORY_WEIGHTS,
       code_envs: t.weightCodeEnvs,
@@ -800,9 +934,9 @@ export function calculateHealthScore(
     const allIssues: HealthIssue[] = [];
 
     // ============================================
-    // VERSION CURRENCY (5%)
+    // VERSION CURRENCY (10%)
     // ============================================
-    const pythonResult = scorePythonVersion(parsedData.codeEnvs);
+    const pythonResult = scorePythonVersion(parsedData.codeEnvs, parsedData.dssVersion, t, isWhitelisted);
     const sparkResult = scoreSparkVersion(parsedData.sparkSettings);
 
     const versionCurrencyScore = combineEnabledScores([
@@ -810,7 +944,7 @@ export function calculateHealthScore(
       { enabled: toggles.spark_version, score: sparkResult.score, weight: 0.3 },
     ]);
     const versionCurrencyIssues: HealthIssue[] = [];
-    if (toggles.python_versions && pythonResult.issue) versionCurrencyIssues.push(pythonResult.issue);
+    if (toggles.python_versions) versionCurrencyIssues.push(...pythonResult.issues);
     if (toggles.spark_version && sparkResult.issue) versionCurrencyIssues.push(sparkResult.issue);
 
     categoryScores.push({
@@ -823,10 +957,10 @@ export function calculateHealthScore(
     allIssues.push(...versionCurrencyIssues);
 
     // ============================================
-    // SYSTEM CAPACITY (15%)
+    // SYSTEM CAPACITY (30%)
     // ============================================
     const memoryResult = scoreMemoryAvailability(parsedData.memoryInfo);
-    const filesystemResult = scoreFilesystem(parsedData.filesystemInfo);
+    const filesystemResult = scoreFilesystem(parsedData.filesystemInfo, isWhitelisted);
     const securityResult = scoreSecuritySettings(parsedData);
 
     // Open files is capacity-related, so it contributes here.
@@ -849,6 +983,38 @@ export function calculateHealthScore(
       systemCapacityIssues.push(openFilesIssue);
     }
 
+    // Critical cap rules living on the data mount (rubric A5/A6): DIP_HOME on
+    // NFS; data mount >= dataMountCriticalPct full. Deterministic, from the
+    // dipHomeStorage overview signal — absent (older remote toolkits, macOS
+    // dev) means the rules silently skip.
+    const dipHome = parsedData.dipHomeStorage;
+    if (toggles.filesystem_capacity && dipHome) {
+      if (String(dipHome.fsType || '').toLowerCase().startsWith('nfs')) {
+        systemCapacityIssues.push({
+          id: 'cap-diphome-nfs',
+          category: 'system_capacity',
+          severity: 'critical',
+          title: `DIP_HOME is on NFS (${dipHome.fsType})`,
+          description: `The DSS data directory (${dipHome.path || 'DIP_HOME'}) sits on an NFS mount (${dipHome.mount || '?'}). NFS under DIP_HOME causes pervasive performance and locking problems.`,
+          recommendation: 'Move DIP_HOME to local or block storage.',
+          value: dipHome.fsType,
+        });
+      }
+      const dataMountCritical = t?.dataMountCriticalPct ?? 75;
+      if (typeof dipHome.usedPct === 'number' && dipHome.usedPct >= dataMountCritical) {
+        systemCapacityIssues.push({
+          id: 'cap-data-mount-full',
+          category: 'system_capacity',
+          severity: 'critical',
+          title: `Data mount ${dipHome.usedPct}% full (${dipHome.mount || 'DIP_HOME'})`,
+          description: `The mount holding DIP_HOME is at ${dipHome.usedPct}% — past the ${dataMountCritical}% critical line. DSS misbehaves unpredictably when the data disk fills.`,
+          recommendation: 'Free space now (job logs, exports, large managed folders) or expand the volume.',
+          value: `${dipHome.usedPct}%`,
+          threshold: `<${dataMountCritical}%`,
+        });
+      }
+    }
+
     categoryScores.push({
       category: 'system_capacity',
       label: 'System Capacity',
@@ -859,31 +1025,19 @@ export function calculateHealthScore(
     allIssues.push(...systemCapacityIssues);
 
     // ============================================
-    // SECURITY ISOLATION (10%)
+    // SECURITY ISOLATION (0% — issues still surface)
     // ============================================
     const userIsolationIssue = securityResult.issues.find((i) => i.id === 'impersonation-disabled');
     const cgroupsDisabledIssue = securityResult.issues.find((i) => i.id === 'cgroups-disabled');
     const cgroupsEmptyIssue = securityResult.issues.find((i) => i.id === 'cgroups-empty-targets');
-    const securityChecksEnabled =
-      toggles.user_isolation || toggles.cgroups_enabled || toggles.cgroups_empty_targets;
     const securityIssues: HealthIssue[] = [];
     let securityIsolationScore = 100;
 
-    if (securityChecksEnabled) {
-      if (toggles.user_isolation && userIsolationIssue) {
-        securityIsolationScore -= 25;
-        securityIssues.push(userIsolationIssue);
-      }
-      if (toggles.cgroups_enabled && cgroupsDisabledIssue) {
-        securityIsolationScore -= 15;
-        securityIssues.push(cgroupsDisabledIssue);
-      }
-      if (toggles.cgroups_empty_targets && cgroupsEmptyIssue) {
-        securityIsolationScore -= 20;
-        securityIssues.push(cgroupsEmptyIssue);
-      }
-      securityIsolationScore = Math.max(0, securityIsolationScore);
+    if (toggles.user_isolation && userIsolationIssue) {
+      securityIsolationScore -= 25;
+      securityIssues.push(userIsolationIssue);
     }
+    securityIsolationScore = Math.max(0, securityIsolationScore);
 
     categoryScores.push({
       category: 'security_isolation',
@@ -895,26 +1049,32 @@ export function calculateHealthScore(
     allIssues.push(...securityIssues);
 
     // ============================================
-    // CODE ENVIRONMENTS (35%)
+    // CODE ENVIRONMENTS (15%)
     // ============================================
     const codeEnvResult = toggles.code_envs_per_project
-      ? scoreCodeEnvComplexity(parsedData.projectFootprint)
-      : { score: 100, issues: [] };
+      ? scoreCodeEnvComplexity(parsedData.projectFootprint, isWhitelisted)
+      : { score: 100, issues: [] as HealthIssue[] };
+    const codeEnvSizeResult = scoreCodeEnvSize(parsedData.codeEnvs, isWhitelisted);
+    const codeEnvsScore = combineEnabledScores([
+      { enabled: toggles.code_envs_per_project, score: codeEnvResult.score, weight: 0.7 },
+      { enabled: true, score: codeEnvSizeResult.score, weight: 0.3 },
+    ]);
+    const codeEnvsIssues = [...codeEnvResult.issues, ...codeEnvSizeResult.issues];
     categoryScores.push({
       category: 'code_envs',
       label: 'Code Envs',
-      score: codeEnvResult.score,
+      score: codeEnvsScore,
       weight: categoryWeights.code_envs,
-      issues: codeEnvResult.issues,
+      issues: codeEnvsIssues,
     });
-    allIssues.push(...codeEnvResult.issues);
+    allIssues.push(...codeEnvsIssues);
 
     // ============================================
-    // PROJECT FOOTPRINT (30%)
+    // PROJECT FOOTPRINT (15%)
     // ============================================
     const projectFootprintResult = toggles.project_size_pressure
-      ? scoreProjectSizePressure(parsedData.projectFootprint, parsedData.projectFootprintSummary)
-      : { score: 100, issues: [] };
+      ? scoreProjectSizePressure(parsedData.projectFootprint, parsedData.projectFootprintSummary, isWhitelisted)
+      : { score: 100, issues: [] as HealthIssue[] };
     categoryScores.push({
       category: 'project_footprint',
       label: 'Project Footprint',
@@ -925,18 +1085,33 @@ export function calculateHealthScore(
     allIssues.push(...projectFootprintResult.issues);
 
     // ============================================
-    // RUNTIME CONFIGURATION (5%)
+    // RUNTIME CONFIGURATION (30%)
     // ============================================
     const disabledResult = scoreDisabledFeatures(parsedData.disabledFeatures);
     const javaMemoryResult = scoreJavaMemory(parsedData.javaMemorySettings);
     const runtimeDbResult = scoreRuntimeDatabase(parsedData.generalSettings);
 
-    const runtimeConfigScore = combineEnabledScores([
-      { enabled: toggles.disabled_features, score: disabledResult.score, weight: 0.34 },
-      { enabled: toggles.java_memory_limits, score: javaMemoryResult.score, weight: 0.33 },
-      { enabled: toggles.runtime_database, score: runtimeDbResult.score, weight: 0.33 },
-    ]);
+    // cgroups component (relocated here from security_isolation — rubric A1:
+    // it is a runtime-blowup risk, and zero-weighting security must not lose it).
+    let cgroupsScore = 100;
     const runtimeConfigIssues: HealthIssue[] = [];
+    if (toggles.cgroups_enabled && cgroupsDisabledIssue) {
+      cgroupsScore -= 60;
+      runtimeConfigIssues.push(cgroupsDisabledIssue);
+    }
+    if (toggles.cgroups_empty_targets && cgroupsEmptyIssue) {
+      cgroupsScore -= 20;
+      runtimeConfigIssues.push(cgroupsEmptyIssue);
+    }
+    cgroupsScore = Math.max(0, cgroupsScore);
+    const cgroupsChecksEnabled = toggles.cgroups_enabled || toggles.cgroups_empty_targets;
+
+    const runtimeConfigScore = combineEnabledScores([
+      { enabled: toggles.disabled_features, score: disabledResult.score, weight: 0.25 },
+      { enabled: toggles.java_memory_limits, score: javaMemoryResult.score, weight: 0.25 },
+      { enabled: toggles.runtime_database, score: runtimeDbResult.score, weight: 0.25 },
+      { enabled: cgroupsChecksEnabled, score: cgroupsScore, weight: 0.25 },
+    ]);
     if (toggles.java_memory_limits) {
       runtimeConfigIssues.push(...javaMemoryResult.issues);
     }
@@ -945,6 +1120,22 @@ export function calculateHealthScore(
     }
     if (toggles.runtime_database && runtimeDbResult.issue) {
       runtimeConfigIssues.push(runtimeDbResult.issue);
+    }
+
+    // Cap rule (rubric A1): impersonation (multi-user security) on but cgroups
+    // not configured — the classic preventable-outage configuration.
+    const impersonationOn = ((parsedData.generalSettings as
+      | { impersonation?: { enabled?: boolean } }
+      | undefined)?.impersonation?.enabled === true);
+    if (toggles.cgroups_enabled && cgroupsDisabledIssue && impersonationOn) {
+      runtimeConfigIssues.push({
+        id: 'cap-cgroups-missing',
+        category: 'runtime_config',
+        severity: 'critical',
+        title: 'Multi-user isolation is on but cgroups are not configured',
+        description: 'User isolation (impersonation) is enabled but cgroup resource limits are not — a single runaway kernel or job can take down the host for every user.',
+        recommendation: 'Configure cgroup memory limits for kernels and jobs now.',
+      });
     }
 
     categoryScores.push({
@@ -959,7 +1150,7 @@ export function calculateHealthScore(
     // ============================================
     // CALCULATE OVERALL SCORE
     // ============================================
-    const overallScore = categoryScores.reduce((sum, cat) => {
+    let overallScore = categoryScores.reduce((sum, cat) => {
       return sum + (cat.score * cat.weight);
     }, 0);
 
@@ -967,6 +1158,14 @@ export function calculateHealthScore(
     const uniqueIssues = allIssues.filter(
       (issue, index, self) => index === self.findIndex(i => i.id === issue.id)
     );
+
+    // Critical cap (interview K100): any always-lead rule (issue id `cap-*`)
+    // clamps the overall score into the critical band — a weighted average
+    // must not dilute a disqualifying configuration.
+    const capped = uniqueIssues.some((i) => i.id.startsWith('cap-'));
+    if (capped) {
+      overallScore = Math.min(overallScore, t?.healthCriticalCapScore ?? 49);
+    }
 
     // Sort issues by severity
     const severityOrder: Record<HealthSeverity, number> = {
@@ -995,6 +1194,8 @@ export function calculateHealthScore(
     criticalCount: uniqueIssues.filter(i => i.severity === 'critical').length,
     warningCount: uniqueIssues.filter(i => i.severity === 'warning').length,
     infoCount: uniqueIssues.filter(i => i.severity === 'info').length,
+    capped,
+    whitelistSuppressed: isWhitelisted.matched.size,
   };
 }
 
@@ -1007,5 +1208,9 @@ export function useHealthScore(
   factorToggles: Partial<HealthFactorToggles> = DEFAULT_HEALTH_FACTOR_TOGGLES
 ): HealthScore {
   const { thresholds } = useThresholds();
-  return useMemo(() => calculateHealthScore(parsedData, factorToggles, thresholds), [parsedData, factorToggles, thresholds]);
+  const { entries } = whitelistStore.use();
+  return useMemo(
+    () => calculateHealthScore(parsedData, factorToggles, thresholds, activeHostWhitelist(entries)),
+    [parsedData, factorToggles, thresholds, entries],
+  );
 }

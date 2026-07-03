@@ -13,6 +13,7 @@ from adk_backend.macros import _host_metrics_macro, _process_metrics_macro
 from adk_backend.settings import _BACKEND_SETTINGS
 from adk_backend.sysinfo import (
     _dip_home,
+    _dip_home_storage,
     _find_spark_version,
     _get_cpu_cores,
     _get_os_info,
@@ -79,6 +80,9 @@ def _overview_payload_remote(client):
         'dssVersion': version.get('product_version') or version.get('version'),
         'instanceInfo': _instance_info_from_install_map(install),
         'javaMemRaw': m.get('javaMemRaw'),
+        # Older remote toolkits' host-metrics macro doesn't send this — the
+        # score's NFS/data-mount cap rules silently skip on None.
+        'dipHomeStorage': m.get('dipHomeStorage'),
     }
 
 
@@ -138,6 +142,7 @@ def _overview_payload(client, dip_home, host_id):
         'lastRestartTime': _parse_supervisord_restart(supervisord_log),
         'dssVersion': version_info.get('version') or version_info.get('dssVersion') or version_info.get('product_version'),
         'instanceInfo': instance_info,
+        'dipHomeStorage': _dip_home_storage(dip_home),
     }
 
 

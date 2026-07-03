@@ -41,13 +41,15 @@ def main():
         'codeEnvs': client.get('/api/code-envs', host=host, heavy=True),
         'footprint': client.get('/api/project-footprint', host=host, heavy=True),
         'thresholds': client.get('/api/settings/threshold-defaults'),
+        'whitelist': health.fetch_host_whitelist(client, host),
     }
 
     from atk_agent_common.tools_impl import _parse_java_memory
     parsed = health.build_parsed_data(payloads['overview'], payloads['rawSettings'],
                                       _parse_java_memory(payloads['javaMemoryText']),
                                       payloads['codeEnvs'], payloads['footprint'])
-    py_score = health.calculate_health_score(parsed, payloads['thresholds'])
+    py_score = health.calculate_health_score(parsed, payloads['thresholds'],
+                                             whitelist=payloads['whitelist'])
 
     tmp = REPO / 'scripts' / 'agents' / '.parity_payloads.json'
     tmp.write_text(json.dumps(payloads, default=str))

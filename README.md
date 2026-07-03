@@ -33,7 +33,7 @@ It scores what it finds, explains *why* something is unhealthy, and — behind a
 
 ## Feature tour
 
-The toolkit is organized into 8 sidebar sections covering 30 pages. Pages marked **tool** perform mutations and are hidden behind the [Advanced Actions unlock](#advanced-actions-red-unlock).
+The toolkit is organized into 10 sidebar sections covering 36 pages. Pages marked **tool** perform mutations and are hidden behind the [Advanced Actions unlock](#advanced-actions-red-unlock).
 
 ### Overview
 
@@ -42,6 +42,10 @@ Instance vitals at a glance. **Mission Control** is the dense operations wall fo
 <div align="center"><img src="docs/screenshots/filesystem.png" alt="Filesystem usage — mount points, treemap and directory tree of the DSS data dir" width="850" /></div>
 
 <div align="center"><img src="docs/screenshots/memory.png" alt="Memory analysis — system memory, JEK/FEK headroom, usage by user" width="850" /></div>
+
+### Agents
+
+Chat with three AI agents that administer the fleet through the LLM Mesh: **Health Triage** (fleet sweeps and triage reports), **Scoping Architect** (sizing, adoption and migration dossiers), and **Ops Actuator** (plans and — only after your explicit approval — executes admin actions like project cleanup, DB maintenance and K8s right-sizing). Sensor agents propose risk-colored **action-item checklists** you can hand to the actuator in one click; every execution is HMAC-token-gated, kill-switch-guarded, audited to Postgres with provenance, and deep-linked into the native DSS UI. A built-in prompt library ships ~30 curated prompts per agent plus one "megaprompt" that audits the whole instance, and ⓘ info-dots explain every concept in place. Powered by the companion [`admin-toolkit-agents` plugin](agents-plugin/README.md) — its README is the full developer reference (architecture, system prompts, wire protocol, safety model).
 
 ### Connections
 
@@ -337,7 +341,8 @@ python-lib/                  # backend: adk_backend/ (25 route groups) + shared 
 python-runnables/            # 7 host-bound macros (metrics, process, k8s, images, db, cs, cru)
 code-env/python/spec/        # plugin code env dependency spec
 resource/frontend/           # React SPA (src/, public/, tests/)
-scripts/                     # deploy + contract-check tooling
+agents-plugin/               # companion plugin: agent tools + plugin agents (see its README)
+scripts/                     # deploy + contract-check tooling (scripts/agents/ = agent test harness)
 docs/                        # UI/UX contracts, screenshots
 Makefile                     # build & deploy orchestration
 ```

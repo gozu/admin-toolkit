@@ -9,6 +9,7 @@ completion against its virtual LLM id and prints the streamed answer.
 """
 
 import argparse
+import os
 import pathlib
 import sys
 
@@ -24,8 +25,8 @@ AGENT_TYPES = {
 
 
 def get_client():
-    url = (REPO / '.dss-url').read_text().strip()
-    key = (REPO / '.dss-api-key').read_text().strip()
+    url = os.environ.get('DSS_URL') or (REPO / '.dss-url').read_text().strip()
+    key = os.environ.get('DSS_API_KEY') or (REPO / '.dss-api-key').read_text().strip()
     return dataikuapi.DSSClient(url, key)
 
 

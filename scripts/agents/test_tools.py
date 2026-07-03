@@ -12,6 +12,7 @@ times (the tool-timeout measurement the plan asks for).
 
 import argparse
 import json
+import os
 import pathlib
 import time
 
@@ -25,8 +26,8 @@ TOOLS = ["list-hosts", "instance-health", "adoption-metrics", "compute-cost",
 
 
 def get_client():
-    url = (REPO / ".dss-url").read_text().strip()
-    key = (REPO / ".dss-api-key").read_text().strip()
+    url = os.environ.get("DSS_URL") or (REPO / ".dss-url").read_text().strip()
+    key = os.environ.get("DSS_API_KEY") or (REPO / ".dss-api-key").read_text().strip()
     return dataikuapi.DSSClient(url, key)
 
 

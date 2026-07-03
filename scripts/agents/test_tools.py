@@ -19,7 +19,9 @@ import dataikuapi
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 PLUGIN_ID = "admin-toolkit-agents"
-TOOLS = ["list-hosts", "instance-health", "adoption-metrics", "compute-cost"]
+TOOLS = ["list-hosts", "instance-health", "adoption-metrics", "compute-cost",
+         "config-inspect", "log-errors", "storage-footprint", "usage-analytics",
+         "k8s-health", "db-health", "plan-admin-action", "execute-admin-action"]
 
 
 def get_client():
@@ -85,6 +87,24 @@ def main():
     run_tool(handles["instance-health"], "instance-health BAD HOST", {"host": "hallucinated-host"})
     run_tool(handles["adoption-metrics"], "adoption-metrics", {"window_months": 6, "top_n": 5})
     run_tool(handles["compute-cost"], "compute-cost by project", {"group_by": "project", "top_n": 5})
+    run_tool(handles["config-inspect"], "config-inspect connections", {"domain": "connections", "top_n": 8})
+    run_tool(handles["log-errors"], "log-errors grouped", {"top_n": 5})
+    run_tool(handles["storage-footprint"], "storage-footprint", {"top_n": 5})
+    run_tool(handles["usage-analytics"], "usage-analytics", {"metric": "event-counts", "days": 7})
+    run_tool(handles["k8s-health"], "k8s-health clusters", {})
+    run_tool(handles["db-health"], "db-health no-connection", {"view": "tables"})
+    plan = run_tool(handles["plan-admin-action"], "plan k8s-exec-config-tune (PASSWORD-param check)",
+                    {"action": "k8s-exec-config-tune",
+                     "target": {"configName": "eks-default", "changes": {"memRequestMB": 2048}}})
+    out = (plan or {}).get("output") or {}
+    token = out.get("confirm_token")
+    print("\nPASSWORD-param decryption check:",
+          "PASS (confirm_token minted from red_actions_password)" if token
+          else f"no token — output error: {json.dumps(out.get('error'))[:300]}")
+    run_tool(handles["execute-admin-action"], "execute refusal (kill-switch off)",
+             {"action": "k8s-exec-config-tune",
+              "target": out.get("canonicalTarget") or {"configName": "eks-default"},
+              "confirm": True, "confirm_token": token or "bogus"})
 
 
 if __name__ == "__main__":

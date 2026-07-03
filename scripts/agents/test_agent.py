@@ -29,20 +29,32 @@ def get_client():
     return dataikuapi.DSSClient(url, key)
 
 
+def set_agent_config(agent, config_updates):
+    settings = agent.get_settings()
+    raw = settings.get_raw()
+    active = raw.get('activeVersion')
+    version = next((v for v in raw.get('versions', []) if v.get('versionId') == active),
+                   (raw.get('versions') or [{}])[0])
+    version.setdefault('pluginAgentConfig', {}).update(config_updates)
+    raw.pop('pluginAgentParams', None)
+    raw.pop('params', None)
+    settings.save()
+
+
 def ensure_agent(project, name, component, llm_id):
+    existing = None
     for a in project.list_agents() or []:
         raw = a if isinstance(a, dict) else getattr(a, 'raw', {})
         if raw.get('name') == name:
-            return project.get_agent(raw['id'])
-    agent = project.create_agent(name, 'PLUGIN_AGENT',
-                                 plugin_agent_type='admin-toolkit-agents_%s' % component)
-    settings = agent.get_settings()
-    raw = settings.get_raw()
-    params = raw.setdefault('pluginAgentParams', raw.setdefault('params', {}))
-    if isinstance(params, dict):
-        params.setdefault('config', {})['llm_id'] = llm_id or ''
-    settings.save()
-    print('created agent %r (id=%s)' % (name, agent.agent_id if hasattr(agent, 'agent_id') else '?'))
+            existing = project.get_agent(raw['id'])
+            break
+    # plugin agent types register as agent_<pluginId>_<componentId> (AgentTypesRegistry)
+    agent = existing or project.create_agent(name, 'PLUGIN_AGENT',
+                                             plugin_agent_type='agent_admin-toolkit-agents_%s' % component)
+    if llm_id:
+        set_agent_config(agent, {'llm_id': llm_id})
+    if not existing:
+        print('created agent %r (id=%s)' % (name, agent.id))
     return agent
 
 
@@ -58,10 +70,8 @@ def main():
     project = client.get_project(args.project)
     agent = ensure_agent(project, args.agent, AGENT_TYPES[args.agent], args.llm_id)
 
-    agent_id = getattr(agent, 'agent_id', None) or getattr(agent, 'id', None)
-    llm_id = 'agent:%s:%s' % (args.project, agent_id)
-    print('querying virtual LLM %s ...' % llm_id)
-    llm = project.get_llm(llm_id)
+    llm = agent.as_llm()
+    print('querying virtual LLM %s ...' % llm.llm_id)
     completion = llm.new_completion()
     completion.with_message(args.prompt)
     resp = completion.execute()

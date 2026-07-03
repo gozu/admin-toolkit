@@ -6,6 +6,7 @@ JSON text (LangChain ToolMessage content), letting tools_impl's shaping/budget
 do the token control.
 """
 
+import inspect
 import json
 
 from langchain_core.tools import StructuredTool
@@ -23,6 +24,10 @@ def _wrap(fn, client):
         except Exception as exc:
             return json.dumps({'error': {'code': 'internal-error',
                                          'message': '%s: %s' % (type(exc).__name__, str(exc)[:200])}})
+    # StructuredTool.from_function derives the args schema from the signature;
+    # a bare **kwargs would yield an empty schema that rejects every argument.
+    run.__signature__ = inspect.Signature(
+        [p for name, p in inspect.signature(fn).parameters.items() if name != 'client'])
     return run
 
 

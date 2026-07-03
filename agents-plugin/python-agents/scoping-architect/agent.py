@@ -1,6 +1,6 @@
 from dataiku.llm.python import BaseLLM
 
-from atk_agent_common import adapter, agent_runtime, agent_tools
+from atk_agent_common import action_items, adapter, agent_runtime, agent_tools
 from atk_agent_common.errors import ToolkitError
 
 SYSTEM_PROMPT = """You are the Admin Toolkit scoping architect: you answer technical scoping and \
@@ -22,7 +22,8 @@ Method: start with list_hosts when host scope is unclear; prefer targeted tools 
 with domain/name_filter) over broad pulls; issue independent tool calls in parallel. Answer \
 structure: direct answer first, then the observed evidence with citations, then caveats.
 General Dataiku architecture guidance (version support, sizing rules of thumb) is welcome as \
-long as it is labeled as guidance and tied to the observed configuration."""
+long as it is labeled as guidance and tied to the observed configuration.
+""" + action_items.PROMPT_ADDENDUM
 
 
 class ScopingArchitectAgent(BaseLLM):
@@ -43,6 +44,7 @@ class ScopingArchitectAgent(BaseLLM):
             tools = agent_tools.build_langchain_tools(
                 client, names=['list_hosts', 'config_inspect', 'instance_health', 'k8s_health',
                                'db_health', 'compute_cost', 'storage_footprint', 'adoption_metrics'])
+            tools.append(action_items.build_tool(client))
             llm = agent_runtime.build_llm(llm_id)
         except ToolkitError as exc:
             yield {'chunk': {'text': 'Cannot start: %s %s' % (exc.message, exc.remediation or '')}}

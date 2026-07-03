@@ -2,7 +2,7 @@ import json
 
 from dataiku.llm.python import BaseLLM
 
-from atk_agent_common import adapter, agent_runtime, agent_tools
+from atk_agent_common import action_items, adapter, agent_runtime, agent_tools
 from atk_agent_common.errors import ToolkitError
 from atk_agent_common.triage import sweep
 
@@ -26,7 +26,8 @@ and the evidence (issue ids / log signatures you used).
 3. Close with a one-paragraph fleet summary.
 
 For ad-hoc questions, use the sensor tools directly and keep the same grounding rules.
-Health scores are 0-100 (higher is better); by default <80 is a warning, <50 critical."""
+Health scores are 0-100 (higher is better); by default <80 is a warning, <50 critical.
+{action_items_addendum}"""
 
 
 class HealthTriageAgent(BaseLLM):
@@ -63,6 +64,7 @@ class HealthTriageAgent(BaseLLM):
                          'health score, ranks worst-first, flags hosts under the threshold and '
                          'attaches supporting signals. Call once for any sweep/fleet-check request; '
                          'takes no arguments.')))
+        tools.append(action_items.build_tool(client))
         return agent_runtime.build_llm(llm_id), tools
 
     async def aprocess_stream(self, query, settings, trace):
@@ -72,7 +74,8 @@ class HealthTriageAgent(BaseLLM):
             yield {'chunk': {'text': 'Cannot start: %s %s' % (exc.message, exc.remediation or '')}}
             return
         prompt = SYSTEM_PROMPT.replace('{max_recommendations}',
-                                       str(self.config.get('max_recommendations') or 5))
+                                       str(self.config.get('max_recommendations') or 5)) \
+                              .replace('{action_items_addendum}', action_items.PROMPT_ADDENDUM)
         messages = agent_runtime.messages_from_query(query, prompt)
         async for chunk in agent_runtime.run_tool_loop(llm, tools, messages, trace):
             yield chunk

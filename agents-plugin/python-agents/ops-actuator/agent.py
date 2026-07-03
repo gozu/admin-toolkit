@@ -22,6 +22,15 @@ token. Report the outcome AND the auditId.
 If a tool returns an error (red-locked, kill-switch off, token rejected/expired), relay its \
 message and remediation; never work around a gate. If the token expired because the user took \
 time to answer, re-plan and re-confirm.
+
+Batch protocol (messages carrying a list of pre-approved-for-planning action items, e.g. a \
+handoff from another agent's checklist): plan EVERY listed item — one plan_admin_action call \
+per item, passing the item's item_ref verbatim so plans and audit rows stay traceable to the \
+checklist. Present each plan (the UI renders them as cards), then WAIT. The user may approve \
+plans individually or in one batch message enumerating several tokens; execute exactly the \
+plans whose tokens they approved, one execute_admin_action per plan with its own item_ref, and \
+report each outcome + auditId separately. A batch handoff is NOT confirmation — every execution \
+still requires the user's explicit approval of that specific plan.
 Allowed actions for this agent: {allowed_actions}."""
 
 
@@ -54,18 +63,23 @@ class OpsActuatorAgent(BaseLLM):
                            'config_inspect', 'db_health', 'compute_cost'])
         from langchain_core.tools import StructuredTool
 
-        def plan_admin_action(action, target, host='local', params=None):
+        def plan_admin_action(action, target, host='local', params=None, item_ref=None):
             if action not in allowed:
                 return json.dumps({'error': {'code': 'action-not-allowed',
                                              'message': 'Action %r is not in this agent\'s allowlist (%s).'
                                                         % (action, ', '.join(allowed))}})
             try:
-                return json.dumps(actuator.plan_admin_action(client, host=host, action=action,
-                                                             target=target, params=params), default=str)
+                result = actuator.plan_admin_action(client, host=host, action=action,
+                                                    target=target, params=params)
+                # Checklist provenance rides along for the UI; deliberately NOT
+                # part of the signed token payload (confirm.py is untouched).
+                if item_ref and isinstance(result, dict):
+                    result['itemRef'] = item_ref
+                return json.dumps(result, default=str)
             except ToolkitError as exc:
                 return json.dumps(exc.to_output(), default=str)
 
-        def execute_admin_action(action, target, confirm, confirm_token, host='local'):
+        def execute_admin_action(action, target, confirm, confirm_token, host='local', item_ref=None):
             if not allow_execute:
                 return json.dumps({'error': {'code': 'agent-execution-disabled',
                                              'message': 'This agent instance has allow_red_actions=false: '
@@ -77,7 +91,8 @@ class OpsActuatorAgent(BaseLLM):
                 return json.dumps(actuator.execute_admin_action(
                     client, host=host, action=action, target=target,
                     confirm_flag=bool(confirm), confirm_token=confirm_token,
-                    agent_name='ops-actuator', llm_id=llm_id), default=str)
+                    agent_name='ops-actuator', llm_id=llm_id,
+                    provenance=item_ref if isinstance(item_ref, dict) else None), default=str)
             except ToolkitError as exc:
                 return json.dumps(exc.to_output(), default=str)
 
@@ -88,12 +103,15 @@ class OpsActuatorAgent(BaseLLM):
                          '{name, lang}; db-vacuum/db-analyze {connection, table}; image-delete '
                          '{provider, cutoff, images}; plugin-deploy {pluginId, targetHostId}; '
                          'k8s-exec-config-tune {configName, changes:{memRequestMB|memLimitMB|'
-                         'cpuRequest|cpuLimit}} (ground in compute_cost/k8s evidence first).'
+                         'cpuRequest|cpuLimit}} (ground in compute_cost/k8s evidence first). '
+                         'item_ref {batchId, itemId} (optional): pass through verbatim when the '
+                         'request came from an action-item checklist.'
                          % ', '.join(allowed))))
         tools.append(StructuredTool.from_function(
             execute_admin_action, name='execute_admin_action',
             description=('Execute a planned + user-confirmed admin action. Pass the exact '
-                         'canonicalTarget from the plan, confirm=true, and the confirm_token.')))
+                         'canonicalTarget from the plan, confirm=true, and the confirm_token; '
+                         'pass the same item_ref as the plan when one was given.')))
 
         prompt = SYSTEM_PROMPT.replace('{allowed_actions}', ', '.join(allowed))
         messages = agent_runtime.messages_from_query(query, prompt)

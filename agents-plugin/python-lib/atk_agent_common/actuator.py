@@ -303,7 +303,7 @@ def plan_admin_action(client, host='local', action=None, target=None, params=Non
 
 def execute_admin_action(client, host='local', action=None, target=None,
                          confirm_flag=False, confirm_token=None,
-                         agent_name='unknown', llm_id=None):
+                         agent_name='unknown', llm_id=None, provenance=None):
     host = host or 'local'
     settings = client.settings
     if action not in ACTIONS:
@@ -336,11 +336,15 @@ def execute_admin_action(client, host='local', action=None, target=None,
         snippet = exc.message
         result = exc.to_output()
     finally:
+        # provenance (e.g. action-item batch/item refs) lands in the params
+        # column so audit rows can be traced back to the proposing checklist.
         audit_id = audit.record(settings.get('triage_connection'), agent_name, llm_id, host,
-                                action, target, None, confirm.token_hash(confirm_token),
+                                action, target, provenance, confirm.token_hash(confirm_token),
                                 status, snippet)
     out = {'action': action, 'host': host, 'target': target, 'status': status,
            'result': result, 'auditId': audit_id}
+    if provenance:
+        out['itemRef'] = provenance
     if audit_id is None:
         out['auditWarning'] = ('Audit row could not be written (no triage connection or DB error) '
                                '— the action still ran; check backend logs.')

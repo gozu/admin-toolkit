@@ -1,8 +1,8 @@
-"""Story-database Postgres access — connection resolution via a DSS connection.
+"""Agents-audit Postgres access — connection resolution via a DSS connection.
 
-The Story analytics feature was removed; this module remains because the
-agents audit timeline (routes/agents.py) reads story.agent_actions, written
-by the agents plugin into the same Postgres.
+The agents plugin writes its audit trail (agents.agent_actions,
+agents.agent_triage_daily) into the Postgres selected in plugin settings;
+the agents audit timeline (routes/agents.py) reads it back through here.
 
 Same credential path proven in python-runnables/dbhealth-query/runnable.py:
 `client.get_connection(name).get_info()` (works for the `dataiku` service
@@ -35,7 +35,7 @@ def resolve_connection_params(connection_name: str, client: Optional[Any] = None
 
 def connect(connection_name: str, client: Optional[Any] = None,
             statement_timeout_ms: int = DEFAULT_STATEMENT_TIMEOUT_MS) -> Any:
-    """Open a psycopg2 connection (autocommit=False) to the Story database."""
+    """Open a psycopg2 connection (autocommit=False) to the agents-audit database."""
     if not connection_name:
         raise ValueError('No agents-audit PostgreSQL connection selected in plugin settings')
     import psycopg2

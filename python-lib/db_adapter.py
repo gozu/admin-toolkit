@@ -35,30 +35,33 @@ def load_dbhealth_config() -> DbHealthConfig:
 
 
 @dataclass(frozen=True)
-class StoryConfig:
-    """Postgres connection for the story schema (agents audit trail).
+class AgentsAuditConfig:
+    """Postgres connection for the agents audit trail (agents.agent_actions).
 
-    The Story analytics feature was removed; the agents audit timeline still
-    reads story.agent_actions through this connection. connection_name is
-    None when no Postgres connection is selected in plugin settings.
+    connection_name is None when no Postgres connection is selected in
+    plugin settings.
     """
     connection_name: Optional[str] = None
 
 
-def load_story_config(client=None) -> StoryConfig:
-    """Read the story-database connection from plugin settings."""
+def load_agents_audit_config(client=None) -> AgentsAuditConfig:
+    """Read the agents-audit database connection from plugin settings.
+
+    Falls back to the legacy `story_postgres_connection` key so deployments
+    configured before the rename keep their value until re-saved.
+    """
     try:
         if client is None:
             import dataiku
             client = dataiku.api_client()
         raw = client.get_plugin('admin-toolkit').get_settings().get_raw()
         config = raw.get('config', {}) if isinstance(raw, dict) else {}
-        return StoryConfig(
-            connection_name=(config.get('story_postgres_connection') or '').strip() or None,
-        )
+        conn = (config.get('agents_audit_postgres_connection')
+                or config.get('story_postgres_connection') or '').strip() or None
+        return AgentsAuditConfig(connection_name=conn)
     except Exception as exc:
-        _log.debug("Could not load story config: %s", exc)
-        return StoryConfig()
+        _log.debug("Could not load agents-audit config: %s", exc)
+        return AgentsAuditConfig()
 
 
 _PERF_MAP = {

@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.632",
+    "version": "0.4.633",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -72,13 +72,13 @@
             "defaultValue": ""
         },
         {
-            "name": "sep_story",
+            "name": "sep_agents_audit",
             "label": "Agents Audit Database",
-            "description": "PostgreSQL connection holding the agents audit trail (story.agent_actions), written by the agents plugin and shown in the Agents audit timeline.",
+            "description": "PostgreSQL connection holding the agents audit trail (agents.agent_actions), written by the agents plugin and shown in the Agents audit timeline.",
             "type": "SEPARATOR"
         },
         {
-            "name": "story_postgres_connection",
+            "name": "agents_audit_postgres_connection",
             "label": "Agents Audit PostgreSQL Connection",
             "description": "PostgreSQL connection (on this hub) where the agents plugin records its audit trail. Select (None) if the agents plugin is not in use.",
             "type": "SELECT",

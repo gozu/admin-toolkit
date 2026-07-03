@@ -6,8 +6,8 @@ tool_call / tool_result activity, plan / execution cards — straight from
 `agent.as_llm().new_completion().execute_streamed()` on the active host, so
 the webapp renders plans as approve/reject cards instead of prose. Agent
 instances live in the AGENTOPS project (provisioned by the agents plugin's
-scripts). The audit timeline reads story.agent_actions, written by the agents
-plugin into the same Postgres the Story layer uses — hub-scoped → @local_only.
+scripts). The audit timeline reads agents.agent_actions, written by the
+agents plugin into the shared audit Postgres — hub-scoped → @local_only.
 """
 
 import json
@@ -16,9 +16,9 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, g, jsonify, request
 
-from adk_backend.story import db as story_db
+from adk_backend import agents_db
 from adk_backend.utils import _sse_response, local_only
-from db_adapter import load_story_config
+from db_adapter import load_agents_audit_config
 
 bp = Blueprint('agents', __name__)
 _LOGGER = logging.getLogger(__name__)
@@ -105,24 +105,24 @@ def api_agents_chat():
 @bp.route('/api/agents/actions')
 @local_only
 def api_agents_actions():
-    """Audit timeline: most recent agent-executed actions (story.agent_actions)."""
+    """Audit timeline: most recent agent-executed actions (agents.agent_actions)."""
     try:
         limit = max(1, min(int(request.args.get('limit', 100)), 500))
     except (TypeError, ValueError):
         limit = 100
-    cfg = load_story_config(client=g.client)
+    cfg = load_agents_audit_config(client=g.client)
     if not cfg.connection_name:
-        return jsonify({'available': False, 'actions': [], 'reason': 'story-not-configured'})
+        return jsonify({'available': False, 'actions': [], 'reason': 'audit-db-not-configured'})
     try:
-        conn = story_db.connect(cfg.connection_name, client=g.client)
+        conn = agents_db.connect(cfg.connection_name, client=g.client)
     except Exception as exc:
         return jsonify({'available': False, 'actions': [],
-                        'reason': 'story-db-unreachable: %s' % str(exc)[:200]})
+                        'reason': 'audit-db-unreachable: %s' % str(exc)[:200]})
     try:
         with conn.cursor() as cur:
             cur.execute(
                 'SELECT id, ts, agent, llm_id, host, action, target, params, status, result_snippet '
-                'FROM story.agent_actions ORDER BY id DESC LIMIT %s', (limit,))
+                'FROM agents.agent_actions ORDER BY id DESC LIMIT %s', (limit,))
             cols = [d[0] for d in (cur.description or [])]
             rows = [dict(zip(cols, row)) for row in cur.fetchall()]
         for row in rows:

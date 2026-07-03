@@ -468,6 +468,13 @@ def log_errors(client, host='local', top_n=10, pattern=None, raw=False):
 # ── storage-footprint ────────────────────────────────────────────────────────
 
 
+def _fmt_bytes(n):
+    for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+        if n < 1024 or unit == 'TB':
+            return '%.2f %s' % (n, unit) if unit not in ('B', 'KB') else '%d %s' % (n, unit)
+        n /= 1024.0
+
+
 def storage_footprint(client, host='local', top_n=10, min_size_gb=0):
     data = client.get('/api/project-footprint', host=host, heavy=True,
                       progress_path='/api/project-footprint/progress')
@@ -477,6 +484,15 @@ def storage_footprint(client, host='local', top_n=10, min_size_gb=0):
     top = shaping.top_rows(rows, 'totalBytes', top_n,
                            keys=('projectKey', 'name', 'owner', 'totalGB', 'codeEnvCount',
                                  'managedDatasetsBytes', 'managedFoldersBytes', 'projectSizeHealth'))
+    # Per-directory breakdown so size advisories can name the actual consumer
+    # ("Web app runs /webappruns/X = 9.02 GB") instead of guessing.
+    breakdown_by_key = {p.get('projectKey'): p.get('footprintBreakdown') for p in rows}
+    for row in top:
+        buckets = (breakdown_by_key.get(row.get('projectKey')) or {}).get('buckets') or []
+        row['sizeBreakdown'] = [
+            {'what': b.get('label'), 'location': b.get('location'),
+             'size': _fmt_bytes(b.get('bytes') or 0)}
+            for b in buckets[:3]]
     inactive_by_key = {}
     try:
         inactive = client.get('/api/tools/inactive-projects', host=host)

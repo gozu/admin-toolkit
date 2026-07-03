@@ -214,4 +214,44 @@ test.describe('Agents v2 (mocked backend)', () => {
     await expect(auditLink).toBeVisible();
     await expect(auditLink).toHaveAttribute('href', /\/admin\/connections\/runtimedb\/$/);
   });
+
+  test('chat + action items survive a hard refresh', async ({ page }) => {
+    await mockAgentsBackend(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    await page.getByText('Pick a host to scan').waitFor({ timeout: 30_000 });
+    const hostCard = page.getByRole('button', { name: /Local DSS/ });
+    await expect(hostCard).toContainText('Ready', { timeout: 15_000 });
+    await hostCard.click();
+    await page.waitForSelector('aside', { timeout: 60_000 });
+    await page.locator('aside button').filter({ hasText: /^Agents$/ }).first().click();
+
+    const triageBtn = page.getByRole('button', { name: 'Health Triage', exact: true });
+    await expect(triageBtn).toBeVisible({ timeout: 15_000 });
+    await triageBtn.click();
+    const composer = page.getByPlaceholder(/Message the agent/);
+    await composer.fill('Sweep the fleet.');
+    await composer.press('Enter');
+    await expect(page.getByText('Action items')).toBeVisible({ timeout: 15_000 });
+
+    // Hard refresh: conversation + checklist must rehydrate from localStorage.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const gate = page.getByText('Pick a host to scan');
+    await expect(page.locator('aside').or(gate).first()).toBeVisible({ timeout: 30_000 });
+    if (await gate.isVisible().catch(() => false)) {
+      const card = page.getByRole('button', { name: /Local DSS/ });
+      await expect(card).toContainText('Ready', { timeout: 15_000 });
+      await card.click();
+    }
+    await page.waitForSelector('aside', { timeout: 60_000 });
+    await page.locator('aside button').filter({ hasText: /^Agents$/ }).first().click();
+
+    await expect(page.getByText('Sweep the fleet.')).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByText('Sweep done — two DB maintenance items and one advisory.'),
+    ).toBeVisible();
+    await expect(page.getByText('ANALYZE story.events (stale stats)')).toBeVisible();
+    // No stuck stream after rehydration: the composer accepts input again.
+    await expect(page.getByPlaceholder(/Message the agent/)).toBeEnabled();
+  });
 });

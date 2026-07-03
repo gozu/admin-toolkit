@@ -57,6 +57,18 @@ class MyRunnable(Runnable):
             raise RuntimeError('Agent triage is not configured: set the triage PostgreSQL '
                                'connection in the Admin Toolkit Agents plugin settings.')
         client = ToolkitClient(settings)
+        # Preflight: encrypted host keys with no configured password only work
+        # while the backend still caches a key from an interactive UI unlock —
+        # any backend restart then breaks remote hosts. Surface it every run.
+        config_warning = None
+        if not settings.get('host_keys_password'):
+            try:
+                if (client.get('/api/hosts/keys/status') or {}).get('configured'):
+                    config_warning = ('A remote host API key is encrypted but host_keys_password '
+                                      'is not set in the Admin Toolkit Agents plugin settings; '
+                                      'remote hosts will fail after any backend restart.')
+            except Exception:
+                pass
         hosts = [h.strip() for h in (self.config.get('hosts') or '').split(',') if h.strip()] or None
         threshold = settings.get('triage_score_threshold', 75)
         run_id = 'triage-%d' % int(time.time())
@@ -86,7 +98,7 @@ class MyRunnable(Runnable):
         digest_error = None
         if not _bool(self.config.get('skip_email')) and settings.get('triage_recipient'):
             try:
-                self._send_digest(settings, result, rows)
+                self._send_digest(settings, result, rows, config_warning)
             except Exception as exc:
                 digest_error = '%s: %s' % (type(exc).__name__, str(exc)[:200])
 
@@ -96,26 +108,32 @@ class MyRunnable(Runnable):
             'hostsScored': len(rows),
             'flagged': result['flagged'],
             'errored': errored,
+            'errors': {r['host']: r.get('error') for r in rows if r.get('status') == 'error'},
             'rowsWritten': written,
             'digestError': digest_error,
+            'configWarning': config_warning,
         }
         if errored:
             raise RuntimeError('Triage completed with host errors: %s — summary: %s'
                                % (errored, json.dumps(summary, default=str)))
         return json.dumps(summary, default=str)
 
-    def _send_digest(self, settings, result, rows):
+    def _send_digest(self, settings, result, rows, config_warning=None):
         import dataiku
         from atk_agent_common.triage.provision import MACRO_PROJECT_KEY, resolve_mail_channel
         client = dataiku.api_client()
         channel_id = resolve_mail_channel(client, settings.get('triage_mail_channel') or '')
         channel = client.get_messaging_channel(channel_id)
         lines = ['Daily DSS fleet health triage (threshold %s):' % result['scoreThreshold'], '']
+        if config_warning:
+            lines += ['CONFIG WARNING: %s' % config_warning, '']
         for row in rows:
             score = row.get('score')
             lines.append('%s — %s (%s)' % (row['host'],
                                            ('score %s' % score) if score is not None else 'no score',
                                            row.get('status')))
+            if row.get('error'):
+                lines.append('  ! %s' % json.dumps(row['error'], default=str)[:300])
             if row.get('recommendation'):
                 lines.append('  → %s' % row['recommendation'])
         body = '\n'.join(lines)

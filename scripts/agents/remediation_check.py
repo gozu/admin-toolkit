@@ -117,8 +117,22 @@ def main():
                    {'sourceEnvName': src_env, 'targetEnvName': tgt_env, 'language': 'python'})
     else:
         record('plan code-env-consolidate', True, 'fewer than 2 python envs', skip=True)
-    settings_out = check_plan(handles, 'settings-set',
-                              {'path': 'studioExternalUrl', 'newValue': 'https://example.invalid'})
+    # settings-set: a probe plan reads the current value, then the evidence-
+    # checked plan (whose token the kill-switch test executes) is a NO-OP
+    # (newValue == current) — harmless even if red is unexpectedly ON. The path
+    # must be non-null everywhere: DSS JSON serialization strips nulls, so a
+    # None newValue never reaches the planner.
+    probe = run_tool(handles['plan-admin-action'], 'plan settings-set (probe current)',
+                     {'action': 'settings-set',
+                      'target': {'path': 'maxRunningActivities', 'newValue': '__probe__'}})
+    current = (tool_output(probe).get('plan') or {}).get('currentValue')
+    if current is None:
+        record('plan settings-set', False, 'probe could not read maxRunningActivities: %s'
+               % json.dumps(tool_output(probe).get('error'), default=str)[:240])
+        settings_out = None
+    else:
+        settings_out = check_plan(handles, 'settings-set',
+                                  {'path': 'maxRunningActivities', 'newValue': current})
     if args.cluster_id:
         check_plan(handles, 'k8s-apply-fix',
                    {'clusterId': args.cluster_id,
@@ -142,24 +156,21 @@ def main():
         'refused', 'blacklist', 'never agent-mutable')
 
     # ── kill-switch: a valid token must still be refused while red is OFF.
-    # The executed target is a NO-OP (newValue == current value) so that if the
-    # kill switch unexpectedly turns out to be ON, nothing actually changes.
+    # The executed target is the no-op plan from above, so if the kill switch
+    # unexpectedly turns out to be ON, nothing actually changes.
     if not args.red_on:
-        current = ((settings_out or {}).get('plan') or {}).get('currentValue')
-        noop = check_plan(handles, 'settings-set',
-                          {'path': 'studioExternalUrl', 'newValue': current}) \
-            if settings_out else None
-        if noop and noop.get('confirm_token'):
+        if settings_out and settings_out.get('confirm_token'):
             result = run_tool(handles['execute-admin-action'], 'execute settings-set (red OFF)',
                               {'action': 'settings-set',
-                               'target': noop.get('canonicalTarget'),
+                               'target': settings_out.get('canonicalTarget'),
                                'confirm': True,
-                               'confirm_token': noop['confirm_token']})
+                               'confirm_token': settings_out['confirm_token']})
             out = tool_output(result)
-            if out.get('status') == 'executed':
+            if out.get('status') in ('ok', 'executed'):
                 record('kill-switch refusal (settings-set, valid token)', False,
-                       'red is ON on this instance — the no-op executed (harmless); '
-                       're-run with --red-on, or turn enable_red_actions off first')
+                       'red is ON on this instance — the no-op executed (harmless, '
+                       'auditId=%s); re-run with --red-on, or turn enable_red_actions '
+                       'off first' % out.get('auditId'))
             else:
                 expect_refusal('kill-switch refusal (settings-set, valid token)', result,
                                'kill', 'enable_red_actions', 'disabled', 'red actions')
@@ -168,23 +179,20 @@ def main():
 
     # ── red ON: safe execute subset ───────────────────────────────────────
     if args.red_on:
-        noop = check_plan(handles, 'settings-set', {'path': 'studioExternalUrl', 'newValue': None})
-        current = (noop or {}).get('plan', {}).get('currentValue')
-        noop = check_plan(handles, 'settings-set',
-                          {'path': 'studioExternalUrl', 'newValue': current})
-        if noop and noop.get('confirm_token'):
+        if settings_out and settings_out.get('confirm_token'):
             result = run_tool(handles['execute-admin-action'], 'execute settings-set NO-OP',
-                              {'action': 'settings-set', 'target': noop.get('canonicalTarget'),
-                               'confirm': True, 'confirm_token': noop['confirm_token']})
+                              {'action': 'settings-set',
+                               'target': settings_out.get('canonicalTarget'),
+                               'confirm': True, 'confirm_token': settings_out['confirm_token']})
             out = tool_output(result)
-            record('execute settings-set no-op', out.get('status') == 'executed',
+            record('execute settings-set no-op', out.get('status') in ('ok', 'executed'),
                    'status=%s auditId=%s' % (out.get('status'), out.get('auditId')))
         if args.allow_delete and log_out and log_out.get('confirm_token'):
             result = run_tool(handles['execute-admin-action'], 'execute log-cleanup (1 GB cap)',
                               {'action': 'log-cleanup', 'target': log_out.get('canonicalTarget'),
                                'confirm': True, 'confirm_token': log_out['confirm_token']})
             out = tool_output(result)
-            record('execute log-cleanup capped', out.get('status') == 'executed',
+            record('execute log-cleanup capped', out.get('status') in ('ok', 'executed'),
                    'status=%s auditId=%s' % (out.get('status'), out.get('auditId')))
 
     failed = sum(1 for _, status, _ in RESULTS if status == 'FAIL')

@@ -1,9 +1,16 @@
 # Testing with the Dataiku DSS Python API
 
+Source references for DSS 14.7.x:
+
+- Python client API reference:
+  https://developer.dataiku.com/latest/api-reference/python/index.html#gsc.tab=0
+- DSS REST API reference for DSS 14:
+  https://doc.dataiku.com/dss/api/14/rest/
+
 ## Setup
 
 ```bash
-pip3 install --break-system-packages dataiku-api-client
+pip3 install --break-system-packages "dataiku-api-client>=14.7,<14.8"
 ```
 
 The API key and URL are in the project root:
@@ -54,7 +61,7 @@ notebooks = client._perform_json('GET', f'/projects/{project_key}/jupyter-notebo
 
 ### List code envs
 ```python
-envs = client._perform_json('GET', '/admin/code-envs/')
+envs = client._perform_json('GET', '/admin/code-envs')
 for env in envs:
     print(f'{env.get("envLang")}:{env.get("envName")} owner={env.get("owner")}')
 ```
@@ -68,7 +75,8 @@ print(json.dumps(detail, indent=2))
 ## Webapp Backend Endpoints
 
 The webapp backend runs behind DSS's reverse proxy. You **cannot** call webapp
-endpoints directly via the `dataikuapi` client (it prepends `/dip/publicapi/`).
+endpoints directly via the `dataikuapi` client because the Python client targets
+the DSS public API, not plugin webapp backend routes.
 
 Use `requests` directly if you need to hit webapp routes:
 

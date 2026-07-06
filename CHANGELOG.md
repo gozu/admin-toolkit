@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.646] - 2026-07-06
+
+### Added
+- **Gated remediation suite** — five new Ops Actuator actions, every gate enforced *below the model* in shared policy engines (`atk_agent_common/policies/`, imported by both planners and the privileged macros; 162 unit tests):
+  - `log-cleanup`: deletes ROTATED logs only (`*.log.<n>`, compressed, dated rotations — a live `*.log` can never match), min-age (default 3d) + whitelisted DIP_HOME roots + size cap enforced inside the new `log-cleaner` macro; two-pass delete re-validates every file at unlink time.
+  - `docker-prune`: builder/image cache pruning with FIXED argv (no shell, no `--all`, docker group only, no sudo) via the new `docker-governor` macro; detects docker storage sharing the DSS data filesystem; daemon.json cache limits are emitted as a display-only idempotent sudo script, never executed.
+  - `k8s-apply-fix`: policy-validated kubectl mutations (verb/kind whitelists, secrets + cluster-scoped kinds + `--all`/`--force` forbidden, kube-system restricted) via the new `k8s-apply` macro with read-only previews + server dry-runs; optional exec-config patch and post-fix `verifyRule` re-audit that reports whether the finding still fires.
+  - `code-env-consolidate`: repoints all usages of a code env onto a target (dry-run usage table is the plan evidence), optional backup-first retirement of the source.
+  - `settings-set`: generic DSS general-settings mutator with a security/auth/licensing + secret-material path blacklist (admin-extendable via `settings_set_blocked_extra`), current→proposed diff at approval, the observed current value HMAC-bound into the confirm token (drift refuses), and restorable settings history.
+- **Auto-remediation tier** (`auto_remediate_actions`, default OFF): admins can opt log-cleanup/docker-prune into autonomous execution during the daily triage sweep, under cumulative GB/object caps (`auto_remediate_max_gb`/`auto_remediate_max_objects`); still passes the kill-switch and every policy gate, audits as `triage-auto`, and reports executions *and* skips (with reasons) in the digest.
+- Finding→remediation registry (`remediation_map.py`) so Health Triage proposes mapped, ready-to-plan fixes for scored findings; documented gaps stay explicit.
+- **Trace Explorer wiring** (DSS ≥ 14.5 Agent Interaction Logging, verified on the 14.7 API): provisioning creates a DAY-partitioned `agent_interaction_logs` dataset and enables FULL-content logging on all 3 agents; the chat `done` event carries `traceAvailable` + a Trace Explorer link, and each turn's trace JSON is copyable via `GET /api/agents/last-trace` (in-memory ring, never streamed over SSE). The Trace Explorer visual webapp itself is a documented one-time manual step (the public API cannot create visual webapps).
+- All runnable macros now declare `macroRoles` (visible in DSS project macro menus).
+- `scripts/agents/remediation_check.py`: live gate check — plans for every new action, policy refusals, kill-switch refusal with a valid token; `--red-on` safe execute subset.
+
+### Changed
+- `finding_whitelist` storage migrated from the plugin-param pruning hack to DSS instance variables (`admin_toolkit_finding_whitelist`), with one-time automatic migration; the plugin param remains only as a legacy fallback.
+- Plugin code env: added `pyyaml` (k8s manifest policy validation fails closed without it).
+
 ## [0.4.643] - 2026-07-06
 
 ### Added

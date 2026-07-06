@@ -6,7 +6,7 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.613-blue)
+![Version](https://img.shields.io/badge/version-0.4.646-blue)
 ![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-plugin-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -33,7 +33,7 @@ It scores what it finds, explains *why* something is unhealthy, and — behind a
 
 ## Feature tour
 
-The toolkit is organized into 10 sidebar sections covering 36 pages. Pages marked **tool** perform mutations and are hidden behind the [Advanced Actions unlock](#advanced-actions-red-unlock).
+The toolkit is organized into 9 sidebar sections covering 31 pages. Pages marked **tool** perform mutations and are hidden behind the [Advanced Actions unlock](#advanced-actions-red-unlock).
 
 ### Overview
 
@@ -45,7 +45,7 @@ Instance vitals at a glance. **Mission Control** is the dense operations wall fo
 
 ### Agents
 
-Chat with three AI agents that administer the fleet through the LLM Mesh: **Health Triage** (fleet sweeps and triage reports), **Scoping Architect** (sizing and migration dossiers), and **Ops Actuator** (plans and — only after your explicit approval — executes admin actions like project cleanup, DB maintenance and K8s right-sizing). Sensor agents propose risk-colored **action-item checklists** you can hand to the actuator in one click; every execution is HMAC-token-gated, kill-switch-guarded, audited to Postgres with provenance, and deep-linked into the native DSS UI. A built-in prompt library ships ~30 curated prompts per agent plus one "megaprompt" that audits the whole instance, and ⓘ info-dots explain every concept in place. The agents layer ships inside this plugin (agent tools + plugin agents) — [`docs/agents-reference.md`](docs/agents-reference.md) is the full developer reference (architecture, system prompts, wire protocol, safety model).
+Chat with three AI agents that administer the fleet through the LLM Mesh: **Health Triage** (fleet sweeps and triage reports), **Scoping Architect** (sizing and migration dossiers), and **Ops Actuator** (plans and — only after your explicit approval — executes admin actions: project cleanup, DB maintenance, K8s right-sizing, plus a gated remediation suite of rotated-log cleanup, docker cache pruning, policy-validated kubectl fixes, code-env consolidation and a blacklist-guarded generic settings mutator — every gate enforced below the model, in macro/executor code). Admins can opt the reversible, capped cleanups into **auto-remediation** during the daily triage sweep (`auto_remediate_actions`, off by default; skips and results are reported in the digest). Agent turns are natively traced via DSS ≥ 14.5 **Agent Interaction Logging** — the chat links straight into the Trace Explorer webapp and each turn's trace JSON is one click away. Sensor agents propose risk-colored **action-item checklists** you can hand to the actuator in one click; every execution is HMAC-token-gated, kill-switch-guarded, audited to Postgres with provenance, and deep-linked into the native DSS UI. A built-in prompt library ships ~30 curated prompts per agent plus one "megaprompt" that audits the whole instance, and ⓘ info-dots explain every concept in place. The agents layer ships inside this plugin (agent tools + plugin agents) — [`docs/agents-reference.md`](docs/agents-reference.md) is the full developer reference (architecture, system prompts, wire protocol, safety model).
 
 ### Connections
 
@@ -92,6 +92,7 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 | Section | Page | What it does |
 |---|---|---|
 | Overview | Mission Control | Dense operations wall for fleet-wide health |
+| Agents | Agents | Chat with the triage/scoping/actuator agents; plan → approve → execute cards |
 | Overview | Summary | Composite health score, issues, instance facts |
 | Overview | Filesystem | Mount usage, data-dir treemap + directory tree |
 | Overview | Memory | System/process RAM, workload headroom |
@@ -147,11 +148,11 @@ flowchart LR
         SPA["React 19 SPA<br/>Vite + Tailwind + Chart.js"]
     end
     subgraph Webapp["DSS plugin webapp"]
-        API["Flask backend<br/>25 route groups, SSE streaming,<br/>caching + prewarm"]
+        API["Flask backend<br/>30 route groups, SSE streaming,<br/>caching + prewarm"]
     end
     subgraph DSS["Dataiku DSS (local or remote)"]
         PYAPI["DSS Python API<br/>(reads + gated writes)"]
-        MACROS["7 privileged macros<br/>(ADMINTOOLKIT project)"]
+        MACROS["11 privileged macros<br/>(ADMINTOOLKIT project)"]
         HOST["Host resources:<br/>filesystem, /proc, kubectl,<br/>Docker registries, runtimedb"]
     end
     SPA -->|"fetch + SSE, X-DSS-Host-Id"| API
@@ -337,8 +338,8 @@ In addition, Under Settings, you can create python notebooks with the same algor
 ```
 plugin.json                  # plugin manifest (params, version, secrets)
 webapps/admin-toolkit/       # Flask webapp entrypoint
-python-lib/                  # backend: adk_backend/ (25 route groups) + shared libs
-python-runnables/            # 8 host-bound macros (metrics, process, k8s, images, db, cs, cru, agent-triage)
+python-lib/                  # backend: adk_backend/ (30 route groups) + shared libs
+python-runnables/            # 11 host-bound macros (metrics, process, k8s, images, db, cs, cru, agent-triage, log-cleaner, docker-governor, k8s-apply)
 python-lib/atk_agent_common/ # agents layer shared lib (tools impl, actuator, triage, audit)
 python-agents/               # 3 plugin agents (health-triage, scoping-architect, ops-actuator)
 python-agent-tools/          # 11 agent tools over the toolkit's sensor APIs

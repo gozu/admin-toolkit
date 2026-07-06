@@ -1,26 +1,30 @@
 # Containerized Execution Object Scan
 
-This note documents where DSS stores containerized execution selections on project
-objects, based on official DSS documentation and API probes against the AKAOS DSS
-instance.
+This note documents where DSS stores containerized execution selections on
+project objects, based on the DSS 14.7.x API references and API probes against
+the AKAOS DSS instance.
 
-## Sources
+## API Reference Sources
 
-- Dataiku DSS container concepts: https://doc.dataiku.com/dss/latest/containers/concepts.html
-- Containerized visual recipes: https://doc.dataiku.com/dss/latest/containers/containerized-dss-engine.html
-- Containerized notebooks: https://doc.dataiku.com/dss/latest/notebooks/containerized-notebooks.html
-- Code Studios concepts: https://doc.dataiku.com/dss/latest/code-studios/concepts.html
-- API Node / API Deployer concepts: https://doc.dataiku.com/dss/latest/apinode/concepts.html
-- DSS REST API: https://doc.dataiku.com/dss/api/latest/rest/
-- DSS Python project API: https://developer.dataiku.com/latest/api-reference/python/projects.html
+- DSS Python API reference:
+  https://developer.dataiku.com/latest/api-reference/python/index.html#gsc.tab=0
+- DSS REST API reference for DSS 14:
+  https://doc.dataiku.com/dss/api/14/rest/
 
 ## Core Finding
 
 There is no single project-level DSS API response that enumerates every project
-object using a container execution config. `GET /projects/{projectKey}/settings`
-only exposes project defaults and bundle-remapping metadata. To find actual
+object using a container execution config.
+`project.get_settings().get_raw()` exposes project defaults and
+bundle-remapping metadata, not the object-level overrides. To find actual
 object-level container selections, the scanner must enumerate each supported
 object type and inspect that object's raw settings.
+
+The DSS 14 REST reference documents public endpoints for general settings,
+recipes, webapps, ML task settings, notebooks, and code envs. It does not
+publish every handle used by the Python client. For project settings and Code
+Studios, use the Python API handles documented in the Python reference instead
+of treating raw paths as public REST contract.
 
 Global execution configs come from general settings:
 
@@ -39,15 +43,15 @@ These are the fields the scanner must parse when present.
 
 | Surface | API read | Raw path | Notes |
 | --- | --- | --- | --- |
-| Project default for code workloads | `project.get_settings().get_raw()` | `settings.container` | Applies as a default to code workloads that inherit. Explicit configs use `containerMode: EXPLICIT_CONTAINER` plus `containerConf`. |
-| Project default for visual recipes | `project.get_settings().get_raw()` | `settings.containerForVisualRecipesWorkloads` | Separate from the code-workload default. Do not collapse it into `settings.container`. |
-| Project default for webapp backends | `project.get_settings().get_raw()` | `settings.virtualWebAppBackendSettings.infra.containerSelection` | Webapps also have their own per-object override. |
+| Project default for code workloads | Python API `DSSProject.get_settings().get_raw()` | `settings.container` | Applies as a default to code workloads that inherit. Explicit configs use `containerMode: EXPLICIT_CONTAINER` plus `containerConf`. |
+| Project default for visual recipes | Python API `DSSProject.get_settings().get_raw()` | `settings.containerForVisualRecipesWorkloads` | Separate from the code-workload default. Do not collapse it into `settings.container`. |
+| Project default for webapp backends | Python API `DSSProject.get_settings().get_raw()` | `settings.virtualWebAppBackendSettings.infra.containerSelection` | Webapps also have their own per-object override. |
 | Python/R code recipes | `GET /projects/{projectKey}/recipes/{recipeName}` | `recipe.params.containerSelection` | Verified on Python and R fixtures. Do not generalize this to every code recipe subtype. |
 | Visual recipes | `GET /projects/{projectKey}/recipes/{recipeName}` | `recipe.params.engineParams.containerSelection` | Observed on `shaker` and `sync`; only meaningful for DSS-engine visual recipes. |
 | Webapps | `GET /projects/{projectKey}/webapps/{webappId}` | `params.infra.containerSelection` | Present on standard and plugin webapps. Raw webapp settings can contain `apiKey`; redact sensitive fields in logs. |
 | ML tasks | `GET /projects/{projectKey}/models/lab/{analysisId}/{mlTaskId}/settings` | `containerSelection` | The lab list endpoint is `GET /projects/{projectKey}/models/lab/`; it returns `mlTasks[]` with `analysisId` and `mlTaskId`. |
-| Code Studio templates | `GET /admin/code-studios/{templateId}` | `defaultContainerConf`, `containerConfs`, `allContainerConfs`, `allowContainerConfOverride` | This is an admin/global template surface, not a project object. Project Code Studio objects normally reference `templateId`. |
-| Code Studio objects | `GET /projects/{projectKey}/code-studios/{id}` | no direct container selection observed | Use the object `templateId` to resolve the template config. |
+| Code Studio templates | Python API `DSSClient.get_code_studio_template(templateId).get_settings().get_raw()` | `defaultContainerConf`, `containerConfs`, `allContainerConfs`, `allowContainerConfOverride` | This is an admin/global template surface, not a project object. The Python API also exposes built-container-conf helpers on `DSSCodeStudioTemplateSettings`. |
+| Code Studio objects | Python API `DSSProject.get_code_studio(id).get_settings().get_raw()` or `DSSProject.list_code_studios()` | `templateId`, no direct container selection observed | Use the object `templateId` to resolve the template config. The REST 14 page does not publish Code Studio object endpoints. |
 | Bundle remapping | `project.get_settings().get_raw()` | `bundleContainerSettings.remapping.containerExecs` | Only appears on some projects and can be empty unless bundle remapping is configured. |
 
 ## Tested Non-Carriers

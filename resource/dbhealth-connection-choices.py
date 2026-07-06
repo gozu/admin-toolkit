@@ -28,6 +28,9 @@ _MANAGED_DATASET_CONN_TYPES = {
 }
 
 # Connection types that can host a managed folder (file-like stores only).
+# The per-connection allowManagedFolders flag is checked on top of this in
+# the archive_folder_connection branch — DSS refuses folder creation on
+# connections where an admin disabled it (e.g. filesystem_managed).
 _MANAGED_FOLDER_CONN_TYPES = {
     "Filesystem", "HDFS", "S3", "EC2", "GCS", "Azure", "AzureBlob", "ADLS",
     "FTP", "SFTP", "SCP", "SSH",
@@ -97,31 +100,34 @@ def do(payload, config, plugin_config, inputs):
     if param_name == "dataset_export_connection":
         choices = [{"value": "", "label": "(None — Save as Datasets disabled)"}]
         allow = _MANAGED_DATASET_CONN_TYPES
-        type_filter = lambda t: t in allow  # noqa: E731
+        type_filter = lambda t, info=None: t in allow  # noqa: E731
         log_tag = "dataset-export"
     elif param_name == "archive_folder_connection":
         choices = [{"value": "", "label": "(None — pick folders manually)"}]
         allow = _MANAGED_FOLDER_CONN_TYPES
-        type_filter = lambda t: t in allow  # noqa: E731
+
+        def type_filter(t, info=None):
+            return t in allow and (info or {}).get("allowManagedFolders", True)
+
         log_tag = "archive-folder"
     elif param_name == "agents_audit_postgres_connection":
         choices = [{"value": "", "label": "(None — agents audit disabled)"}]
-        type_filter = lambda t: t == "PostgreSQL"  # noqa: E731
+        type_filter = lambda t, info=None: t == "PostgreSQL"  # noqa: E731
         log_tag = "agents-audit"
     elif param_name == "triage_connection":
         choices = [{"value": "", "label": "(None — triage loop disabled)"}]
-        type_filter = lambda t: t == "PostgreSQL"  # noqa: E731
+        type_filter = lambda t, info=None: t == "PostgreSQL"  # noqa: E731
         log_tag = "triage"
     else:
         choices = [{"value": "", "label": "(None — DB Health disabled)"}]
-        type_filter = lambda t: t == "PostgreSQL"  # noqa: E731
+        type_filter = lambda t, info=None: t == "PostgreSQL"  # noqa: E731
         log_tag = "dbhealth"
 
     try:
         for name, info in _list_connections():
             if not isinstance(info, dict):
                 continue
-            if not type_filter(info.get("type", "")):
+            if not type_filter(info.get("type", ""), info):
                 continue
             if name:
                 choices.append({"value": name, "label": name})

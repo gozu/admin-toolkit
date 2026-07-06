@@ -34,12 +34,11 @@ Finish by calling propose_action_items with EVERY concrete piece of admin work y
 const SCOPING_MEGAPROMPT = `Build a full scoping dossier of this fleet — every tool, every host. Cover:
 1. Hosts and reachability (list_hosts probe=true).
 2. Instance health and sizing signals per host (instance_health).
-3. Adoption: trends, top builders, groups, cohorts, momentum (adoption_metrics).
-4. Project landscape: storage totals, largest and inactive projects (storage_footprint).
-5. Compute + LLM cost by project and context type (compute_cost).
-6. Configuration: connections, code envs, plugins, LLM Mesh (config_inspect, each domain).
-7. Kubernetes capability and cluster states (k8s_health).
-8. Runtime database health (db_health).
+3. Project landscape: storage totals, largest and inactive projects (storage_footprint).
+4. Compute + LLM cost by project and context type (compute_cost).
+5. Configuration: connections, code envs, plugins, LLM Mesh (config_inspect, each domain).
+6. Kubernetes capability and cluster states (k8s_health).
+7. Runtime database health (db_health).
 Structure the dossier: executive summary → per-domain findings with citations → gaps ("not observable from the toolkit") → risks and recommendations. Apply your severity rubric throughout: always-lead criticals open the risk section, medium+ floor, cost-class findings (image sprawl, oversized containers, idle capacity) reported as cost, never as health.
 Close with propose_action_items for any admin work your findings imply.`;
 
@@ -147,22 +146,9 @@ export const PROMPT_CATALOGS: Record<string, AgentCatalog> = {
   'ATK Scoping Architect': {
     megapromptTitle: 'Full scoping dossier',
     megapromptBlurb:
-      'A complete instance dossier — hosts, health, adoption, projects, cost, config, Kubernetes, database — with citations and explicit gaps.',
+      'A complete instance dossier — hosts, health, projects, cost, config, Kubernetes, database — with citations and explicit gaps.',
     megaprompt: SCOPING_MEGAPROMPT,
     sections: [
-      {
-        id: 'adoption',
-        title: 'Adoption',
-        blurb: 'Who actually uses the platform, and is it growing?',
-        eduId: 'tool.adoption_metrics',
-        prompts: [
-          { id: 'ad-trend', label: 'Adoption trend', prompt: 'How is adoption trending on this host over the last 12 months? Builders, activity, momentum — and is it growing or shrinking?' },
-          { id: 'ad-builders', label: 'Top builders', prompt: 'Who are the top builders on this host, and how concentrated is the activity? Is the platform carried by a few people?' },
-          { id: 'ad-cohorts', label: 'Cohorts & retention', prompt: 'Analyze builder cohorts: do new users stick around? What does the repeat-usage picture look like?' },
-          { id: 'ad-groups', label: 'Most active groups', prompt: 'Which groups are most active, and how do people-per-project numbers look? Is collaboration happening or is everyone soloing?' },
-          { id: 'ad-fleet', label: 'Adoption across hosts', prompt: 'Compare adoption across every host: builders, trend, momentum. Which instance is thriving and which is dormant?' },
-        ],
-      },
       {
         id: 'projects',
         title: 'Projects',

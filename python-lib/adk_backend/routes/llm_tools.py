@@ -718,7 +718,7 @@ def api_report_generate():
         "  CRITICAL: Use BULLET POINTS (with bullet char), NOT prose paragraphs. 3-5 bullets "
         "per slide. Each bullet: one clear observation with a specific number or finding.\n"
         "  Format example:\n"
-        "    '\\u2022 42 projects with healthy adoption across the organization\\n"
+        "    '\\u2022 42 projects in healthy active use across the organization\\n"
         "\\u2022 ML Pipeline (PROJ1) leads with 156 versions, indicating critical production use\\n"
         "\\u2022 Consider version retention policy for projects exceeding 100 versions'\n\n"
         "  The data slides are, in order:\n"

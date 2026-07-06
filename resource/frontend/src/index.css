@@ -2082,7 +2082,7 @@ h1, h2, h3, h4 {
   padding: 2rem 0 1.5rem;
 }
 
-/* Dense variant for chart-heavy slides (adoption) */
+/* Dense variant for chart-heavy slides */
 .rpt-body-dense .rpt-body-in {
   gap: 1.6rem;
   padding: 1.25rem 0 1rem;
@@ -2254,59 +2254,6 @@ h1, h2, h3, h4 {
   color: var(--rpt-ink);
   text-align: right;
   white-space: nowrap;
-}
-
-/* ── Trend chart (adoption) ──────────────────────────────────── */
-.rpt-trend { min-width: 0; }
-
-.rpt-trend-svg {
-  width: 100%;
-  height: auto;
-  display: block;
-  overflow: visible;
-}
-
-.rpt-trend-axis { stroke: rgba(254, 254, 249, 0.14); stroke-width: 1; }
-
-.rpt-trend-line {
-  fill: none;
-  stroke: var(--rpt-mint);
-  stroke-width: 2.5;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-}
-
-.report-slide.active .rpt-trend-line {
-  animation: rpt-draw 1.6s cubic-bezier(0.4, 0, 0.2, 1) 350ms both;
-}
-
-@keyframes rpt-draw { to { stroke-dashoffset: 0; } }
-
-.rpt-trend-dot { fill: var(--rpt-mint); }
-
-.rpt-trend-tick {
-  font-family: var(--rpt-mono);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  fill: rgba(254, 254, 249, 0.35);
-}
-
-.rpt-trend-val {
-  font-family: var(--rpt-mono);
-  font-size: 14px;
-  font-weight: 600;
-  fill: var(--rpt-mint);
-}
-
-.rpt-trend-caption {
-  margin-top: 0.6rem;
-  font-family: var(--rpt-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--rpt-faint);
 }
 
 /* ── Health gauge (executive summary) ────────────────────────── */

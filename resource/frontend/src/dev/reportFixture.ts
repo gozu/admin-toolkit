@@ -84,9 +84,9 @@ export const FIXTURE_REPORT: ReportData = {
   slides: {
     executive_summary: {
       headline: 'Healthy and busy — with storage on the clock',
-      overall_status: 'GOOD WITH CAVEATS — A healthy, actively used platform with excellent GenAI adoption, but storage growth and code-env/project sprawl need proactive governance this quarter.',
+      overall_status: 'GOOD WITH CAVEATS — A healthy, actively used platform with excellent GenAI uptake, but storage growth and code-env/project sprawl need proactive governance this quarter.',
       findings: [
-        'Instance runs the current DSS 14.7.0 on Python 3.11 with a rich LLM Mesh footprint (35+ AI connections) supporting strong agentic and GenAI adoption.',
+        'Instance runs the current DSS 14.7.0 on Python 3.11 with a rich LLM Mesh footprint (35+ AI connections) supporting strong agentic and GenAI workloads.',
         'The /data volume is at 77% (1.5TB of 2.0TB) and 451 projects are largely unmanaged sandboxes, creating storage and governance pressure.',
         '168 code environments exist with ~45 unused and many on end-of-life Python 3.6/3.7, warranting a consolidation and modernization effort.',
       ],
@@ -96,8 +96,8 @@ export const FIXTURE_REPORT: ReportData = {
       narrative: '• Running DSS 14.7.0, the current release, on AlmaLinux 9.8 — excellent version currency\n• Python 3.11.13 as the builtin interpreter aligns with modern supported runtimes\n• 4 cores / 8 threads is modest for 77 enabled users and heavy GenAI workloads\n• Last restart Jun 25, 2026 indicates good uptime stability',
     },
     projects: {
-      headline: 'Adoption is outpacing governance',
-      narrative: '• 451 projects on the instance, a very large footprint indicating strong platform adoption\n• Average project risk score of 0.139 is low, reflecting generally healthy individual projects\n• Many projects are per-user solution clones suggesting demo/sandbox sprawl\n• Average project size is only 0.12GB, so a small number of projects drive most storage',
+      headline: 'Growth is outpacing governance',
+      narrative: '• 451 projects on the instance, a very large footprint indicating heavy platform use\n• Average project risk score of 0.139 is low, reflecting generally healthy individual projects\n• Many projects are per-user solution clones suggesting demo/sandbox sprawl\n• Average project size is only 0.12GB, so a small number of projects drive most storage',
       highlights: ['451 projects, low avg risk', 'Sandbox sprawl from solution clones', 'Storage concentrated in few projects'],
     },
     project_footprint: {

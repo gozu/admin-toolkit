@@ -19,7 +19,7 @@ export const EDU: Record<string, EduEntry> = {
   'agent.scoping-architect': {
     title: 'Scoping Architect agent',
     body: [
-      'A read-only analyst for sizing, adoption and architecture questions ("who builds here?", "what would a migration involve?"). Every claim is grounded in a tool call and cited with the host and tool that produced it.',
+      'A read-only analyst for sizing and architecture questions ("how big is this instance?", "what would a migration involve?"). Every claim is grounded in a tool call and cited with the host and tool that produced it.',
       'Like Health Triage, it can propose action items but never executes anything.',
     ],
   },
@@ -161,10 +161,6 @@ export const EDU: Record<string, EduEntry> = {
   'tool.instance_health': {
     title: 'instance_health',
     body: ['Health snapshot of one host: system checks, sanity checks, Java memory, issues, and optionally the full 0–100 health score.'],
-  },
-  'tool.adoption_metrics': {
-    title: 'adoption_metrics',
-    body: ['Adoption and engagement metrics from persistent project git history: activity trends, top builders, cohorts — reliable far beyond audit-log retention.'],
   },
   'tool.compute_cost': {
     title: 'compute_cost',

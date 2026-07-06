@@ -31,7 +31,7 @@ interface AgentsListResponse {
 
 const AGENT_HINTS: Record<string, string> = {
   'ATK Health Triage': 'fleet health sweeps & triage reports',
-  'ATK Scoping Architect': 'sizing, adoption & scoping analysis',
+  'ATK Scoping Architect': 'sizing & scoping analysis',
   'ATK Ops Actuator': 'plans + executes admin actions (with your approval)',
 };
 

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Modal } from '../Modal';
 import { Button } from '../common/Button';
 import { InfoDot } from '../common/InfoDot';
+import { humanTarget, targetTitle } from '../../utils/agentLinks';
 import type { PlanCardData } from '../../state/agentsChatStore';
 
 /**
@@ -93,9 +94,9 @@ export function PendingApprovalsBar({
                 <span className="text-[10px] text-[var(--text-tertiary)]">on {plan.host}</span>
                 <span
                   className="ml-auto max-w-[14rem] truncate text-[10px] font-mono text-[var(--text-muted)]"
-                  title={JSON.stringify(plan.canonicalTarget)}
+                  title={targetTitle(plan.canonicalTarget)}
                 >
-                  {JSON.stringify(plan.canonicalTarget)}
+                  {humanTarget(plan.canonicalTarget)}
                 </span>
               </li>
             ))}

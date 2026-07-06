@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { fetchJson } from '../../utils/api';
 import { DataGrid } from '../common/DataGrid';
 import { InfoDot } from '../common/InfoDot';
-import { dssLinkForAction, hostBaseUrl } from '../../utils/agentLinks';
+import { dssLinkForAction, hostBaseUrl, humanTarget, targetTitle } from '../../utils/agentLinks';
 
 interface AuditRow {
   id: number;
@@ -125,11 +125,10 @@ export function AuditTimeline({ focusAuditId }: { focusAuditId: number | null })
                 sortValue: (row) => row.action },
               { id: 'target', label: 'Target',
                 render: (row) => {
-                  const text = typeof row.target === 'object' ? JSON.stringify(row.target) : String(row.target ?? '');
                   const link = dssLinkForAction(row.action, row.target, row.host);
                   const inner = (
-                    <span className="block max-w-[16rem] truncate" title={text}>
-                      {text}
+                    <span className="block max-w-[16rem] truncate" title={targetTitle(row.target)}>
+                      {humanTarget(row.target)}
                     </span>
                   );
                   return link ? (

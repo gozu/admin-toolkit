@@ -25,6 +25,33 @@ export function hostBaseUrl(hostId: string | undefined): string {
   return getDssBaseUrl();
 }
 
+function targetValue(v: unknown): string {
+  if (Array.isArray(v)) return v.map(targetValue).join(', ');
+  return String(v);
+}
+
+/**
+ * Human-readable form of an audit/plan target — never raw JSON.
+ * `{connection: "X", table: "Y"}` → `X · Y`; single-key objects → the value.
+ */
+export function humanTarget(target: unknown): string {
+  if (target == null) return '';
+  if (typeof target !== 'object') return String(target);
+  if (Array.isArray(target)) return targetValue(target);
+  const values = Object.values(target as Record<string, unknown>).filter((v) => v != null);
+  return values.map(targetValue).join(' · ');
+}
+
+/** `key: value` list for tooltips — readable, not minified JSON. */
+export function targetTitle(target: unknown): string {
+  if (target == null) return '';
+  if (typeof target !== 'object' || Array.isArray(target)) return humanTarget(target);
+  return Object.entries(target as Record<string, unknown>)
+    .filter(([, v]) => v != null)
+    .map(([k, v]) => `${k}: ${targetValue(v)}`)
+    .join(', ');
+}
+
 /**
  * DSS UI page for an actuator action's target, or null when no page exists.
  * `target` is the audit row / plan canonicalTarget for that action.

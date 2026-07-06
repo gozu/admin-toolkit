@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.641] - 2026-07-06
+
+### Changed
+- Merged the companion `admin-toolkit-agents` plugin (v0.1.013) into `admin-toolkit`: `python-agents/`, `python-agent-tools/`, `python-lib/atk_agent_common/`, and the `agent-triage-sweep` runnable now ship in this plugin. Component ids are re-derived from the parent plugin id (`agent_admin-toolkit_<c>`, `Custom_agent_tool_admin-toolkit_<c>`, `pyrunnable_admin-toolkit_agent-triage-sweep`); the 17 agents settings params moved onto this plugin's settings page unchanged. Live instances migrate via `scripts/agents/migrate_merge.py` (recreate saved agents/tools, repoint triage scenario, copy settings, decommission the old plugin).
+- Plugin code env: added `requests`, `langchain`, `langchain-core`; interpreters narrowed to Python 3.10–3.13 (langchain requirement).
+
 ## [1.0.5] - 2026-06-05
 
 ### Changed

@@ -1,5 +1,5 @@
 {
-    "acceptedPythonInterpreters": ["PYTHON39", "PYTHON310", "PYTHON311", "PYTHON312", "PYTHON313"],
+    "acceptedPythonInterpreters": ["PYTHON310", "PYTHON311", "PYTHON312", "PYTHON313"],
     "forceConda": false,
     "installCorePackages": true,
     "corePackagesSet": "PANDAS23",

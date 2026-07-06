@@ -51,7 +51,7 @@ def ensure_agent(project, name, component, llm_id):
             break
     # plugin agent types register as agent_<pluginId>_<componentId> (AgentTypesRegistry)
     agent = existing or project.create_agent(name, 'PLUGIN_AGENT',
-                                             plugin_agent_type='agent_admin-toolkit-agents_%s' % component)
+                                             plugin_agent_type='agent_admin-toolkit_%s' % component)
     if llm_id:
         set_agent_config(agent, {'llm_id': llm_id})
     if not existing:

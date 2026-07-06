@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase A live verification: run the agents-plugin tools through the REAL DSS
+"""Phase A live verification: run the admin-toolkit agent tools through the REAL DSS
 agent-tool runtime (not just pure-Python impls).
 
     .venv/bin/python scripts/agents/test_tools.py [--project AGENTSSANDBOX]
@@ -19,7 +19,7 @@ import time
 import dataikuapi
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-PLUGIN_ID = "admin-toolkit-agents"
+PLUGIN_ID = "admin-toolkit"
 TOOLS = ["list-hosts", "instance-health", "adoption-metrics", "compute-cost",
          "config-inspect", "log-errors", "storage-footprint",
          "k8s-health", "db-health", "plan-admin-action", "execute-admin-action"]
@@ -35,7 +35,7 @@ def ensure_project(client, key):
     existing = {p["projectKey"] for p in client.list_projects()}
     if key not in existing:
         client.create_project(key, "Agents Sandbox", "admin",
-                              description="Sandbox for admin-toolkit-agents tool verification")
+                              description="Sandbox for admin-toolkit agent-tool verification")
         print(f"created project {key}")
     return client.get_project(key)
 

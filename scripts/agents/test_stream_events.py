@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Streamed event-protocol checks for agents-plugin v2 (live DSS, read-only).
+"""Streamed event-protocol checks for the admin-toolkit agents layer v2 (live DSS, read-only).
 
     .venv/bin/python scripts/agents/test_stream_events.py [--project AGENTSSANDBOX]
 

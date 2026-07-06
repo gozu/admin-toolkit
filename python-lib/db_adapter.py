@@ -48,10 +48,8 @@ def load_agents_audit_config(client=None) -> AgentsAuditConfig:
     """Read the agents-audit database connection from plugin settings.
 
     Falls back to the legacy `story_postgres_connection` key, then to the
-    companion admin-toolkit-agents plugin's `triage_connection` — the two are
-    documented as the same connection, and DSS prunes stored config keys that
-    are no longer declared on plugin update, which can silently destroy this
-    plugin's value.
+    agents layer's `triage_connection` — the two are documented as the same
+    connection, and all three now live in this plugin's own config.
     """
     try:
         if client is None:
@@ -60,14 +58,8 @@ def load_agents_audit_config(client=None) -> AgentsAuditConfig:
         raw = client.get_plugin('admin-toolkit').get_settings().get_raw()
         config = raw.get('config', {}) if isinstance(raw, dict) else {}
         conn = (config.get('agents_audit_postgres_connection')
-                or config.get('story_postgres_connection') or '').strip() or None
-        if not conn:
-            try:
-                agents_raw = client.get_plugin('admin-toolkit-agents').get_settings().get_raw()
-                agents_config = agents_raw.get('config', {}) if isinstance(agents_raw, dict) else {}
-                conn = (agents_config.get('triage_connection') or '').strip() or None
-            except Exception as exc:
-                _log.debug("Could not read agents-plugin triage_connection: %s", exc)
+                or config.get('story_postgres_connection')
+                or config.get('triage_connection') or '').strip() or None
         return AgentsAuditConfig(connection_name=conn)
     except Exception as exc:
         _log.debug("Could not load agents-audit config: %s", exc)

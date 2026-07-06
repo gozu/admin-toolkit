@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-shot provisioning of the admin-toolkit-agents plugin on an instance
+"""One-shot provisioning of the admin-toolkit agents layer on an instance
 where the plugin zip is already installed (e.g. tam-global via the secure
 wrapper). Idempotent — safe to re-run.
 
@@ -10,7 +10,7 @@ wrapper). Idempotent — safe to re-run.
 
 Does, in order:
   1. verify the plugin is installed (list_plugins)
-  2. ensure code env plugin_admin-toolkit-agents_managed + install packages
+  2. ensure code env plugin_admin-toolkit_managed + install packages
   3. plugin settings: codeEnvName (kernel env resolution reads ONLY this) + params
      (backend_url, default_llm_id, optional passwords; enable_red_actions stays False)
   4. ensure the ops project (containerMode NONE) + 11 tool instances + 3 agent instances
@@ -78,7 +78,7 @@ def apply_plugin_settings(plugin, args):
 def ensure_project(client, key):
     if key not in {p['projectKey'] for p in client.list_projects()}:
         client.create_project(key, 'Agent Ops', 'admin',
-                              description='admin-toolkit-agents: tools + agents for Agent Hub')
+                              description='admin-toolkit agents: tools + agents for Agent Hub')
         print('created project %s' % key)
     project = client.get_project(key)
     ps = project.get_settings()

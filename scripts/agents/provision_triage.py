@@ -17,7 +17,7 @@ import sys
 import dataikuapi
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / 'agents-plugin' / 'python-lib'))
+sys.path.insert(0, str(REPO / 'python-lib'))
 
 
 def main():
@@ -34,7 +34,7 @@ def main():
            else os.environ.get('DSS_API_KEY', '') or (REPO / '.dss-api-key').read_text().strip())
     client = dataikuapi.DSSClient(url, key)
 
-    raw = client.get_plugin('admin-toolkit-agents').get_settings().get_raw()
+    raw = client.get_plugin('admin-toolkit').get_settings().get_raw()
     plugin_config = (raw or {}).get('config') or {}
     from atk_agent_common import config as config_mod
     settings = config_mod.resolve(plugin_config)

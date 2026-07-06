@@ -1,13 +1,13 @@
-"""Agents routes: chat with the agents-plugin agents (SSE proxy over the LLM
+"""Agents routes: chat with the plugin's agents (SSE proxy over the LLM
 Mesh) + the agent-action audit timeline.
 
 POST /api/agents/chat streams the agents' own event protocol — token deltas,
 tool_call / tool_result activity, plan / execution cards — straight from
 `agent.as_llm().new_completion().execute_streamed()` on the active host, so
 the webapp renders plans as approve/reject cards instead of prose. Agent
-instances live in the AGENTOPS project (provisioned by the agents plugin's
-scripts). The audit timeline reads agents.agent_actions, written by the
-agents plugin into the shared audit Postgres — hub-scoped → @local_only.
+instances live in the AGENTOPS project (provisioned by scripts/agents/).
+The audit timeline reads agents.agent_actions, written by the agents layer
+into the shared audit Postgres — hub-scoped → @local_only.
 """
 
 import json

@@ -7,3 +7,6 @@ google-auth
 google-cloud-artifact-registry
 psycopg2-binary
 rich
+requests
+langchain
+langchain-core

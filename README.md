@@ -45,7 +45,7 @@ Instance vitals at a glance. **Mission Control** is the dense operations wall fo
 
 ### Agents
 
-Chat with three AI agents that administer the fleet through the LLM Mesh: **Health Triage** (fleet sweeps and triage reports), **Scoping Architect** (sizing, adoption and migration dossiers), and **Ops Actuator** (plans and — only after your explicit approval — executes admin actions like project cleanup, DB maintenance and K8s right-sizing). Sensor agents propose risk-colored **action-item checklists** you can hand to the actuator in one click; every execution is HMAC-token-gated, kill-switch-guarded, audited to Postgres with provenance, and deep-linked into the native DSS UI. A built-in prompt library ships ~30 curated prompts per agent plus one "megaprompt" that audits the whole instance, and ⓘ info-dots explain every concept in place. Powered by the companion [`admin-toolkit-agents` plugin](agents-plugin/README.md) — its README is the full developer reference (architecture, system prompts, wire protocol, safety model).
+Chat with three AI agents that administer the fleet through the LLM Mesh: **Health Triage** (fleet sweeps and triage reports), **Scoping Architect** (sizing and migration dossiers), and **Ops Actuator** (plans and — only after your explicit approval — executes admin actions like project cleanup, DB maintenance and K8s right-sizing). Sensor agents propose risk-colored **action-item checklists** you can hand to the actuator in one click; every execution is HMAC-token-gated, kill-switch-guarded, audited to Postgres with provenance, and deep-linked into the native DSS UI. A built-in prompt library ships ~30 curated prompts per agent plus one "megaprompt" that audits the whole instance, and ⓘ info-dots explain every concept in place. The agents layer ships inside this plugin (agent tools + plugin agents) — [`docs/agents-reference.md`](docs/agents-reference.md) is the full developer reference (architecture, system prompts, wire protocol, safety model).
 
 ### Connections
 
@@ -338,12 +338,14 @@ In addition, Under Settings, you can create python notebooks with the same algor
 plugin.json                  # plugin manifest (params, version, secrets)
 webapps/admin-toolkit/       # Flask webapp entrypoint
 python-lib/                  # backend: adk_backend/ (25 route groups) + shared libs
-python-runnables/            # 7 host-bound macros (metrics, process, k8s, images, db, cs, cru)
+python-runnables/            # 8 host-bound macros (metrics, process, k8s, images, db, cs, cru, agent-triage)
+python-lib/atk_agent_common/ # agents layer shared lib (tools impl, actuator, triage, audit)
+python-agents/               # 3 plugin agents (health-triage, scoping-architect, ops-actuator)
+python-agent-tools/          # 11 agent tools over the toolkit's sensor APIs
 code-env/python/spec/        # plugin code env dependency spec
 resource/frontend/           # React SPA (src/, public/, tests/)
-agents-plugin/               # companion plugin: agent tools + plugin agents (see its README)
 scripts/                     # deploy + contract-check tooling (scripts/agents/ = agent test harness)
-docs/                        # UI/UX contracts, screenshots
+docs/                        # UI/UX contracts, screenshots, agents developer reference
 Makefile                     # build & deploy orchestration
 ```
 

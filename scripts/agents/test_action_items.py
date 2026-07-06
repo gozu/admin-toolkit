@@ -8,7 +8,7 @@ import pathlib
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO / 'agents-plugin' / 'python-lib'))
+sys.path.insert(0, str(REPO / 'python-lib'))
 
 from atk_agent_common import action_items  # noqa: E402
 

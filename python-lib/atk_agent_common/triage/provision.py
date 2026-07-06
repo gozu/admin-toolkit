@@ -13,7 +13,7 @@ logger = logging.getLogger('atk-agents')
 MACRO_PROJECT_KEY = 'ADMINTOOLKIT'
 MACRO_PROJECT_NAME = 'Admin Toolkit'
 SCENARIO_NAME = 'Agents — Daily health triage'
-MACRO_TYPE = 'pyrunnable_admin-toolkit-agents_agent-triage-sweep'
+MACRO_TYPE = 'pyrunnable_admin-toolkit_agent-triage-sweep'
 
 REPORTER_SUBJECT = '[Admin Toolkit / Agents] Daily triage FAILED on ${scenarioProjectKey}'
 REPORTER_MESSAGE = (

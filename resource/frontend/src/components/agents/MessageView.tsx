@@ -2,6 +2,8 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fetchJson } from '../../utils/api';
+import { EXPLORE_TRACE_STORAGE_KEY, traceExplorerHandoffUrl } from '../../utils/agentLinks';
+import { getActiveHostId } from '../../state/hostStore';
 import { ActivityChips } from './ActivityChips';
 import { PlanCard } from './PlanCard';
 import { ExecutionCard } from './ExecutionCard';
@@ -11,38 +13,129 @@ import type {
   ChatMessage,
   PlanCardData,
   Segment,
+  TraceExplorerStatus,
 } from '../../state/agentsChatStore';
 
-/** Copy the turn's native dku-trace JSON (for Trace Explorer's "Paste a new
- * trace"). The backend keeps only the last few traces — expiry is normal. */
-function TraceChip({ traceId }: { traceId: string }) {
-  const [state, setState] = useState<'idle' | 'copied' | 'expired'>('idle');
-  const copy = async () => {
+/** The turn's dku-trace JSON: the backend's in-memory ring first (last few
+ * turns), then the persisted per-message copy when chat persistence is on. */
+async function fetchTraceJson(
+  traceId: string,
+  conversationId: string | undefined,
+  messageId: string,
+): Promise<unknown | null> {
+  try {
+    const data = await fetchJson<{ available: boolean; trace?: unknown }>(
+      `/api/agents/last-trace?id=${encodeURIComponent(traceId)}`,
+    );
+    if (data.available && data.trace) return data.trace;
+  } catch {
+    // ring rotated — try the durable copy
+  }
+  if (conversationId) {
     try {
-      const data = await fetchJson<{ available: boolean; trace?: unknown }>(
-        `/api/agents/last-trace?id=${encodeURIComponent(traceId)}`,
+      const data = await fetchJson<{ available?: boolean; trace?: unknown }>(
+        `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/trace`,
       );
-      if (!data.available || !data.trace) throw new Error('expired');
-      await navigator.clipboard.writeText(JSON.stringify(data.trace, null, 2));
-      setState('copied');
+      if (data.available && data.trace) return data.trace;
     } catch {
-      setState('expired');
+      // not persisted either
     }
+  }
+  return null;
+}
+
+/** One-click trace: on the local hub with a provisioned Trace Explorer, hand
+ * the trace over via the explorer's native localStorage flow
+ * (?readTraceFromLS=true) and open it in a new tab. Anywhere else (remote
+ * hosts: localStorage is per-origin, no handoff possible) fall back to the
+ * copy-trace chip for Trace Explorer's "Paste a new trace". */
+function TraceAction({
+  traceId,
+  conversationId,
+  messageId,
+  traceExplorer,
+}: {
+  traceId: string;
+  conversationId: string | undefined;
+  messageId: string;
+  traceExplorer: TraceExplorerStatus | null;
+}) {
+  const [state, setState] = useState<'idle' | 'busy' | 'copied' | 'expired'>('idle');
+  const canHandoff = Boolean(traceExplorer?.sameOrigin && traceExplorer.webAppId);
+
+  const flash = (next: 'copied' | 'expired') => {
+    setState(next);
     setTimeout(() => setState('idle'), 2500);
   };
+
+  const openInExplorer = async () => {
+    setState('busy');
+    const trace = await fetchTraceJson(traceId, conversationId, messageId);
+    if (!trace || !traceExplorer?.webAppId) {
+      flash('expired');
+      return;
+    }
+    try {
+      globalThis.localStorage?.setItem(EXPLORE_TRACE_STORAGE_KEY, JSON.stringify(trace));
+    } catch {
+      flash('expired');
+      return;
+    }
+    window.open(
+      traceExplorerHandoffUrl(getActiveHostId(), traceExplorer.projectKey, traceExplorer.webAppId),
+      '_blank',
+      'noopener',
+    );
+    setState('idle');
+  };
+
+  const copy = async () => {
+    const trace = await fetchTraceJson(traceId, conversationId, messageId);
+    if (!trace) {
+      flash('expired');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(trace, null, 2));
+      flash('copied');
+    } catch {
+      flash('expired');
+    }
+  };
+
+  if (state === 'copied') {
+    return <span className="text-[11px] text-[var(--text-muted)]">trace copied ✓</span>;
+  }
+  if (state === 'expired') {
+    return <span className="text-[11px] text-[var(--text-muted)]">trace expired</span>;
+  }
+  if (canHandoff) {
+    return (
+      <button
+        onClick={() => void openInExplorer()}
+        disabled={state === 'busy'}
+        className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors disabled:opacity-60"
+        title="Open this turn's trace in the native DSS Trace Explorer"
+      >
+        {state === 'busy' ? 'opening trace…' : 'open trace ↗'}
+      </button>
+    );
+  }
   return (
     <button
       onClick={() => void copy()}
       className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
       title="Copy this turn's trace JSON — paste it into Trace Explorer for instant inspection"
     >
-      {state === 'copied' ? 'trace copied ✓' : state === 'expired' ? 'trace expired' : 'copy trace'}
+      copy trace
     </button>
   );
 }
 
 export function MessageView({
   message,
+  conversationId,
+  traceExplorer,
   now,
   streaming,
   actuatorAvailable,
@@ -51,6 +144,8 @@ export function MessageView({
   onSubmitActionItems,
 }: {
   message: ChatMessage;
+  conversationId?: string;
+  traceExplorer?: TraceExplorerStatus | null;
   now: number;
   streaming: boolean;
   actuatorAvailable: boolean;
@@ -106,7 +201,12 @@ export function MessageView({
       })}
       {message.traceId && (
         <div className="pt-0.5">
-          <TraceChip traceId={message.traceId} />
+          <TraceAction
+            traceId={message.traceId}
+            conversationId={conversationId}
+            messageId={message.id}
+            traceExplorer={traceExplorer ?? null}
+          />
         </div>
       )}
     </div>

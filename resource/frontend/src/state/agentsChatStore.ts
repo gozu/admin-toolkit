@@ -1,8 +1,14 @@
 // Agents chat store — module-scoped singleton so a running agent turn
-// survives page navigation. One conversation per agent id, on the active
-// host. Streaming consumes the /api/agents/chat SSE proxy: token deltas plus
-// the typed agent event protocol (tool_call / tool_result / plan / execution).
-import { fetchRaw } from '../utils/api';
+// survives page navigation. Conversations are keyed by conversation id (one
+// ACTIVE conversation per agent via activeConvIdByAgent), on the active host.
+// Streaming consumes the /api/agents/chat SSE proxy: token deltas plus the
+// typed agent event protocol (tool_call / tool_result / plan / execution).
+//
+// Persistence: when the admin enables chat storage in plugin settings
+// (/api/chat/config → enabled), every settled turn is POSTed to the server
+// (Agent Hub-style SQL store, scoped per user + fleet host) and the history
+// drawer lists/reopens past conversations. localStorage stays a cache only.
+import { fetchJson, fetchRaw } from '../utils/api';
 import { parseSseStream } from '../utils/sseStream';
 import { createSyncStore } from './createSyncStore';
 import { subscribeSessionEpoch } from './sessionCache';
@@ -80,6 +86,8 @@ export type Segment =
   | { type: 'action_items'; batch: ActionItemsCardData };
 
 export interface ChatMessage {
+  /** Client-minted uuid — the server upserts persisted messages by this id. */
+  id: string;
   role: 'user' | 'assistant';
   // Plain text sent back as history (assistant = concatenated text segments).
   content: string;
@@ -94,7 +102,10 @@ export interface ChatMessage {
 }
 
 export interface Conversation {
+  /** Client-minted uuid4 — the server row is created on the first turn. */
+  id: string;
   agentId: string;
+  title?: string;
   messages: ChatMessage[];
   streaming: boolean;
   error: string | null;
@@ -103,30 +114,97 @@ export interface Conversation {
   traceExplorerPath?: string;
 }
 
-interface AgentsChatState {
-  conversations: Record<string, Conversation>;
-  /** Store-owned so the action-item handoff can switch the visible agent. */
-  selectedAgentId: string;
+export interface ConversationMeta {
+  id: string;
+  agentId: string;
+  title: string;
+  lastModified?: string;
 }
 
-export const agentsChatStore = createSyncStore<AgentsChatState>(
-  { conversations: {}, selectedAgentId: '' },
-  { sessionScoped: true },
-);
+export interface TraceExplorerStatus {
+  installed: boolean;
+  provisioned: boolean;
+  projectKey: string;
+  /** True only on the local hub — the readTraceFromLS handoff needs the
+   * explorer to share the browser origin (localStorage is per-origin). */
+  sameOrigin: boolean;
+  webAppId?: string;
+  viewPath?: string;
+}
 
-// Chats survive a hard refresh via localStorage; the in-app Refresh (session
+export interface ProvisionStep {
+  step: string;
+  status: string;
+  message?: string;
+}
+
+export interface ProvisionResult {
+  ok: boolean;
+  steps: ProvisionStep[];
+  webAppId?: string;
+  viewPath?: string;
+}
+
+interface ChatPersistenceState {
+  /** False until /api/chat/config has answered for the current host. */
+  loaded: boolean;
+  enabled: boolean;
+  mode?: string;
+}
+
+interface AgentsChatState {
+  conversations: Record<string, Conversation>;
+  /** The conversation currently shown per agent (others live server-side). */
+  activeConvIdByAgent: Record<string, string>;
+  /** Store-owned so the action-item handoff can switch the visible agent. */
+  selectedAgentId: string;
+  persistence: ChatPersistenceState;
+  conversationList: ConversationMeta[];
+  traceExplorer: TraceExplorerStatus | null;
+}
+
+const INITIAL_STATE: AgentsChatState = {
+  conversations: {},
+  activeConvIdByAgent: {},
+  selectedAgentId: '',
+  persistence: { loaded: false, enabled: false },
+  conversationList: [],
+  traceExplorer: null,
+};
+
+export const agentsChatStore = createSyncStore<AgentsChatState>(INITIAL_STATE, {
+  sessionScoped: true,
+});
+
+function newId(): string {
+  const c = globalThis.crypto as Crypto | undefined;
+  if (c?.randomUUID) return c.randomUUID();
+  return `id-${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
+// Chats survive a hard refresh via localStorage (cache only — the durable copy
+// is server-side when persistence is enabled); the in-app Refresh (session
 // epoch) keeps its clear-everything semantics, so the epoch bump also drops
 // the snapshot.
 const STORAGE_KEY = 'admin-toolkit:agentsChat';
-const STORAGE_VERSION = 1;
+// v2: conversations keyed by conversation id + activeConvIdByAgent (v1 blobs
+// were keyed by agent id and never durable — discarded, no migration).
+const STORAGE_VERSION = 2;
+
+interface StoredState {
+  conversations: Record<string, Conversation>;
+  activeConvIdByAgent: Record<string, string>;
+  selectedAgentId: string;
+}
 
 /** A hard refresh kills any in-flight stream: stop spinners, drop a dangling
  * empty assistant turn, and never rehydrate `streaming: true` (the abort
  * controllers don't survive a reload). */
-function sanitizeStored(state: AgentsChatState): AgentsChatState {
+function sanitizeStored(state: StoredState): StoredState {
   const conversations: Record<string, Conversation> = {};
   for (const [id, conv] of Object.entries(state.conversations || {})) {
-    let messages = conv.messages || [];
+    if (!conv?.id || !conv.agentId) continue;
+    let messages = (conv.messages || []).filter((m) => m?.id);
     const last = messages[messages.length - 1];
     if (conv.streaming && last?.role === 'assistant' && !last.segments?.length) {
       messages = messages.slice(0, -1);
@@ -144,14 +222,18 @@ function sanitizeStored(state: AgentsChatState): AgentsChatState {
       streaming: false,
     };
   }
-  return { conversations, selectedAgentId: state.selectedAgentId || '' };
+  const activeConvIdByAgent: Record<string, string> = {};
+  for (const [agentId, convId] of Object.entries(state.activeConvIdByAgent || {})) {
+    if (conversations[convId]) activeConvIdByAgent[agentId] = convId;
+  }
+  return { conversations, activeConvIdByAgent, selectedAgentId: state.selectedAgentId || '' };
 }
 
-function readStored(): AgentsChatState | null {
+function readStored(): StoredState | null {
   try {
     const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { v?: number; state?: AgentsChatState };
+    const parsed = JSON.parse(raw) as { v?: number; state?: StoredState };
     if (parsed?.v !== STORAGE_VERSION || typeof parsed.state?.conversations !== 'object') return null;
     return sanitizeStored(parsed.state);
   } catch {
@@ -164,16 +246,26 @@ function persistStored(state: AgentsChatState): void {
   // lands when the stream flips `streaming` back to false.
   if (Object.values(state.conversations).some((c) => c.streaming)) return;
   try {
-    globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify({ v: STORAGE_VERSION, state }));
+    const stored: StoredState = {
+      conversations: state.conversations,
+      activeConvIdByAgent: state.activeConvIdByAgent,
+      selectedAgentId: state.selectedAgentId,
+    };
+    globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify({ v: STORAGE_VERSION, state: stored }));
   } catch {
     // best effort — quota exceeded or storage unavailable
   }
 }
 
 const storedState = readStored();
-if (storedState) agentsChatStore.set(storedState);
+if (storedState) agentsChatStore.patch(storedState);
 agentsChatStore.subscribe(() => persistStored(agentsChatStore.get()));
+
+// Guard against a bootstrap fetch from the previous host landing after an
+// epoch bump (host switch) and repopulating the store with stale data.
+let sessionEpochCounter = 0;
 subscribeSessionEpoch(() => {
+  sessionEpochCounter += 1;
   try {
     globalThis.localStorage?.removeItem(STORAGE_KEY);
   } catch {
@@ -188,8 +280,12 @@ export function selectAgent(agentId: string): void {
 const abortControllers = new Map<string, AbortController>();
 
 function getConversation(agentId: string): Conversation {
+  const state = agentsChatStore.get();
+  const activeId = state.activeConvIdByAgent[agentId];
+  const existing = activeId ? state.conversations[activeId] : undefined;
   return (
-    agentsChatStore.get().conversations[agentId] || {
+    existing || {
+      id: newId(),
       agentId,
       messages: [],
       streaming: false,
@@ -199,8 +295,10 @@ function getConversation(agentId: string): Conversation {
 }
 
 function putConversation(conv: Conversation): void {
+  const state = agentsChatStore.get();
   agentsChatStore.patch({
-    conversations: { ...agentsChatStore.get().conversations, [conv.agentId]: conv },
+    conversations: { ...state.conversations, [conv.id]: conv },
+    activeConvIdByAgent: { ...state.activeConvIdByAgent, [conv.agentId]: conv.id },
   });
 }
 
@@ -343,6 +441,251 @@ function normalizeActionItems(raw: unknown): ActionItemData[] {
   return out;
 }
 
+// ── server persistence (Agent Hub-style SQL store) ─────────────────────────
+
+interface ServerMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  display?: string | null;
+  segments?: Segment[];
+  traceId?: string | null;
+  hasTrace?: boolean;
+}
+
+interface ServerConversation {
+  id: string;
+  agentId: string;
+  title: string;
+  traceExplorerPath?: string;
+  messages: ServerMessage[];
+}
+
+let bootstrapInflight = false;
+
+/** Load /api/chat/config + trace-explorer status once per host (the session
+ * epoch resets `persistence.loaded`, so a host switch re-fetches). */
+export async function ensureChatBootstrapped(): Promise<void> {
+  const state = agentsChatStore.get();
+  if (state.persistence.loaded || bootstrapInflight) return;
+  bootstrapInflight = true;
+  const epoch = sessionEpochCounter;
+  try {
+    const [config, explorer] = await Promise.all([
+      fetchJson<{ enabled: boolean; mode?: string }>('/api/chat/config').catch(() => ({
+        enabled: false as const,
+      })),
+      fetchJson<TraceExplorerStatus>('/api/agents/trace-explorer/status').catch(() => null),
+    ]);
+    if (epoch !== sessionEpochCounter) return; // host switched mid-fetch
+    agentsChatStore.patch({
+      persistence: { loaded: true, enabled: config.enabled, mode: (config as { mode?: string }).mode },
+      traceExplorer: explorer,
+    });
+    if (config.enabled) void loadConversationList();
+  } finally {
+    bootstrapInflight = false;
+  }
+}
+
+export async function loadConversationList(): Promise<void> {
+  const epoch = sessionEpochCounter;
+  try {
+    const data = await fetchJson<{ enabled: boolean; conversations: ConversationMeta[] }>(
+      '/api/chat/conversations',
+    );
+    if (epoch !== sessionEpochCounter) return;
+    agentsChatStore.patch({ conversationList: data.conversations || [] });
+  } catch {
+    // history stays whatever it was — the drawer shows its empty state
+  }
+}
+
+/** Open a past conversation: local copy if cached, else fetched from the
+ * server (traces stay server-side; hasTrace flags the durable fallback). */
+export async function openConversation(conversationId: string): Promise<void> {
+  const state = agentsChatStore.get();
+  const cached = state.conversations[conversationId];
+  if (cached) {
+    agentsChatStore.patch({
+      activeConvIdByAgent: { ...state.activeConvIdByAgent, [cached.agentId]: cached.id },
+      selectedAgentId: cached.agentId,
+    });
+    return;
+  }
+  const data = await fetchJson<{ conversation: ServerConversation }>(
+    `/api/chat/conversations/${encodeURIComponent(conversationId)}`,
+  );
+  const server = data.conversation;
+  const conv: Conversation = {
+    id: server.id,
+    agentId: server.agentId,
+    title: server.title || undefined,
+    streaming: false,
+    error: null,
+    traceExplorerPath: server.traceExplorerPath || undefined,
+    messages: (server.messages || []).map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content || '',
+      display: m.display || undefined,
+      segments: (m.segments || []).map((s) =>
+        s.type === 'activity'
+          ? { ...s, items: s.items.map((it) => ({ ...it, running: false })) }
+          : s,
+      ),
+      traceId: m.traceId || undefined,
+    })),
+  };
+  const fresh = agentsChatStore.get();
+  agentsChatStore.patch({
+    conversations: { ...fresh.conversations, [conv.id]: conv },
+    activeConvIdByAgent: { ...fresh.activeConvIdByAgent, [conv.agentId]: conv.id },
+    selectedAgentId: conv.agentId,
+  });
+}
+
+export async function renameConversation(conversationId: string, title: string): Promise<void> {
+  const trimmed = title.trim();
+  if (!trimmed) return;
+  const state = agentsChatStore.get();
+  const conv = state.conversations[conversationId];
+  agentsChatStore.patch({
+    conversations: conv
+      ? { ...state.conversations, [conversationId]: { ...conv, title: trimmed } }
+      : state.conversations,
+    conversationList: state.conversationList.map((c) =>
+      c.id === conversationId ? { ...c, title: trimmed } : c,
+    ),
+  });
+  try {
+    await fetchJson(`/api/chat/conversations/${encodeURIComponent(conversationId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: trimmed }),
+    });
+  } catch {
+    void loadConversationList(); // roll back to server truth
+  }
+}
+
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const state = agentsChatStore.get();
+  const conversations = { ...state.conversations };
+  const conv = conversations[conversationId];
+  delete conversations[conversationId];
+  const activeConvIdByAgent = { ...state.activeConvIdByAgent };
+  if (conv && activeConvIdByAgent[conv.agentId] === conversationId) {
+    delete activeConvIdByAgent[conv.agentId];
+  }
+  agentsChatStore.patch({
+    conversations,
+    activeConvIdByAgent,
+    conversationList: state.conversationList.filter((c) => c.id !== conversationId),
+  });
+  try {
+    await fetchJson(`/api/chat/conversations/${encodeURIComponent(conversationId)}`, {
+      method: 'DELETE',
+    });
+  } catch {
+    void loadConversationList();
+  }
+}
+
+function deriveTitle(conv: Conversation): string {
+  if (conv.title) return conv.title;
+  const firstUser = conv.messages.find((m) => m.role === 'user');
+  const text = (firstUser?.display ?? firstUser?.content ?? '').trim().replace(/\s+/g, ' ');
+  return text.length > 60 ? `${text.slice(0, 57)}…` : text || 'New conversation';
+}
+
+/** Fire-and-forget: POST the given messages (by position) of a settled
+ * conversation to the server store. Called after every settled turn and
+ * after post-settle segment mutations (plan decisions, handoff locks). */
+function persistMessages(conv: Conversation, positions: number[]): void {
+  const state = agentsChatStore.get();
+  if (!state.persistence.enabled || positions.length === 0) return;
+  const title = deriveTitle(conv);
+  if (!conv.title) {
+    const cur = agentsChatStore.get();
+    const stored = cur.conversations[conv.id];
+    if (stored) {
+      agentsChatStore.patch({
+        conversations: { ...cur.conversations, [conv.id]: { ...stored, title } },
+      });
+    }
+  }
+  const messages = positions
+    .map((pos) => ({ message: conv.messages[pos], pos }))
+    .filter((e) => e.message)
+    .map(({ message, pos }) => ({
+      id: message.id,
+      role: message.role,
+      content: message.content,
+      display: message.display,
+      segments: message.segments,
+      traceId: message.traceId,
+      position: pos,
+    }));
+  const traceId = messages.map((m) => m.traceId).filter(Boolean).pop();
+  const epoch = sessionEpochCounter;
+  void fetchJson<{ conversation: { id: string; title: string } }>(
+    `/api/chat/conversations/${encodeURIComponent(conv.id)}/turn`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentId: conv.agentId,
+        title,
+        messages,
+        traceId,
+        lastDurationMs: conv.lastDurationMs,
+        traceExplorerPath: conv.traceExplorerPath,
+      }),
+    },
+  )
+    .then(() => {
+      if (epoch !== sessionEpochCounter) return;
+      const cur = agentsChatStore.get();
+      const meta: ConversationMeta = {
+        id: conv.id,
+        agentId: conv.agentId,
+        title,
+        lastModified: new Date().toISOString(),
+      };
+      agentsChatStore.patch({
+        conversationList: [meta, ...cur.conversationList.filter((c) => c.id !== conv.id)],
+      });
+    })
+    .catch(() => {
+      // best effort — the localStorage cache still holds the conversation
+    });
+}
+
+/** Persist every message whose segments the predicate matches (post-settle
+ * mutations touch existing rows — same ids, updated segments). */
+function persistWhere(conv: Conversation, match: (msg: ChatMessage) => boolean): void {
+  const positions = conv.messages
+    .map((msg, i) => (match(msg) ? i : -1))
+    .filter((i) => i >= 0);
+  persistMessages(conv, positions);
+}
+
+export async function provisionTraceExplorer(): Promise<ProvisionResult> {
+  const result = await fetchJson<ProvisionResult>('/api/agents/trace-explorer/provision', {
+    method: 'POST',
+  });
+  if (result.ok) {
+    const explorer = await fetchJson<TraceExplorerStatus>('/api/agents/trace-explorer/status').catch(
+      () => null,
+    );
+    if (explorer) agentsChatStore.patch({ traceExplorer: explorer });
+  }
+  return result;
+}
+
+// ── conversation mutations ──────────────────────────────────────────────────
+
 /** Mark a plan card approved/rejected (by confirm token) across the conversation. */
 export function decidePlan(
   agentId: string,
@@ -358,7 +701,11 @@ export function decidePlan(
         : seg,
     ),
   }));
-  putConversation({ ...conv, messages });
+  const next = { ...conv, messages };
+  putConversation(next);
+  persistWhere(next, (msg) =>
+    msg.segments.some((seg) => seg.type === 'plan' && seg.plan.confirmToken === confirmToken),
+  );
 }
 
 /** One line of the batch handoff message the actuator receives per item.
@@ -400,7 +747,7 @@ export function submitActionItemsToActuator(
 
   const source = getConversation(sourceAgentId);
   const submitted = new Set(actionable.map((item) => item.id));
-  putConversation({
+  const nextSource: Conversation = {
     ...source,
     messages: source.messages.map((msg) => ({
       ...msg,
@@ -416,7 +763,11 @@ export function submitActionItemsToActuator(
           : seg,
       ),
     })),
-  });
+  };
+  putConversation(nextSource);
+  persistWhere(nextSource, (msg) =>
+    msg.segments.some((seg) => seg.type === 'action_items' && seg.batch.batchId === batchId),
+  );
 
   const text =
     `Action-item batch handoff (batch ${batchId}, ${actionable.length} item(s) selected by the user from another agent's findings).\n` +
@@ -474,11 +825,18 @@ export function abortAgentTurn(agentId: string): void {
   abortControllers.get(agentId)?.abort();
 }
 
+/** Start a fresh conversation for the agent. The previous one stays
+ * server-side when persistence is enabled (reopen it from the history
+ * drawer); locally it is dropped either way. */
 export function clearConversation(agentId: string): void {
   abortAgentTurn(agentId);
-  const conversations = { ...agentsChatStore.get().conversations };
-  delete conversations[agentId];
-  agentsChatStore.patch({ conversations });
+  const state = agentsChatStore.get();
+  const activeId = state.activeConvIdByAgent[agentId];
+  const conversations = { ...state.conversations };
+  if (activeId) delete conversations[activeId];
+  const activeConvIdByAgent = { ...state.activeConvIdByAgent };
+  delete activeConvIdByAgent[agentId];
+  agentsChatStore.patch({ conversations, activeConvIdByAgent });
 }
 
 /** Send one user message and stream the agent's reply into the store.
@@ -496,14 +854,15 @@ export async function sendAgentMessage(
   const controller = new AbortController();
   abortControllers.set(agentId, controller);
 
+  const turnIds = [newId(), newId()];
   let conv: Conversation = {
     ...base,
     error: null,
     streaming: true,
     messages: [
       ...base.messages,
-      { role: 'user', content: text, display, segments: [{ type: 'text', text: display ?? text }] },
-      { role: 'assistant', content: '', segments: [] },
+      { id: turnIds[0], role: 'user', content: text, display, segments: [{ type: 'text', text: display ?? text }] },
+      { id: turnIds[1], role: 'assistant', content: '', segments: [] },
     ],
   };
   putConversation(conv);
@@ -563,6 +922,10 @@ export async function sendAgentMessage(
     const messages = conv.messages.slice();
     const last = messages[messages.length - 1];
     if (last && last.role === 'assistant' && last.segments.length === 0) messages.pop();
-    putConversation({ ...conv, messages, streaming: false });
+    const settled = { ...conv, messages, streaming: false };
+    putConversation(settled);
+    // Auto-persist the settled turn: the user message + the assistant reply
+    // (or just the user message when the reply was aborted pre-token).
+    persistWhere(settled, (msg) => turnIds.includes(msg.id));
   }
 }

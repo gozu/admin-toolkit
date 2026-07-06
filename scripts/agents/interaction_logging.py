@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""Agent Interaction Logging provisioning (DSS >= 14.5, verified on the 14.7 API).
+"""Agent Interaction Logging provisioning — thin wrapper over
+python-lib/adk_backend/trace_explorer.py (the webapp backend imports that
+module directly; this script keeps the ops-CLI entrypoint and the
+provision_prod.py imports working).
 
 Native mechanism replacing any custom trace/conversation storage: every agent
 interaction (input, answer, tool calls, dku_trace) lands as a row in an
-LLM-interaction-logging dataset, async-buffered on the LLM Mesh path — the
-webapp's stateless as_llm() relay needs zero changes. Trace Explorer is a
-built-in VISUAL webapp pointed at that dataset; the public API (incl. 14.7's
-create_webapp) can only create CODE webapps, so the webapp itself stays a
-one-time manual step surfaced in the provisioning epilogue.
+LLM-interaction-logging dataset, async-buffered on the LLM Mesh path. The
+Trace Explorer plugin webapp over that dataset is now AUTO-PROVISIONED
+(create_webapp() rejects plugin types, but the raw REST POST accepts them —
+see trace_explorer.ensure_trace_explorer, also exposed in the webapp as the
+"Set up Trace Explorer" CTA / POST /api/agents/trace-explorer/provision).
 
 Importable helper (used by provision_prod.py); also runnable standalone:
 
     DSS_API_KEY=<admin key> .venv/bin/python scripts/agents/interaction_logging.py \
-        [--url https://...] [--project AGENTOPS] [--connection <conn>]
+        [--url https://...] [--project AGENTOPS] [--connection <conn>] [--webapp]
 """
 
 import argparse
@@ -20,73 +23,45 @@ import os
 import pathlib
 import sys
 
-DATASET_NAME = 'agent_interaction_logs'
-FLUSH_EVERY_S = 30
-CONTENT_MODE = 'FULL'  # dku_trace only populates in FULL mode
+_REPO = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / 'python-lib'))
 
-MANUAL_WEBAPP_STEP = (
-    'one-time manual step: in project %s create a webapp > Visual webapp > '
-    'Trace Explorer pointed at dataset %s, then chat traces are one click away '
-    '(the toolkit chat links to it automatically once it exists).'
+from adk_backend.trace_explorer import (  # noqa: E402
+    CONTENT_MODE,
+    DATASET_NAME,
+    FLUSH_EVERY_S,
+    ensure_interaction_logging,
+    ensure_trace_explorer,
+    find_trace_explorer,
 )
 
+__all__ = ['CONTENT_MODE', 'DATASET_NAME', 'FLUSH_EVERY_S', 'MANUAL_WEBAPP_STEP',
+           'ensure_interaction_logging', 'ensure_trace_explorer', 'find_trace_explorer']
 
-def ensure_interaction_logging(project, agent_names, connection, dataset_name=DATASET_NAME):
-    """Idempotently create the DAY-partitioned logging dataset and enable
-    EXPLICIT FULL-content interaction logging on every named agent version.
-
-    Instance-level interaction logging can still be disabled globally; this
-    only flips the per-agent selection (same semantics as the DSS UI toggle).
-    Returns {'dataset', 'created', 'agents': [names], 'traceExplorer': {...}|None}.
-    """
-    summary = {'dataset': dataset_name, 'created': False, 'agents': [], 'traceExplorer': None}
-    existing = {d.name for d in project.list_datasets()}
-    if dataset_name not in existing:
-        project.create_llm_interaction_logging_dataset(
-            dataset_name, connection_id=connection, time_partitioning='DAY')
-        summary['created'] = True
-
-    wanted = set(agent_names)
-    for item in project.list_agents() or []:
-        raw = item if isinstance(item, dict) else getattr(item, 'raw', {}) or {}
-        if raw.get('name') not in wanted or not raw.get('id'):
-            continue
-        agent = project.get_agent(raw['id'])
-        settings = agent.get_settings()
-        version_id = settings.active_version or settings.get_version_ids()[0]
-        selection = settings.get_version_settings(version_id).interaction_logging_selection
-        selection.enable(dataset_name,
-                         settings={'flushEveryS': FLUSH_EVERY_S, 'contentMode': CONTENT_MODE})
-        settings.save()
-        summary['agents'].append(raw['name'])
-
-    summary['traceExplorer'] = find_trace_explorer(project)
-    return summary
-
-
-def find_trace_explorer(project):
-    """Existing Trace Explorer webapp in the project, or None (manual creation)."""
-    for item in project.list_webapps() or []:
-        data = getattr(item, '_data', None) or {}
-        blob = ('%s %s' % (data.get('type') or '', data.get('name') or '')).lower()
-        if 'trace' in blob and data.get('id'):
-            return {'id': data['id'], 'name': data.get('name') or data['id']}
-    return None
+# Kept for provision_prod.py's epilogue (same two-%s signature). Creation is
+# no longer manual — this is the pointer to the automated paths.
+MANUAL_WEBAPP_STEP = (
+    'auto-provision it: in project %s the toolkit webapp\'s Agents page has a '
+    '"Set up Trace Explorer" button (or run this script with --webapp) — it '
+    'creates the traces-explorer plugin webapp over dataset %s and starts its '
+    'backend.'
+)
 
 
 def main():
     import dataikuapi
 
-    repo = pathlib.Path(__file__).resolve().parents[2]
     ap = argparse.ArgumentParser()
     ap.add_argument('--url', default='')
     ap.add_argument('--project', default='AGENTOPS')
     ap.add_argument('--connection', default='',
                     help='connection for the logging dataset; empty = plugin triage_connection, then filesystem_managed')
+    ap.add_argument('--webapp', action='store_true',
+                    help='also find-or-create + configure + start the Trace Explorer webapp')
     args = ap.parse_args()
 
-    url = args.url or os.environ.get('DSS_URL') or (repo / '.dss-url').read_text().strip()
-    key = os.environ.get('DSS_API_KEY') or (repo / '.dss-api-key').read_text().strip()
+    url = args.url or os.environ.get('DSS_URL') or (_REPO / '.dss-url').read_text().strip()
+    key = os.environ.get('DSS_API_KEY') or (_REPO / '.dss-api-key').read_text().strip()
     client = dataikuapi.DSSClient(url, key)
     project = client.get_project(args.project)
 
@@ -105,10 +80,21 @@ def main():
           % (summary['dataset'], connection,
              ' (created)' if summary['created'] else ' (already there)',
              len(summary['agents']), ', '.join(summary['agents']) or '-'))
-    if summary['traceExplorer']:
-        print('Trace Explorer webapp found: %(name)s (%(id)s)' % summary['traceExplorer'])
+
+    if args.webapp:
+        result = ensure_trace_explorer(client, project_key=args.project)
+        for step in result['steps']:
+            print('  %-24s %-14s %s' % (step['step'], step['status'],
+                                        step.get('message') or ''))
+        print('trace explorer %s: %s' % ('READY' if result['ok'] else 'FAILED',
+                                         result.get('viewPath') or '-'))
     else:
-        print('NO Trace Explorer webapp — ' + MANUAL_WEBAPP_STEP % (args.project, summary['dataset']))
+        found = find_trace_explorer(project)
+        if found:
+            print('Trace Explorer webapp found: %(name)s (%(id)s)' % found)
+        else:
+            print('NO Trace Explorer webapp — ' + MANUAL_WEBAPP_STEP
+                  % (args.project, summary['dataset']))
 
 
 if __name__ == '__main__':

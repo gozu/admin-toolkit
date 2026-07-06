@@ -10,11 +10,14 @@ import { SettingsHistoryCard } from '../agents/SettingsHistoryCard';
 import { catalogForAgent } from '../../utils/agentPromptCatalog';
 import { hostBaseUrl } from '../../utils/agentLinks';
 import { getActiveHostId } from '../../state/hostStore';
+import { ChatHistoryDrawer } from '../agents/ChatHistoryDrawer';
 import {
   abortAgentTurn,
   agentsChatStore,
   approvePlans,
   clearConversation,
+  ensureChatBootstrapped,
+  provisionTraceExplorer,
   rejectPlans,
   selectAgent,
   sendAgentMessage,
@@ -22,6 +25,7 @@ import {
   type ActionItemData,
   type AgentInfo,
   type PlanCardData,
+  type ProvisionResult,
 } from '../../state/agentsChatStore';
 
 interface AgentsListResponse {
@@ -61,6 +65,10 @@ export function AgentsPage() {
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [draft, setDraft] = useState('');
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
+  const [provisionResult, setProvisionResult] = useState<ProvisionResult | null>(null);
+  const [provisionError, setProvisionError] = useState<string | null>(null);
   const [focusAuditId, setFocusAuditId] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -69,11 +77,19 @@ export function AgentsPage() {
 
   const chatState = agentsChatStore.use();
   const selectedId = chatState.selectedAgentId;
-  const conversation = selectedId ? chatState.conversations[selectedId] : undefined;
+  const activeConvId = selectedId ? chatState.activeConvIdByAgent[selectedId] : undefined;
+  const conversation = activeConvId ? chatState.conversations[activeConvId] : undefined;
   const messages = useMemo(() => conversation?.messages ?? [], [conversation]);
   const streaming = conversation?.streaming ?? false;
 
   const actuator = useMemo(() => agents.find((a) => a.name.includes('Actuator')), [agents]);
+
+  // Chat persistence config + trace-explorer status, once per host — the
+  // session epoch (host switch / in-app Refresh) resets `persistence.loaded`,
+  // which re-triggers this effect against the new host.
+  useEffect(() => {
+    if (!chatState.persistence.loaded) void ensureChatBootstrapped();
+  }, [chatState.persistence.loaded]);
 
   useEffect(() => {
     fetchJson<AgentsListResponse>('/api/agents')
@@ -175,9 +191,28 @@ export function AgentsPage() {
     [selectedId, actuator],
   );
 
+  const onProvisionTraceExplorer = useCallback(() => {
+    setProvisioning(true);
+    setProvisionError(null);
+    setProvisionResult(null);
+    provisionTraceExplorer()
+      .then(setProvisionResult)
+      .catch((err) => {
+        const locked = (err as { body?: { error?: string } }).body?.error === 'advanced-locked';
+        setProvisionError(
+          locked
+            ? 'Advanced actions are locked — unlock them (toolbar pill) and retry.'
+            : String(err),
+        );
+      })
+      .finally(() => setProvisioning(false));
+  }, []);
+
   const selectedAgent = agents.find((a) => a.id === selectedId);
   const catalog = catalogForAgent(selectedAgent?.name);
   const errorIsGate = /red|kill|locked|disabled/i.test(conversation?.error || '');
+  const traceExplorer = chatState.traceExplorer;
+  const explorerViewPath = traceExplorer?.viewPath || conversation?.traceExplorerPath;
 
   return (
     <div className="w-full flex-1 min-h-0 flex flex-col gap-3 py-4">
@@ -200,9 +235,9 @@ export function AgentsPage() {
           </span>
         ))}
         <span className="ml-auto inline-flex items-center gap-2">
-          {conversation?.traceExplorerPath && (
+          {explorerViewPath ? (
             <a
-              href={`${hostBaseUrl(getActiveHostId())}${conversation.traceExplorerPath}`}
+              href={`${hostBaseUrl(getActiveHostId())}${explorerViewPath}`}
               target="_blank"
               rel="noreferrer"
               className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-tertiary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors"
@@ -210,6 +245,34 @@ export function AgentsPage() {
             >
               Trace Explorer ↗
             </a>
+          ) : traceExplorer?.installed ? (
+            <button
+              onClick={onProvisionTraceExplorer}
+              disabled={provisioning}
+              className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--accent)] border border-[var(--accent)]/40 bg-[var(--accent-muted)] hover:brightness-110 transition-[filter] disabled:opacity-60"
+              title="Create + configure the Trace Explorer webapp in AGENTOPS over the agent interaction-logging dataset"
+            >
+              {provisioning ? 'Setting up…' : 'Set up Trace Explorer'}
+            </button>
+          ) : traceExplorer && !traceExplorer.installed ? (
+            <a
+              href={`${hostBaseUrl(getActiveHostId())}/plugins/traces-explorer/summary/`}
+              target="_blank"
+              rel="noreferrer"
+              className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-tertiary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors"
+              title="The Dataiku Traces Explorer plugin is not installed on this host — install it, then the toolkit can provision the webapp"
+            >
+              Install Traces Explorer plugin ↗
+            </a>
+          ) : null}
+          {chatState.persistence.enabled && (
+            <button
+              onClick={() => setHistoryOpen(true)}
+              className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-tertiary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors"
+              title="Saved conversations on this host (server-side, per user)"
+            >
+              History
+            </button>
           )}
           {messages.length > 0 && (
             <button
@@ -221,6 +284,48 @@ export function AgentsPage() {
           )}
         </span>
       </div>
+
+      {(provisionResult || provisionError) && (
+        <div className={COLUMN}>
+          <div className="glass-card p-3 space-y-1.5 text-xs border-l-2 border-l-[var(--accent)]">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-[var(--text-primary)]">
+                {provisionError
+                  ? 'Trace Explorer setup failed'
+                  : provisionResult?.ok
+                    ? 'Trace Explorer is ready'
+                    : 'Trace Explorer setup incomplete'}
+              </span>
+              <button
+                onClick={() => {
+                  setProvisionResult(null);
+                  setProvisionError(null);
+                }}
+                className="ml-auto rounded p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+            {provisionError && <p className="text-[var(--danger)]">{provisionError}</p>}
+            {(provisionResult?.steps || []).map((step) => (
+              <div key={step.step} className="flex items-baseline gap-2">
+                <span
+                  className={
+                    step.status === 'error' ? 'text-[var(--danger)]' : 'text-[var(--text-secondary)]'
+                  }
+                >
+                  {step.status === 'error' ? '✗' : '✓'} {step.step}
+                </span>
+                <span className="text-[var(--text-muted)] truncate">
+                  {step.status !== 'error' && step.status !== 'ok' ? `${step.status} ` : ''}
+                  {step.message || ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loadingAgents ? (
         <div className="flex-1 flex items-center justify-center">
@@ -290,6 +395,8 @@ export function AgentsPage() {
                   <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
                     <MessageView
                       message={message}
+                      conversationId={conversation?.id}
+                      traceExplorer={traceExplorer}
                       now={now}
                       streaming={streaming}
                       actuatorAvailable={Boolean(actuator)}
@@ -380,6 +487,14 @@ export function AgentsPage() {
             onClose={() => setLibraryOpen(false)}
             onInsert={insertPrompt}
             onSend={send}
+          />
+
+          <ChatHistoryDrawer
+            open={historyOpen}
+            onClose={() => setHistoryOpen(false)}
+            conversations={chatState.conversationList}
+            agents={agents}
+            activeConvIds={Object.values(chatState.activeConvIdByAgent)}
           />
         </>
       )}

@@ -66,6 +66,43 @@ def load_agents_audit_config(client=None) -> AgentsAuditConfig:
         return AgentsAuditConfig()
 
 
+@dataclass(frozen=True)
+class ChatPersistenceConfig:
+    """Agents chat persistence settings (Agent Hub storage model).
+
+    mode: 'OFF' (default, browser-only) | 'LOCAL' (SQLite in the webapp's
+    workload folder) | 'REMOTE' (DSS SQL connection, PostgreSQL/MSSQL).
+    """
+    mode: str = 'OFF'
+    connection_name: Optional[str] = None
+    tables_prefix: str = 'atk_chat_'
+
+    @property
+    def enabled(self) -> bool:
+        return self.mode in ('LOCAL', 'REMOTE')
+
+
+def load_chat_persistence_config(client=None) -> ChatPersistenceConfig:
+    """Read chat persistence config from plugin settings (always the LOCAL
+    client — the store lives on the hub; remote hosts only scope rows)."""
+    try:
+        if client is None:
+            import dataiku
+            client = dataiku.api_client()
+        raw = client.get_plugin('admin-toolkit').get_settings().get_raw()
+        config = raw.get('config', {}) if isinstance(raw, dict) else {}
+        mode = str(config.get('chat_storage') or 'OFF').strip().upper()
+        if mode not in ('OFF', 'LOCAL', 'REMOTE'):
+            mode = 'OFF'
+        conn = (config.get('chat_db_connection') or '').strip() or None
+        prefix = (config.get('chat_tables_prefix') or '').strip() or 'atk_chat_'
+        return ChatPersistenceConfig(mode=mode, connection_name=conn,
+                                     tables_prefix=prefix)
+    except Exception as exc:
+        _log.debug("Could not load chat persistence config: %s", exc)
+        return ChatPersistenceConfig()
+
+
 _PERF_MAP = {
     'perf_parallel_workers_default': ('parallel_workers_default', int),
     'perf_parallel_workers_max': ('parallel_workers_max', int),

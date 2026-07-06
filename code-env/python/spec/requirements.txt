@@ -11,3 +11,6 @@ rich
 requests
 langchain
 langchain-core
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy>=2.0.16
+pymssql==2.3.13

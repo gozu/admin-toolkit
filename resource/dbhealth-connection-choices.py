@@ -8,6 +8,8 @@ name in `payload`, so we branch on it:
   for the auto-created 'admin-toolkit-archive' backup/export destination.
 - agents_audit_postgres_connection / triage_connection -> PostgreSQL
   connections only (agents audit database / daily triage store).
+- chat_db_connection -> PostgreSQL / SQLServer connections (Agent Hub parity),
+  for the optional server-side agents chat persistence.
 - default_llm_id -> LLM Mesh completion models (same enumeration as the
   webapp's /api/llms report picker: project.list_llms(), RAG excluded).
 - dbhealth_connection (default) -> PostgreSQL connections only, for DB Health.
@@ -118,6 +120,11 @@ def do(payload, config, plugin_config, inputs):
         choices = [{"value": "", "label": "(None — triage loop disabled)"}]
         type_filter = lambda t, info=None: t == "PostgreSQL"  # noqa: E731
         log_tag = "triage"
+    elif param_name == "chat_db_connection":
+        # Agent Hub parity: chat persistence supports PostgreSQL + SQL Server.
+        choices = [{"value": "", "label": "(None — select a connection)"}]
+        type_filter = lambda t, info=None: t in ("PostgreSQL", "SQLServer")  # noqa: E731
+        log_tag = "chat-db"
     else:
         choices = [{"value": "", "label": "(None — DB Health disabled)"}]
         type_filter = lambda t, info=None: t == "PostgreSQL"  # noqa: E731

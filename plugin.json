@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.647",
+    "version": "0.4.648",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -100,6 +100,52 @@
             "getChoicesFromPython": true,
             "mandatory": false,
             "defaultValue": ""
+        },
+        {
+            "name": "sep_chat_persistence",
+            "label": "Agents \u2014 Chat persistence",
+            "description": "Optionally persist webapp agent conversations server-side (per user, per fleet host). Off = browser-only, as before. Built-in = SQLite in the webapp's workload folder. Remote SQL = a PostgreSQL or SQL Server DSS connection. Storage changes apply on the next webapp backend restart.",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "chat_storage",
+            "label": "Chat storage",
+            "type": "SELECT",
+            "selectChoices": [
+                {
+                    "value": "OFF",
+                    "label": "Off (browser only)"
+                },
+                {
+                    "value": "LOCAL",
+                    "label": "Built-in (SQLite)"
+                },
+                {
+                    "value": "REMOTE",
+                    "label": "Remote SQL Database"
+                }
+            ],
+            "mandatory": false,
+            "defaultValue": "OFF"
+        },
+        {
+            "name": "chat_db_connection",
+            "label": "Chat SQL connection",
+            "description": "PostgreSQL or SQL Server connection where conversations are stored. The webapp backend reads the connection details, so it needs details-readability on this connection.",
+            "type": "SELECT",
+            "getChoicesFromPython": true,
+            "mandatory": false,
+            "defaultValue": "",
+            "visibilityCondition": "model.chat_storage == 'REMOTE'"
+        },
+        {
+            "name": "chat_tables_prefix",
+            "label": "Chat tables prefix",
+            "description": "Physical table-name prefix (lowercase letters, digits, underscores).",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": "atk_chat_",
+            "visibilityCondition": "model.chat_storage == 'REMOTE'"
         },
         {
             "name": "sep_backend",

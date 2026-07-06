@@ -12,7 +12,6 @@ into the shared audit Postgres — hub-scoped → @local_only.
 
 import json
 import logging
-import re
 import threading
 import uuid
 from collections import deque
@@ -20,8 +19,8 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, g, jsonify, request
 
-from adk_backend import agents_db
-from adk_backend.utils import _sse_response, local_only
+from adk_backend import agents_db, trace_explorer
+from adk_backend.utils import _sse_response, advanced, local_only
 from db_adapter import load_agents_audit_config
 
 bp = Blueprint('agents', __name__)
@@ -38,10 +37,10 @@ _MAX_MESSAGE_CHARS = 20000
 # lives in the AGENTOPS interaction-logging dataset).
 _trace_ring: 'deque' = deque(maxlen=8)  # (trace_id, trace dict)
 _trace_lock = threading.Lock()
-# Trace Explorer is a visual webapp the API cannot create (verified on 14.7) —
-# discovered per host; only hits (not misses) are cached so a webapp created
-# later is picked up on the next turn.
-_trace_explorer_cache: Dict[str, str] = {}
+# Trace Explorer plugin webapp — discovered per host; only hits (not misses)
+# are cached so a webapp created later (e.g. via the provision route below) is
+# picked up on the next turn. Values: {'viewPath','webAppId','projectKey'}.
+_trace_explorer_cache: Dict[str, Dict[str, str]] = {}
 
 
 def _remember_trace(trace: Any) -> str:
@@ -51,22 +50,34 @@ def _remember_trace(trace: Any) -> str:
     return trace_id
 
 
-def _trace_explorer_path(client: Any, host_id: str) -> Optional[str]:
-    """DSS-relative path of a Trace Explorer webapp in AGENTOPS, or None.
-    The frontend prefixes the active host's base URL (multi-instance rule)."""
+def get_ring_trace(trace_id: str) -> Optional[Any]:
+    """Trace dict from the in-memory ring by id, or None once rotated out.
+    Read under the lock — used by /api/agents/last-trace and by chat
+    persistence to attach the turn's trace to the persisted message."""
+    with _trace_lock:
+        for tid, trace in _trace_ring:
+            if tid == trace_id:
+                return trace
+    return None
+
+
+def _trace_explorer_info(client: Any, host_id: str) -> Optional[Dict[str, str]]:
+    """{'viewPath','webAppId','projectKey'} of a Trace Explorer webapp in
+    AGENTOPS, or None. viewPath is DSS-relative — the frontend prefixes the
+    active host's base URL (multi-instance rule); webAppId feeds the native
+    readTraceFromLS localStorage handoff (same-origin only)."""
     cached = _trace_explorer_cache.get(host_id)
     if cached:
         return cached
     try:
-        for item in client.get_project(AGENTS_PROJECT_KEY).list_webapps() or []:
-            data = getattr(item, '_data', None) or {}
-            blob = ('%s %s' % (data.get('type') or '', data.get('name') or '')).lower()
-            if 'trace' in blob and data.get('id'):
-                slug = re.sub(r'[^a-z0-9]+', '-',
-                              (data.get('name') or '').lower()).strip('-') or 'trace-explorer'
-                path = '/projects/%s/webapps/%s_%s/view' % (AGENTS_PROJECT_KEY, data['id'], slug)
-                _trace_explorer_cache[host_id] = path
-                return path
+        found = trace_explorer.find_trace_explorer(client.get_project(AGENTS_PROJECT_KEY))
+        if found:
+            info = {'viewPath': trace_explorer.view_path(
+                        AGENTS_PROJECT_KEY, found['id'], found['name']),
+                    'webAppId': found['id'],
+                    'projectKey': AGENTS_PROJECT_KEY}
+            _trace_explorer_cache[host_id] = info
+            return info
     except Exception as exc:
         _LOGGER.debug('trace explorer discovery failed on %s: %s', host_id, exc)
     return None
@@ -145,9 +156,11 @@ def api_agents_chat():
                                             'traceAvailable': bool(trace)}
             if trace:
                 done_payload['traceId'] = _remember_trace(trace)
-            explorer_path = _trace_explorer_path(client, host_id)
-            if explorer_path:
-                done_payload['traceExplorerPath'] = explorer_path
+            explorer = _trace_explorer_info(client, host_id)
+            if explorer:
+                done_payload['traceExplorer'] = explorer
+                # Back-compat alias (pre-0.4.648 frontends read the path).
+                done_payload['traceExplorerPath'] = explorer['viewPath']
             yield sse('done', done_payload)
         except Exception as exc:
             _LOGGER.warning('agent chat stream failed (agent %s): %s', agent_id, exc)
@@ -163,11 +176,46 @@ def api_agents_last_trace():
     logging dataset's flush interval. Ring survives only until backend restart;
     an expired id is a normal state, not an error."""
     trace_id = (request.args.get('id') or '').strip()
-    with _trace_lock:
-        for tid, trace in _trace_ring:
-            if tid == trace_id:
-                return jsonify({'available': True, 'trace': trace})
+    trace = get_ring_trace(trace_id)
+    if trace is not None:
+        return jsonify({'available': True, 'trace': trace})
     return jsonify({'available': False, 'reason': 'trace-expired'}), 404
+
+
+@bp.route('/api/agents/trace-explorer/status')
+def api_trace_explorer_status():
+    """Trace Explorer readiness for the CTA — moves plugin/webapp discovery
+    off the per-turn hot path. sameOrigin gates the native localStorage
+    handoff: it only works when the explorer shares the browser origin, i.e.
+    the active host is the local hub this webapp is served from."""
+    client = g.client
+    host_id = str(getattr(g, 'host_id', 'local') or 'local')
+    installed = trace_explorer._plugin_installed(client)
+    info = _trace_explorer_info(client, host_id) if installed else None
+    payload: Dict[str, Any] = {'installed': installed,
+                               'provisioned': bool(info),
+                               'projectKey': AGENTS_PROJECT_KEY,
+                               'sameOrigin': host_id == 'local'}
+    if info:
+        payload['webAppId'] = info['webAppId']
+        payload['viewPath'] = info['viewPath']
+    return jsonify(payload)
+
+
+@bp.route('/api/agents/trace-explorer/provision', methods=['POST'])
+@advanced
+def api_trace_explorer_provision():
+    """One-click provisioning: interaction-logging dataset + FULL logging on
+    all AGENTOPS agents + the traces-explorer plugin webapp created via raw
+    REST, configured onto the dataset's `trace` column, backend started.
+    Mutating → @advanced-gated. Uses g.client — AGENTOPS may live on the
+    active remote host."""
+    host_id = str(getattr(g, 'host_id', 'local') or 'local')
+    result = trace_explorer.ensure_trace_explorer(g.client,
+                                                  project_key=AGENTS_PROJECT_KEY)
+    if result.get('ok'):
+        _trace_explorer_cache.pop(host_id, None)  # rediscover the fresh webapp
+    return jsonify(result)
 
 
 @bp.route('/api/agents/settings-history')

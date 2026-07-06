@@ -25,6 +25,26 @@ export function hostBaseUrl(hostId: string | undefined): string {
   return getDssBaseUrl();
 }
 
+/** Trace Explorer's native "Explore trace" handoff key (utils/config.ts of
+ * the traces-explorer plugin): write raw trace JSON here, then open the
+ * explorer with ?readTraceFromLS=true and it POSTs the trace to its backend
+ * and navigates straight to it. Same-origin only — localStorage is per-origin. */
+export const EXPLORE_TRACE_STORAGE_KEY = 'ls.llm.traceExplorer.trace';
+
+/**
+ * Raw webapp-content URL for the readTraceFromLS handoff. CRITICAL: this must
+ * be /dip/api/webapps/view (the SPA reads its own window.location), NOT the
+ * /projects/.../view shell page — the DSS shell doesn't forward query params
+ * into the iframe.
+ */
+export function traceExplorerHandoffUrl(
+  hostId: string | undefined,
+  projectKey: string,
+  webAppId: string,
+): string {
+  return `${hostBaseUrl(hostId)}/dip/api/webapps/view?projectKey=${enc(projectKey)}&webAppId=${enc(webAppId)}&readTraceFromLS=true`;
+}
+
 function targetValue(v: unknown): string {
   if (Array.isArray(v)) return v.map(targetValue).join(', ');
   return String(v);

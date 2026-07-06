@@ -18,7 +18,6 @@ import {
   selectUsers,
 } from './missionControl/selectors';
 import {
-  AdoptionTile,
   CodeEnvsTile,
   ConnHealthTile,
   ConnInventoryTile,
@@ -43,16 +42,15 @@ import './missionControl/viz.css';
 
 // Mission Control — the entire Admin Toolkit on one zero-scroll wall.
 // 12 cols × 6 rows of named areas; every tile reads data the startup loaders
-// already fetched (adoption's single cached GET is the one wall-initiated
-// kick). Rows 3-4 give the wall its only time axis: the adoption spine.
+// already fetched.
 // Two panes were demoted to chips rather than tiles: worst connection-audit
 // severity rides on Conn Health, and runtime-DB health rides on Sanity —
 // both deep-link to their pages.
 const GRID_AREAS = [
   '"health health health fs fs fs mem mem coninv coninv conhlt conhlt"',
   '"health health health fs fs fs cpu cpu coninv coninv conuse conuse"',
-  '"proj proj proj users users users adopt adopt adopt adopt plug plug"',
-  '"proj proj proj users users users adopt adopt adopt adopt cenv cenv"',
+  '"proj proj proj proj users users users users plug plug plug plug"',
+  '"proj proj proj proj users users users users cenv cenv cenv cenv"',
   '"k8s k8s k8s cex cex cex llm llm llm pcomp pcomp pcomp"',
   '"logs logs logs sanity sanity sanity cost cost cost envcmp envcmp envcmp"',
 ].join(' ');
@@ -230,7 +228,6 @@ export function MissionControlPage() {
         <ConnUsageTile lifecycle={parsedData.connectionUsageLoading ?? QUEUED} onNavigate={setActivePage} vm={connUsageVm} />
         <ProjectsTile lifecycle={lc('projects')} onNavigate={setActivePage} vm={projectsVm} />
         <UsersTile lifecycle={lc('users')} onNavigate={setActivePage} vm={usersVm} onOwnerClick={handleOwnerClick} />
-        <AdoptionTile lifecycle={lc('adoption')} onNavigate={setActivePage} />
         <PluginsTile
           lifecycle={lc('plugins-installed')}
           onNavigate={setActivePage}

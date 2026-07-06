@@ -4,17 +4,6 @@
 import type { ParsedData } from '../types';
 import type { ReportData } from '../utils/prepareReportData';
 
-const monthly = [
-  ['2024-08', 9, 310], ['2024-09', 11, 402], ['2024-10', 12, 388], ['2024-11', 14, 512],
-  ['2024-12', 10, 296], ['2025-01', 15, 601], ['2025-02', 17, 640], ['2025-03', 16, 587],
-  ['2025-04', 19, 702], ['2025-05', 21, 799], ['2025-06', 20, 761], ['2025-07', 22, 850],
-  ['2025-08', 18, 644], ['2025-09', 24, 918], ['2025-10', 26, 1004], ['2025-11', 25, 972],
-  ['2025-12', 19, 688], ['2026-01', 27, 1101], ['2026-02', 29, 1187], ['2026-03', 28, 1140],
-  ['2026-04', 30, 1233], ['2026-05', 31, 1302], ['2026-06', 31, 1288],
-].map(([month, activeBuilders, commits]) => ({
-  month: month as string, activeBuilders: activeBuilders as number, commits: commits as number,
-}));
-
 const users = [
   ...Array.from({ length: 60 }, (_, i) => ({ login: `designer${i}`, displayName: `Designer ${i}`, userProfile: 'FULL_DESIGNER', enabled: i < 56 })),
   ...Array.from({ length: 9 }, (_, i) => ({ login: `analyst${i}`, displayName: `Analyst ${i}`, userProfile: 'DATA_ANALYST', enabled: true })),
@@ -76,18 +65,6 @@ export const FIXTURE_PARSED = {
     { projectKey: 'NLP_LAB', name: 'NLP Lab', totalBytes: gb(2.1), totalGB: 2.1, projectSizeHealth: 'orange' },
     { projectKey: 'CHURN_PREDICTION', name: 'Churn Prediction', totalBytes: gb(1.7), totalGB: 1.7, projectSizeHealth: 'orange' },
   ],
-  adoptionData: {
-    ok: true,
-    totals: {
-      projectCount: 451, activeProjectCount: 209, builderCount: 64, automationCount: 6,
-      commitCount: 52340, firstCommitMs: 1690000000000, lastCommitMs: 1782000000000,
-      avgPeoplePerProject: 1.8, inactiveThresholdDays: 90, truncatedProjectCount: 3,
-    },
-    monthlyTrend: monthly,
-    repeatBuilders: { total: 64, single: 22, repeat: 42 },
-    cohorts: [],
-    projectRows: [],
-  },
   projectCostData: {
     span: { firstTs: '2026-06-12T00:00:00Z', lastTs: '2026-07-01T00:00:00Z' },
     totals: { memGBh: 4210, cpuH: 987, llmUSD: 342.18, projectCount: 58 },
@@ -159,11 +136,6 @@ export const FIXTURE_REPORT: ReportData = {
     users: {
       headline: 'A builder-heavy population',
       narrative: '• 77 total users with 72 enabled — healthy active population\n• 60 FULL_DESIGNER users indicates a heavily builder-oriented instance\n• Only 1 READER and 3 AI_CONSUMER — limited consumption-tier usage\n• 19 groups and 4 technical accounts support structured access',
-    },
-    adoption: {
-      headline: 'More builders every month',
-      narrative: '• Active builders grew from 9 to 31 per month over two years — steady, compounding adoption\n• 209 of 451 projects saw activity in the last 90 days\n• 66% of all builders return across multiple months, a strong retention signal\n• People-per-project of 1.8 suggests mostly solo work; collaboration is the next lever',
-      highlights: ['3.4× builder growth in 2 years', '66% returning builders', 'Collaboration still low at 1.8 people/project'],
     },
     compute_cost: {
       headline: 'Where the compute actually goes',

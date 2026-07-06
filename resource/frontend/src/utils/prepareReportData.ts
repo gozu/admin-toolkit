@@ -15,8 +15,6 @@ export interface ReportSlideData {
   connections: { narrative: string; headline?: string };
   issues: { narrative: string; risk_level: string; headline?: string };
   users: { narrative: string; headline?: string };
-  /** Only present when the adoption module has data for this instance. */
-  adoption?: { narrative: string; highlights: string[]; headline?: string };
   /** Only present when the Cost/CRU module has data for this instance. */
   compute_cost?: { narrative: string; drivers: string[]; headline?: string };
   logs: { narrative: string; patterns: string[]; headline?: string };
@@ -196,23 +194,6 @@ export function prepareReportData(parsedData: ParsedData): Record<string, unknow
       stats: parsedData.logStats,
       // Take first 3K chars of formatted errors to stay within budget
       errorSample: parsedData.formattedLogErrors?.slice(0, 3000),
-    };
-  }
-
-  // Adoption & engagement — persistent git-history analytics (Adoption module)
-  const adoption = parsedData.adoptionData;
-  if (adoption?.totals) {
-    data.adoption = {
-      totals: adoption.totals,
-      monthlyTrend: adoption.monthlyTrend?.slice(-18),
-      repeatBuilders: adoption.repeatBuilders,
-      cohorts: adoption.cohorts?.slice(-12),
-      topProjectsByPeople: adoption.projectRows
-        ? [...adoption.projectRows]
-            .sort((a, b) => b.authorCount - a.authorCount)
-            .slice(0, 8)
-            .map(p => ({ key: p.projectKey, people: p.authorCount, commits: p.commits, active: p.active }))
-        : undefined,
     };
   }
 

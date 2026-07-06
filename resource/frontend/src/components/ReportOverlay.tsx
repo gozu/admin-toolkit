@@ -20,11 +20,6 @@ const RED = '#FF6B5E';
 
 const rv = (n: number) => ({ '--rv': n } as CSSProperties);
 const pad = (n: number) => String(n).padStart(2, '0');
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const fmtMonth = (m: string) => {
-  const [y, mo] = m.split('-');
-  return `${MONTH_NAMES[((+mo || 1) - 1) % 12]} ${y ? y.slice(2) : ''}`;
-};
 
 interface ReportOverlayProps {
   reportData: ReportData;
@@ -39,12 +34,10 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
   const healthScore = useHealthScore(parsedData);
   const slides = reportData.slides;
 
-  // Optional module slides (Adoption, Compute & Cost) only exist when their
+  // Optional module slides (Compute & Cost) only exist when their
   // data is loaded, so every index after Users & Activity is computed.
-  const adoptionTotals = parsedData.adoptionData?.totals;
   const costTotals = parsedData.projectCostData?.totals;
   let cursor = 12;
-  const adoptionIdx = adoptionTotals ? cursor++ : -1;
   const costIdx = costTotals ? cursor++ : -1;
   const logsIdx = cursor++;
   const recCriticalIdx = cursor++;
@@ -91,10 +84,9 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
   const progressPct = ((currentSlide + 1) / totalSlides) * 100;
 
   // Lean live mode loads no basic project list — fall back to counts the
-  // adoption / footprint scans measured.
+  // footprint scan measured.
   const totalProjects =
     parsedData.projects?.length ||
-    adoptionTotals?.projectCount ||
     parsedData.projectFootprintSummary?.projectCount ||
     parsedData.projectFootprint?.length ||
     0;
@@ -150,10 +142,6 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
     .slice(0, 5)
     .map(([p, c]) => ({ label: p.replace(/_/g, ' '), value: c, display: String(c) }));
 
-  const trendPoints = (parsedData.adoptionData?.monthlyTrend || [])
-    .slice(-24)
-    .map(m => ({ label: fmtMonth(m.month), value: m.activeBuilders }));
-
   const costBars: BarRow[] = [...(parsedData.projectCostData?.projects || [])]
     .sort((a, b) => b.memGBh - a.memGBh)
     .slice(0, 6)
@@ -173,10 +161,6 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
   const riskLevel = (slides?.issues?.risk_level || '').toLowerCase();
   const riskColor = riskLevel.includes('high') || riskLevel.includes('critical') ? RED
     : riskLevel.includes('medium') || riskLevel.includes('moderate') ? AMBER : MINT;
-
-  const repeatPct = parsedData.adoptionData?.repeatBuilders?.total
-    ? `${Math.round((parsedData.adoptionData.repeatBuilders.repeat / parsedData.adoptionData.repeatBuilders.total) * 100)}%`
-    : '—';
 
   const envScore = healthScore.categories.find(c => c.category === 'code_envs')?.score;
   const fpScore = healthScore.categories.find(c => c.category === 'project_footprint')?.score;
@@ -404,24 +388,6 @@ export function ReportOverlay({ reportData, parsedData, onClose }: ReportOverlay
           </div>
         </Slide>
 
-        {/* ── Adoption & Engagement (only when the Adoption module has data) ── */}
-        {adoptionTotals && (
-          <Slide index={adoptionIdx} active={currentSlide === adoptionIdx} section="People & Adoption"
-            headline={slides?.adoption?.headline || 'Adoption & Engagement'} meta={meta} dense>
-            {trendPoints.length > 1 && <Trend points={trendPoints} caption="Active builders per month — full git history" base={2} />}
-            <Stats base={3} small items={[
-              { value: String(adoptionTotals.builderCount ?? '—'), label: 'Builders (All Time)' },
-              { value: `${adoptionTotals.activeProjectCount}/${adoptionTotals.projectCount}`, label: 'Active / Total Projects' },
-              { value: adoptionTotals.avgPeoplePerProject != null ? adoptionTotals.avgPeoplePerProject.toFixed(1) : '—', label: 'People per Project' },
-              { value: repeatPct, label: 'Returning Builders', color: MINT },
-            ]} />
-            <div className="rpt-split">
-              <Narrative text={slides?.adoption?.narrative} compact rvi={7} />
-              {!!slides?.adoption?.highlights?.length && <EList items={slides.adoption.highlights} base={8} />}
-            </div>
-          </Slide>
-        )}
-
         {/* ── Compute & Cost (only when the Cost/CRU module has data) ── */}
         {costTotals && (
           <Slide index={costIdx} active={currentSlide === costIdx} section="Compute & Cost"
@@ -637,43 +603,6 @@ function Bars({ rows, base = 3, thick }: { rows: BarRow[]; base?: number; thick?
           <span className="rpt-bar-value" contentEditable suppressContentEditableWarning>{r.display}</span>
         </div>
       ))}
-    </div>
-  );
-}
-
-/** Area trend chart (adoption): mint line, gradient fill, draw-in animation. */
-function Trend({ points, caption, base = 2 }: { points: { label: string; value: number }[]; caption?: string; base?: number }) {
-  const W = 1320, H = 200, PX = 6, PT = 26, PB = 26;
-  const max = Math.max(...points.map(p => p.value), 1);
-  const x = (i: number) => PX + (i * (W - 2 * PX)) / (points.length - 1);
-  const y = (v: number) => PT + (1 - v / max) * (H - PT - PB);
-  const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(' ');
-  const area = `${line} L ${x(points.length - 1).toFixed(1)} ${H - PB} L ${x(0).toFixed(1)} ${H - PB} Z`;
-  const tickEvery = Math.max(1, Math.ceil(points.length / 8));
-  const last = points[points.length - 1];
-  return (
-    <div className="rpt-trend" data-reveal style={rv(base)}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="rpt-trend-svg">
-        <defs>
-          <linearGradient id="rptTrendFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={MINT} stopOpacity="0.25" />
-            <stop offset="100%" stopColor={MINT} stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <line x1={PX} y1={H - PB} x2={W - PX} y2={H - PB} className="rpt-trend-axis" />
-        <path d={area} fill="url(#rptTrendFill)" className="rpt-trend-area" />
-        <path d={line} className="rpt-trend-line" pathLength={1} />
-        <circle cx={x(points.length - 1)} cy={y(last.value)} r="4" className="rpt-trend-dot" />
-        <text x={x(points.length - 1) - 10} y={y(last.value) - 12} textAnchor="end" className="rpt-trend-val">{last.value}</text>
-        {points.map((p, i) => (
-          // Regular ticks skip the tail so they can't collide with the
-          // always-rendered last-month label.
-          (i === points.length - 1 || (i % tickEvery === 0 && points.length - 1 - i >= tickEvery / 2)) && (
-            <text key={i} x={x(i)} y={H - 8} textAnchor={i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'} className="rpt-trend-tick">{p.label}</text>
-          )
-        ))}
-      </svg>
-      {caption && <div className="rpt-trend-caption" contentEditable suppressContentEditableWarning>{caption}</div>}
     </div>
   );
 }

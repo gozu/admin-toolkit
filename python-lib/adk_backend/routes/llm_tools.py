@@ -700,7 +700,6 @@ def api_report_generate():
         "  'Projects Overview' -> '451 projects, little governance'\n"
         "  'Memory & JVM Analysis' -> 'No swap, no safety net'\n"
         "  'Users & Activity' -> 'Sixty designers, one reader'\n"
-        "  'Adoption Trends' -> 'More builders every month'\n"
         "The test: if the headline could appear on ANY instance's report, it is too "
         "generic - rewrite it around this instance's own numbers, names, or tension. "
         "A number in the headline is usually a good sign; a category label never is. "
@@ -733,10 +732,6 @@ def api_report_generate():
         "    Connections - connection types, counts\n"
         "    Issues & Risks - disabled features, plugins, risk level\n"
         "    Users & Activity - user counts by role\n"
-        "    Adoption & Engagement (ONLY if 'adoption' key is in the data) - persistent "
-        "git-history analytics: builders, active vs total projects, people per project, "
-        "monthly trend, returning-builder share, onboarding cohorts. These span the "
-        "instance's whole life, unlike the short rolling audit window.\n"
         "    Compute & Cost (ONLY if 'computeCost' key is in the data) - compute resource "
         "usage from the audit-log window: memory GB-hours, CPU hours, LLM spend in USD, "
         "top projects/users by consumption, idle resources. Note the window dates "
@@ -786,7 +781,6 @@ def api_report_generate():
         '    "connections": { "headline": "...", "narrative": "..." },\n'
         '    "issues": { "headline": "...", "narrative": "...", "risk_level": "low|medium|high|critical" },\n'
         '    "users": { "headline": "...", "narrative": "..." },\n'
-        '    "adoption": { "headline": "...", "narrative": "...", "highlights": ["short badge text", "..."] },\n'
         '    "compute_cost": { "headline": "...", "narrative": "...", "drivers": ["short cost driver", "..."] },\n'
         '    "logs": { "headline": "...", "narrative": "...", "patterns": ["error pattern < 80 chars", "..."] },\n'
         '    "rec_critical": { "items": [{\n'
@@ -804,9 +798,8 @@ def api_report_generate():
         '  }\n'
         '}\n\n'
         "STATUS_LABEL must be one of: HEALTHY, GOOD WITH CAVEATS, MODERATE RISK, or NEEDS ATTENTION.\n\n"
-        "Include the 'adoption' key ONLY when the data contains 'adoption', and the "
-        "'compute_cost' key ONLY when the data contains 'computeCost' - omit them otherwise "
-        "(their slides are hidden when the modules have no data).\n\n"
+        "Include the 'compute_cost' key ONLY when the data contains 'computeCost' - omit it "
+        "otherwise (its slide is hidden when the module has no data).\n\n"
         "Remember: ALL narrative fields must use bullet points (\\u2022), not paragraphs. "
         "3-5 bullets per narrative. Each bullet starts with \\u2022 and contains ONE observation with a number."
     )

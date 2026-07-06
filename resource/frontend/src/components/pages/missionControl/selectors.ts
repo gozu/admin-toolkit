@@ -1,5 +1,4 @@
 import type {
-  AdoptionData,
   ConnectionAuditResult,
   ConnectionCounts,
   ConnectionHealthResult,
@@ -300,70 +299,6 @@ export function selectCodeEnvs(
     pyVersions: Object.entries(d.pythonVersionCounts || {})
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3),
-  };
-}
-
-// ── Adoption (persistent git-history spine) ───────────────────────────────
-interface SparkPointVm {
-  label: string;
-  axisLabel?: string;
-  value: number;
-}
-
-export interface AdoptionVm {
-  spark: SparkPointVm[]; // active builders per month
-  commits: SparkPointVm[]; // commit volume per month (own scale, small multiple)
-  builders: number;
-  currentMonthBuilders: number;
-  activeProjects: number;
-  totalProjects: number;
-  repeatPct: number | null; // share of builders active in >= 2 distinct months
-  avgPeople: number;
-  sinceLabel: string | null; // first month of the spine, e.g. "since Apr '23"
-}
-
-const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function shortMonth(ym: string): string {
-  const [y, m] = ym.split('-');
-  const abbr = MONTH_ABBR[Number.parseInt(m ?? '', 10) - 1] ?? m ?? '';
-  return `${abbr} '${(y ?? '').slice(2)}`;
-}
-
-// Cap the wall sparkline at 4 years of months; the Adoption page shows the
-// full spine. January points carry the year tick. The in-progress month is
-// dropped (same honesty rule as the Adoption page's Momentum stat) — a
-// partial month always renders as a fake cliff at the end of the line.
-export function selectAdoption(data: AdoptionData | null): AdoptionVm | null {
-  const trend = data?.monthlyTrend;
-  if (!data?.totals || !trend?.length) return null;
-  const now = new Date();
-  const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const complete =
-    trend.length > 1 && trend[trend.length - 1].month === currentYm
-      ? trend.slice(0, -1)
-      : trend;
-  const points = complete.slice(-48);
-  const axisFor = (ym: string, idx: number): string | undefined =>
-    idx > 0 && ym.endsWith('-01') ? `'${ym.slice(2, 4)}` : undefined;
-  const repeat = data.repeatBuilders;
-  return {
-    spark: points.map((p, i) => ({
-      label: `${shortMonth(p.month)} — ${p.activeBuilders} active builders`,
-      axisLabel: axisFor(p.month, i),
-      value: p.activeBuilders,
-    })),
-    commits: points.map((p) => ({
-      label: `${shortMonth(p.month)} — ${p.commits.toLocaleString()} commits`,
-      value: p.commits,
-    })),
-    builders: data.totals.builderCount,
-    currentMonthBuilders: points[points.length - 1]?.activeBuilders ?? 0,
-    activeProjects: data.totals.activeProjectCount,
-    totalProjects: data.totals.projectCount,
-    repeatPct: repeat && repeat.total > 0 ? Math.round((repeat.repeat / repeat.total) * 100) : null,
-    avgPeople: data.totals.avgPeoplePerProject,
-    sinceLabel: points[0] ? `since ${shortMonth(points[0].month)}` : null,
   };
 }
 

@@ -1,7 +1,6 @@
 import { memo, useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { HealthScore, Lifecycle, LlmAuditSummary, PageId } from '../../../types';
 import { formatAuto, formatSizeGb } from '../../../utils/formatters';
-import { adoptionScan } from '../../../state/adoptionScan';
 import { containerExecsScan } from '../../../state/containerExecsStore';
 import { codeEnvComparisonScan } from '../../../state/codeEnvComparisonStore';
 import { dbHealthConnectionsStore } from '../../../state/dbHealthConnectionsStore';
@@ -16,7 +15,6 @@ import { getSqlPushdownScan, subscribeSqlPushdownScan } from '../../../state/sql
 import {
   BarRow,
   BigStat,
-  ColumnStrip,
   CountChip,
   Dot,
   HeatStrip,
@@ -24,7 +22,6 @@ import {
   MiniTreemap,
   ScoreRing,
   SegmentBar,
-  Sparkline,
   UsageBar,
   type TreemapItem,
 } from './microViz';
@@ -32,7 +29,6 @@ import { CATEGORICAL_COLORS, type Tone } from './tokens';
 import { TileShell } from './TileShell';
 import {
   footprintTone,
-  selectAdoption,
   selectCru,
   selectEnvReclaimBytes,
   selectTopCpu,
@@ -418,69 +414,7 @@ export const UsersTile = memo(function UsersTile({
   );
 });
 
-// ── ADOPTION (4×2) — the wall's only time axis ────────────────────────────
-// Persistent git-history spine: active builders/month (line+wash) over a
-// commits/month strip (small multiple, own scale — never a second axis).
-export const AdoptionTile = memo(function AdoptionTile({ lifecycle, onNavigate }: BaseTileProps) {
-  // Idempotent kick: adoption is outside the warmup queue (single cached GET),
-  // so the wall starts it on first paint — the Adoption page pattern.
-  useEffect(() => {
-    if (!adoptionScan.store.get().scanStarted) void adoptionScan.load();
-  }, []);
-  const { data } = adoptionScan.use();
-  const vm = useMemo(() => selectAdoption(data), [data]);
-  return (
-    <TileShell
-      title="Adoption"
-      area="adopt"
-      target="adoption"
-      accent="projects"
-      lifecycle={lifecycle}
-      onNavigate={onNavigate}
-      hasData={vm != null}
-      titleRight={
-        vm?.sinceLabel ? (
-          <span className="font-mono text-[9px] text-[var(--text-tertiary)]">{vm.sinceLabel}</span>
-        ) : undefined
-      }
-    >
-      {vm ? (
-        <div className="flex h-full min-h-0 gap-3">
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <div className="min-h-0 flex-1">
-              <Sparkline
-                points={vm.spark}
-                color="var(--viz-cat-1)"
-                endLabel={`${vm.currentMonthBuilders}`}
-              />
-            </div>
-            <ColumnStrip points={vm.commits} color="var(--text-tertiary)" height={16} />
-            <div className="flex items-center gap-3 text-[8px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
-              <span className="flex items-center gap-1">
-                <span className="h-[2px] w-3 rounded-full" style={{ background: 'var(--viz-cat-1)' }} />
-                builders / mo
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-2 w-1.5 rounded-[1px] bg-[var(--text-tertiary)] opacity-55" />
-                commits / mo
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-shrink-0 flex-col justify-center gap-2.5">
-            <BigStat value={vm.builders} label="builders" />
-            <BigStat value={`${vm.activeProjects}/${vm.totalProjects}`} label="active projects" />
-            {vm.repeatPct != null && <BigStat value={`${vm.repeatPct}%`} label="returning" />}
-            <BigStat value={vm.avgPeople.toFixed(1)} label="ppl / project" />
-          </div>
-        </div>
-      ) : (
-        <span className="text-[11px] text-[var(--text-tertiary)]">No data</span>
-      )}
-    </TileShell>
-  );
-});
-
-// ── PLUGINS (2×1) ─────────────────────────────────────────────────────────
+// ── PLUGINS (4×1) ─────────────────────────────────────────────────────────
 export const PluginsTile = memo(function PluginsTile({
   lifecycle,
   onNavigate,

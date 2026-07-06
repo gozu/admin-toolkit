@@ -1,7 +1,6 @@
 // Barrel re-export — every type that used to live in this file is preserved
 // under `import ... from '../types'`. `export *` carries both types and the
 // runtime helpers (isTerminal/isActive from lifecycle.ts).
-export * from './adoption';
 export * from './codeEnvs';
 export * from './comparison';
 export * from './connections';

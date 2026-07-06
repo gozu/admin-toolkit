@@ -90,6 +90,16 @@ async function mockAgentsBackend(page: Page) {
   await page.route('**/api/hosts/check', (route: Route) =>
     route.fulfill({ json: { ok: true, pluginInstalled: true, adminToolkitProjectExists: true } }),
   );
+  // Chat persistence OFF by default (the plugin default) — existing flows must
+  // behave exactly as before; the persistence suite overrides these routes.
+  await page.route('**/api/chat/config', (route: Route) =>
+    route.fulfill({ json: { enabled: false } }),
+  );
+  await page.route('**/api/agents/trace-explorer/status', (route: Route) =>
+    route.fulfill({
+      json: { installed: false, provisioned: false, projectKey: 'AGENTOPS', sameOrigin: true },
+    }),
+  );
   await page.route('**/api/agents', (route: Route) =>
     route.fulfill({ json: { available: true, projectKey: 'AGENTOPS', agents: AGENTS } }),
   );
@@ -145,6 +155,100 @@ async function mockAgentsBackend(page: Page) {
   });
 }
 
+interface StoredTurnMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  display?: string;
+  segments?: unknown[];
+  position: number;
+}
+
+/** In-memory chat-persistence server: config enabled + conversation CRUD +
+ * turn upserts, mirroring routes/chat.py just enough for the UI flows. */
+function mockChatPersistence(page: Page) {
+  const conversations = new Map<
+    string,
+    { id: string; agentId: string; title: string; messages: Map<string, StoredTurnMessage> }
+  >();
+  const turnBodies: unknown[] = [];
+
+  const register = async () => {
+    await page.route('**/api/chat/config', (route: Route) =>
+      route.fulfill({ json: { enabled: true, mode: 'LOCAL' } }),
+    );
+    await page.route('**/api/chat/conversations', (route: Route) =>
+      route.fulfill({
+        json: {
+          enabled: true,
+          conversations: [...conversations.values()].map((c) => ({
+            id: c.id,
+            agentId: c.agentId,
+            title: c.title,
+            lastModified: new Date().toISOString(),
+          })),
+        },
+      }),
+    );
+    await page.route('**/api/chat/conversations/*', (route: Route) => {
+      const id = decodeURIComponent(route.request().url().split('/').pop() || '');
+      const conv = conversations.get(id);
+      if (route.request().method() === 'DELETE') {
+        conversations.delete(id);
+        return route.fulfill({ json: { enabled: true, ok: true } });
+      }
+      if (route.request().method() === 'PUT') {
+        const body = JSON.parse(route.request().postData() || '{}') as { title?: string };
+        if (conv && body.title) conv.title = body.title;
+        return route.fulfill({ json: { enabled: true, ok: true } });
+      }
+      if (!conv) return route.fulfill({ status: 404, json: { error: 'conversation-not-found' } });
+      return route.fulfill({
+        json: {
+          enabled: true,
+          conversation: {
+            id: conv.id,
+            agentId: conv.agentId,
+            title: conv.title,
+            messages: [...conv.messages.values()].sort((a, b) => a.position - b.position),
+          },
+        },
+      });
+    });
+    await page.route('**/api/chat/conversations/*/turn', (route: Route) => {
+      const parts = route.request().url().split('/');
+      const id = decodeURIComponent(parts[parts.length - 2] || '');
+      const body = JSON.parse(route.request().postData() || '{}') as {
+        agentId: string;
+        title?: string;
+        messages: StoredTurnMessage[];
+      };
+      turnBodies.push(body);
+      let conv = conversations.get(id);
+      if (!conv) {
+        conv = { id, agentId: body.agentId, title: body.title || '', messages: new Map() };
+        conversations.set(id, conv);
+      }
+      if (body.title && !conv.title) conv.title = body.title;
+      for (const msg of body.messages || []) conv.messages.set(msg.id, msg);
+      return route.fulfill({
+        json: { enabled: true, conversation: { id, title: conv.title } },
+      });
+    });
+  };
+  return { register, conversations, turnBodies };
+}
+
+async function enterAgentsPage(page: Page) {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.getByText('Pick a host to scan').waitFor({ timeout: 30_000 });
+  const hostCard = page.getByRole('button', { name: /Local DSS/ });
+  await expect(hostCard).toContainText('Ready', { timeout: 15_000 });
+  await hostCard.click();
+  await page.waitForSelector('aside', { timeout: 60_000 });
+  await page.locator('aside button').filter({ hasText: /^Agents$/ }).first().click();
+}
+
 test.describe('Agents v2 (mocked backend)', () => {
   test.setTimeout(90_000);
 
@@ -189,9 +293,10 @@ test.describe('Agents v2 (mocked backend)', () => {
     await checkboxes.nth(0).check();
     await checkboxes.nth(1).check();
 
-    // Handoff: switches to the actuator and produces two plan cards.
+    // Handoff: switches to the actuator and produces two plan cards. The
+    // bubble shows the display variant (machine refs hidden since 0.4.647).
     await page.getByRole('button', { name: /Send 2 to Ops Actuator/ }).click();
-    await expect(page.getByText('Action-item batch handoff')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Action-item handoff — 2 item/)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('db-analyze', { exact: true }).first()).toBeVisible();
     await expect(page.locator('text=ai-00000001').first()).toBeVisible();
 
@@ -253,5 +358,95 @@ test.describe('Agents v2 (mocked backend)', () => {
     await expect(page.getByText('ANALYZE story.events (stale stats)')).toBeVisible();
     // No stuck stream after rehydration: the composer accepts input again.
     await expect(page.getByPlaceholder(/Message the agent/)).toBeEnabled();
+  });
+});
+
+test.describe('Agents chat persistence (mocked backend)', () => {
+  test.setTimeout(90_000);
+
+  test('settled turn is POSTed; history drawer restores it server-side', async ({ page }) => {
+    await mockAgentsBackend(page);
+    const server = mockChatPersistence(page);
+    await server.register(); // registered after → overrides the enabled:false default
+    await enterAgentsPage(page);
+
+    // Persistence enabled → the History affordance appears.
+    await expect(page.getByRole('button', { name: 'History', exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Send a message; on settle the turn lands on the server store.
+    const triageBtn = page.getByRole('button', { name: 'Health Triage', exact: true });
+    await expect(triageBtn).toBeVisible({ timeout: 15_000 });
+    await triageBtn.click();
+    const composer = page.getByPlaceholder(/Message the agent/);
+    await composer.fill('Sweep the fleet.');
+    const turnRequest = page.waitForRequest(
+      (req) => req.url().includes('/api/chat/conversations/') && req.url().endsWith('/turn'),
+      { timeout: 15_000 },
+    );
+    await composer.press('Enter');
+    await expect(page.getByText('Action items')).toBeVisible({ timeout: 15_000 });
+    await turnRequest;
+
+    const turn = server.turnBodies[server.turnBodies.length - 1] as {
+      agentId: string;
+      title: string;
+      messages: StoredTurnMessage[];
+    };
+    expect(turn.agentId).toBe('triage1');
+    expect(turn.title).toBe('Sweep the fleet.');
+    expect(turn.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
+    expect(turn.messages[1].segments?.length).toBeGreaterThan(0);
+
+    // Wipe the browser cache entirely — restore must come from the server.
+    await page.evaluate(() => localStorage.clear());
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const gate = page.getByText('Pick a host to scan');
+    await expect(page.locator('aside').or(gate).first()).toBeVisible({ timeout: 30_000 });
+    if (await gate.isVisible().catch(() => false)) {
+      const card = page.getByRole('button', { name: /Local DSS/ });
+      await expect(card).toContainText('Ready', { timeout: 15_000 });
+      await card.click();
+    }
+    await page.waitForSelector('aside', { timeout: 60_000 });
+    await page.locator('aside button').filter({ hasText: /^Agents$/ }).first().click();
+
+    // Transcript starts empty (localStorage gone), history has the conversation.
+    await expect(page.getByText('Sweep the fleet.')).toHaveCount(0);
+    await page.getByRole('button', { name: 'History', exact: true }).click();
+    await expect(page.getByText('Chat history')).toBeVisible();
+    await page.getByRole('button', { name: /Sweep the fleet\./ }).click();
+
+    // Reopened from the server: user bubble + assistant reply + checklist card.
+    await expect(page.getByText('Sweep the fleet.')).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByText('Sweep done — two DB maintenance items and one advisory.'),
+    ).toBeVisible();
+    await expect(page.getByText('ANALYZE story.events (stale stats)')).toBeVisible();
+    await expect(page.getByPlaceholder(/Message the agent/)).toBeEnabled();
+  });
+
+  test('delete removes the conversation from the drawer', async ({ page }) => {
+    await mockAgentsBackend(page);
+    const server = mockChatPersistence(page);
+    await server.register();
+    await enterAgentsPage(page);
+
+    const triageBtn = page.getByRole('button', { name: 'Health Triage', exact: true });
+    await expect(triageBtn).toBeVisible({ timeout: 15_000 });
+    await triageBtn.click();
+    const composer = page.getByPlaceholder(/Message the agent/);
+    await composer.fill('Quick check please.');
+    await composer.press('Enter');
+    await expect(page.getByText('Action items')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: 'History', exact: true }).click();
+    const row = page.getByRole('button', { name: /Quick check please\./ });
+    await expect(row).toBeVisible();
+    await row.hover();
+    await page.getByRole('button', { name: 'Delete conversation' }).click();
+    await expect(row).toHaveCount(0);
+    expect(server.conversations.size).toBe(0);
   });
 });

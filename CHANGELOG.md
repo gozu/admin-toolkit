@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.648] - 2026-07-06
+
+### Added
+- **Server-side chat persistence** (opt-in, Agent Hub storage model): new `chat_storage` plugin setting — Off (browser-only, the default) / Built-in SQLite (webapp workload folder) / Remote SQL (PostgreSQL or SQL Server DSS connection via `chat_db_connection`, `chat_tables_prefix`). Every settled agent turn is auto-persisted server-side (`python-lib/adk_backend/chat/`: Flask-SQLAlchemy models as a bare declarative base, JSON-as-TEXT segments, zlib-compressed per-message dku-traces, idempotent `create_all` — no alembic), scoped per user (best-effort DSS browser-header identity, anonymous fallback) and per fleet host (`host_id` column) — **conversations now survive hard refreshes, backend restarts, and host switches**. New `/api/chat/*` routes (config/list/get/create/rename/soft-delete/turn/message-trace) and a compact History slide-over drawer on the Agents page (reopen/rename/delete past conversations). localStorage stays a cache only (`STORAGE_VERSION` 2).
+- **One-click agent traces**: the Trace Explorer plugin webapp is now **auto-provisioned** — `POST /api/agents/trace-explorer/provision` (advanced-gated; "Set up Trace Explorer" header CTA) creates the `traces-explorer` plugin webapp in AGENTOPS via raw REST (`create_webapp()` rejects plugin types), points it at the `agent_interaction_logs` dataset's `trace` column, and starts its backend (steps trail in the UI). On the local hub, the per-turn "copy trace" chip becomes **"open trace ↗"**: the turn's trace is handed to Trace Explorer via its native `ls.llm.traceExplorer.trace` localStorage flow (`?readTraceFromLS=true`) and opens directly on the trace; persisted message traces serve as the durable fallback once the in-memory ring rotates. Remote hosts keep the copy-chip (localStorage is per-origin). New `GET /api/agents/trace-explorer/status` moves discovery off the per-turn hot path.
+- Plugin code env: added `Flask-SQLAlchemy==3.1.1`, `SQLAlchemy>=2.0.16`, `pymssql==2.3.13`.
+
+### Changed
+- `scripts/agents/interaction_logging.py` is now a thin wrapper over `python-lib/adk_backend/trace_explorer.py` (shared by the webapp backend); `--webapp` flag provisions the Trace Explorer webapp from the CLI. The "manual webapp step" epilogue now points at the automated paths.
+- Agents chat store rekeyed from one-conversation-per-agent to conversation ids (`activeConvIdByAgent` tracks the visible one per agent); "New conversation" starts a fresh thread instead of erasing history when persistence is on.
+
 ## [0.4.646] - 2026-07-06
 
 ### Added

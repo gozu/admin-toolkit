@@ -10,6 +10,7 @@ import type {
 import { useThresholds, type ThresholdSettings } from './useThresholds';
 import { whitelistStore, activeHostWhitelist } from '../state/whitelistStore';
 import type { LifecycleFieldName } from '../utils/moduleRegistry';
+import type { ExecResourceConfig } from '../utils/execResources';
 
 // Single source of truth for the lifecycle fields the health score actually
 // consumes. `calculateHealthScore` reads code-envs, system/security settings,
@@ -26,6 +27,12 @@ export const SCORE_LIFECYCLE_FIELDS: readonly LifecycleFieldName[] = [
   'memoryLoading',
   'codeEnvsLoading',
   'projectFootprintLoading',
+  // Both autostart in live mode and their error phase is terminal, so the
+  // score reveal cannot wedge on them. The on-demand usage scan is
+  // deliberately NOT gated on — broken connections surface as 'unverified'
+  // until it completes.
+  'connectionsHealthLoading',
+  'sanityCheckLoading',
 ];
 
 /**
@@ -75,6 +82,9 @@ export const WHITELISTABLE_RULES = [
   { rule: 'code-env-size', label: 'Code env size', itemLabel: 'env name' },
   { rule: 'python-env-lifecycle', label: 'Deprecated Python env', itemLabel: 'env name' },
   { rule: 'disk-usage', label: 'Disk usage on mount', itemLabel: 'mount point' },
+  { rule: 'connection-broken', label: 'Broken connection', itemLabel: 'connection name' },
+  { rule: 'exec-config-resources', label: 'Exec config resources', itemLabel: 'exec config name' },
+  { rule: 'sanity-check', label: 'Sanity check message', itemLabel: 'message code' },
 ] as const;
 
 type IsWhitelisted = ((rule: string, item: string) => boolean) & { matched: Set<string> };
@@ -108,6 +118,9 @@ export const HEALTH_FACTOR_CONTROLS = [
   { key: 'disabled_features', label: 'Disabled Features' },
   { key: 'java_memory_limits', label: 'Java Memory Limits' },
   { key: 'runtime_database', label: 'Runtime Database' },
+  { key: 'connection_health', label: 'Connection Health' },
+  { key: 'exec_config_resources', label: 'Exec Config Resources' },
+  { key: 'sanity_check', label: 'DSS Sanity Check' },
 ] as const;
 
 export type HealthFactorKey = (typeof HEALTH_FACTOR_CONTROLS)[number]['key'];
@@ -906,6 +919,202 @@ function scoreProjectSizePressure(
 }
 
 /**
+ * Broken actively-used connections (rubric: always-lead critical). Issues
+ * only — the connections category stays zero-weighted; `cap-connection-broken`
+ * clamps the overall score via the existing cap logic. `skipped` rows are
+ * ignored. Usage arrays `undefined` means the usage scan has not completed
+ * this session ⇒ failing connections surface as 'unverified' (warning) with a
+ * pointer to the Insights scan. NOTE: health results carry no recency, so only
+ * "currently failing" is knowable — the rubric's "broken recently" is a
+ * documented deviation.
+ */
+function scoreConnectionHealth(
+  health: ParsedData['connectionHealth'] & object,
+  datasetUsages: ParsedData['connectionDatasetUsages'],
+  llmUsages: ParsedData['connectionLlmUsages'],
+  isWhitelisted: IsWhitelisted,
+): HealthIssue[] {
+  const failing = health.filter(
+    (c) => c.status === 'fail' && !isWhitelisted('connection-broken', c.name),
+  );
+  if (failing.length === 0) return [];
+
+  const preview = (names: string[]) =>
+    names.slice(0, 5).join(', ') + (names.length > 5 ? ` and ${names.length - 5} more` : '');
+
+  if (datasetUsages === undefined && llmUsages === undefined) {
+    const names = failing.map((c) => c.name);
+    return [{
+      id: 'connection-broken-unverified',
+      category: 'connections',
+      severity: 'warning',
+      title: `${failing.length} connection${failing.length > 1 ? 's' : ''} failing their test (usage unverified)`,
+      description: `${preview(names)}. The connection usage scan has not completed, so it is unknown whether projects actively depend on these connections.`,
+      recommendation: 'Run the usage scan on the Connections → Insights page to confirm impact.',
+      value: failing.length,
+      whitelistRule: 'connection-broken',
+      whitelistItems: names,
+    }];
+  }
+
+  const dsByName = new Map((datasetUsages ?? []).map((u) => [u.name, u]));
+  const llmByName = new Map((llmUsages ?? []).map((u) => [u.name, u]));
+  const usedNames: string[] = [];
+  const usedPreview: string[] = [];
+  const unusedNames: string[] = [];
+  for (const conn of failing) {
+    const ds = dsByName.get(conn.name);
+    const llm = llmByName.get(conn.name);
+    const projectCount = (ds?.projectCount || 0) + (llm?.projectCount || 0);
+    const objectCount =
+      (ds?.datasetCount || 0) + (ds?.recipeCount || 0) +
+      (llm?.datasetCount || 0) + (llm?.recipeCount || 0);
+    if (projectCount > 0 || objectCount > 0) {
+      usedNames.push(conn.name);
+      usedPreview.push(`${conn.name} (${projectCount} project${projectCount === 1 ? '' : 's'})`);
+    } else {
+      unusedNames.push(conn.name);
+    }
+  }
+
+  const issues: HealthIssue[] = [];
+  if (usedNames.length > 0) {
+    issues.push({
+      id: 'cap-connection-broken',
+      category: 'connections',
+      severity: 'critical',
+      title: `${usedNames.length} actively-used connection${usedNames.length > 1 ? 's' : ''} failing their test`,
+      description: `${preview(usedPreview)}. Projects actively depend on these connections — datasets and recipes on them are broken for every user right now.`,
+      recommendation: 'Repair these connections immediately (credentials, network, or endpoint).',
+      value: usedNames.length,
+      whitelistRule: 'connection-broken',
+      whitelistItems: usedNames,
+    });
+  }
+  if (unusedNames.length > 0) {
+    issues.push({
+      id: 'connection-broken-unused',
+      category: 'connections',
+      severity: 'info',
+      title: `${unusedNames.length} unused connection${unusedNames.length > 1 ? 's' : ''} failing their test`,
+      description: `${preview(unusedNames)}. No project references these connections — a failing test alone is low-impact mess.`,
+      recommendation: 'Repair or delete these unused connections.',
+      value: unusedNames.length,
+      whitelistRule: 'connection-broken',
+      whitelistItems: unusedNames,
+    });
+  }
+  return issues;
+}
+
+/**
+ * K8s exec configs missing memory requests/limits (rubric: important — OOM
+ * risk the scheduler cannot manage). Unset OR <=0 counts as "not set"
+ * (rules/dss_drift.py semantics). Group issue, code-env-size-group pattern.
+ * CPU-missing is mentioned in the description only — no OOM risk, so it
+ * neither counts nor escalates.
+ */
+function scoreExecConfigResources(
+  configs: ExecResourceConfig[],
+  isWhitelisted: IsWhitelisted,
+): { score: number; issues: HealthIssue[] } {
+  const unset = (v: number | null | undefined) => typeof v !== 'number' || v <= 0;
+  const k8sConfigs = configs.filter((c) => String(c.type || '').toUpperCase() === 'KUBERNETES');
+  const offending = k8sConfigs.filter(
+    (c) =>
+      (unset(c.memRequestMB) || unset(c.memLimitMB)) &&
+      !isWhitelisted('exec-config-resources', c.name),
+  );
+  if (offending.length === 0) return { score: 100, issues: [] };
+
+  const cpuMissing = offending.filter((c) => unset(c.cpuRequest) || unset(c.cpuLimit)).length;
+  const names = offending.map((c) => c.name);
+  const preview = names.slice(0, 5).join(', ');
+  const more = names.length > 5 ? ` and ${names.length - 5} more` : '';
+  const cpuNote = cpuMissing > 0
+    ? ` ${cpuMissing} of them also lack CPU requests/limits.`
+    : '';
+  return {
+    score: Math.max(30, 100 - offending.length * 25),
+    issues: [{
+      id: 'exec-config-resources-group',
+      category: 'runtime_config',
+      severity: 'warning',
+      title: `${offending.length} Kubernetes exec config${offending.length > 1 ? 's' : ''} without memory requests/limits`,
+      description: `${preview}${more}. Containers on these configs run with unbounded memory — the scheduler cannot protect the node, so a single heavy job can evict or OOM-kill its neighbors.${cpuNote}`,
+      recommendation: 'Set memRequestMB and memLimitMB on each containerized execution config.',
+      value: offending.length,
+      whitelistRule: 'exec-config-resources',
+      whitelistItems: names,
+    }],
+  };
+}
+
+const SANITY_MAX_ISSUES = 5;
+const SANITY_DESC_MAX = 280;
+
+/**
+ * DSS's own sanity check: one issue per distinct surviving ERROR code
+ * (warning severity) / WARNING code (info severity), ERRORs first, stable
+ * code sort, capped at 5. Component severity is computed from the
+ * whitelist-FILTERED messages, never from raw sanityCheckMaxSeverity — a
+ * whitelisted lone ERROR must not still drag the score.
+ */
+function scoreSanityCheck(
+  messages: ParsedData['sanityCheck'] & object,
+  isWhitelisted: IsWhitelisted,
+): { score: number; issues: HealthIssue[] } {
+  const surviving = messages.filter(
+    (m) =>
+      (m.severity === 'ERROR' || m.severity === 'WARNING') &&
+      !isWhitelisted('sanity-check', String(m.code)),
+  );
+  if (surviving.length === 0) return { score: 100, issues: [] };
+
+  const byCode = (severity: 'ERROR' | 'WARNING') => {
+    const map = new Map<string, { first: (typeof surviving)[number]; count: number }>();
+    for (const m of surviving) {
+      if (m.severity !== severity) continue;
+      const code = String(m.code);
+      const entry = map.get(code);
+      if (entry) entry.count += 1;
+      else map.set(code, { first: m, count: 1 });
+    }
+    return [...map.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  };
+
+  const errorCodes = byCode('ERROR');
+  const warningCodes = byCode('WARNING');
+  const issues: HealthIssue[] = [];
+  const push = (
+    code: string,
+    entry: { first: { title?: string; message?: string; details?: string }; count: number },
+    kind: 'error' | 'warning',
+  ) => {
+    if (issues.length >= SANITY_MAX_ISSUES) return;
+    const raw = String(entry.first.message || entry.first.details || '');
+    const description =
+      raw.length > SANITY_DESC_MAX ? `${raw.slice(0, SANITY_DESC_MAX)}…` : raw;
+    issues.push({
+      id: `sanity-${kind}-${code}`,
+      category: 'runtime_config',
+      severity: kind === 'error' ? 'warning' : 'info',
+      title: `Sanity check ${kind === 'error' ? 'error' : 'warning'}: ${entry.first.title || code}`,
+      description,
+      recommendation: 'Review this finding on the DSS sanity check (Administration → Maintenance).',
+      value: entry.count,
+      whitelistRule: 'sanity-check',
+      whitelistItems: [code],
+    });
+  };
+  for (const [code, entry] of errorCodes) push(code, entry, 'error');
+  for (const [code, entry] of warningCodes) push(code, entry, 'warning');
+
+  const score = errorCodes.length > 0 ? 40 : 75;
+  return { score, issues };
+}
+
+/**
  * Standalone function to calculate health score from parsed data
  * Use this when you need to calculate outside of React component context
  */
@@ -1106,11 +1315,27 @@ export function calculateHealthScore(
     cgroupsScore = Math.max(0, cgroupsScore);
     const cgroupsChecksEnabled = toggles.cgroups_enabled || toggles.cgroups_empty_targets;
 
+    // Exec-config resources + DSS sanity check (rubric-mandated inputs).
+    // Input `undefined` (old payloads, zip mode, sanity 501) ⇒ component
+    // disabled ⇒ combineEnabledScores renormalizes the 4×0.20 legacy
+    // components back to exactly the old 4×0.25 behavior.
+    const execConfigsEnabled =
+      toggles.exec_config_resources && parsedData.execResourceConfigs !== undefined;
+    const execResourcesResult = execConfigsEnabled
+      ? scoreExecConfigResources(parsedData.execResourceConfigs as ExecResourceConfig[], isWhitelisted)
+      : { score: 100, issues: [] as HealthIssue[] };
+    const sanityEnabled = toggles.sanity_check && parsedData.sanityCheck !== undefined;
+    const sanityResult = sanityEnabled
+      ? scoreSanityCheck(parsedData.sanityCheck!, isWhitelisted)
+      : { score: 100, issues: [] as HealthIssue[] };
+
     const runtimeConfigScore = combineEnabledScores([
-      { enabled: toggles.disabled_features, score: disabledResult.score, weight: 0.25 },
-      { enabled: toggles.java_memory_limits, score: javaMemoryResult.score, weight: 0.25 },
-      { enabled: toggles.runtime_database, score: runtimeDbResult.score, weight: 0.25 },
-      { enabled: cgroupsChecksEnabled, score: cgroupsScore, weight: 0.25 },
+      { enabled: toggles.disabled_features, score: disabledResult.score, weight: 0.20 },
+      { enabled: toggles.java_memory_limits, score: javaMemoryResult.score, weight: 0.20 },
+      { enabled: toggles.runtime_database, score: runtimeDbResult.score, weight: 0.20 },
+      { enabled: cgroupsChecksEnabled, score: cgroupsScore, weight: 0.20 },
+      { enabled: execConfigsEnabled, score: execResourcesResult.score, weight: 0.10 },
+      { enabled: sanityEnabled, score: sanityResult.score, weight: 0.10 },
     ]);
     if (toggles.java_memory_limits) {
       runtimeConfigIssues.push(...javaMemoryResult.issues);
@@ -1120,6 +1345,12 @@ export function calculateHealthScore(
     }
     if (toggles.runtime_database && runtimeDbResult.issue) {
       runtimeConfigIssues.push(runtimeDbResult.issue);
+    }
+    if (execConfigsEnabled) {
+      runtimeConfigIssues.push(...execResourcesResult.issues);
+    }
+    if (sanityEnabled) {
+      runtimeConfigIssues.push(...sanityResult.issues);
     }
 
     // Cap rule (rubric A1): impersonation (multi-user security) on but cgroups
@@ -1146,6 +1377,28 @@ export function calculateHealthScore(
       issues: runtimeConfigIssues,
     });
     allIssues.push(...runtimeConfigIssues);
+
+    // ============================================
+    // CONNECTIONS (issues only — category stays zero-weighted, no score bar;
+    // cap-connection-broken clamps via the existing cap logic below)
+    // ============================================
+    if (toggles.connection_health && parsedData.connectionHealth !== undefined) {
+      // Usage data counts as "present" only once the usage scan COMPLETED —
+      // mid-scan the arrays exist but are partial ([]), which would
+      // misclassify a used broken connection as unused. The Python twin never
+      // sets connectionUsageLoading, so absent-lifecycle means the arrays are
+      // authoritative there.
+      const usageReady =
+        parsedData.connectionDatasetUsages !== undefined &&
+        (parsedData.connectionUsageLoading === undefined ||
+          parsedData.connectionUsageLoading.phase === 'done');
+      allIssues.push(...scoreConnectionHealth(
+        parsedData.connectionHealth,
+        usageReady ? parsedData.connectionDatasetUsages : undefined,
+        usageReady ? (parsedData.connectionLlmUsages ?? []) : undefined,
+        isWhitelisted,
+      ));
+    }
 
     // ============================================
     // CALCULATE OVERALL SCORE

@@ -10,6 +10,7 @@ import { JavaMemoryParser } from '../../parsers/JavaMemoryParser';
 import { ProjectStandardsParser } from '../../parsers/ProjectStandardsParser';
 import type { ConnectionAuditResult } from '../../types';
 import { fetchJson, fetchText } from '../../utils/api';
+import { extractExecResourceConfigs } from '../../utils/execResources';
 import type { LoaderCtx } from './context';
 import type { LifecycleTracker } from './lifecycle';
 import type {
@@ -220,12 +221,17 @@ export async function loadPhase2(
   const executionConfigsCount = Array.isArray(containerSettingsRaw?.executionConfigs)
     ? containerSettingsRaw!.executionConfigs!.length
     : 0;
+  // Keep the structured per-config resource fields too (the health score's
+  // exec-config-resources component reads them); the count-only derivation
+  // above stays for the exec-defaults card.
+  const execResourceConfigs = extractExecResourceConfigs(rawSettings);
   const projectStandardsResult = new ProjectStandardsParser().parse(
     JSON.stringify(rawProjectStandards),
     'project-standards.json',
   );
   tracker.data = {
     ...tracker.data,
+    execResourceConfigs,
     containerExecDefaults: {
       executionConfigsCount,
       userCodeMode: projectStandardsResult.userCodeMode,

@@ -44,6 +44,7 @@ import type {
   SparkSettings,
 } from './settings';
 import type { DipHomeStorage, DirEntry, DirTreeData, FilesystemInfo, MemoryInfo, SystemLimits } from './system';
+import type { ExecResourceConfig } from '../utils/execResources';
 
 // Diagnostic types
 export type DiagType = 'instance' | 'job' | 'fm' | 'unknown';
@@ -104,6 +105,10 @@ export interface ParsedData {
   authSettings?: AuthSettings;
   containerSettings?: ContainerSettings;
   containerExecDefaults?: ContainerExecDefaults;
+  /** Per-exec-config resource fields (flat memRequestMB/memLimitMB/cpu*) —
+   *  extracted from raw settings by utils/execResources. Absent (`undefined`)
+   *  ⇒ the exec-config-resources score component silently skips. */
+  execResourceConfigs?: ExecResourceConfig[];
   integrationSettings?: IntegrationSettings;
   resourceLimits?: ResourceLimits;
   cgroupSettings?: CgroupSettings;

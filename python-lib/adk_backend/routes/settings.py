@@ -241,6 +241,9 @@ _WHITELIST_RULES = {
     'code-env-size': 'code env name',
     'python-env-lifecycle': 'code env name',
     'disk-usage': 'mount point',
+    'connection-broken': 'connection name',
+    'exec-config-resources': 'exec config name',
+    'sanity-check': 'message code',
 }
 _WHITELIST_MAX = 500
 _whitelist_lock = threading.Lock()

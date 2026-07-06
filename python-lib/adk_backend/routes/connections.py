@@ -11,7 +11,7 @@ import json
 import logging
 import threading
 import time
-from concurrent.futures import as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, g, jsonify
@@ -196,6 +196,11 @@ def api_connections_audit():
 _CONN_HEALTH_MEMO: Dict[Tuple[str, int, str], Dict[str, Any]] = {}
 _CONN_HEALTH_MEMO_LOCK = threading.Lock()
 
+# Hard per-connection test deadline: a hung endpoint must not stall the
+# health stream (or the daily triage sweep) — the straggler is reported as
+# 'fail' and its worker thread is left to finish in the background.
+_CONN_TEST_TIMEOUT_S = 10
+
 
 @bp.route('/api/connections/health')
 def api_connection_health():
@@ -208,7 +213,7 @@ def api_connection_health():
     import re
     _SANITIZE_RE = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b|/[\w/.-]{4,}')
 
-    def _test_one(name, conn_type):
+    def _test_one_inner(name, conn_type):
         try:
             client = _thread_client()
             resp = client.get_connection(name).test()
@@ -226,6 +231,21 @@ def api_connection_health():
                 return {'name': name, 'type': conn_type, 'status': 'skipped'}
             sanitized = _SANITIZE_RE.sub('***', msg)[:200]
             return {'name': name, 'type': conn_type, 'status': 'fail', 'error': sanitized}
+
+    def _test_one(name, conn_type):
+        # Per-test deadline via a dedicated single-worker executor: the outer
+        # pool slot frees after _CONN_TEST_TIMEOUT_S even if the SDK call
+        # hangs; the abandoned thread finishes (and is discarded) in the
+        # background. The adk ThreadPoolExecutor propagates host context.
+        inner = ThreadPoolExecutor(max_workers=1)
+        try:
+            return inner.submit(_test_one_inner, name, conn_type).result(
+                timeout=_CONN_TEST_TIMEOUT_S)
+        except FuturesTimeoutError:
+            return {'name': name, 'type': conn_type, 'status': 'fail',
+                    'error': 'test timed out (>%ds)' % _CONN_TEST_TIMEOUT_S}
+        finally:
+            inner.shutdown(wait=False)
 
     def generate():
         t0 = time.time()
@@ -315,6 +335,10 @@ def api_connection_health():
     return _sse_response(generate)
 
 
+_CONN_USAGES_MEMO: Dict[Tuple[str, int, str], Dict[str, Any]] = {}
+_CONN_USAGES_MEMO_LOCK = threading.Lock()
+
+
 @bp.route('/api/connections/usages')
 def api_connection_usages():
     """Stream connection-project usage mapping via SSE.
@@ -322,6 +346,10 @@ def api_connection_usages():
     Scans all projects to find:
     - Dataset connections (params.connection)
     - LLM recipe connections (llmId field in recipe payload)
+
+    Memoized by (host, session_epoch, project_set_hash) like the health scan,
+    so the health score, the Insights page, and the daily triage sweep share
+    one full-project scan per epoch instead of each paying for their own.
     """
 
     _LLM_RECIPE_PREFIXES = ('prompt', 'nlp_llm_')
@@ -525,6 +553,17 @@ def api_connection_usages():
             yield "event: error\ndata: %s\n\n" % json.dumps({'error': str(e)[:200]})
             return
 
+        epoch = _get_session_epoch()
+        keys_hash = hashlib.sha1('\n'.join(sorted(project_keys)).encode('utf-8')).hexdigest()
+        memo_key = (_safe_request_host_id(), epoch, keys_hash)
+        with _CONN_USAGES_MEMO_LOCK:
+            cached = _CONN_USAGES_MEMO.get(memo_key)
+        if cached is not None:
+            yield "event: init\ndata: %s\n\n" % json.dumps(
+                {'total': len(project_keys), 'cached': True})
+            yield "event: done\ndata: %s\n\n" % json.dumps(cached)
+            return
+
         yield "event: init\ndata: %s\n\n" % json.dumps({'total': len(project_keys)})
 
         dataset_map: Dict[str, List[Dict]] = {}   # conn -> [{projectKey, projectName, datasetName, datasetType}]
@@ -615,7 +654,7 @@ def api_connection_usages():
             })
 
         total_ms = int((time.time() - t0) * 1000)
-        yield "event: done\ndata: %s\n\n" % json.dumps({
+        done_payload = {
             'total_ms': total_ms,
             'scanErrors': scan_errors,
             'failedProjectCount': len({e['projectKey'] for e in scan_errors}),
@@ -630,6 +669,13 @@ def api_connection_usages():
                     str(item.get('objectName') or '').lower(),
                 ),
             ),
-        })
+        }
+        with _CONN_USAGES_MEMO_LOCK:
+            # Drop other epochs' entries (keep only current).
+            stale = [k for k in _CONN_USAGES_MEMO if len(k) < 2 or k[1] != epoch]
+            for k in stale:
+                _CONN_USAGES_MEMO.pop(k, None)
+            _CONN_USAGES_MEMO[memo_key] = done_payload
+        yield "event: done\ndata: %s\n\n" % json.dumps(done_payload)
 
     return _sse_response(generate)

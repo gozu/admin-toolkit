@@ -28,6 +28,9 @@ def main():
     ap.add_argument("--base", default=DEFAULT_BASE)
     ap.add_argument("--host", default="local")
     ap.add_argument("--tolerance", type=float, default=2.0)
+    ap.add_argument("--with-usages", action="store_true",
+                    help="also fetch /api/connections/usages (memoized full-project scan) "
+                         "to exercise the cap-connection-broken path")
     args = ap.parse_args()
 
     client = ToolkitClient(config.resolve({'backend_url': args.base, 'heavy_timeout_s': 600}))
@@ -42,12 +45,26 @@ def main():
         'footprint': client.get('/api/project-footprint', host=host, heavy=True),
         'thresholds': client.get('/api/settings/threshold-defaults'),
         'whitelist': health.fetch_host_whitelist(client, host),
+        # New score inputs — both twins ALWAYS receive identical values
+        # (None ⇒ the component skips on both sides by construction).
+        'sanity': health.fetch_sanity_messages(client, host),
+        'connectionHealth': health.fetch_connection_health(client, host),
+        'connectionUsages': (health.fetch_connection_usages(client, host)
+                             if args.with_usages else None),
     }
+
+    usages = payloads['connectionUsages']
+    ds_usages = (usages.get('datasetUsages') or []) if usages is not None else None
+    llm_usages = (usages.get('llmUsages') or []) if usages is not None else None
 
     from atk_agent_common.tools_impl import _parse_java_memory
     parsed = health.build_parsed_data(payloads['overview'], payloads['rawSettings'],
                                       _parse_java_memory(payloads['javaMemoryText']),
-                                      payloads['codeEnvs'], payloads['footprint'])
+                                      payloads['codeEnvs'], payloads['footprint'],
+                                      sanity_messages=payloads['sanity'],
+                                      connection_health=payloads['connectionHealth'],
+                                      connection_dataset_usages=ds_usages,
+                                      connection_llm_usages=llm_usages)
     py_score = health.calculate_health_score(parsed, payloads['thresholds'],
                                              whitelist=payloads['whitelist'])
 

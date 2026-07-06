@@ -99,10 +99,14 @@ export function InactiveProjectCleaner() {
 
   // Default/clamp the backup destination during render rather than via an effect.
   // `folderId` holds the user's explicit pick; reads use the effective value.
+  // Without a pick, prefer the auto-provisioned archive folder (plugin setting).
+  const archiveDefaultId = foldersData?.archiveDefaultId ?? '';
   const effectiveFolderId =
     folderId && folders.some((folder) => folder.id === folderId)
       ? folderId
-      : (folders[0]?.id ?? '');
+      : archiveDefaultId && folders.some((folder) => folder.id === archiveDefaultId)
+        ? archiveDefaultId
+        : (folders[0]?.id ?? '');
 
   const { sortField, sortDir, toggleSort, sortIndicator } = useSortableTable<SortField>();
   const [deletedKeys, setDeletedKeys] = useState<Set<string>>(new Set());

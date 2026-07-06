@@ -1,5 +1,6 @@
 import { ZipWriter, BlobWriter, TextReader } from '@zip.js/zip.js';
 import type { ParsedData } from '../types';
+import { storeExportInArchive } from './archiveStore';
 
 const SKIP_KEYS = new Set(['dirTree', 'dataReady']);
 
@@ -39,4 +40,6 @@ export async function exportDataToZip(parsedData: ParsedData): Promise<void> {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
+
+  void storeExportInArchive(blob, filename);
 }

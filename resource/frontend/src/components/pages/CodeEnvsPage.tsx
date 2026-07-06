@@ -278,8 +278,10 @@ export function CodeEnvsInsightsPage({ readOnly = false }: { readOnly?: boolean 
   const folders = useMemo(() => foldersData?.folders ?? [], [foldersData?.folders]);
   const [folderIdRaw, setFolderId] = useState('');
   // Default the backup destination during render rather than via an effect.
-  // `folderIdRaw` holds the user's explicit pick.
-  const folderId = folderIdRaw || (folders[0]?.id ?? '');
+  // `folderIdRaw` holds the user's explicit pick; without one, prefer the
+  // auto-provisioned archive folder (Archive Folders Connection setting).
+  const folderId =
+    folderIdRaw || foldersData?.archiveDefaultId || (folders[0]?.id ?? '');
 
   useEffect(() => {
     if (!readOnly && !scanStarted) void managedFoldersScan.load();

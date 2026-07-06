@@ -7,6 +7,10 @@ export interface ManagedFolder {
 
 export interface ManagedFoldersData {
   folders: ManagedFolder[];
+  /** Auto-provisioned 'admin-toolkit-archive' folder id ('' unless the
+   * Archive Folders Connection plugin setting is configured). */
+  archiveDefaultId?: string;
+  archiveConnection?: string;
 }
 
 export const managedFoldersScan = createModuleScanStore<ManagedFoldersData, never>({

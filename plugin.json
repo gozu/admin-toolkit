@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.642",
+    "version": "0.4.643",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -53,6 +53,21 @@
             "name": "dataset_export_connection",
             "label": "Target Connection",
             "description": "Connection used to store UI tables saved as managed datasets (into the Admin Toolkit webapp's own project). Select (None) to disable the toolbar button.",
+            "type": "SELECT",
+            "getChoicesFromPython": true,
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
+            "name": "sep_archive",
+            "label": "Archive Storage",
+            "description": "Where the toolkit stores backup artifacts: deleted code envs and deleted projects (cleaner backups), and 'Export all' zips.",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "archive_folder_connection",
+            "label": "Archive Folders Connection",
+            "description": "Connection on which the toolkit auto-creates its 'admin-toolkit-archive' managed folder (default destination for cleaner backups and export zips). Select (None) to keep picking existing folders manually.",
             "type": "SELECT",
             "getChoicesFromPython": true,
             "mandatory": false,
@@ -153,9 +168,10 @@
         },
         {
             "name": "default_llm_id",
-            "label": "Default LLM id",
-            "description": "LLM Mesh id used by the plugin agents unless overridden per agent (e.g. anthropic:kaosclaude:claude-opus-4-8).",
-            "type": "STRING",
+            "label": "Default LLM",
+            "description": "LLM Mesh model used by the plugin agents unless overridden per agent.",
+            "type": "SELECT",
+            "getChoicesFromPython": true,
             "mandatory": false,
             "defaultValue": ""
         },
@@ -180,8 +196,9 @@
         {
             "name": "triage_connection",
             "label": "Triage PostgreSQL connection",
-            "description": "Postgres connection where daily triage results and the agent-action audit trail persist (same connection as the toolkit's Agents Audit setting). Empty disables the triage loop.",
-            "type": "STRING",
+            "description": "Postgres connection where daily triage results and the agent-action audit trail persist (same connection as the toolkit's Agents Audit setting). (None) disables the triage loop.",
+            "type": "SELECT",
+            "getChoicesFromPython": true,
             "mandatory": false,
             "defaultValue": ""
         },

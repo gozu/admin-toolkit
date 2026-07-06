@@ -1,4 +1,5 @@
 import { ZipWriter, BlobWriter, TextReader } from '@zip.js/zip.js';
+import { storeExportInArchive } from './archiveStore';
 
 function tableToCSV(table: HTMLTableElement): string {
   return Array.from(table.rows)
@@ -130,4 +131,6 @@ export async function exportAllTablesToZip() {
   const url = URL.createObjectURL(blob);
   Object.assign(document.createElement('a'), { href: url, download: 'tables-export.zip' }).click();
   URL.revokeObjectURL(url);
+
+  void storeExportInArchive(blob, `tables-export-${new Date().toISOString().slice(0, 10)}.zip`);
 }

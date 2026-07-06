@@ -101,16 +101,30 @@ def verify_plugins(client, need_old=True):
 
 
 def update_env(client, baseline_path):
-    step('b. code env %s update_packages' % NEW_ENV)
+    step('b. code env %s update (spec from merged plugin, then packages)' % NEW_ENV)
     env = client.get_code_env('PYTHON', NEW_ENV)
     before = (env.get_definition().get('actualPackageList') or '')
     t0 = time.time()
     try:
-        env.update_packages()
+        # plugin.update_code_env() re-reads code-env/python/spec from the NEW
+        # plugin zip; env.update_packages() alone reuses the env's stored
+        # (pre-merge) spec and silently installs nothing new.
+        fut = client.get_plugin(NEW_PLUGIN).update_code_env()
+        if hasattr(fut, 'wait_for_result'):
+            fut.wait_for_result()
     except Exception as exc:
-        manual('code env update failed (%s: %s) — update %s from the DSS UI'
-               % (type(exc).__name__, str(exc)[:200], NEW_ENV))
-        return
+        print('  plugin.update_code_env failed (%s: %s) — falling back to '
+              'set_definition + update_packages' % (type(exc).__name__, str(exc)[:200]))
+        try:
+            spec = (REPO / 'code-env' / 'python' / 'spec' / 'requirements.txt').read_text()
+            definition = env.get_definition()
+            definition['specPackageList'] = spec
+            env.set_definition(definition)
+            env.update_packages()
+        except Exception as exc2:
+            manual('code env update failed (%s: %s) — update %s from the DSS UI'
+                   % (type(exc2).__name__, str(exc2)[:200], NEW_ENV))
+            return
     after = (env.get_definition().get('actualPackageList') or '')
     base = before
     if baseline_path:
@@ -129,7 +143,7 @@ def restart_webapp(client, args):
     step('b2. restart webapp backend %s/%s' % (args.webapp_project, args.webapp_id))
     try:
         webapp = client.get_project(args.webapp_project).get_webapp(args.webapp_id)
-        fut = webapp.restart_backend()
+        fut = webapp.start_or_restart_backend()
         if hasattr(fut, 'wait_for_result'):
             fut.wait_for_result()
         print('  restarted')
@@ -183,15 +197,25 @@ def recreate_in_project(client, project_key, llm_fallback):
     for component in TOOLS:
         wanted = 'atk %s' % component
         new_type = NEW_TOOL_TYPE % component
-        keep, old_ids = None, []
+        # Delete old-type FIRST: creating the new-type twin while the old one
+        # still holds the name makes DSS rename the new one to "<name> 1",
+        # which breaks idempotent re-runs. Match on the name prefix so
+        # already-suffixed strays get cleaned too.
+        keep = None
         for t in project.list_agent_tools() or []:
             raw = t if isinstance(t, dict) else getattr(t, 'raw', {})
-            if raw.get('name') != wanted:
+            name = str(raw.get('name', ''))
+            if not (name == wanted or name.startswith(wanted + ' ')):
                 continue
-            if raw.get('type') == new_type:
-                keep = raw['id']
-            elif str(raw.get('type', '')).startswith(OLD_TOOL_PREFIX):
-                old_ids.append(raw['id'])
+            if str(raw.get('type', '')).startswith(OLD_TOOL_PREFIX):
+                project.get_agent_tool(raw['id']).delete()
+                print('  tool %-24s deleted old-type instance %s' % (wanted, raw['id']))
+            elif raw.get('type') == new_type:
+                if keep is None and name == wanted:
+                    keep = raw['id']
+                else:
+                    project.get_agent_tool(raw['id']).delete()
+                    print('  tool %-24s deleted duplicate new-type %s (%r)' % (wanted, raw['id'], name))
         if keep is None:
             tool = project.new_agent_tool(new_type, name=wanted).create()
             keep = tool.id
@@ -199,9 +223,6 @@ def recreate_in_project(client, project_key, llm_fallback):
         else:
             tool = project.get_agent_tool(keep)
             print('  tool %-24s exists  (%s)' % (wanted, keep))
-        for oid in old_ids:
-            project.get_agent_tool(oid).delete()
-            print('    deleted old-type instance %s' % oid)
         handles[component] = tool
 
     for name, component in AGENT_TYPES.items():
@@ -256,9 +277,29 @@ def repoint_triage(client, merged_cfg, args):
             cfg[k] = v
     settings = config_mod.resolve(cfg)
     if not settings.get('triage_connection') or not settings.get('triage_recipient'):
-        manual('triage provisioning skipped — merged config lacks triage_connection/'
-               'triage_recipient (pass --triage-connection/--triage-recipient or fix settings, '
-               'then re-run: .venv/bin/python scripts/agents/provision_triage.py --url %s)' % args.url)
+        # Locked-down instance (plugin settings unreadable): do a minimal
+        # repoint — swap the step's runnableType to the merged macro id and
+        # keep the verified trigger + failure reporter untouched.
+        print('  merged config lacks triage_connection/triage_recipient — minimal repoint only')
+        project = client.get_project(provision.MACRO_PROJECT_KEY)
+        for info in project.list_scenarios() or []:
+            if info.get('name') != provision.SCENARIO_NAME:
+                continue
+            scenario = project.get_scenario(info['id'])
+            sset = scenario.get_settings()
+            changed = 0
+            for st in sset.raw_steps:
+                rt = (st.get('params') or {}).get('runnableType', '')
+                if rt.startswith('pyrunnable_%s_' % OLD_PLUGIN):
+                    st['params']['runnableType'] = provision.MACRO_TYPE
+                    changed += 1
+            if changed:
+                sset.save()
+            print('  scenario %s: %d step(s) repointed to %s'
+                  % (info['id'], changed, provision.MACRO_TYPE))
+            return
+        manual('triage scenario %r not found in %s — provision it after settings are fixed '
+               '(scripts/agents/provision_triage.py)' % (provision.SCENARIO_NAME, provision.MACRO_PROJECT_KEY))
         return
     result = provision.provision_all(client, settings, hour=args.hour)
     print(json.dumps(result, indent=1, default=str))
@@ -300,7 +341,7 @@ def smokes(client, handles, args):
         comp.with_message('Health check: reply with the single word OK. Do not call any tools.')
         resp = comp.execute()
         ok = bool(resp.success)
-        text = (resp.text or '')[:80] if ok else str(getattr(resp, 'raw', ''))[:200]
+        text = (resp.text or '')[:80] if ok else json.dumps(resp.json, default=str)[:400]
         print('  chat %-24s %s (%.0fs) %r' % (name, 'OK' if ok else 'FAILED', time.time() - t0, text))
         if not ok:
             manual('chat smoke failed for %s' % name)

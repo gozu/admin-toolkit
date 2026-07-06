@@ -141,17 +141,28 @@ def main():
                   'target': {'path': 'security.enabled', 'newValue': False}}),
         'refused', 'blacklist', 'never agent-mutable')
 
-    # ── kill-switch: a valid token must still be refused while red is OFF ─
+    # ── kill-switch: a valid token must still be refused while red is OFF.
+    # The executed target is a NO-OP (newValue == current value) so that if the
+    # kill switch unexpectedly turns out to be ON, nothing actually changes.
     if not args.red_on:
-        if settings_out and settings_out.get('confirm_token'):
-            expect_refusal(
-                'kill-switch refusal (settings-set, valid token)',
-                run_tool(handles['execute-admin-action'], 'execute settings-set (red OFF)',
-                         {'action': 'settings-set',
-                          'target': settings_out.get('canonicalTarget'),
-                          'confirm': True,
-                          'confirm_token': settings_out['confirm_token']}),
-                'kill', 'enable_red_actions', 'disabled', 'red actions')
+        current = ((settings_out or {}).get('plan') or {}).get('currentValue')
+        noop = check_plan(handles, 'settings-set',
+                          {'path': 'studioExternalUrl', 'newValue': current}) \
+            if settings_out else None
+        if noop and noop.get('confirm_token'):
+            result = run_tool(handles['execute-admin-action'], 'execute settings-set (red OFF)',
+                              {'action': 'settings-set',
+                               'target': noop.get('canonicalTarget'),
+                               'confirm': True,
+                               'confirm_token': noop['confirm_token']})
+            out = tool_output(result)
+            if out.get('status') == 'executed':
+                record('kill-switch refusal (settings-set, valid token)', False,
+                       'red is ON on this instance — the no-op executed (harmless); '
+                       're-run with --red-on, or turn enable_red_actions off first')
+            else:
+                expect_refusal('kill-switch refusal (settings-set, valid token)', result,
+                               'kill', 'enable_red_actions', 'disabled', 'red actions')
         else:
             record('kill-switch refusal', False, 'no settings-set token to test with')
 

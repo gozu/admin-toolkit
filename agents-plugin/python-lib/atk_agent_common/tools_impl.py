@@ -352,10 +352,10 @@ def config_inspect(client, host='local', domain='connections', detail=None,
                 out['healthError'] = exc.message
             if flt:
                 events = [e for e in events if flt in (e.get('name') or '').lower()]
-            failing = [e for e in events if not e.get('ok', True)]
+            failing = [e for e in events if e.get('status') == 'fail']
             out['healthProbe'] = {
                 'probed': len(events),
-                'failing': [shaping.pick(e, ('name', 'type', 'error', 'ok')) for e in failing[:top_n]],
+                'failing': [shaping.pick(e, ('name', 'type', 'error', 'status')) for e in failing[:top_n]],
             }
 
     elif domain == 'code-envs':

@@ -39,7 +39,8 @@ _LARGE_PROJECT_GB = 10
 
 # Rules honoring the per-item admin whitelist (false-positive doctrine).
 WHITELISTABLE_RULES = ('project-size', 'project-code-envs', 'code-env-size',
-                       'python-env-lifecycle', 'disk-usage')
+                       'python-env-lifecycle', 'disk-usage', 'connection-broken',
+                       'exec-config-resources', 'sanity-check')
 
 
 def _whitelist_lookup(entries):
@@ -532,6 +533,159 @@ def _score_project_size_pressure(project_footprint, summary, is_whitelisted):
     return max(0, min(100, 100 * (1 - avg_risk))), issues
 
 
+def _score_connection_health(health, dataset_usages, llm_usages, is_whitelisted):
+    """Port of scoreConnectionHealth: broken actively-used connections (rubric
+    always-lead critical). Issues only — cap-connection-broken clamps via the
+    existing cap logic. Usage arrays None ⇒ the usage scan did not run ⇒
+    failing connections surface as 'unverified'. Health rows carry no recency,
+    so only "currently failing" is knowable (documented rubric deviation)."""
+    failing = [c for c in (health or []) if c.get('status') == 'fail'
+               and not is_whitelisted('connection-broken', c.get('name'))]
+    if not failing:
+        return []
+
+    def preview(names):
+        more = ' and %d more' % (len(names) - 5) if len(names) > 5 else ''
+        return ', '.join(names[:5]) + more
+
+    if dataset_usages is None and llm_usages is None:
+        names = [str(c.get('name')) for c in failing]
+        n = len(failing)
+        return [_issue(
+            'connection-broken-unverified', 'connections', 'warning',
+            '%d connection%s failing their test (usage unverified)' % (n, 's' if n > 1 else ''),
+            'Run the usage scan on the Connections → Insights page to confirm impact.',
+            description='%s. The connection usage scan has not completed, so it is unknown '
+                        'whether projects actively depend on these connections.' % preview(names),
+            value=n, whitelistRule='connection-broken', whitelistItems=names)]
+
+    ds_by_name = {u.get('name'): u for u in (dataset_usages or [])}
+    llm_by_name = {u.get('name'): u for u in (llm_usages or [])}
+    used, used_preview, unused = [], [], []
+    for conn in failing:
+        name = str(conn.get('name'))
+        ds = ds_by_name.get(name) or {}
+        llm = llm_by_name.get(name) or {}
+        project_count = (ds.get('projectCount') or 0) + (llm.get('projectCount') or 0)
+        object_count = ((ds.get('datasetCount') or 0) + (ds.get('recipeCount') or 0)
+                        + (llm.get('datasetCount') or 0) + (llm.get('recipeCount') or 0))
+        if project_count > 0 or object_count > 0:
+            used.append(name)
+            used_preview.append('%s (%d project%s)'
+                                % (name, project_count, '' if project_count == 1 else 's'))
+        else:
+            unused.append(name)
+
+    issues = []
+    if used:
+        n = len(used)
+        issues.append(_issue(
+            'cap-connection-broken', 'connections', 'critical',
+            '%d actively-used connection%s failing their test' % (n, 's' if n > 1 else ''),
+            'Repair these connections immediately (credentials, network, or endpoint).',
+            description='%s. Projects actively depend on these connections — datasets and '
+                        'recipes on them are broken for every user right now.'
+                        % preview(used_preview),
+            value=n, whitelistRule='connection-broken', whitelistItems=used))
+    if unused:
+        n = len(unused)
+        issues.append(_issue(
+            'connection-broken-unused', 'connections', 'info',
+            '%d unused connection%s failing their test' % (n, 's' if n > 1 else ''),
+            'Repair or delete these unused connections.',
+            description='%s. No project references these connections — a failing test alone '
+                        'is low-impact mess.' % preview(unused),
+            value=n, whitelistRule='connection-broken', whitelistItems=unused))
+    return issues
+
+
+def _is_set_number(v):
+    """TS `typeof v === 'number'` — bools are not numbers there."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _score_exec_config_resources(configs, is_whitelisted):
+    """Port of scoreExecConfigResources: K8s exec configs missing memory
+    requests/limits (unset OR <=0 = "not set", rules/dss_drift.py semantics).
+    CPU-missing is description-only — it neither counts nor escalates."""
+    def unset(v):
+        return not _is_set_number(v) or v <= 0
+
+    k8s_configs = [c for c in configs if str(c.get('type') or '').upper() == 'KUBERNETES']
+    offending = [c for c in k8s_configs
+                 if (unset(c.get('memRequestMB')) or unset(c.get('memLimitMB')))
+                 and not is_whitelisted('exec-config-resources', c.get('name'))]
+    if not offending:
+        return 100, []
+    cpu_missing = sum(1 for c in offending
+                      if unset(c.get('cpuRequest')) or unset(c.get('cpuLimit')))
+    names = [str(c.get('name')) for c in offending]
+    preview = ', '.join(names[:5])
+    more = ' and %d more' % (len(names) - 5) if len(names) > 5 else ''
+    cpu_note = ' %d of them also lack CPU requests/limits.' % cpu_missing if cpu_missing else ''
+    n = len(offending)
+    return max(30, 100 - n * 25), [_issue(
+        'exec-config-resources-group', 'runtime_config', 'warning',
+        '%d Kubernetes exec config%s without memory requests/limits' % (n, 's' if n > 1 else ''),
+        'Set memRequestMB and memLimitMB on each containerized execution config.',
+        description='%s%s. Containers on these configs run with unbounded memory — the '
+                    'scheduler cannot protect the node, so a single heavy job can evict or '
+                    'OOM-kill its neighbors.%s' % (preview, more, cpu_note),
+        value=n, whitelistRule='exec-config-resources', whitelistItems=names)]
+
+
+_SANITY_MAX_ISSUES = 5
+_SANITY_DESC_MAX = 280
+
+
+def _score_sanity_check(messages, is_whitelisted):
+    """Port of scoreSanityCheck: one issue per distinct surviving ERROR code
+    (warning) / WARNING code (info), ERRORs first, stable code sort, capped at
+    5. Severity comes from the whitelist-FILTERED messages, never from raw
+    sanityCheckMaxSeverity."""
+    surviving = [m for m in messages
+                 if m.get('severity') in ('ERROR', 'WARNING')
+                 and not is_whitelisted('sanity-check', str(m.get('code')))]
+    if not surviving:
+        return 100, []
+
+    def by_code(severity):
+        grouped = {}
+        for m in surviving:
+            if m.get('severity') != severity:
+                continue
+            code = str(m.get('code'))
+            if code in grouped:
+                grouped[code]['count'] += 1
+            else:
+                grouped[code] = {'first': m, 'count': 1}
+        return sorted(grouped.items())
+
+    error_codes = by_code('ERROR')
+    warning_codes = by_code('WARNING')
+    issues = []
+
+    def push(code, entry, kind):
+        if len(issues) >= _SANITY_MAX_ISSUES:
+            return
+        raw = str(entry['first'].get('message') or entry['first'].get('details') or '')
+        description = raw[:_SANITY_DESC_MAX] + '…' if len(raw) > _SANITY_DESC_MAX else raw
+        issues.append(_issue(
+            'sanity-%s-%s' % (kind, code), 'runtime_config',
+            'warning' if kind == 'error' else 'info',
+            'Sanity check %s: %s' % (kind, entry['first'].get('title') or code),
+            'Review this finding on the DSS sanity check (Administration → Maintenance).',
+            description=description, value=entry['count'],
+            whitelistRule='sanity-check', whitelistItems=[code]))
+
+    for code, entry in error_codes:
+        push(code, entry, 'error')
+    for code, entry in warning_codes:
+        push(code, entry, 'warning')
+
+    return (40 if error_codes else 75), issues
+
+
 # ── live-mode ParsedData assembly (ports of the loader + parsers) ────────────
 
 _CGROUP_SKIP_KEYS = {
@@ -606,10 +760,39 @@ def _check_disabled_features(raw):
     return disabled
 
 
+def _extract_exec_resource_configs(raw_settings):
+    """Port of utils/execResources.ts extractExecResourceConfigs: absent or
+    malformed executionConfigs ⇒ None (skip semantics); present-but-empty ⇒ []
+    (scores 100). Resource fields are FLAT on each config."""
+    container = (raw_settings or {}).get('containerSettings') or {}
+    configs = container.get('executionConfigs')
+    if not isinstance(configs, list):
+        return None
+
+    def num(v):
+        return v if _is_set_number(v) else None
+
+    out = []
+    for cfg in configs:
+        if not isinstance(cfg, dict):
+            continue
+        out.append({
+            'name': str(cfg.get('name')) if cfg.get('name') is not None else '',
+            'type': str(cfg.get('type')) if cfg.get('type') is not None else None,
+            'memRequestMB': num(cfg.get('memRequestMB')),
+            'memLimitMB': num(cfg.get('memLimitMB')),
+            'cpuRequest': num(cfg.get('cpuRequest')),
+            'cpuLimit': num(cfg.get('cpuLimit')),
+        })
+    return out
+
+
 def build_parsed_data(overview, raw_settings, java_memory_settings, code_envs_payload,
-                      footprint_payload):
+                      footprint_payload, sanity_messages=None, connection_health=None,
+                      connection_dataset_usages=None, connection_llm_usages=None):
     """Assemble the ParsedData subset calculateHealthScore reads, exactly as the
-    live UI loader does."""
+    live UI loader does. The new-input kwargs default to None ⇒ key absent
+    (= TS `undefined` = the corresponding score component silently skips)."""
     parsed = dict(overview or {})  # initialData = {...overview}
     if (overview or {}).get('sparkVersion'):
         parsed['sparkSettings'] = {'Spark Version': overview['sparkVersion']}
@@ -622,6 +805,17 @@ def build_parsed_data(overview, raw_settings, java_memory_settings, code_envs_pa
     parsed['codeEnvs'] = (code_envs_payload or {}).get('codeEnvs') or []
     parsed['projectFootprint'] = (footprint_payload or {}).get('projects') or []
     parsed['projectFootprintSummary'] = (footprint_payload or {}).get('summary') or {}
+    exec_configs = _extract_exec_resource_configs(raw_settings)
+    if exec_configs is not None:
+        parsed['execResourceConfigs'] = exec_configs
+    if sanity_messages is not None:
+        parsed['sanityCheck'] = sanity_messages
+    if connection_health is not None:
+        parsed['connectionHealth'] = connection_health
+    if connection_dataset_usages is not None:
+        parsed['connectionDatasetUsages'] = connection_dataset_usages
+    if connection_llm_usages is not None:
+        parsed['connectionLlmUsages'] = connection_llm_usages
     return parsed
 
 
@@ -754,17 +948,36 @@ def calculate_health_score(parsed, thresholds=None, whitelist=None):
         cgroups_score -= 20
         rc_issues.append(cg_empty)
     cgroups_score = max(0, cgroups_score)
+
+    # Exec-config resources + DSS sanity check (rubric-mandated inputs).
+    # Input absent (old payloads, zip mode, sanity 501) ⇒ component disabled ⇒
+    # the 4×0.20 legacy components renormalize back to the old 4×0.25 behavior.
+    exec_configs = parsed.get('execResourceConfigs')
+    exec_enabled = exec_configs is not None
+    er_score, er_issues = (_score_exec_config_resources(exec_configs, is_whitelisted)
+                           if exec_enabled else (100, []))
+    sanity_msgs = parsed.get('sanityCheck')
+    sanity_enabled = sanity_msgs is not None
+    sn_score, sn_issues = (_score_sanity_check(sanity_msgs, is_whitelisted)
+                           if sanity_enabled else (100, []))
+
     rc_score = _combine_enabled_scores([
-        {'enabled': True, 'score': df_score, 'weight': 0.25},
-        {'enabled': True, 'score': jm_score, 'weight': 0.25},
-        {'enabled': True, 'score': rd_score, 'weight': 0.25},
-        {'enabled': True, 'score': cgroups_score, 'weight': 0.25},
+        {'enabled': True, 'score': df_score, 'weight': 0.20},
+        {'enabled': True, 'score': jm_score, 'weight': 0.20},
+        {'enabled': True, 'score': rd_score, 'weight': 0.20},
+        {'enabled': True, 'score': cgroups_score, 'weight': 0.20},
+        {'enabled': exec_enabled, 'score': er_score, 'weight': 0.10},
+        {'enabled': sanity_enabled, 'score': sn_score, 'weight': 0.10},
     ])
     rc_issues.extend(jm_issues)
     if df_issue:
         rc_issues.append(df_issue)
     if rd_issue:
         rc_issues.append(rd_issue)
+    if exec_enabled:
+        rc_issues.extend(er_issues)
+    if sanity_enabled:
+        rc_issues.extend(sn_issues)
 
     # Cap rule (rubric A1): impersonation on but cgroups not configured.
     impersonation_on = ((parsed.get('generalSettings') or {}).get('impersonation')
@@ -781,6 +994,21 @@ def calculate_health_score(parsed, thresholds=None, whitelist=None):
     categories.append({'category': 'runtime_config', 'label': 'Runtime Config',
                        'score': rc_score, 'weight': weights['runtime_config'], 'issues': rc_issues})
     all_issues.extend(rc_issues)
+
+    # CONNECTIONS (issues only — category stays zero-weighted, no score bar;
+    # cap-connection-broken clamps via the cap logic below)
+    if parsed.get('connectionHealth') is not None:
+        # Usage data counts as "present" only once the usage scan COMPLETED —
+        # the UI twin checks connectionUsageLoading; this twin never sets it,
+        # so absent-lifecycle means the arrays are authoritative.
+        usage_loading = parsed.get('connectionUsageLoading')
+        usage_ready = parsed.get('connectionDatasetUsages') is not None and (
+            usage_loading is None or usage_loading.get('phase') == 'done')
+        ds_usages = parsed.get('connectionDatasetUsages') if usage_ready else None
+        llm_usages = (parsed.get('connectionLlmUsages') if parsed.get('connectionLlmUsages')
+                      is not None else []) if usage_ready else None
+        all_issues.extend(_score_connection_health(parsed.get('connectionHealth'),
+                                                   ds_usages, llm_usages, is_whitelisted))
 
     overall = sum(c['score'] * c['weight'] for c in categories)
 
@@ -833,10 +1061,78 @@ def fetch_host_whitelist(client, host='local'):
     return [e for e in entries if (e.get('host') or 'local') in (eff, '*')]
 
 
-def score_host(client, host='local'):
+def fetch_sanity_messages(client, host='local'):
+    """Messages from DSS's own sanity check, or None (= component skips) on
+    any failure — including the 501 the backend serves on DSS < 14.4."""
+    try:
+        data = client.get('/api/sanity-check', host=host)
+        msgs = (data or {}).get('messages')
+        return msgs if isinstance(msgs, list) else None
+    except Exception:
+        return None
+
+
+def fetch_connection_health(client, host='local', read_timeout=120, wall_timeout=300):
+    """Per-connection rows from the (epoch-memoized) health SSE, or None (=
+    component skips) on any failure or wall-budget overrun. Rows carry
+    `status` ('ok'/'fail'/'skipped') — never an `ok` key. Proxies may buffer
+    SSE, hence the read/wall budgets: the sweep must never block on this."""
+    import json as json_mod
+    import time as time_mod
+    path = '/api/connections/health'
+    try:
+        resp = client._do('GET', path, host=client._effective_host(path, host),
+                          timeout=read_timeout, stream=True)
+        client._raise_for_status(resp, path, host)
+        rows = []
+        started = time_mod.time()
+        event, data_lines = None, []
+        try:
+            for raw in resp.iter_lines(decode_unicode=True):
+                if time_mod.time() - started > wall_timeout:
+                    return None
+                line = (raw or '').strip('\r')
+                if line == '':
+                    if data_lines:
+                        try:
+                            payload = json_mod.loads('\n'.join(data_lines))
+                        except ValueError:
+                            payload = None
+                        if event == 'conn' and isinstance(payload, dict):
+                            rows.append(payload)
+                        elif event == 'error':
+                            return None
+                    event, data_lines = None, []
+                elif line.startswith('event:'):
+                    event = line[6:].strip()
+                elif line.startswith('data:'):
+                    data_lines.append(line[5:].strip())
+        finally:
+            resp.close()
+        return rows
+    except Exception:
+        return None
+
+
+def fetch_connection_usages(client, host='local'):
+    """Final payload of the (epoch-memoized) usages SSE ({datasetUsages,
+    llmUsages, ...}), or None on any failure."""
+    try:
+        return client.stream_final('/api/connections/usages', host=host)
+    except Exception:
+        return None
+
+
+def score_host(client, host='local', collect=None):
     """Fetch every score input from the backend for `host` and compute the
     score. Heavy inputs (code-envs, footprint) may raise ScanTimeout — callers
-    surface that as scan_running."""
+    surface that as scan_running. Sanity + connection health are best-effort
+    (None ⇒ their components skip); the expensive connection-usage scan runs
+    ONLY when at least one connection test failed (escalate-on-demand), so a
+    single memoized scan enriches every failing connection.
+
+    `collect`: optional dict the caller passes to receive the raw fetched
+    payloads (snapshot zips) — filled on success only."""
     from .tools_impl import _parse_java_memory
 
     overview = client.get('/api/overview', host=host)
@@ -850,6 +1146,32 @@ def score_host(client, host='local'):
                            progress_path='/api/code-envs/progress')
     footprint = client.get('/api/project-footprint', host=host, heavy=True,
                            progress_path='/api/project-footprint/progress')
-    parsed = build_parsed_data(overview, raw_settings, java, code_envs, footprint)
-    return calculate_health_score(parsed, thresholds,
-                                  whitelist=fetch_host_whitelist(client, host))
+    sanity = fetch_sanity_messages(client, host)
+    conn_health = fetch_connection_health(client, host)
+    usages = None
+    ds_usages = llm_usages = None
+    if conn_health is not None and any(c.get('status') == 'fail' for c in conn_health):
+        usages = fetch_connection_usages(client, host)
+        if usages is not None:
+            ds_usages = usages.get('datasetUsages') or []
+            llm_usages = usages.get('llmUsages') or []
+    whitelist = fetch_host_whitelist(client, host)
+    parsed = build_parsed_data(overview, raw_settings, java, code_envs, footprint,
+                               sanity_messages=sanity, connection_health=conn_health,
+                               connection_dataset_usages=ds_usages,
+                               connection_llm_usages=llm_usages)
+    score = calculate_health_score(parsed, thresholds, whitelist=whitelist)
+    if collect is not None:
+        collect.update({
+            'overview': overview,
+            'settings-raw': raw_settings,
+            'java-memory': java,
+            'code-envs': code_envs,
+            'project-footprint': footprint,
+            'sanity': sanity,
+            'connection-health': conn_health,
+            'connection-usages': usages,
+            'whitelist': whitelist,
+            'score': score,
+        })
+    return score

@@ -28,6 +28,22 @@
             "type": "BOOLEAN",
             "defaultValue": false,
             "mandatory": false
+        },
+        {
+            "name": "snapshot_enabled",
+            "label": "Write daily snapshot zip",
+            "description": "Zip every raw scan payload the sweep consumed (per host) into a managed folder, named admin-toolkit-snapshot-<YYMMDDHHMM>.zip",
+            "type": "BOOLEAN",
+            "defaultValue": true,
+            "mandatory": false
+        },
+        {
+            "name": "snapshot_folder",
+            "label": "Snapshot folder (id or name)",
+            "description": "Managed folder in this project to receive snapshot zips; empty = find-or-create 'admin-toolkit-snapshots'",
+            "type": "STRING",
+            "defaultValue": "",
+            "mandatory": false
         }
     ]
 }

@@ -182,3 +182,30 @@ This rubric is its replacement input: category weights favor
 system-capacity/runtime-config (the infra-admin persona), and the
 always-lead critical rules cap the overall score into the critical band
 (see `useHealthScore.ts` / `health.py`).
+
+Three further rubric-mandated inputs are scored since v0.4.636 / agents
+v0.1.013 (both twins):
+
+- **Broken actively-used connections** — `cap-connection-broken` (critical,
+  caps the score) when a connection fails its test AND the usage scan shows
+  real usage; failing-but-unused = info; failing with usage not yet scanned
+  = warning ("unverified"). *Documented deviation from the rule text above:
+  connection health results carry no recency timestamp, so only "currently
+  failing" is knowable — "broken recently" is not implementable without
+  backend history.* **Sweep escalation rule**: the daily triage sweep (and
+  `score_host`) runs the expensive full-project usage scan ONLY when at
+  least one connection test fails, after all tests complete, so one
+  (epoch-memoized) scan enriches every failing connection. Per-connection
+  test deadline: 10 s.
+- **Exec configs without memory requests/limits** — `runtime_config`
+  component (weight 0.10): KUBERNETES exec configs with `memRequestMB` or
+  `memLimitMB` unset/<=0; CPU-missing is mentioned in the description only.
+- **DSS's own sanity check** — `runtime_config` component (weight 0.10):
+  40 with any surviving ERROR / 75 with only WARNINGs; one issue per
+  distinct code (max 5, ERRORs first), computed from whitelist-filtered
+  messages.
+
+All three honor the per-item whitelist (rules `connection-broken`,
+`exec-config-resources`, `sanity-check`). When an input is absent (older
+payloads, uploaded zips, DSS <14.4 sanity 501) its component silently skips
+and the remaining weights renormalize — legacy scores are unchanged.

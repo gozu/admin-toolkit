@@ -10,19 +10,25 @@ from .. import health, tools_impl
 from ..errors import ScanTimeout, ToolkitError
 
 
-def sweep_fleet(client, hosts=None, score_threshold=75):
+def sweep_fleet(client, hosts=None, score_threshold=75, payload_sink=None):
     """Score each host; returns {'hosts': [ranked rows], 'flagged': [...ids]}.
 
     A row: {host, nodeId?, score, status, categoryScores, topIssues, signals?,
     error?}. Hosts whose heavy scans are still warming get status='scan_running'
     and sort last (unknown ≠ healthy, but they can't be ranked yet).
+
+    `payload_sink`: optional dict — filled with {host_id: raw scan payloads}
+    for the snapshot zip (empty for hosts whose scoring errored).
     """
     ids = hosts or [h.get('id') for h in client.list_hosts()]
     rows = []
     for host_id in ids:
         row = {'host': host_id}
+        collect = {} if payload_sink is not None else None
+        if payload_sink is not None:
+            payload_sink[host_id] = collect
         try:
-            score = health.score_host(client, host=host_id)
+            score = health.score_host(client, host=host_id, collect=collect)
             row.update({
                 'score': score['overall'],
                 'status': score['status'],

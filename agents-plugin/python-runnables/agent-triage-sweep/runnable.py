@@ -77,7 +77,10 @@ class MyRunnable(Runnable):
         threshold = settings.get('triage_score_threshold', 75)
         run_id = 'triage-%d' % int(time.time())
 
-        result = sweep.sweep_fleet(client, hosts=hosts, score_threshold=threshold)
+        snapshot_enabled = _bool(self.config.get('snapshot_enabled'), default=True)
+        payload_sink = {} if snapshot_enabled else None
+        result = sweep.sweep_fleet(client, hosts=hosts, score_threshold=threshold,
+                                   payload_sink=payload_sink)
         rows = result['hosts']
 
         llm_id = settings.get('default_llm_id')
@@ -99,10 +102,21 @@ class MyRunnable(Runnable):
 
         written = store.persist_sweep(settings['triage_connection'], rows, run_id, llm_id=llm_id)
 
+        # Snapshot zip (schema-free record of every scan payload the sweep
+        # consumed). Failures become a digest warning, never a sweep failure.
+        snapshot_info = None
+        snapshot_error = None
+        if snapshot_enabled:
+            try:
+                snapshot_info = self._write_snapshot(payload_sink, result, rows, run_id)
+            except Exception as exc:
+                snapshot_error = '%s: %s' % (type(exc).__name__, str(exc)[:200])
+
         digest_error = None
         if not _bool(self.config.get('skip_email')) and settings.get('triage_recipient'):
             try:
-                self._send_digest(settings, result, rows, config_warning)
+                self._send_digest(settings, result, rows, config_warning,
+                                  snapshot_error=snapshot_error)
             except Exception as exc:
                 digest_error = '%s: %s' % (type(exc).__name__, str(exc)[:200])
 
@@ -116,13 +130,47 @@ class MyRunnable(Runnable):
             'rowsWritten': written,
             'digestError': digest_error,
             'configWarning': config_warning,
+            'snapshot': snapshot_info,
+            'snapshotError': snapshot_error,
         }
         if errored:
             raise RuntimeError('Triage completed with host errors: %s — summary: %s'
                                % (errored, json.dumps(summary, default=str)))
         return json.dumps(summary, default=str)
 
-    def _send_digest(self, settings, result, rows, config_warning=None):
+    def _write_snapshot(self, payload_sink, result, rows, run_id):
+        """One zip of all raw scan payloads (+ per-host triage row) per run,
+        into the configured managed folder (empty ⇒ find-or-create the
+        default) in the scenario's project."""
+        import dataiku
+        from atk_agent_common import snapshot
+        from atk_agent_common.triage.provision import MACRO_PROJECT_KEY
+        for row in rows:
+            payload_sink.setdefault(row['host'], {})['triage-row'] = row
+        try:
+            import os
+            import atk_agent_common
+            plugin_json = os.path.join(os.path.dirname(atk_agent_common.__file__),
+                                       '..', '..', 'plugin.json')
+            with open(plugin_json) as fh:
+                agents_version = (json.load(fh) or {}).get('version')
+        except Exception:
+            agents_version = None
+        stamp = time.strftime('%y%m%d%H%M')
+        manifest = {
+            'generatedAt': time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+            'stamp': stamp,
+            'runId': run_id,
+            'hosts': [r['host'] for r in rows],
+            'flagged': result['flagged'],
+            'scoreThreshold': result['scoreThreshold'],
+            'agentsPluginVersion': agents_version,
+        }
+        project = dataiku.api_client().get_project(self.project_key or MACRO_PROJECT_KEY)
+        return snapshot.write_snapshot(project, payload_sink, manifest, stamp,
+                                       folder_ref=self.config.get('snapshot_folder') or '')
+
+    def _send_digest(self, settings, result, rows, config_warning=None, snapshot_error=None):
         import dataiku
         from atk_agent_common.triage.provision import MACRO_PROJECT_KEY, resolve_mail_channel
         client = dataiku.api_client()
@@ -131,6 +179,8 @@ class MyRunnable(Runnable):
         lines = ['Daily DSS fleet health triage (threshold %s):' % result['scoreThreshold'], '']
         if config_warning:
             lines += ['CONFIG WARNING: %s' % config_warning, '']
+        if snapshot_error:
+            lines += ['SNAPSHOT WARNING: snapshot zip failed: %s' % snapshot_error, '']
         for row in rows:
             score = row.get('score')
             lines.append('%s — %s (%s)' % (row['host'],

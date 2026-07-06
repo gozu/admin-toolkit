@@ -898,12 +898,29 @@ without changing the TS first). Parity gate: `scripts/agents/score_parity.py`
 runs the REAL TS path against the Python port on identical live payloads;
 tolerance ±2, Δ=0.00 in every category on tam-global at last check.
 
+Since v0.1.013 the score also consumes three further rubric inputs on both
+twins — broken actively-used connections (`cap-connection-broken` caps the
+score; the expensive usage scan runs only when ≥1 connection test fails),
+K8s exec configs missing memory requests/limits, and DSS's own sanity check
+— see `docs/agent-workflows/severity-rubric.md` § Health score.
+
 Daily loop: `python-runnables/agent-triage-sweep` (global admin) — deterministic
 sweep (`triage/sweep.py`, no LLM in the ranking) → one Mesh completion per
 flagged host drafts a grounded recommendation → upsert into
 `agents.agent_triage_daily` → digest email → raises on host errors so the
 scenario's failure reporter fires. Provisioning is ensure-or-repair (daily
 trigger, END_OF_RUN reporter, save→refetch→verify).
+
+### Daily snapshot zips
+
+Each sweep run (param `snapshot_enabled`, default **true**) writes one
+schema-free zip of every raw scan payload it consumed — per host: overview,
+raw settings, java-memory, code-envs, project-footprint, connection health,
+usages (when the escalation ran), sanity, whitelist, computed score, triage
+row — plus a `manifest.json`, named `admin-toolkit-snapshot-<YYMMDDHHMM>.zip`,
+into a managed folder in the scenario's project (`snapshot_folder` param:
+folder id or name; empty = find-or-create `admin-toolkit-snapshots`).
+Snapshot failures become a digest warning, never a sweep failure.
 
 ---
 

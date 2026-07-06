@@ -102,6 +102,17 @@ class MyRunnable(Runnable):
 
         written = store.persist_sweep(settings['triage_connection'], rows, run_id, llm_id=llm_id)
 
+        # Auto-remediation tier (admin-opted actions only; failures become a
+        # digest warning, never a sweep failure).
+        auto_summary = None
+        auto_error = None
+        if not _bool(self.config.get('skip_auto_remediate')):
+            try:
+                from atk_agent_common.triage import auto_remediate
+                auto_summary = auto_remediate.run_auto_remediation(client, settings, rows, run_id)
+            except Exception as exc:
+                auto_error = '%s: %s' % (type(exc).__name__, str(exc)[:300])
+
         # Snapshot zip (schema-free record of every scan payload the sweep
         # consumed). Failures become a digest warning, never a sweep failure.
         snapshot_info = None
@@ -116,7 +127,8 @@ class MyRunnable(Runnable):
         if not _bool(self.config.get('skip_email')) and settings.get('triage_recipient'):
             try:
                 self._send_digest(settings, result, rows, config_warning,
-                                  snapshot_error=snapshot_error)
+                                  snapshot_error=snapshot_error,
+                                  auto_summary=auto_summary, auto_error=auto_error)
             except Exception as exc:
                 digest_error = '%s: %s' % (type(exc).__name__, str(exc)[:200])
 
@@ -132,6 +144,8 @@ class MyRunnable(Runnable):
             'configWarning': config_warning,
             'snapshot': snapshot_info,
             'snapshotError': snapshot_error,
+            'autoRemediation': auto_summary,
+            'autoRemediationError': auto_error,
         }
         if errored:
             raise RuntimeError('Triage completed with host errors: %s — summary: %s'
@@ -170,7 +184,8 @@ class MyRunnable(Runnable):
         return snapshot.write_snapshot(project, payload_sink, manifest, stamp,
                                        folder_ref=self.config.get('snapshot_folder') or '')
 
-    def _send_digest(self, settings, result, rows, config_warning=None, snapshot_error=None):
+    def _send_digest(self, settings, result, rows, config_warning=None, snapshot_error=None,
+                     auto_summary=None, auto_error=None):
         import dataiku
         from atk_agent_common.triage.provision import MACRO_PROJECT_KEY, resolve_mail_channel
         client = dataiku.api_client()
@@ -181,6 +196,7 @@ class MyRunnable(Runnable):
             lines += ['CONFIG WARNING: %s' % config_warning, '']
         if snapshot_error:
             lines += ['SNAPSHOT WARNING: snapshot zip failed: %s' % snapshot_error, '']
+        lines += self._auto_remediation_lines(auto_summary, auto_error)
         for row in rows:
             score = row.get('score')
             lines.append('%s — %s (%s)' % (row['host'],
@@ -193,3 +209,28 @@ class MyRunnable(Runnable):
         body = '\n'.join(lines)
         channel.send(MACRO_PROJECT_KEY, [settings['triage_recipient']],
                      '[Admin Toolkit / Agents] Daily fleet health triage', body)
+
+    @staticmethod
+    def _auto_remediation_lines(auto_summary, auto_error):
+        """Digest section for the auto-remediation tier — every executed fix
+        (freed GB + audit row id) and every skip with its reason. Silent only
+        when the tier is off and nothing errored."""
+        if auto_error:
+            return ['AUTO-REMEDIATION WARNING: tier crashed: %s' % auto_error, '']
+        if not auto_summary or not auto_summary.get('enabled'):
+            return []
+        lines = ['Auto-remediation (opted-in: %s):' % ', '.join(auto_summary['enabled'])]
+        for done in auto_summary.get('executed') or []:
+            lines.append('  ✓ %s %s (finding %s) — freed %.2f GB, audit #%s'
+                         % (done['host'], done['action'], done.get('findingId'),
+                            done.get('freedGB') or 0, done.get('auditId')))
+            if done.get('warning'):
+                lines.append('    !! %s' % done['warning'])
+        for skip in auto_summary.get('skipped') or []:
+            lines.append('  – %s %s: %s' % (skip.get('host'),
+                                            skip.get('action') or '(all)', skip.get('reason')))
+        if not (auto_summary.get('executed') or auto_summary.get('skipped')):
+            lines.append('  (no matching findings today)')
+        lines += ['  Total freed: %.2f GB across %d object(s).'
+                  % (auto_summary.get('totalFreedGB') or 0, auto_summary.get('totalObjects') or 0), '']
+        return lines

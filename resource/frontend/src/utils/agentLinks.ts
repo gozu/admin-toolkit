@@ -79,6 +79,14 @@ export function dssLinkForAction(
         : null;
     case 'k8s-exec-config-tune':
       return `${base}/admin/general/containers/`;
+    case 'settings-set':
+      return `${base}/admin/general/`;
+    case 'code-env-consolidate':
+      return t.targetEnvName
+        ? `${base}/admin/code-envs/design/${enc(String(t.language || 'python'))}/${enc(String(t.targetEnvName))}/`
+        : null;
+    // log-cleanup / docker-prune / k8s-apply-fix act on host-level objects
+    // with no DSS page — no link, same as image-delete.
     case 'image-delete':
     default:
       return null;

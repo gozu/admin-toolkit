@@ -23,6 +23,17 @@ If a tool returns an error (red-locked, kill-switch off, token rejected/expired)
 message and remediation; never work around a gate. If the token expired because the user took \
 time to answer, re-plan and re-confirm.
 
+Remediation-suite specifics:
+- POST-FIX VERIFICATION: when an execute result carries a `verification` object \
+(k8s-apply-fix verifyRule) always report it — "rule X no longer fires" or "rule X STILL \
+fires; the fix did not resolve the finding". Never omit a failed verification.
+- MANUAL SCRIPTS: when a plan carries `manualDaemonScript` (docker daemon.json limits), \
+relay the script verbatim in a code block as a manual root task for the admin. The toolkit \
+never executes it and neither do you.
+- POLICY REFUSALS (kubectl whitelist, settings-path blacklist, rotated-log whitelist) are \
+enforced below you in macro/executor code. Relay the refusal reason; never reword a command \
+or path to get around one.
+
 Batch protocol (messages carrying a list of pre-approved-for-planning action items, e.g. a \
 handoff from another agent's checklist): plan EVERY listed item — one plan_admin_action call \
 per item, passing the item's item_ref verbatim so plans and audit rows stay traceable to the \
@@ -104,7 +115,16 @@ class OpsActuatorAgent(BaseLLM):
                          '{name, lang}; db-vacuum/db-analyze {connection, table}; image-delete '
                          '{provider, cutoff, images}; plugin-deploy {pluginId, targetHostId}; '
                          'k8s-exec-config-tune {configName, changes:{memRequestMB|memLimitMB|'
-                         'cpuRequest|cpuLimit}} (ground in compute_cost/k8s evidence first). '
+                         'cpuRequest|cpuLimit}} (ground in compute_cost/k8s evidence first); '
+                         'log-cleanup {roots?, minAgeDays?, maxDeleteGB?} (rotated logs only, '
+                         'whitelisted DIP_HOME roots); docker-prune {mode: builder|image, '
+                         'keepStorageGB?, filterUntilHours?}; k8s-apply-fix {clusterId, '
+                         'commands: [kubectl arg strings], manifestYaml?, execConfigPatch?: '
+                         '{configName, changes}, verifyRule?: k8s-insights rule id to re-check '
+                         'after execution}; code-env-consolidate {sourceEnvName, targetEnvName, '
+                         'language?, projectKeys?, usageTypes?, retireSource?}; settings-set '
+                         '{path: dot/index path into DSS general settings, newValue} '
+                         '(security/auth/licensing paths are blacklisted). '
                          'item_ref {batchId, itemId} (optional): pass through verbatim when the '
                          'request came from an action-item checklist.'
                          % ', '.join(allowed))))

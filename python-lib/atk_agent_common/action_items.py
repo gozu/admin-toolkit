@@ -18,7 +18,13 @@ _RISKS = ('red', 'amber', 'green')
 
 _TARGET_SHAPES = ('project-delete {projectKey}; code-env-delete {name, lang}; '
                   'db-vacuum/db-analyze {connection, table}; image-delete {provider, cutoff, images}; '
-                  'plugin-deploy {pluginId, targetHostId}; k8s-exec-config-tune {configName, changes}')
+                  'plugin-deploy {pluginId, targetHostId}; k8s-exec-config-tune {configName, changes}; '
+                  'log-cleanup {roots?, minAgeDays?, maxDeleteGB?}; '
+                  'docker-prune {mode: builder|image, keepStorageGB?, filterUntilHours?}; '
+                  'k8s-apply-fix {clusterId, commands[], manifestYaml?, execConfigPatch?, verifyRule?}; '
+                  'code-env-consolidate {sourceEnvName, targetEnvName, language?, projectKeys?, '
+                  'usageTypes?, retireSource?}; '
+                  'settings-set {path, newValue}')
 
 TOOL_DESCRIPTION = (
     'Propose up to %d structured admin action items derived from your findings. Each item: '

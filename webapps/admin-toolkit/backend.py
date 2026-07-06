@@ -181,9 +181,12 @@ from adk_backend.routes.email_tools import bp as email_tools_bp
 from adk_backend.routes.feedback import bp as feedback_bp
 from adk_backend.routes.footprint import bp as footprint_bp
 from adk_backend.routes.hosts import bp as hosts_bp
+from adk_backend.routes.docker_governor import bp as docker_governor_bp
 from adk_backend.routes.image_cleaner import bp as image_cleaner_bp
+from adk_backend.routes.k8s_apply import bp as k8s_apply_bp
 from adk_backend.routes.k8s_insights import bp as k8s_insights_bp
 from adk_backend.routes.llm_tools import bp as llm_tools_bp
+from adk_backend.routes.log_cleaner import bp as log_cleaner_bp
 from adk_backend.routes.logs import bp as logs_bp
 from adk_backend.routes.misc import bp as misc_bp
 from adk_backend.routes.overview import bp as overview_bp
@@ -209,9 +212,12 @@ app.register_blueprint(email_tools_bp)
 app.register_blueprint(feedback_bp)
 app.register_blueprint(footprint_bp)
 app.register_blueprint(hosts_bp)
+app.register_blueprint(docker_governor_bp)
 app.register_blueprint(image_cleaner_bp)
+app.register_blueprint(k8s_apply_bp)
 app.register_blueprint(k8s_insights_bp)
 app.register_blueprint(llm_tools_bp)
+app.register_blueprint(log_cleaner_bp)
 app.register_blueprint(logs_bp)
 app.register_blueprint(misc_bp)
 app.register_blueprint(overview_bp)

@@ -2,7 +2,12 @@
     "meta": {
         "label": "Code Studio template-replace: copy libName files",
         "description": "Copy resource files from one Code Studio libName directory to another. Runs as the dataiku service account so it can write into <DIP_HOME>/lib/code_studio/ regardless of webapp impersonation.",
-        "icon": "icon-files-o"
+        "icon": "icon-files-o",
+        "macroRoles": [
+            {
+                "type": "PROJECT_MACROS"
+            }
+        ]
     },
     "impersonate": false,
     "requiresGlobalAdmin": true,

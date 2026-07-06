@@ -2,7 +2,12 @@
     "meta": {
         "label": "Process metrics",
         "description": "Capture per-process CPU and memory usage from the target host via `ps`. Runs as the dataiku service account so it can see all processes regardless of webapp impersonation.",
-        "icon": "icon-tasks"
+        "icon": "icon-tasks",
+        "macroRoles": [
+            {
+                "type": "PROJECT_MACROS"
+            }
+        ]
     },
     "impersonate": false,
     "requiresGlobalAdmin": true,

@@ -12,6 +12,9 @@ _DBHEALTH_MACRO_ID = 'pyrunnable_admin-toolkit_dbhealth-query'
 _IMAGE_CLEANER_MACRO_ID = 'pyrunnable_admin-toolkit_image-cleaner'
 _K8S_INSIGHTS_MACRO_ID = 'pyrunnable_admin-toolkit_k8s-insights'
 _CRU_AUDIT_MACRO_ID = 'pyrunnable_admin-toolkit_cru-audit'
+_LOG_CLEANER_MACRO_ID = 'pyrunnable_admin-toolkit_log-cleaner'
+_DOCKER_GOVERNOR_MACRO_ID = 'pyrunnable_admin-toolkit_docker-governor'
+_K8S_APPLY_MACRO_ID = 'pyrunnable_admin-toolkit_k8s-apply'
 
 
 def _host_metrics_macro(client: Any) -> Dict[str, Any]:
@@ -102,6 +105,45 @@ def _cru_audit_macro(client: Any, **params: Any) -> Dict[str, Any]:
     if not isinstance(result, dict):
         return {'ok': False, 'error': f'macro returned non-dict: {type(result).__name__}'}
     return result
+
+
+def _generic_op_macro(client: Any, macro_id: str, operation: str, **params: Any) -> Dict[str, Any]:
+    """Shared runner for {operation, **params} macros (log-cleaner,
+    docker-governor, k8s-apply). None params are dropped; non-dict results
+    become a structured error."""
+    project = _resolve_macro_project(client)
+    macro = project.get_macro(macro_id)
+    macro_params: Dict[str, Any] = {'operation': operation}
+    for key, value in params.items():
+        if value is not None:
+            macro_params[key] = value
+    run_id = macro.run(params=macro_params, wait=True)
+    result = macro.get_result(run_id, as_type='json')
+    if not isinstance(result, dict):
+        return {'ok': False, 'error': f'macro returned non-dict: {type(result).__name__}'}
+    return result
+
+
+def _log_cleaner_macro(client: Any, operation: str, **params: Any) -> Dict[str, Any]:
+    """Invoke the log-cleaner macro (operation ∈ {scan, delete}). Extra params:
+    roots (CSV), min_age_days, max_delete_gb, dry_run. The rotated-log
+    whitelist is enforced inside the macro itself."""
+    return _generic_op_macro(client, _LOG_CLEANER_MACRO_ID, operation, **params)
+
+
+def _docker_governor_macro(client: Any, operation: str, **params: Any) -> Dict[str, Any]:
+    """Invoke the docker-governor macro (operation ∈ {df, usage-scan,
+    builder-prune, image-prune, daemon-config-script}). Extra params:
+    keep_storage_gb, filter_until_hours, dry_run. Fixed-argv policy is
+    enforced inside the macro."""
+    return _generic_op_macro(client, _DOCKER_GOVERNOR_MACRO_ID, operation, **params)
+
+
+def _k8s_apply_macro(client: Any, operation: str, **params: Any) -> Dict[str, Any]:
+    """Invoke the k8s-apply macro (operation ∈ {preview, execute}). Extra
+    params: cluster_id, commands_json, manifest_yaml, dry_run. The kubectl
+    verb/kind/namespace policy is enforced inside the macro."""
+    return _generic_op_macro(client, _K8S_APPLY_MACRO_ID, operation, **params)
 
 
 def _k8s_insights_macro(client: Any, operation: str = 'audit', **params: Any) -> Dict[str, Any]:

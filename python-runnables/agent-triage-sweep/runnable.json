@@ -2,7 +2,12 @@
     "meta": {
         "label": "Agents: daily health triage sweep",
         "description": "Deterministically scores every configured DSS host with the toolkit health score, drafts LLM recommendations for hosts under the threshold, persists to agents.agent_triage_daily, and emails a digest. RAISES if any host errors, so the scheduling scenario's failure reporter fires.",
-        "icon": "icon-stethoscope"
+        "icon": "icon-stethoscope",
+        "macroRoles": [
+            {
+                "type": "PROJECT_MACROS"
+            }
+        ]
     },
     "impersonate": false,
     "requiresGlobalAdmin": true,
@@ -35,6 +40,14 @@
             "description": "Zip every raw scan payload the sweep consumed (per host) into a managed folder, named admin-toolkit-snapshot-<YYMMDDHHMM>.zip",
             "type": "BOOLEAN",
             "defaultValue": true,
+            "mandatory": false
+        },
+        {
+            "name": "skip_auto_remediate",
+            "label": "Skip auto-remediation",
+            "description": "Skip the admin-opted autonomous fixes (auto_remediate_actions) for this run.",
+            "type": "BOOLEAN",
+            "defaultValue": false,
             "mandatory": false
         },
         {

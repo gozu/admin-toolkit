@@ -1,0 +1,44 @@
+{
+    "meta": {
+        "label": "Docker Cache Governor",
+        "description": "Inspect docker disk usage (system df / DockerRootDir vs DIP_HOME filesystem) and run gated prunes (builder prune with --keep-storage, image prune) with fixed argv — no shell, no --all, docker-group access only. daemon.json changes are only ever emitted as a manual sudo script.",
+        "icon": "icon-hdd",
+        "macroRoles": [{"type": "PROJECT_MACROS"}]
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": [
+        {
+            "name": "operation",
+            "label": "Operation",
+            "description": "df, usage-scan, builder-prune, image-prune, or daemon-config-script.",
+            "type": "STRING",
+            "mandatory": true
+        },
+        {
+            "name": "keep_storage_gb",
+            "label": "Builder keep-storage (GB)",
+            "description": "builder-prune keeps this much build cache; also the cap in the emitted daemon.json script.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 20
+        },
+        {
+            "name": "filter_until_hours",
+            "label": "Image prune age filter (hours)",
+            "description": "image-prune only removes dangling images older than this. 0 = no age filter.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 0
+        },
+        {
+            "name": "dry_run",
+            "label": "Dry run",
+            "description": "docker prune has no native dry-run: when true, prune operations return the current df RECLAIMABLE estimate instead of executing.",
+            "type": "BOOLEAN",
+            "mandatory": false,
+            "defaultValue": true
+        }
+    ]
+}

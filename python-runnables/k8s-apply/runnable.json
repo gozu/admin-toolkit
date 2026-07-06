@@ -1,0 +1,49 @@
+{
+    "meta": {
+        "label": "K8S Apply (gated)",
+        "description": "Policy-gated kubectl mutations on a DSS-attached cluster: verb/kind/namespace whitelist enforced INSIDE this macro (apply/patch/delete/label/annotate/scale/rollout-restart; no secrets, no cluster-scoped kinds, no --all/--force). preview runs read-only twins and server dry-runs; execute stops at the first failure. The read-only K8S Insights macro is untouched.",
+        "icon": "icon-wrench",
+        "macroRoles": [{"type": "PROJECT_MACROS"}]
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": [
+        {
+            "name": "operation",
+            "label": "Operation",
+            "description": "preview or execute.",
+            "type": "STRING",
+            "mandatory": true
+        },
+        {
+            "name": "cluster_id",
+            "label": "Cluster ID",
+            "type": "STRING",
+            "mandatory": true
+        },
+        {
+            "name": "commands_json",
+            "label": "Commands JSON",
+            "description": "JSON array of kubectl arg strings (without the word kubectl). Use the literal {manifest} placeholder with `apply -f {manifest}`.",
+            "type": "STRING",
+            "mandatory": true
+        },
+        {
+            "name": "manifest_yaml",
+            "label": "Manifest YAML",
+            "description": "Manifest for apply commands; policy-validated per document.",
+            "type": "TEXTAREA",
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
+            "name": "dry_run",
+            "label": "Dry run",
+            "description": "When true, execute behaves like preview.",
+            "type": "BOOLEAN",
+            "mandatory": false,
+            "defaultValue": true
+        }
+    ]
+}

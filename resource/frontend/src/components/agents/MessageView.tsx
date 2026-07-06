@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { fetchJson } from '../../utils/api';
 import { ActivityChips } from './ActivityChips';
 import { PlanCard } from './PlanCard';
 import { ExecutionCard } from './ExecutionCard';
@@ -10,6 +12,34 @@ import type {
   PlanCardData,
   Segment,
 } from '../../state/agentsChatStore';
+
+/** Copy the turn's native dku-trace JSON (for Trace Explorer's "Paste a new
+ * trace"). The backend keeps only the last few traces — expiry is normal. */
+function TraceChip({ traceId }: { traceId: string }) {
+  const [state, setState] = useState<'idle' | 'copied' | 'expired'>('idle');
+  const copy = async () => {
+    try {
+      const data = await fetchJson<{ available: boolean; trace?: unknown }>(
+        `/api/agents/last-trace?id=${encodeURIComponent(traceId)}`,
+      );
+      if (!data.available || !data.trace) throw new Error('expired');
+      await navigator.clipboard.writeText(JSON.stringify(data.trace, null, 2));
+      setState('copied');
+    } catch {
+      setState('expired');
+    }
+    setTimeout(() => setState('idle'), 2500);
+  };
+  return (
+    <button
+      onClick={() => void copy()}
+      className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+      title="Copy this turn's trace JSON — paste it into Trace Explorer for instant inspection"
+    >
+      {state === 'copied' ? 'trace copied ✓' : state === 'expired' ? 'trace expired' : 'copy trace'}
+    </button>
+  );
+}
 
 export function MessageView({
   message,
@@ -74,6 +104,11 @@ export function MessageView({
         }
         return <ExecutionCard key={i} execution={segment.execution} onShowAudit={onShowAudit} />;
       })}
+      {message.traceId && (
+        <div className="pt-0.5">
+          <TraceChip traceId={message.traceId} />
+        </div>
+      )}
     </div>
   );
 }

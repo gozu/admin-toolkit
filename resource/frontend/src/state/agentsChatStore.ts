@@ -84,6 +84,9 @@ export interface ChatMessage {
   // Plain text sent back as history (assistant = concatenated text segments).
   content: string;
   segments: Segment[];
+  /** Native dku-trace id for this turn — fetchable from /api/agents/last-trace
+   * while it's still in the backend's short ring buffer. */
+  traceId?: string;
 }
 
 export interface Conversation {
@@ -92,6 +95,8 @@ export interface Conversation {
   streaming: boolean;
   error: string | null;
   lastDurationMs?: number;
+  /** DSS-relative path of the Trace Explorer webapp on this host, if one exists. */
+  traceExplorerPath?: string;
 }
 
 interface AgentsChatState {
@@ -500,7 +505,21 @@ export async function sendAgentMessage(agentId: string, text: string): Promise<v
         const data = (payload.eventData || {}) as Record<string, unknown>;
         conv = updateAssistant(conv, (segs) => applyAgentEvent(segs, kind, data));
       } else if (frame.event === 'done') {
-        conv = { ...conv, lastDurationMs: Number(payload.durationMs) || undefined };
+        conv = {
+          ...conv,
+          lastDurationMs: Number(payload.durationMs) || undefined,
+          traceExplorerPath: payload.traceExplorerPath
+            ? String(payload.traceExplorerPath)
+            : conv.traceExplorerPath,
+        };
+        if (payload.traceId) {
+          const messages = conv.messages.slice();
+          const last = messages[messages.length - 1];
+          if (last?.role === 'assistant') {
+            messages[messages.length - 1] = { ...last, traceId: String(payload.traceId) };
+            conv = { ...conv, messages };
+          }
+        }
       } else if (frame.event === 'error') {
         conv = { ...conv, error: String(payload.message || 'Agent stream failed') };
       }

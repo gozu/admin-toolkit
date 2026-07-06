@@ -14,7 +14,9 @@ Does, in order:
   3. plugin settings: codeEnvName (kernel env resolution reads ONLY this) + params
      (backend_url, default_llm_id, optional passwords; enable_red_actions stays False)
   4. ensure the ops project (containerMode NONE) + 11 tool instances + 3 agent instances
-  5. smoke: list-hosts probe + config-inspect through the real tool runtime
+  5. agent interaction logging (DSS >= 14.5): logging dataset + FULL-content
+     logging on all 3 agents; Trace Explorer webapp is a one-time manual step
+  6. smoke: list-hosts probe + config-inspect through the real tool runtime
 """
 
 import argparse
@@ -29,6 +31,7 @@ import dataikuapi
 HERE = pathlib.Path(__file__).parent
 sys.path.insert(0, str(HERE))
 
+from interaction_logging import MANUAL_WEBAPP_STEP, ensure_interaction_logging  # noqa: E402
 from test_agent import AGENT_TYPES, ensure_agent  # noqa: E402
 from test_tools import PLUGIN_ID, TOOLS, ensure_tool, run_tool  # noqa: E402
 
@@ -122,6 +125,24 @@ def main():
     for name, component in AGENT_TYPES.items():
         ensure_agent(project, name, component, args.llm_id)
     print('%d agent instances ready (llm=%s)' % (len(AGENT_TYPES), args.llm_id))
+
+    # Native interaction logging (DSS >= 14.5); a pre-14.5 instance degrades
+    # with a message — everything provisioned above still works without it.
+    try:
+        cfg = plugin.get_settings().get_raw().get('config', {})
+        connection = cfg.get('triage_connection') or 'filesystem_managed'
+        logging_summary = ensure_interaction_logging(project, set(AGENT_TYPES), connection)
+        print('interaction logging: dataset %s on %s%s, enabled on %d agent(s)'
+              % (logging_summary['dataset'], connection,
+                 ' (created)' if logging_summary['created'] else '',
+                 len(logging_summary['agents'])))
+        if logging_summary['traceExplorer']:
+            print('Trace Explorer webapp: %(name)s (%(id)s)' % logging_summary['traceExplorer'])
+        else:
+            print('NO Trace Explorer webapp — ' + MANUAL_WEBAPP_STEP
+                  % (args.project, logging_summary['dataset']))
+    except Exception as exc:
+        print('interaction logging NOT provisioned (needs DSS >= 14.5): %s' % exc)
 
     if not args.no_smoke:
         run_tool(handles['list-hosts'], 'smoke: list-hosts probe', {'probe': True})

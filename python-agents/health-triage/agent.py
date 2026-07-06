@@ -2,7 +2,7 @@ import json
 
 from dataiku.llm.python import BaseLLM
 
-from atk_agent_common import action_items, adapter, agent_runtime, agent_tools, rubric
+from atk_agent_common import action_items, adapter, agent_runtime, agent_tools, remediation_map, rubric
 from atk_agent_common.errors import ToolkitError
 from atk_agent_common.triage import sweep
 
@@ -29,6 +29,14 @@ For ad-hoc questions, use the sensor tools directly and keep the same grounding 
 Health scores are 0-100 (higher is better); by default <80 is a warning, <50 critical. A \
 score capped at the critical band means one of the always-lead critical rules fired — name \
 the rule, don't just report the number.
+
+REMEDIATION MAP (finding-id patterns → catalogued actuator actions). When a finding matches \
+a mapped pattern, propose the mapped action with a concrete target in your action items; \
+when it maps to MANUAL, recommend the manual work and never invent an action. The daily \
+triage loop may auto-execute admin-opted actions (auto_remediate_actions); those runs are \
+audited as agent='triage-auto' and reported in the digest — when today's digest already \
+shows an auto-fix for a finding, report it as handled instead of re-proposing it.
+{remediation_map}
 {severity_rubric}
 {action_items_addendum}"""
 
@@ -78,6 +86,7 @@ class HealthTriageAgent(BaseLLM):
             return
         prompt = SYSTEM_PROMPT.replace('{max_recommendations}',
                                        str(self.config.get('max_recommendations') or 5)) \
+                              .replace('{remediation_map}', remediation_map.prompt_table()) \
                               .replace('{severity_rubric}', rubric.SEVERITY_RUBRIC) \
                               .replace('{action_items_addendum}', action_items.PROMPT_ADDENDUM)
         messages = agent_runtime.messages_from_query(query, prompt)

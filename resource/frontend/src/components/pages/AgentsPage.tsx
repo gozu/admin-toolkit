@@ -8,6 +8,8 @@ import { PendingApprovalsBar } from '../agents/PendingApprovalsBar';
 import { AuditTimeline } from '../agents/AuditTimeline';
 import { SettingsHistoryCard } from '../agents/SettingsHistoryCard';
 import { catalogForAgent } from '../../utils/agentPromptCatalog';
+import { hostBaseUrl } from '../../utils/agentLinks';
+import { getActiveHostId } from '../../state/hostStore';
 import {
   abortAgentTurn,
   agentsChatStore,
@@ -197,14 +199,27 @@ export function AgentsPage() {
             {AGENT_EDU[agent.name] && <InfoDot eduId={AGENT_EDU[agent.name]} />}
           </span>
         ))}
-        {messages.length > 0 && (
-          <button
-            onClick={() => selectedId && clearConversation(selectedId)}
-            className="ml-auto px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-tertiary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors"
-          >
-            New conversation
-          </button>
-        )}
+        <span className="ml-auto inline-flex items-center gap-2">
+          {conversation?.traceExplorerPath && (
+            <a
+              href={`${hostBaseUrl(getActiveHostId())}${conversation.traceExplorerPath}`}
+              target="_blank"
+              rel="noreferrer"
+              className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-tertiary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors"
+              title="Native DSS Trace Explorer over the agent interaction-logging dataset"
+            >
+              Trace Explorer ↗
+            </a>
+          )}
+          {messages.length > 0 && (
+            <button
+              onClick={() => selectedId && clearConversation(selectedId)}
+              className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-tertiary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors"
+            >
+              New conversation
+            </button>
+          )}
+        </span>
       </div>
 
       {loadingAgents ? (

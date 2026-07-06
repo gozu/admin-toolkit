@@ -2,7 +2,12 @@
     "meta": {
         "label": "CRU audit parse",
         "description": "Stream the host audit logs ($DIP_HOME/run/audit/audit.log*) and roll up Compute Resource Usage (memory GB·h + CPU·h from LOCAL_PROCESS, $ from LLM_USAGE) per project / user / context.type. Runs as the dataiku service account so it can read the local audit dir regardless of webapp impersonation.",
-        "icon": "icon-money"
+        "icon": "icon-money",
+        "macroRoles": [
+            {
+                "type": "PROJECT_MACROS"
+            }
+        ]
     },
     "impersonate": false,
     "requiresGlobalAdmin": true,

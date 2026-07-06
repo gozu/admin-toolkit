@@ -39,6 +39,15 @@ def resolve(plugin_config=None):
         'triage_score_threshold': int(pick('triage_score_threshold', cfg.get('triage_score_threshold') or 75)),
         'triage_mail_channel': pick('triage_mail_channel'),
         'triage_recipient': pick('triage_recipient'),
+        # Auto-remediation tier: per-action opt-in CSV + cumulative caps.
+        'auto_remediate_actions': [a.strip() for a in (pick('auto_remediate_actions') or '').split(',')
+                                   if a.strip()],
+        'auto_remediate_max_gb': int(pick('auto_remediate_max_gb', cfg.get('auto_remediate_max_gb') or 20)),
+        'auto_remediate_max_objects': int(pick('auto_remediate_max_objects',
+                                               cfg.get('auto_remediate_max_objects') or 25)),
+        'log_cleanup_min_age_days': int(pick('log_cleanup_min_age_days',
+                                             cfg.get('log_cleanup_min_age_days') or 3)),
+        'settings_set_blocked_extra': pick('settings_set_blocked_extra'),
     }
     if not settings['backend_url']:
         settings['backend_url'] = _discover_backend_url() or ''

@@ -2,7 +2,12 @@
     "meta": {
         "label": "DB Health: query runtimedb",
         "description": "Run a curated PostgreSQL operation against the DSS runtimedb. Runs as the dataiku service account on the target host so psycopg2 can authenticate via the local socket + .pgpass.",
-        "icon": "icon-database"
+        "icon": "icon-database",
+        "macroRoles": [
+            {
+                "type": "PROJECT_MACROS"
+            }
+        ]
     },
     "impersonate": false,
     "requiresGlobalAdmin": true,

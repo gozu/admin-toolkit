@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.644",
+    "version": "0.4.646",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -220,6 +220,52 @@
         {
             "name": "triage_recipient",
             "label": "Triage digest recipient",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
+            "name": "sep_auto_remediate",
+            "label": "Agents \u2014 Auto-remediation",
+            "description": "Actions listed below run AUTONOMOUSLY during the daily triage sweep when their finding fires \u2014 no per-run human approval. Listing an action here is the admin's standing approval for that action, within the caps; everything else stays plan \u2192 approve \u2192 execute. The enable_red_actions kill-switch still gates every run, and every run is audited (agent='triage-auto') and reported in the digest.",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "auto_remediate_actions",
+            "label": "Auto-remediate actions (CSV)",
+            "description": "Comma-separated action names the triage loop may execute autonomously. Only reversible capped cleanups are eligible: log-cleanup, docker-prune. Empty = tier off (the digest still reports what WOULD have run).",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
+            "name": "auto_remediate_max_gb",
+            "label": "Auto-remediate cap (GB per sweep)",
+            "description": "Cumulative reclaim cap across all autonomous fixes in one sweep.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 20
+        },
+        {
+            "name": "auto_remediate_max_objects",
+            "label": "Auto-remediate cap (objects per sweep)",
+            "description": "Cumulative deleted-object cap across all autonomous fixes in one sweep.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 25
+        },
+        {
+            "name": "log_cleanup_min_age_days",
+            "label": "Log cleanup minimum age (days)",
+            "description": "Rotated logs younger than this are never deleted (applies to agent-planned and autonomous log-cleanup).",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 3
+        },
+        {
+            "name": "settings_set_blocked_extra",
+            "label": "Extra blocked settings paths (CSV)",
+            "description": "Additional DSS general-settings path prefixes the settings-set action must refuse, on top of the built-in security/auth/licensing blacklist.",
             "type": "STRING",
             "mandatory": false,
             "defaultValue": ""
@@ -752,8 +798,8 @@
         },
         {
             "name": "finding_whitelist",
-            "label": "Finding whitelist (managed by the webapp)",
-            "description": "JSON list of per-item whitelisted findings. Managed from the webapp's Settings page - do not edit by hand. Declared here so DSS does not prune it on settings save.",
+            "label": "Finding whitelist (legacy \u2014 migrated to instance variables)",
+            "description": "LEGACY store, read once and migrated to the DSS instance variable admin_toolkit_finding_whitelist. Kept declared for one release so pre-migration installs don't lose entries.",
             "type": "STRING",
             "mandatory": false,
             "visibilityCondition": "false"

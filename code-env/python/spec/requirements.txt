@@ -6,6 +6,7 @@ cryptography
 google-auth
 google-cloud-artifact-registry
 psycopg2-binary
+pyyaml
 rich
 requests
 langchain

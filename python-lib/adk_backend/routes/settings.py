@@ -231,9 +231,12 @@ def api_settings_threshold_defaults():
 # ── Finding whitelist (per-item false-positive suppression) ──────────────────
 # Rubric doctrine: every thresholded size/cleanup rule honors a per-item admin
 # whitelist; whitelisted items are silently skipped wherever the rule applies
-# (health score twins, issue lists, agent findings). Stored as a JSON plugin
-# param (`finding_whitelist`, declared in plugin.json so DSS doesn't prune it)
-# — shared across users, survives restarts, hub-local like all plugin config.
+# (health score twins, issue lists, agent findings). Stored in the DSS
+# INSTANCE VARIABLES (key below) — the native shared/persistent config store,
+# immune to the plugin-param pruning trap. Legacy installs that still carry
+# the old `finding_whitelist` plugin param are migrated on first read.
+
+_WHITELIST_VARIABLE = 'admin_toolkit_finding_whitelist'
 
 _WHITELIST_RULES = {
     'project-size': 'project key',
@@ -250,16 +253,30 @@ _whitelist_lock = threading.Lock()
 _whitelist_cache = {'entries': None}
 
 
+def _whitelist_parse(raw) -> list:
+    try:
+        parsed = json.loads(raw) if raw else []
+        if isinstance(parsed, list):
+            return [e for e in parsed if isinstance(e, dict) and e.get('rule') and e.get('item')]
+    except Exception:
+        pass
+    return []
+
+
 def _whitelist_load() -> list:
     with _whitelist_lock:
         if _whitelist_cache['entries'] is None:
-            from db_adapter import _get_plugin_config
             entries = []
             try:
-                raw = _get_plugin_config().get('finding_whitelist')
-                parsed = json.loads(raw) if raw else []
-                if isinstance(parsed, list):
-                    entries = [e for e in parsed if isinstance(e, dict) and e.get('rule') and e.get('item')]
+                variables = _local_thread_client().get_global_variables()
+                entries = _whitelist_parse(variables.get(_WHITELIST_VARIABLE))
+                if not entries and _WHITELIST_VARIABLE not in variables:
+                    # One-time migration from the legacy plugin-param store.
+                    from db_adapter import _get_plugin_config
+                    entries = _whitelist_parse(_get_plugin_config().get('finding_whitelist'))
+                    if entries:
+                        variables[_WHITELIST_VARIABLE] = json.dumps(entries)
+                        variables.save()
             except Exception:
                 entries = []
             _whitelist_cache['entries'] = entries
@@ -267,9 +284,9 @@ def _whitelist_load() -> list:
 
 
 def _whitelist_save(entries: list) -> None:
-    settings = _local_thread_client().get_plugin(_PLUGIN_ID).get_settings()
-    settings.get_raw().setdefault('config', {})['finding_whitelist'] = json.dumps(entries)
-    settings.save()
+    variables = _local_thread_client().get_global_variables()
+    variables[_WHITELIST_VARIABLE] = json.dumps(entries)
+    variables.save()
     with _whitelist_lock:
         _whitelist_cache['entries'] = entries
 

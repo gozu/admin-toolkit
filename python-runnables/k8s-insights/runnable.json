@@ -2,7 +2,12 @@
     "meta": {
         "label": "K8S Insights",
         "description": "Deterministic rule engine that audits any DSS-managed EKS cluster: collects kubectl + filesystem probes, runs 30+ rules, returns ranked findings with concrete remediation. Runs on the target DSS host so kubectl and the local DSS managed-cluster directory are reachable.",
-        "icon": "icon-cogs"
+        "icon": "icon-cogs",
+        "macroRoles": [
+            {
+                "type": "PROJECT_MACROS"
+            }
+        ]
     },
     "impersonate": false,
     "requiresGlobalAdmin": true,

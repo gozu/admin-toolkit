@@ -11,20 +11,54 @@ read-only scans and shows the human what will happen. There is no single-call
 path to a mutation.
 
 Deliberately excluded (highest blast radius, documented later opt-in):
-container-exec / code-env replace, email send, cs-template migrate.
+container-exec, email send, cs-template migrate. (code-env replace joined the
+catalog as `code-env-consolidate` — explicit user opt-in, dry-run-first.)
+
+Remediation-suite actions (log-cleanup, docker-prune, k8s-apply-fix,
+settings-set) are POLICY-GATED below the model: the pattern/verb/path
+whitelists in atk_agent_common.policies are re-enforced inside the macro
+scripts / executors, so a compromised or confused LLM cannot widen the blast
+radius by rephrasing a target.
 """
 
 import json
 
 from . import confirm, shaping
 from .errors import RedLocked, ToolkitError
+from .policies import kubectl_policy, settings_paths
 
 ACTIONS = ('project-delete', 'code-env-delete', 'image-delete',
-           'db-vacuum', 'db-analyze', 'plugin-deploy', 'k8s-exec-config-tune')
+           'db-vacuum', 'db-analyze', 'plugin-deploy', 'k8s-exec-config-tune',
+           'log-cleanup', 'docker-prune', 'k8s-apply-fix',
+           'code-env-consolidate', 'settings-set')
+
+_LOCAL_ONLY_ACTIONS = ('k8s-exec-config-tune', 'log-cleanup', 'docker-prune',
+                       'k8s-apply-fix', 'settings-set')
 
 # k8s-exec-config-tune: the only keys an agent may change, all inside
 # kubernetesRuntimeConfig.kubernetesResources of one named execution config.
 _K8S_TUNABLE_KEYS = ('memRequestMB', 'memLimitMB', 'cpuRequest', 'cpuLimit')
+
+
+def _local_only_warning(action, host):
+    """Planner-side heads-up when a LOCAL-ONLY action targets a remote host."""
+    if host in (None, '', 'local'):
+        return None
+    return ('Execution is currently LOCAL-ONLY for %s — this plan targets remote host %r '
+            'and execute will refuse.' % (action, host))
+
+
+def _require_local(action, host):
+    if host not in (None, '', 'local'):
+        raise ToolkitError(
+            '%s can currently only execute on the local DSS. Host %r is remote.' % (action, host),
+            remediation="Run the change on that host's own agents plugin, or apply it manually.")
+
+
+def _blocked_extra(client):
+    """Admin-extendable settings-set blacklist (plugin CSV param)."""
+    raw = client.settings.get('settings_set_blocked_extra') or ''
+    return [p.strip() for p in str(raw).split(',') if p.strip()]
 
 
 def _backup_folder(client, host):
@@ -199,8 +233,276 @@ def _plan_k8s_exec_config_tune(client, host, target, params):
     }
 
 
+def _plan_log_cleanup(client, host, target, params):
+    """Rotated-log cleanup. The scan is the evidence; the whitelist that
+    refuses non-rotated files / non-whitelisted roots lives inside the macro."""
+    target = target or {}
+    roots = target.get('roots') or []
+    if isinstance(roots, str):
+        roots = [r.strip() for r in roots.split(',') if r.strip()]
+    min_age = int(target.get('minAgeDays') or client.settings.get('log_cleanup_min_age_days') or 3)
+    max_gb = int(target.get('maxDeleteGB') or 20)
+    scan = client.get('/api/tools/log-cleaner/scan', host=host,
+                      params={'roots': ','.join(roots), 'minAgeDays': min_age})
+    if not scan.get('ok'):
+        raise ToolkitError('Log-cleaner scan failed: %s' % (scan.get('error') or scan))
+    warnings = [w for w in (
+        _local_only_warning('log-cleanup', host),
+    ) if w]
+    for refusal in scan.get('refusedRoots') or []:
+        warnings.append('Root %r refused: %s (whitelist: run, jobs, scenarios, code-envs/logs, '
+                        'analysis-data/logs, exports/logs, tmp/webappruns).'
+                        % (refusal.get('root'), refusal.get('reason')))
+    disk_used_pct = None
+    try:
+        overview = client.get('/api/overview', host=host)
+        disk_used_pct = ((overview.get('dipHomeStorage') or {}).get('usedPct'))
+    except ToolkitError:
+        pass
+    per_root = {rel: {'files': e.get('files'), 'gb': round((e.get('bytes') or 0) / (1024 ** 3), 3),
+                      'sample': e.get('sample')}
+                for rel, e in (scan.get('roots') or {}).items()}
+    total_gb = scan.get('totalGB') or round((scan.get('totalBytes') or 0) / (1024 ** 3), 3)
+    return {'roots': sorted(roots), 'minAgeDays': min_age, 'maxDeleteGB': max_gb}, {
+        'summary': 'Delete rotated log files older than %dd under whitelisted DIP_HOME roots '
+                   '— reclaims ~%.2f GB across %s files.' % (min_age, total_gb, scan.get('totalFiles')),
+        'perRoot': per_root,
+        'totalReclaimableGB': total_gb,
+        'totalFiles': scan.get('totalFiles'),
+        'diskUsedPct': disk_used_pct,
+        'capGB': max_gb,
+        'warnings': warnings or None,
+        'note': 'Only rotated/compressed logs (*.log.<n>, *.log.*.gz, dated rotations) are '
+                'eligible — live *.log files can never match the policy, which is enforced '
+                'inside the macro at delete time.',
+    }
+
+
+def _plan_docker_prune(client, host, target, params):
+    """Docker cache governance: fixed-argv builder/image prune. daemon.json
+    limits are NEVER executed — the plan carries a manual sudo script."""
+    target = target or {}
+    mode = str(target.get('mode') or 'builder').strip().lower()
+    if mode not in ('builder', 'image'):
+        raise ToolkitError("docker-prune target.mode must be 'builder' or 'image'.")
+    keep_gb = int(target.get('keepStorageGB') or 20)
+    until_h = int(target.get('filterUntilHours') or 0)
+    usage = client.get('/api/tools/docker/usage', host=host)
+    if not usage.get('ok'):
+        if usage.get('error') == 'docker-permission':
+            raise ToolkitError(usage.get('message') or 'The dataiku user cannot reach the docker daemon.',
+                               remediation='Add the dataiku user to the docker group '
+                                           '(`sudo usermod -aG docker dataiku`) and restart DSS.')
+        raise ToolkitError('Docker usage probe failed: %s'
+                           % (usage.get('message') or usage.get('error') or usage))
+    warnings = [w for w in (_local_only_warning('docker-prune', host),) if w]
+    if usage.get('sameFilesystemAsDssData'):
+        warnings.append('DockerRootDir (%s) shares a filesystem with DIP_HOME — docker cache '
+                        'growth eats the DSS data mount directly; consider the daemon.json '
+                        'cache-limit script below (manual, admin-run).' % usage.get('dockerRootDir'))
+    script = None
+    try:
+        script_res = client.get('/api/tools/docker/daemon-script', host=host,
+                                params={'keepStorageGB': keep_gb})
+        script = script_res.get('script') if script_res.get('ok') else None
+    except ToolkitError:
+        pass
+    canonical = {'mode': mode, 'keepStorageGB': keep_gb, 'filterUntilHours': until_h}
+    return canonical, {
+        'summary': ('Prune the docker %s cache (keep-storage %d GB)' % (mode, keep_gb))
+                   if mode == 'builder' else
+                   ('Prune dangling docker images%s' % (' older than %dh' % until_h if until_h else '')),
+        'df': usage.get('df'),
+        'estimatedReclaimableGB': usage.get('totalReclaimableGB'),
+        'dockerRootDir': usage.get('dockerRootDir'),
+        'filesystem': usage.get('filesystem'),
+        'sameFilesystemAsDssData': usage.get('sameFilesystemAsDssData'),
+        'manualDaemonScript': script,
+        'warnings': warnings or None,
+        'note': 'The prune runs with a FIXED argv (no shell, no --all, docker group only, no '
+                'sudo). The daemon.json script above is display-only for a human admin — the '
+                'toolkit never executes it.',
+    }
+
+
+def _plan_k8s_apply_fix(client, host, target, params):
+    """Policy-gated kubectl fix. Commands are pre-validated here for fast
+    refusal; the macro re-validates authoritatively. Optional execConfigPatch
+    reuses the k8s-exec-config-tune diff; optional verifyRule re-runs
+    k8s-insights after execution."""
+    target = target or {}
+    cluster_id = (target.get('clusterId') or '').strip()
+    commands = [str(c) for c in (target.get('commands') or [])]
+    manifest_yaml = target.get('manifestYaml') or ''
+    patch = target.get('execConfigPatch') or None
+    verify_rule = (target.get('verifyRule') or '').strip() or None
+    if not cluster_id:
+        raise ToolkitError('k8s-apply-fix target needs {"clusterId": ..., "commands": [...]}.')
+    if not commands and not patch:
+        raise ToolkitError('k8s-apply-fix needs at least one of commands[] or execConfigPatch.')
+
+    refused = []
+    needs_manifest = False
+    for cmd in commands:
+        ok, reason, parsed = kubectl_policy.validate(cmd)
+        if not ok:
+            refused.append({'command': cmd[:300], 'reason': reason})
+        elif parsed['verb'] == 'apply':
+            needs_manifest = True
+    if needs_manifest:
+        ok, reason, _docs = kubectl_policy.validate_manifest(manifest_yaml)
+        if not ok:
+            refused.append({'command': 'apply -f {manifest}', 'reason': reason})
+    if refused:
+        raise ToolkitError(
+            'kubectl policy refused %d command(s): %s' % (
+                len(refused), '; '.join('%(command)s → %(reason)s' % r for r in refused[:5])),
+            remediation='Only apply/patch/delete/label/annotate/scale/rollout-restart on '
+                        'namespaced workload kinds are allowed (no secrets, no cluster-scoped '
+                        'kinds, no --all/--force, kube-system limited to patch/label/annotate/'
+                        'rollout-restart on ds/deploy). Relay this refusal to the user verbatim.')
+
+    plan = {'summary': 'Run %d policy-validated kubectl command(s) on cluster %r%s%s.' % (
+        len(commands), cluster_id,
+        ' + tune exec config %r' % (patch or {}).get('configName') if patch else '',
+        ' and verify rule %r afterwards' % verify_rule if verify_rule else '')}
+    warnings = [w for w in (_local_only_warning('k8s-apply-fix', host),) if w]
+
+    if commands:
+        preview = client.post('/api/tools/k8s-apply/preview', host=host,
+                              json={'clusterId': cluster_id, 'commands': commands,
+                                    'manifestYaml': manifest_yaml})
+        if not preview.get('ok'):
+            if preview.get('refused'):
+                raise ToolkitError('kubectl policy refused (macro-side): %s'
+                                   % json.dumps(preview['refused'])[:600])
+            raise ToolkitError('k8s-apply preview failed: %s' % (preview.get('error') or preview))
+        plan['preview'] = preview.get('results')
+        plan['manifestDocs'] = preview.get('manifestDocs') or None
+
+    if patch:
+        name = (patch or {}).get('configName')
+        changes = (patch or {}).get('changes') or {}
+        if not name or not changes:
+            raise ToolkitError('execConfigPatch needs {"configName": ..., "changes": {...}}.')
+        bad = [k for k in changes if k not in _K8S_TUNABLE_KEYS]
+        if bad:
+            raise ToolkitError('Untunable exec-config keys %s — only %s may be changed.'
+                               % (bad, list(_K8S_TUNABLE_KEYS)))
+        raw = client.get('/api/settings/raw', host=host)
+        config_row, names = _find_exec_config(raw, name)
+        if config_row is None:
+            raise ToolkitError('Execution config %r not found on host %r. Configs: %s'
+                               % (name, host, ', '.join(names) or '(none)'))
+        current = (((config_row.get('kubernetesRuntimeConfig') or {}).get('kubernetesResources')) or {})
+        current_view = {k: current.get(k) for k in _K8S_TUNABLE_KEYS}
+        plan['execConfigPatch'] = {'configName': name, 'current': current_view,
+                                   'proposed': dict(current_view, **changes)}
+        patch = {'configName': name,
+                 'changes': {k: (float(v) if 'cpu' in k else int(v)) for k, v in changes.items()}}
+
+    if verify_rule:
+        plan['verification'] = ('After execution, k8s-insights re-runs with rules_filter=%r '
+                                'and the result reports whether the rule still fires.' % verify_rule)
+    plan['warnings'] = warnings or None
+    canonical = {'clusterId': cluster_id, 'commands': commands,
+                 'manifestYaml': manifest_yaml or None, 'execConfigPatch': patch,
+                 'verifyRule': verify_rule}
+    return canonical, plan
+
+
+def _plan_code_env_consolidate(client, host, target, params):
+    """Consolidate code-env usage onto a target env. The backend replace
+    endpoint's dry run enumerates the exact usage rows — that table IS the
+    evidence the human approves."""
+    target = target or {}
+    src = (target.get('sourceEnvName') or '').strip()
+    tgt = (target.get('targetEnvName') or '').strip()
+    lang = (target.get('language') or 'python').strip().lower()
+    project_keys = sorted(str(k) for k in (target.get('projectKeys') or [])) or None
+    usage_types = sorted(str(t) for t in (target.get('usageTypes') or [])) or None
+    retire = bool(target.get('retireSource'))
+    if not src or not tgt:
+        raise ToolkitError('code-env-consolidate target needs {"sourceEnvName": ..., '
+                           '"targetEnvName": ...} (optional language, projectKeys, usageTypes, '
+                           'retireSource).')
+    dry = client.post('/api/code-envs/replace', host=host, red=True,
+                      json={'sourceEnvName': src, 'targetEnvName': tgt,
+                            'sourceLanguage': lang, 'dryRun': True,
+                            'projectKeys': project_keys, 'usageTypes': usage_types})
+    rows = dry.get('results') or []
+    warnings = []
+    if retire and (project_keys or usage_types):
+        warnings.append('retireSource with projectKeys/usageTypes filters is dangerous: usages '
+                        'OUTSIDE the filter keep pointing at the source env and will break when '
+                        'it is deleted.')
+    if retire:
+        folder = _backup_folder(client, host)  # deletes always back up first
+        warnings.append('Source env %s/%s will be backed up to %r and DELETED after a fully '
+                        'successful replacement.' % (lang, src, folder['name']))
+    canonical = {'sourceEnvName': src, 'targetEnvName': tgt, 'language': lang,
+                 'projectKeys': project_keys, 'usageTypes': usage_types, 'retireSource': retire}
+    return canonical, {
+        'summary': 'Repoint %d usage(s) of code env %s/%s to %s%s.' % (
+            dry.get('matchedRows') or 0, lang, src, tgt,
+            ', then retire the source env' if retire else ''),
+        'matchedRows': dry.get('matchedRows'),
+        'usageRows': [{'projectKey': r.get('projectKey'), 'objectType': r.get('objectType'),
+                       'objectId': r.get('objectId'), 'objectName': r.get('objectName')}
+                      for r in rows[:40]],
+        'usageRowsTruncated': max(0, len(rows) - 40) or None,
+        'warnings': warnings or None,
+        'note': 'Applying the replacement clears the backend code-env/footprint caches — the '
+                'next heavy scans run cold.',
+    }
+
+
+def _plan_settings_set(client, host, target, params):
+    """Generic gated settings mutator. Blacklist (security/auth/licensing +
+    secret-material segments) is checked here AND re-checked at execute; the
+    observed current value is bound into the HMAC-signed target, so any drift
+    between plan and execute invalidates the token for free."""
+    target = target or {}
+    path = (target.get('path') or '').strip()
+    if not path or 'newValue' not in target:
+        raise ToolkitError('settings-set target needs {"path": ..., "newValue": ...} '
+                           '(dot/index path into DSS general settings, e.g. '
+                           '"containerSettings.executionConfigs[2].kubernetesNamespace").')
+    ok, reason = settings_paths.check_path(path, extra_blocked=_blocked_extra(client))
+    if not ok:
+        raise ToolkitError('settings-set refused: %s' % reason,
+                           remediation='Security/auth/licensing settings and anything touching '
+                                       'secret material are never agent-mutable. Relay this '
+                                       'refusal to the user verbatim.')
+    raw = client.get('/api/settings/raw', host=host)
+    current = settings_paths.get_at(raw, path)
+    new_value = target.get('newValue')
+    warnings = [w for w in (_local_only_warning('settings-set', host),) if w]
+    if current is None:
+        warnings.append('The path currently resolves to nothing — execute will only succeed if '
+                        'every intermediate container exists (settings-set never creates '
+                        'subtrees).')
+    canonical = {'path': path, 'newValue': new_value, 'expectedCurrent': current}
+    return canonical, {
+        'summary': 'Set DSS general setting %s: %s → %s.' % (
+            path, json.dumps(current, default=str)[:120], json.dumps(new_value, default=str)[:120]),
+        'path': path,
+        'currentValue': current,
+        'proposedValue': new_value,
+        'warnings': warnings or None,
+        'note': 'The current value is bound into the confirm token — if anyone changes this '
+                'setting between plan and execute, execution refuses. The change lands in the '
+                'restorable settings history (agents.settings_changes).',
+    }
+
+
 _PLANNERS = {
     'k8s-exec-config-tune': _plan_k8s_exec_config_tune,
+    'log-cleanup': _plan_log_cleanup,
+    'docker-prune': _plan_docker_prune,
+    'k8s-apply-fix': _plan_k8s_apply_fix,
+    'code-env-consolidate': _plan_code_env_consolidate,
+    'settings-set': _plan_settings_set,
     'project-delete': _plan_project_delete,
     'code-env-delete': _plan_code_env_delete,
     'db-vacuum': lambda c, h, t, p: _plan_db(c, h, t, p, 'vacuum'),
@@ -228,50 +530,198 @@ def _exec_code_env_delete(client, host, target):
                          headers={'X-Confirm-Name': target['name']})
 
 
-def _exec_k8s_exec_config_tune(client, host, target):
-    """LOCAL-ONLY first increment: exec configs are DSS general settings — a
-    pure DSS API write on the instance running this plugin. Fleet-wide needs a
-    red endpoint in the admin-toolkit backend (later consolidation)."""
-    if host not in (None, '', 'local'):
-        raise ToolkitError(
-            'k8s-exec-config-tune can currently only execute on the local DSS (general-settings '
-            'write). Host %r is remote.' % host,
-            remediation='Run the change on that host\'s own agents plugin, or apply it manually '
-                        'in Administration → Settings → Containerized execution.')
+def _apply_exec_config_changes(config_name, changes):
+    """Shared LOCAL general-settings write for the exec-config family
+    (k8s-exec-config-tune, k8s-apply-fix's execConfigPatch half)."""
     import dataiku
     dss = dataiku.api_client()
     general = dss.get_general_settings()
     raw = general.get_raw()
-    config_row, names = _find_exec_config(raw, target['configName'])
+    config_row, names = _find_exec_config(raw, config_name)
     if config_row is None:
         raise ToolkitError('Execution config %r vanished between plan and execute (configs: %s).'
-                           % (target['configName'], ', '.join(names)))
+                           % (config_name, ', '.join(names)))
     runtime = config_row.setdefault('kubernetesRuntimeConfig', {})
     resources = runtime.setdefault('kubernetesResources', {})
     before = {k: resources.get(k) for k in _K8S_TUNABLE_KEYS}
-    resources.update(target['changes'])
+    resources.update(changes)
     general.save()
-    return {'ok': True, 'configName': target['configName'],
+    return {'ok': True, 'configName': config_name,
             'before': before, 'after': {k: resources.get(k) for k in _K8S_TUNABLE_KEYS}}
 
 
+def _exec_k8s_exec_config_tune(client, host, target):
+    """LOCAL-ONLY first increment: exec configs are DSS general settings — a
+    pure DSS API write on the instance running this plugin. Fleet-wide needs a
+    red endpoint in the admin-toolkit backend (later consolidation)."""
+    _require_local('k8s-exec-config-tune', host)
+    return _apply_exec_config_changes(target['configName'], target['changes'])
+
+
+def _exec_log_cleanup(client, host, target):
+    """The macro re-walks the filesystem and re-applies the rotated-log policy
+    per file — it never trusts this call's parameters beyond scoping."""
+    _require_local('log-cleanup', host)
+    result = client.post('/api/tools/log-cleaner/delete', host=host, red=True,
+                         json={'roots': target.get('roots') or [],
+                               'minAgeDays': target.get('minAgeDays'),
+                               'maxDeleteGB': target.get('maxDeleteGB'),
+                               'dryRun': False})
+    if not result.get('ok'):
+        raise ToolkitError('Log cleanup refused/failed: %s'
+                           % (result.get('message') or result.get('error') or result))
+    return result
+
+
+def _exec_docker_prune(client, host, target):
+    _require_local('docker-prune', host)
+    result = client.post('/api/tools/docker/prune', host=host, red=True,
+                         json={'mode': target['mode'],
+                               'keepStorageGB': target.get('keepStorageGB'),
+                               'filterUntilHours': target.get('filterUntilHours'),
+                               'dryRun': False})
+    if not result.get('ok'):
+        raise ToolkitError('Docker prune failed: %s'
+                           % (result.get('message') or result.get('error') or result))
+    return result
+
+
+def _exec_k8s_apply_fix(client, host, target):
+    """kubectl commands (macro re-validates + stops at first failure), then
+    the optional exec-config patch, then the optional verification re-audit."""
+    _require_local('k8s-apply-fix', host)
+    out = {'ok': True}
+    commands = target.get('commands') or []
+    if commands:
+        result = client.post('/api/tools/k8s-apply/execute', host=host, red=True,
+                             json={'clusterId': target['clusterId'], 'commands': commands,
+                                   'manifestYaml': target.get('manifestYaml') or ''})
+        out['kubectl'] = result
+        if not result.get('ok'):
+            detail = result.get('refused') or result.get('error') or result
+            raise ToolkitError('k8s-apply execution failed: %s' % json.dumps(detail, default=str)[:600])
+    patch = target.get('execConfigPatch')
+    if patch:
+        out['execConfigPatch'] = _apply_exec_config_changes(patch['configName'], patch['changes'])
+    verify_rule = target.get('verifyRule')
+    if verify_rule:
+        try:
+            audit = client.stream_final('/api/k8s-insights/stream', host=host,
+                                        params={'clusterId': target['clusterId'],
+                                                'rulesFilter': verify_rule})
+            findings = [f for f in (audit.get('findings') or [])
+                        if f.get('rule') == verify_rule or f.get('id', '').startswith(verify_rule)]
+            out['verification'] = {'ruleId': verify_rule, 'stillFiring': bool(findings),
+                                   'findings': findings[:3]}
+        except ToolkitError as exc:
+            out['verification'] = {'ruleId': verify_rule, 'stillFiring': None,
+                                   'error': 'verification re-audit failed: %s' % exc.message}
+    return out
+
+
+def _exec_code_env_consolidate(client, host, target):
+    result = client.post('/api/code-envs/replace', host=host, red=True,
+                         json={'sourceEnvName': target['sourceEnvName'],
+                               'targetEnvName': target['targetEnvName'],
+                               'sourceLanguage': target.get('language') or 'python',
+                               'dryRun': False,
+                               'projectKeys': target.get('projectKeys'),
+                               'usageTypes': target.get('usageTypes')})
+    failed = result.get('failedRows') or 0
+    out = {'ok': failed == 0,
+           'replace': {k: result.get(k) for k in
+                       ('matchedRows', 'updatedRows', 'skippedRows', 'failedRows')},
+           'failedDetail': [r for r in (result.get('results') or [])
+                            if r.get('status') == 'failed'][:10] or None}
+    if target.get('retireSource'):
+        if failed:
+            out['retireSkipped'] = ('%d row(s) failed to update — the source env was NOT '
+                                    'retired; fix the failures and retire manually.' % failed)
+        else:
+            out['retire'] = _exec_code_env_delete(
+                client, host, {'lang': target.get('language') or 'python',
+                               'name': target['sourceEnvName']})
+    return out
+
+
+def _exec_settings_set(client, host, target):
+    """Re-read, re-check the blacklist (never trust the plan), refuse on
+    drift, then write. expectedCurrent was bound into the HMAC token, so a
+    tampered target already died in confirm.verify."""
+    _require_local('settings-set', host)
+    path = target['path']
+    ok, reason = settings_paths.check_path(path, extra_blocked=_blocked_extra(client))
+    if not ok:
+        raise ToolkitError('settings-set refused at execute: %s' % reason)
+    import dataiku
+    general = dataiku.api_client().get_general_settings()
+    raw = general.get_raw()
+    current = settings_paths.get_at(raw, path)
+    expected = target.get('expectedCurrent')
+    if json.dumps(current, sort_keys=True, default=str) != json.dumps(expected, sort_keys=True, default=str):
+        raise ToolkitError(
+            'Setting %s drifted between plan and execute (expected %s, found %s) — refusing.'
+            % (path, json.dumps(expected, default=str)[:200], json.dumps(current, default=str)[:200]),
+            remediation='Re-run plan-admin-action to capture the new current value.')
+    try:
+        settings_paths.set_at(raw, path, target.get('newValue'))
+    except settings_paths.SettingsPathError as exc:
+        raise ToolkitError('settings-set write failed: %s' % exc)
+    general.save()
+    return {'ok': True, 'path': path, 'before': current, 'after': target.get('newValue')}
+
+
 # Settings-mutating actions record per-key history rows (agents.settings_changes,
-# K97 doctrine: prior value + last-50-per-item restore). The hook is generic —
-# add an entry when a future executor mutates settings and returns before/after.
-def _settings_changes_from_result(action, target, result):
-    if action != 'k8s-exec-config-tune' or not isinstance(result, dict) or not result.get('ok'):
-        return []
-    before = result.get('before') or {}
-    after = result.get('after') or {}
-    name = result.get('configName') or (target or {}).get('configName')
-    changed = (target or {}).get('changes') or {}
+# K97 doctrine: prior value + last-50-per-item restore). Dispatch table — add an
+# entry when a future executor mutates settings and returns before/after.
+def _exec_config_change_items(config_result, changed_keys):
+    before = config_result.get('before') or {}
+    after = config_result.get('after') or {}
+    name = config_result.get('configName')
     return [{'itemKey': 'execConfig:%s:%s' % (name, key),
              'before': before.get(key), 'after': after.get(key)}
-            for key in changed]
+            for key in changed_keys]
+
+
+def _changes_k8s_exec_config_tune(target, result):
+    changed = (target or {}).get('changes') or {}
+    return _exec_config_change_items(result, changed)
+
+
+def _changes_settings_set(target, result):
+    return [{'itemKey': 'settings:%s' % result.get('path'),
+             'before': result.get('before'), 'after': result.get('after')}]
+
+
+def _changes_k8s_apply_fix(target, result):
+    patch_result = result.get('execConfigPatch')
+    if not isinstance(patch_result, dict) or not patch_result.get('ok'):
+        return []
+    changed = ((target or {}).get('execConfigPatch') or {}).get('changes') or {}
+    return _exec_config_change_items(patch_result, changed)
+
+
+_SETTINGS_CHANGE_HOOKS = {
+    'k8s-exec-config-tune': _changes_k8s_exec_config_tune,
+    'settings-set': _changes_settings_set,
+    'k8s-apply-fix': _changes_k8s_apply_fix,
+}
+
+
+def _settings_changes_from_result(action, target, result):
+    hook = _SETTINGS_CHANGE_HOOKS.get(action)
+    if hook is None or not isinstance(result, dict) or not result.get('ok'):
+        return []
+    return hook(target, result)
 
 
 _EXECUTORS = {
     'k8s-exec-config-tune': _exec_k8s_exec_config_tune,
+    'log-cleanup': _exec_log_cleanup,
+    'docker-prune': _exec_docker_prune,
+    'k8s-apply-fix': _exec_k8s_apply_fix,
+    'code-env-consolidate': _exec_code_env_consolidate,
+    'settings-set': _exec_settings_set,
     'project-delete': _exec_project_delete,
     'code-env-delete': _exec_code_env_delete,
     'db-vacuum': lambda c, h, t: c.post('/api/tools/db-health/vacuum', host=h, red=True,

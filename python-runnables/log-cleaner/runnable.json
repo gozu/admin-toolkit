@@ -1,0 +1,52 @@
+{
+    "meta": {
+        "label": "Log Cleaner",
+        "description": "Scan and delete ROTATED DSS log files (*.log.<n>, *.log.*.gz, dated rotations) under whitelisted DIP_HOME roots. Live *.log files are never touched; the whitelist and min-age policy are enforced inside this macro.",
+        "icon": "icon-trash",
+        "macroRoles": [{"type": "PROJECT_MACROS"}]
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": [
+        {
+            "name": "operation",
+            "label": "Operation",
+            "description": "scan or delete.",
+            "type": "STRING",
+            "mandatory": true
+        },
+        {
+            "name": "roots",
+            "label": "Roots",
+            "description": "Comma-separated roots relative to DIP_HOME (subset of the whitelist: run, jobs, scenarios, code-envs/logs, analysis-data/logs, exports/logs, tmp/webappruns). Empty = all.",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
+            "name": "min_age_days",
+            "label": "Minimum age (days)",
+            "description": "Only rotated logs older than this are eligible.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 3
+        },
+        {
+            "name": "max_delete_gb",
+            "label": "Delete cap (GB)",
+            "description": "Abort if the delete candidates exceed this total size.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 20
+        },
+        {
+            "name": "dry_run",
+            "label": "Dry run",
+            "description": "When true, list what would be deleted without deleting.",
+            "type": "BOOLEAN",
+            "mandatory": false,
+            "defaultValue": true
+        }
+    ]
+}

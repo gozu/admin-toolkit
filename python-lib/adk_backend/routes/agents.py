@@ -12,6 +12,10 @@ into the shared audit Postgres — hub-scoped → @local_only.
 
 import json
 import logging
+import re
+import threading
+import uuid
+from collections import deque
 from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, g, jsonify, request
@@ -26,6 +30,46 @@ _LOGGER = logging.getLogger(__name__)
 AGENTS_PROJECT_KEY = 'AGENTOPS'
 _MAX_MESSAGES = 40
 _MAX_MESSAGE_CHARS = 20000
+
+# Native traces (DSS >= 14.5 interaction logging): the streamed footer carries
+# the full dku-trace. It is never streamed over SSE — the done event only says
+# it exists (traceAvailable + traceId); the JSON is fetched on demand from this
+# in-memory ring (last few turns, gone on backend restart — the durable copy
+# lives in the AGENTOPS interaction-logging dataset).
+_trace_ring: 'deque' = deque(maxlen=8)  # (trace_id, trace dict)
+_trace_lock = threading.Lock()
+# Trace Explorer is a visual webapp the API cannot create (verified on 14.7) —
+# discovered per host; only hits (not misses) are cached so a webapp created
+# later is picked up on the next turn.
+_trace_explorer_cache: Dict[str, str] = {}
+
+
+def _remember_trace(trace: Any) -> str:
+    trace_id = uuid.uuid4().hex[:12]
+    with _trace_lock:
+        _trace_ring.append((trace_id, trace))
+    return trace_id
+
+
+def _trace_explorer_path(client: Any, host_id: str) -> Optional[str]:
+    """DSS-relative path of a Trace Explorer webapp in AGENTOPS, or None.
+    The frontend prefixes the active host's base URL (multi-instance rule)."""
+    cached = _trace_explorer_cache.get(host_id)
+    if cached:
+        return cached
+    try:
+        for item in client.get_project(AGENTS_PROJECT_KEY).list_webapps() or []:
+            data = getattr(item, '_data', None) or {}
+            blob = ('%s %s' % (data.get('type') or '', data.get('name') or '')).lower()
+            if 'trace' in blob and data.get('id'):
+                slug = re.sub(r'[^a-z0-9]+', '-',
+                              (data.get('name') or '').lower()).strip('-') or 'trace-explorer'
+                path = '/projects/%s/webapps/%s_%s/view' % (AGENTS_PROJECT_KEY, data['id'], slug)
+                _trace_explorer_cache[host_id] = path
+                return path
+    except Exception as exc:
+        _LOGGER.debug('trace explorer discovery failed on %s: %s', host_id, exc)
+    return None
 
 
 def _agent_rows(client: Any) -> List[Dict[str, Any]]:
@@ -59,7 +103,8 @@ def api_agents_chat():
 
     Body: {agentId, messages: [{role: 'user'|'assistant', content}, ...]}
     Events out: chunk {text} · agent_event {eventKind, eventData} ·
-    done {finishReason, durationMs} · error {message}.
+    done {finishReason, durationMs, traceAvailable, traceId?, traceExplorerPath?} ·
+    error {message}.
     """
     body = request.get_json(silent=True) or {}
     agent_id = (body.get('agentId') or '').strip()
@@ -67,6 +112,7 @@ def api_agents_chat():
     if not agent_id or not isinstance(messages, list) or not messages:
         return jsonify({'error': 'agentId and a non-empty messages list are required'}), 400
     client = g.client
+    host_id = str(getattr(g, 'host_id', 'local') or 'local')
 
     def generate():
         def sse(event: str, payload: Dict[str, Any]) -> str:
@@ -93,13 +139,35 @@ def api_agents_chat():
                 elif kind == 'footer':
                     footer = data
             trajectory = ((footer or {}).get('additionalInformation') or {}).get('trajectory') or {}
-            yield sse('done', {'finishReason': (footer or {}).get('finishReason'),
-                               'durationMs': trajectory.get('durationMs')})
+            trace = (footer or {}).get('trace')
+            done_payload: Dict[str, Any] = {'finishReason': (footer or {}).get('finishReason'),
+                                            'durationMs': trajectory.get('durationMs'),
+                                            'traceAvailable': bool(trace)}
+            if trace:
+                done_payload['traceId'] = _remember_trace(trace)
+            explorer_path = _trace_explorer_path(client, host_id)
+            if explorer_path:
+                done_payload['traceExplorerPath'] = explorer_path
+            yield sse('done', done_payload)
         except Exception as exc:
             _LOGGER.warning('agent chat stream failed (agent %s): %s', agent_id, exc)
             yield sse('error', {'message': '%s: %s' % (type(exc).__name__, str(exc)[:300])})
 
     return _sse_response(generate)
+
+
+@bp.route('/api/agents/last-trace')
+def api_agents_last_trace():
+    """One trace from the in-memory ring buffer, for Trace Explorer's native
+    "Paste a new trace" — instant per-turn inspection without waiting for the
+    logging dataset's flush interval. Ring survives only until backend restart;
+    an expired id is a normal state, not an error."""
+    trace_id = (request.args.get('id') or '').strip()
+    with _trace_lock:
+        for tid, trace in _trace_ring:
+            if tid == trace_id:
+                return jsonify({'available': True, 'trace': trace})
+    return jsonify({'available': False, 'reason': 'trace-expired'}), 404
 
 
 @bp.route('/api/agents/settings-history')

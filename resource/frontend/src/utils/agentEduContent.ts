@@ -128,6 +128,48 @@ export const EDU: Record<string, EduEntry> = {
       'Affects new workloads using that config; running ones keep their old resources until restarted.',
     ],
   },
+  'action.log-cleanup': {
+    title: 'log-cleanup',
+    body: [
+      'Deletes ROTATED log files (backend.log.3, *.log.gz, dated rotations) older than a minimum age, under a fixed whitelist of DIP_HOME directories. A live *.log can never match — the whitelist is enforced inside the macro script, below the agent.',
+      'The plan shows per-directory reclaimable GB; deletion aborts if candidates exceed the size cap.',
+    ],
+  },
+  'action.docker-prune': {
+    title: 'docker-prune',
+    body: [
+      'Prunes the docker builder cache (keeping a configured amount) or dangling images, with a fixed command line — no shell, no --all, docker-group access only.',
+      'daemon.json cache limits are never executed: the plan carries a ready-made sudo script for a human admin instead.',
+    ],
+  },
+  'action.k8s-apply-fix': {
+    title: 'k8s-apply-fix',
+    body: [
+      'Runs policy-validated kubectl mutations (patch / apply / delete / label / scale / rollout-restart) on a DSS-attached cluster. Secrets, cluster-scoped kinds and --all/--force are refused inside the macro, not by trusting the model.',
+      'The plan shows read-only previews and server dry-runs; with a verifyRule the finding is re-checked after execution and the result says whether it still fires.',
+    ],
+  },
+  'action.code-env-consolidate': {
+    title: 'code-env-consolidate',
+    body: [
+      'Repoints every usage of one code env (recipes, notebooks, webapps, scenarios, project defaults) onto a target env. The dry-run usage table in the plan is exactly what will change.',
+      'Optionally retires the source env afterwards — backup-first, and only if every row updated cleanly.',
+    ],
+  },
+  'action.settings-set': {
+    title: 'settings-set',
+    body: [
+      'Sets one path in DSS general settings, with a current → proposed diff at approval. Security/auth/licensing paths and anything touching secret material are blacklisted below the agent.',
+      'The observed current value is bound into the confirm token (drift between plan and execute refuses), and every applied change lands in the restorable settings history.',
+    ],
+  },
+  'concept.auto-remediation': {
+    title: 'Auto-remediation',
+    body: [
+      'An admin can opt specific actions (only the reversible, capped cleanups: log-cleanup, docker-prune) into autonomous execution during the daily triage sweep via the auto_remediate_actions plugin setting.',
+      'Every autonomous run still passes the kill-switch and policy gates, respects cumulative GB/object caps, writes an audit row as triage-auto, and is reported in the digest — skips included, with reasons.',
+    ],
+  },
 
   /* ── tools (sensor + actuator surface) ──────────────────────────────── */
   'tool.triage_sweep': {

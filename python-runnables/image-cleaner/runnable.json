@@ -2,7 +2,12 @@
     "meta": {
         "label": "Image Cleaner",
         "description": "Detect, scan, and optionally delete stale Dataiku container images from the target host's container registry. Runs on the target DSS host so cloud metadata and registry credentials are local to that host.",
-        "icon": "icon-trash"
+        "icon": "icon-trash",
+        "macroRoles": [
+            {
+                "type": "PROJECT_MACROS"
+            }
+        ]
     },
     "impersonate": false,
     "requiresGlobalAdmin": true,

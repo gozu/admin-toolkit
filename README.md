@@ -6,7 +6,7 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.646-blue)
+![Version](https://img.shields.io/badge/version-0.4.649-blue)
 ![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-plugin-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -45,7 +45,7 @@ Instance vitals at a glance. **Mission Control** is the dense operations wall fo
 
 ### Agents
 
-Chat with three AI agents that administer the fleet through the LLM Mesh: **Health Triage** (fleet sweeps and triage reports), **Scoping Architect** (sizing and migration dossiers), and **Ops Actuator** (plans and — only after your explicit approval — executes admin actions: project cleanup, DB maintenance, K8s right-sizing, plus a gated remediation suite of rotated-log cleanup, docker cache pruning, policy-validated kubectl fixes, code-env consolidation and a blacklist-guarded generic settings mutator — every gate enforced below the model, in macro/executor code). Admins can opt the reversible, capped cleanups into **auto-remediation** during the daily triage sweep (`auto_remediate_actions`, off by default; skips and results are reported in the digest). Agent turns are natively traced via DSS ≥ 14.5 **Agent Interaction Logging** — the chat links straight into the Trace Explorer webapp and each turn's trace JSON is one click away. Sensor agents propose risk-colored **action-item checklists** you can hand to the actuator in one click; every execution is HMAC-token-gated, kill-switch-guarded, audited to Postgres with provenance, and deep-linked into the native DSS UI. A built-in prompt library ships ~30 curated prompts per agent plus one "megaprompt" that audits the whole instance, and ⓘ info-dots explain every concept in place. The agents layer ships inside this plugin (agent tools + plugin agents) — [`docs/agents-reference.md`](docs/agents-reference.md) is the full developer reference (architecture, system prompts, wire protocol, safety model).
+Chat with three AI agents that administer the fleet through the LLM Mesh: **Health Triage** (fleet sweeps and triage reports), **Scoping Architect** (sizing and migration dossiers), and **Ops Actuator** (plans and — only after your explicit approval — executes admin actions: project cleanup, DB maintenance, K8s right-sizing, plus a gated remediation suite of rotated-log cleanup, docker cache pruning, policy-validated kubectl fixes, code-env consolidation and a blacklist-guarded generic settings mutator — every gate enforced below the model, in macro/executor code). Admins can opt the reversible, capped cleanups into **auto-remediation** during the daily triage sweep (`auto_remediate_actions`, off by default; skips and results are reported in the digest). Agent turns are natively traced via DSS ≥ 14.5 **Agent Interaction Logging** — a one-click **"Set up Trace Explorer"** button auto-provisions the logging dataset and Dataiku's Trace Explorer webapp, after which every turn has an **"open trace ↗"** action that opens the explorer directly on that turn's trace. Conversations can optionally be **persisted server-side** (`chat_storage` plugin setting: built-in SQLite or a PostgreSQL/SQL Server connection, scoped per user and per fleet host) so chats survive refreshes, backend restarts and host switches, with a History drawer to reopen, rename or delete past conversations. Sensor agents propose risk-colored **action-item checklists** you can hand to the actuator in one click; every execution is HMAC-token-gated, kill-switch-guarded, audited to Postgres with provenance, and deep-linked into the native DSS UI. A built-in prompt library ships ~30 curated prompts per agent plus one "megaprompt" that audits the whole instance, and ⓘ info-dots explain every concept in place. The agents layer ships inside this plugin (agent tools + plugin agents) — [`docs/agents-reference.md`](docs/agents-reference.md) is the full developer reference (architecture, system prompts, wire protocol, safety model).
 
 ### Connections
 
@@ -148,7 +148,7 @@ flowchart LR
         SPA["React 19 SPA<br/>Vite + Tailwind + Chart.js"]
     end
     subgraph Webapp["DSS plugin webapp"]
-        API["Flask backend<br/>30 route groups, SSE streaming,<br/>caching + prewarm"]
+        API["Flask backend<br/>31 route groups, SSE streaming,<br/>caching + prewarm"]
     end
     subgraph DSS["Dataiku DSS (local or remote)"]
         PYAPI["DSS Python API<br/>(reads + gated writes)"]
@@ -322,6 +322,7 @@ Everything lives on the **Settings** page (plus the plugin preset for secrets):
 - **Mail channel** — pick the DSS messaging channel used by outreach campaigns.
 - **DB Health connection** — point the DB Health tool at your PostgreSQL runtimedb (read-only analysis).
 - **Save tables as datasets** — optionally pick a connection so any UI table can be exported as a managed dataset in the webapp's project.
+- **Agents chat persistence** — in the plugin settings, `chat_storage` turns on server-side conversation history for the Agents page: Off (browser-only, the default), Built-in SQLite, or a Remote SQL connection (PostgreSQL / SQL Server, with a configurable table prefix). Conversations are stored per user and per fleet host; storage changes apply on the next webapp backend restart.
 - **Performance tuning** — worker counts and cache windows, with a one-click **benchmark auto-tuner** that sweeps worker configurations against your real workload and applies the best one.
 - **Support bundle** — download a ZIP of backend logs, settings, and performance diagnostics for troubleshooting.
 
@@ -338,7 +339,7 @@ In addition, Under Settings, you can create python notebooks with the same algor
 ```
 plugin.json                  # plugin manifest (params, version, secrets)
 webapps/admin-toolkit/       # Flask webapp entrypoint
-python-lib/                  # backend: adk_backend/ (30 route groups) + shared libs
+python-lib/                  # backend: adk_backend/ (31 route groups) + shared libs
 python-runnables/            # 11 host-bound macros (metrics, process, k8s, images, db, cs, cru, agent-triage, log-cleaner, docker-governor, k8s-apply)
 python-lib/atk_agent_common/ # agents layer shared lib (tools impl, actuator, triage, audit)
 python-agents/               # 3 plugin agents (health-triage, scoping-architect, ops-actuator)

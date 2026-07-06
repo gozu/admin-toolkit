@@ -464,7 +464,7 @@ content}, …]}` (last 40 messages, 20k chars each). The Flask generator relays
 |---|---|
 | `chunk` | `{text}` |
 | `agent_event` | `{eventKind, eventData}` (verbatim from §4.1) |
-| `done` | `{finishReason, durationMs}` (from the completion footer's trajectory) |
+| `done` | `{finishReason, durationMs, traceAvailable, traceId?, traceExplorer?, traceExplorerPath?}` |
 | `error` | `{message}` |
 
 The frontend consumes this **only** through `utils/sseStream.parseSseStream`
@@ -474,7 +474,12 @@ everything else).
 
 Note: the completion footer contains the **full trace dict but no trace id**
 (verified live on 14.7 — keys are `additionalInformation`, `finishReason`,
-`totalUsage`, `trace`, `type`), so `done` carries no trace link. See §8.
+`totalUsage`, `trace`, `type`), so the backend mints its own: `traceId` is a
+short id into an in-memory ring of the last 8 traces (`GET
+/api/agents/last-trace?id=…` returns the JSON; expiry is a normal state).
+`traceExplorer` is `{viewPath, webAppId, projectKey}` of the Trace Explorer
+webapp when one exists on the host (`traceExplorerPath` is the pre-0.4.648
+back-compat alias carrying just the path). See §8 for the one-click flow.
 
 ---
 
@@ -682,10 +687,39 @@ context-manager form because it mutates a thread-local that async code shouldn't
 touch). Every span touch is `try/except`-wrapped and None-safe — **tracing can
 never break the loop**.
 
-Where to look: the agent's run in the LLM Mesh **trace explorer** (open the
-agent → traces). There is **no deep link from the webapp**: the client-side
-completion footer exposes the full trace dict but *no trace id* (verified
-live — see §4.2), so there is nothing stable to link to.
+### One-click traces (v0.4.648-649)
+
+The Trace Explorer is now **auto-provisioned and one click away** from the chat:
+
+- `python-lib/adk_backend/trace_explorer.py::ensure_trace_explorer` provisions,
+  idempotently and with a steps trail: the DAY-partitioned
+  `agent_interaction_logs` interaction-logging dataset + FULL-content logging
+  on every AGENTOPS agent, then Dataiku's `traces-explorer` plugin webapp
+  pointed at that dataset's `trace` column, then starts its backend
+  (`autoStartBackend` is false in the plugin meta).
+- **Creation trap (verified live on 14.7)**: both `create_webapp()` *and* the
+  raw `POST /projects/<pk>/webapps/` reject plugin webapp types server-side
+  ("Webapp type not supported"). The working recipe is create a `STANDARD`
+  webapp, then flip `raw['type']` to `webapp_traces-explorer_traces-explorer`
+  via `get_settings().save()` — DSS re-materializes the plugin webapp shape.
+  There is no public webapp DELETE endpoint.
+- Routes: `GET /api/agents/trace-explorer/status` →
+  `{installed, provisioned, webAppId?, viewPath?, projectKey, sameOrigin}`
+  (discovery off the per-turn hot path); `POST
+  /api/agents/trace-explorer/provision` (`@advanced`-gated, wired to the
+  Agents-page "Set up Trace Explorer" CTA; runs on `g.client`, so AGENTOPS may
+  live on the active remote host).
+- Per-turn deep link: on the local hub (`sameOrigin`), the turn's trace chip is
+  **"open trace ↗"** — the frontend fetches the trace JSON (ring first, then
+  the chat-persistence copy from §9 as the durable fallback), writes it to
+  `localStorage['ls.llm.traceExplorer.trace']` and opens
+  `/dip/api/webapps/view?projectKey=…&webAppId=…&readTraceFromLS=true` — the
+  explorer's **native handoff**: it POSTs the trace to its backend and
+  navigates straight to it. The URL must be the raw webapp-content path, not
+  the `/projects/…/view` shell (the shell doesn't forward query params into
+  the iframe). On remote hosts the handoff is impossible (localStorage is
+  per-origin) — the chip stays **"copy trace"** for Trace Explorer's "Paste a
+  new trace".
 
 ---
 
@@ -704,6 +738,7 @@ components/agents/
   ActionItemsCard.tsx                the checklist (useRowSelection, advisory rows disabled)
   PendingApprovalsBar.tsx            "N plans awaiting" + Approve/Reject-all confirm dialog
   PromptLibrary.tsx                  right slide-in drawer (search, megaprompt hero, sections)
+  ChatHistoryDrawer.tsx              right slide-in drawer: persisted conversations (reopen/rename/delete)
   AuditTimeline.tsx                  audit table: deep links, provenance column, focus/flash
 components/common/
   RichPopover.tsx                    portal + fixed-position interactive popover (generalizes
@@ -718,9 +753,13 @@ utils/agentLinks.ts                  DSS deep-link builders (§12)
 ### Store contract (`agentsChatStore`)
 
 - Built on `state/createSyncStore` (mandatory for module singletons —
-  session-epoch reset participation). One `Conversation` per agent id
-  (`messages`, `streaming`, `error`); a running SSE turn **survives page
-  navigation**.
+  session-epoch reset participation). Since v0.4.648 conversations are keyed
+  by **conversation id** (client-minted uuid4), with `activeConvIdByAgent`
+  tracking the visible conversation per agent — public actions stay
+  agent-id-first and resolve the active conversation internally. A running SSE
+  turn **survives page navigation**; localStorage is a cache
+  (`STORAGE_VERSION` 2), the durable copy is server-side when persistence is
+  enabled.
 - `selectedAgentId` lives **in the store** (not component state) so the
   checklist handoff can switch the visible agent from an action.
 - Assistant messages are ordered `Segment[]`:
@@ -732,7 +771,48 @@ utils/agentLinks.ts                  DSS deep-link builders (§12)
 - Actions: `sendAgentMessage`, `abortAgentTurn`, `clearConversation`,
   `decidePlan`, `selectAgent`, `submitActionItemsToActuator`,
   `approvePlans`, `rejectPlans` (single-plan approval shares the batch format —
-  one message shape to test).
+  one message shape to test). Persistence adds `ensureChatBootstrapped`,
+  `loadConversationList`, `openConversation`, `renameConversation`,
+  `deleteConversation`, `provisionTraceExplorer`.
+
+### Chat persistence (v0.4.648, opt-in)
+
+Server-side conversation history, ported near-verbatim from Dataiku's **Agent
+Hub** plugin storage layer (v1.4.2):
+
+- **Settings** (`plugin.json`): `chat_storage` = `OFF` (default, browser-only)
+  | `LOCAL` (SQLite `atk_chat.db` in the webapp's workload folder, WAL) |
+  `REMOTE` (`chat_db_connection`, PostgreSQL or SQL Server — Agent Hub parity —
+  with `chat_tables_prefix`, default `atk_chat_`). Models bind
+  prefix/schema at import, so storage changes apply on the next backend
+  restart.
+- **Storage** (`python-lib/adk_backend/chat/`): Flask-SQLAlchemy models used as
+  a bare declarative base (no `init_app`; standalone `create_engine` +
+  `sessionmaker` so sessions work in SSE generators and worker threads),
+  `JsonEncoded` JSON-as-TEXT segments, zlib-compressed per-message dku-traces,
+  lazy lock-guarded `create_all(checkfirst=True)` on first chat request — no
+  alembic. Two tables: `<prefix>conversations` (uuid PK, `user_id`,
+  **`host_id`**, `agent_id`, title, soft-delete status) and `<prefix>messages`
+  (uuid PK, role, model-facing `content`, human-facing `display`, `segments`
+  JSON, `position`, `trace_id`, `trace` blob).
+- **Scoping**: every store call filters `(user_id, host_id)` — per-user via
+  `get_auth_info_from_browser_headers` on the LOCAL client (10s cache,
+  `__anonymous__` fallback; the webapp is served same-origin with DSS), per
+  fleet host via `g.host_id`. The store itself always lives on the local hub;
+  routes are **not** `@local_only` precisely so `host_id` stays real.
+- **Routes** (`/api/chat/*`): `config` (the single feature gate — reports
+  `enabled:false` with a reason when the store can't come up), conversation
+  list/get/create/rename/soft-delete, `POST …/<id>/turn` (the frontend POSTs
+  each settled turn; the server pulls the raw trace from the §4.2 ring by
+  `traceId` and compresses it at rest — trace JSON never travels
+  client→server), and `GET …/messages/<mid>/trace` (the durable fallback for
+  "open trace ↗"). Disabled = clean no-op.
+- **Frontend**: turns auto-persist on settle and re-POST after post-settle
+  segment mutations (plan decisions, handoff locks) — same message ids, the
+  server upserts. Titles default to the first user message (~60 chars),
+  renameable in the History drawer. Host switches keep the epoch-wipe
+  semantics; the drawer re-fetches for the new host, so **chats survive host
+  switches** server-side.
 
 ### Layout
 
@@ -1097,7 +1177,16 @@ imperative, grounded in real tool capabilities, and honest about heavy scans.
 ## 19. Known traps
 
 - **Kernel pinning** (§16): always `agent.shutdown()` after a plugin deploy.
-- **No trace id client-side** (§8): don't try to deep-link the trace explorer.
+- **No trace id in the completion footer** (§4.2/§8): the backend mints its own
+  ring id; the Trace Explorer deep link is the `readTraceFromLS` localStorage
+  handoff (same-origin only), not a portable URL.
+- **Plugin webapp creation** (§8): every public create path rejects plugin
+  webapp types server-side — create `STANDARD`, then flip `type` via the
+  settings save. No public webapp DELETE exists.
+- **New code-env requirements need a rebuild**: after a deploy that changes
+  `code-env/python/spec/requirements.txt`, run `plugin.update_code_env()` and
+  restart the webapp backend *after* the rebuild (the deploy's restart happens
+  before it).
 - **`codeEnvName`** (§14): plugin settings must name the code env or kernels
   run builtin python.
 - **DSS 14.7 reporters** (§15): `runConditionEnabled`/`runCondition` only.

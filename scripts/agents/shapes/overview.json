@@ -1,0 +1,122 @@
+{
+  "cpuCores": "4 Cores / 8 Threads",
+  "dipHomeStorage": {
+    "filesystem": "/dev/nvme1n1",
+    "fsType": "xfs",
+    "mount": "/data",
+    "path": "/data/dataiku/dss_data/",
+    "usedPct": 77
+  },
+  "dssVersion": "14.7.0",
+  "filesystemInfo": [
+    {
+      "Available": "16G",
+      "Filesystem": "devtmpfs",
+      "Mounted on": "/dev",
+      "Size": "16G",
+      "Use%": "0%",
+      "Used": "0"
+    },
+    {
+      "Available": "16G",
+      "Filesystem": "tmpfs",
+      "Mounted on": "/dev/shm",
+      "Size": "16G",
+      "Use%": "1%",
+      "Used": "1.2M"
+    },
+    {
+      "Available": "6.2G",
+      "Filesystem": "tmpfs",
+      "Mounted on": "/run",
+      "Size": "6.2G",
+      "Use%": "1%",
+      "Used": "8.7M"
+    },
+    {
+      "Available": "120K",
+      "Filesystem": "efivarfs",
+      "Mounted on": "/sys/firmware/efi/efivars",
+      "Size": "128K",
+      "Use%": "3%",
+      "Used": "3.3K"
+    },
+    {
+      "Available": "128G",
+      "Filesystem": "/dev/nvme0n1p4",
+      "Mounted on": "/",
+      "Size": "149G",
+      "Use%": "15%",
+      "Used": "22G"
+    },
+    {
+      "Available": "766M",
+      "Filesystem": "/dev/nvme0n1p3",
+      "Mounted on": "/boot",
+      "Size": "960M",
+      "Use%": "21%",
+      "Used": "195M"
+    },
+    {
+      "Available": "193M",
+      "Filesystem": "/dev/nvme0n1p2",
+      "Mounted on": "/boot/efi",
+      "Size": "200M",
+      "Use%": "4%",
+      "Used": "7.7M"
+    },
+    {
+      "Available": "474G",
+      "Filesystem": "/dev/nvme1n1",
+      "Mounted on": "/data",
+      "Size": "2.0T",
+      "Use%": "77%",
+      "Used": "1.5T"
+    },
+    {
+      "Available": "3.1G",
+      "Filesystem": "tmpfs",
+      "Mounted on": "/run/user/500",
+      "Size": "3.1G",
+      "Use%": "1%",
+      "Used": "4.0K"
+    }
+  ],
+  "instanceInfo": {
+    "installId": "gfztg4MQhqqKGGpMI8ru7r14",
+    "nodeId": "tam-global",
+    "port": "10000"
+  },
+  "lastRestartTime": "Jun 25, 2026, 06:09 PM",
+  "memoryInfo": {
+    "Swap": "Not configured",
+    "available": "8 GB",
+    "buff/cache": "9 GB",
+    "free": "641 MB",
+    "shared": "548 MB",
+    "total": "31 GB",
+    "used": "23 GB"
+  },
+  "osInfo": "AlmaLinux 9.8 (Olive Jaguar)",
+  "pythonVersion": "3.11.13",
+  "sparkVersion": null,
+  "systemLimits": {
+    "POSIX message queues": "800.00 KB",
+    "core file size": "0",
+    "cpu time": "Unlimited",
+    "data seg size": "Unlimited",
+    "file locks": "Unlimited",
+    "file size": "Unlimited",
+    "max locked memory": "8.00 MB",
+    "max memory size": "Unlimited",
+    "max user processes": "500,000",
+    "open files": "65,536",
+    "pending signals": "125,479",
+    "pipe size": "8 bytes",
+    "real-time non-blocking time": "Unlimited",
+    "real-time priority": "0",
+    "scheduling priority": "0",
+    "stack size": "8.00 MB",
+    "virtual memory": "Unlimited"
+  }
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "id": "local",
+    "label": "Local DSS",
+    "url": ""
+  },
+  {
+    "id": "akaos-vm",
+    "label": "akaos vm",
+    "url": "https://akaos.fe-aws.dkucloud-dev.com"
+  }
+]

@@ -1,0 +1,5 @@
+{
+  "detail": "BadRequest: 400 Bad Request: Unknown DSS host id: no-such-host",
+  "error": "host-unreachable",
+  "hostId": "no-such-host"
+}

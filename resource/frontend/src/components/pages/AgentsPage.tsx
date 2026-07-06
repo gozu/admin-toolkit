@@ -41,6 +41,10 @@ const AGENT_EDU: Record<string, string> = {
   'ATK Ops Actuator': 'agent.ops-actuator',
 };
 
+// Shared fluid column: near full width, capped at 1400px. Header, transcript,
+// composer, and audit block all use it so the page reads as one column.
+const COLUMN = 'w-full max-w-[87.5rem] mx-auto px-4';
+
 function BookIcon() {
   return (
     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -176,7 +180,7 @@ export function AgentsPage() {
   return (
     <div className="w-full flex-1 min-h-0 flex flex-col gap-3 py-4">
       {/* Header: agent picker */}
-      <div className="w-full max-w-3xl mx-auto px-4 flex items-center gap-2 flex-wrap">
+      <div className={`${COLUMN} flex items-center gap-2 flex-wrap`}>
         {agents.map((agent) => (
           <span key={agent.id} className="inline-flex items-center gap-1">
             <button
@@ -208,7 +212,7 @@ export function AgentsPage() {
           <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
         </div>
       ) : agents.length === 0 ? (
-        <div className="w-full max-w-3xl mx-auto px-4">
+        <div className={COLUMN}>
           <div className="glass-card p-6 max-w-lg space-y-2">
             <h3 className="text-sm font-semibold text-[var(--text-primary)]">No agents on this host</h3>
             <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
@@ -222,7 +226,7 @@ export function AgentsPage() {
         <>
           {/* Transcript — centered column, bubbles never touch the edges */}
           <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto">
-            <div className="w-full max-w-3xl mx-auto px-4 space-y-4">
+            <div className={`${COLUMN} space-y-4`}>
               {messages.length === 0 && (
                 <div className="pt-16 flex flex-col items-center gap-4 text-center">
                   <p className="text-sm text-[var(--text-secondary)]">
@@ -290,7 +294,7 @@ export function AgentsPage() {
             </div>
           </div>
 
-          <div className="w-full max-w-3xl mx-auto px-4 space-y-2">
+          <div className={`${COLUMN} space-y-2`}>
             <PendingApprovalsBar
               plans={pendingPlans}
               disabled={streaming}
@@ -309,7 +313,7 @@ export function AgentsPage() {
             <div className="flex items-end gap-2">
               <button
                 onClick={() => setLibraryOpen(true)}
-                className="shrink-0 flex items-center gap-1.5 px-2.5 py-2 text-xs font-medium rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+                className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-[var(--accent)]/40 bg-[var(--accent-muted)] text-[var(--accent)] hover:brightness-110 transition-[filter]"
                 title="Open the prompt library"
               >
                 <BookIcon />
@@ -350,7 +354,7 @@ export function AgentsPage() {
           </div>
 
           {/* Audit trail + settings history — may stay wider than the chat column */}
-          <div className="w-full max-w-5xl mx-auto px-4 space-y-3">
+          <div className={`${COLUMN} space-y-3`}>
             <AuditTimeline focusAuditId={focusAuditId} />
             <SettingsHistoryCard onRestore={onRestore} />
           </div>

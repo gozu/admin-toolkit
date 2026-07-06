@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.643] - 2026-07-06
+
+### Added
+- **Archive Storage** plugin setting (`archive_folder_connection`, dropdown of folder-capable connections): the toolkit find-or-creates an `admin-toolkit-archive` managed folder on it in the active support project. The Projects/Code-env cleaner backup pickers default to that folder, and the toolbar "Export all" zips (JSON + CSV) are additionally stored into it via the new `POST /api/archive/store` (browser download unchanged; no-op when the setting is empty).
+
+### Changed
+- `default_llm_id` is now a dropdown (LLM Mesh models, same enumeration as the report LLM picker) instead of a free-text id; the stored value stays selectable even if enumeration misses it.
+- `triage_connection` is now a PostgreSQL connection dropdown (was free text), matching the Agents Audit setting.
+
 ## [0.4.641] - 2026-07-06
 
 ### Changed

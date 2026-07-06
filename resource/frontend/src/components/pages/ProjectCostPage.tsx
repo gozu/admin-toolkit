@@ -6,14 +6,27 @@ import { DataGrid } from '../common/DataGrid';
 import { ProgressIndicator } from '../common/ProgressIndicator';
 import { BigStat, BarRow, UsageBar } from './missionControl/microViz';
 import { ProjectCostTreemap } from '../ProjectCostTreemap';
-import { LENS_META, projectTone } from './projectCost/lens';
+import {
+  ClassCards,
+  DailyStrips,
+  K8sPanel,
+  LlmPanel,
+  SqlConnectionsPanel,
+  TopProcessesPanel,
+} from './projectCost/panels';
+import { LENS_COLOR, formatSeconds, k8sGBh, projectTone } from './projectCost/lens';
 import type { CostLens } from './projectCost/lens';
 import type { ColumnDef } from '../../utils/dataGridTypes';
-import type { CruProjectRow } from '../../types';
+import type { CruDetailRow, CruProjectRow } from '../../types';
 
 const EMPTY: never[] = [];
-const LENSES: CostLens[] = ['mem', 'cpu', 'llm'];
-const LENS_COLUMN_ID: Record<CostLens, string> = { mem: 'memGBh', cpu: 'cpuH', llm: 'llmUSD' };
+const LENS_COLUMN_ID: Record<CostLens, string> = {
+  mem: 'memGBh',
+  cpu: 'cpuH',
+  sql: 'sqlExecS',
+  k8s: 'k8sGBh',
+  llm: 'llmUSD',
+};
 
 const TONE_TEXT: Record<ReturnType<typeof projectTone>, string> = {
   ok: 'text-[var(--neon-green)]',
@@ -36,11 +49,21 @@ function spanDays(firstTs?: string | null, lastTs?: string | null): number {
   return (b - a) / 86_400_000;
 }
 
-function MetricCell({ value, text, pct, tone }: { value: string; text: string; pct: number; tone: 'ok' | 'warn' | 'crit' | 'info' }) {
+function MetricCell({
+  value,
+  text,
+  pct,
+  tone,
+}: {
+  value: string;
+  text: string;
+  pct: number;
+  tone: 'ok' | 'warn' | 'crit' | 'info';
+}) {
   return (
     <div className="flex items-center justify-end gap-2">
       <span className="w-20 text-right font-mono text-xs tabular-nums text-[var(--text-primary)]">{value}</span>
-      <span className="w-16">
+      <span className="w-14">
         <UsageBar pct={pct} tone={tone} />
       </span>
       <span className="sr-only">{text}</span>
@@ -48,47 +71,87 @@ function MetricCell({ value, text, pct, tone }: { value: string; text: string; p
   );
 }
 
-function ProjectDetailPanel({ row }: { row: CruProjectRow }) {
-  const users = row.byUser ?? EMPTY;
-  const ctxTypes = row.byContextType ?? EMPTY;
-  const userMax = Math.max(1, ...users.map((u) => u.memGBh));
-  const ctxMax = Math.max(1, ...ctxTypes.map((c) => c.memGBh));
+// One drilldown quadrant: rows are ranked + sized on their class-native metric.
+function DetailList({
+  title,
+  rows,
+  color,
+  metric,
+  format,
+  empty,
+}: {
+  title: string;
+  rows: { key: string; row: CruDetailRow }[];
+  color: string;
+  metric: (r: CruDetailRow) => number;
+  format: (v: number) => string;
+  empty: string;
+}) {
+  const shown = rows.filter((r) => metric(r.row) > 0);
+  const max = Math.max(1e-9, ...shown.map((r) => metric(r.row)));
   return (
-    <div className="grid grid-cols-1 gap-4 border-t border-[var(--border-glass)] bg-[var(--bg-glass)] px-4 py-3 md:grid-cols-2">
-      <div className="min-w-0">
-        <div className="mb-2 text-[10px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
-          By user / owner
-        </div>
-        <div className="space-y-1">
-          {users.length === 0 && <div className="text-xs text-[var(--text-muted)]">No local-process records.</div>}
-          {users.map((u) => (
-            <BarRow
-              key={u.authIdentifier}
-              label={u.authIdentifier}
-              value={`${u.memGBh.toFixed(1)} GB·h`}
-              pct={(u.memGBh / userMax) * 100}
-              tone="info"
-            />
-          ))}
-        </div>
+    <div className="min-w-0">
+      <div className="mb-2 flex items-center gap-1.5">
+        <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: color }} />
+        <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+          {title}
+        </span>
       </div>
-      <div className="min-w-0">
-        <div className="mb-2 text-[10px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
-          By context type
-        </div>
-        <div className="space-y-1">
-          {ctxTypes.length === 0 && <div className="text-xs text-[var(--text-muted)]">No local-process records.</div>}
-          {ctxTypes.map((c) => (
-            <BarRow
-              key={c.type}
-              label={c.type}
-              value={`${c.memGBh.toFixed(1)} GB·h`}
-              pct={(c.memGBh / ctxMax) * 100}
-              tone="info"
-            />
-          ))}
-        </div>
+      <div className="space-y-1">
+        {shown.length === 0 && <div className="text-xs text-[var(--text-muted)]">{empty}</div>}
+        {shown.map(({ key, row }) => (
+          <BarRow
+            key={key}
+            label={key}
+            value={format(metric(row))}
+            pct={(metric(row) / max) * 100}
+            tone="info"
+          />
+        ))}
       </div>
+    </div>
+  );
+}
+
+function ProjectDetailPanel({ row }: { row: CruProjectRow }) {
+  const users = (row.byUser ?? EMPTY).map((u) => ({ key: u.authIdentifier, row: u }));
+  const ctxTypes = (row.byContextType ?? EMPTY).map((c) => ({ key: c.type, row: c }));
+  const conns = (row.byConnection ?? EMPTY).map((c) => ({ key: c.connection, row: c }));
+  const models = (row.byModel ?? EMPTY).map((m) => ({ key: m.model, row: m }));
+  return (
+    <div className="grid grid-cols-1 gap-4 border-t border-[var(--border-glass)] bg-[var(--bg-glass)] px-4 py-3 md:grid-cols-2 xl:grid-cols-4">
+      <DetailList
+        title="By user / owner"
+        rows={users}
+        color={LENS_COLOR.mem}
+        metric={(r) => r.memGBh}
+        format={(v) => `${v.toFixed(1)} GB·h`}
+        empty="No local-process records."
+      />
+      <DetailList
+        title="By workload"
+        rows={ctxTypes}
+        color={LENS_COLOR.mem}
+        metric={(r) => Math.max(r.memGBh, r.k8sGBh)}
+        format={(v) => `${v.toFixed(1)} GB·h`}
+        empty="No local-process records."
+      />
+      <DetailList
+        title="By SQL connection"
+        rows={conns}
+        color={LENS_COLOR.sql}
+        metric={(r) => r.sqlExecS}
+        format={formatSeconds}
+        empty="No SQL queries."
+      />
+      <DetailList
+        title="By LLM model"
+        rows={models}
+        color={LENS_COLOR.llm}
+        metric={(r) => r.llmUSD}
+        format={(v) => `$${v.toFixed(4)}`}
+        empty="No LLM usage."
+      />
     </div>
   );
 }
@@ -113,13 +176,19 @@ export function ProjectCostPage() {
   const idle = data?.idleResources ?? EMPTY;
   const totals = data?.totals;
   const span = data?.span;
+  const classTotals = data?.classTotals;
+  const hasSql = (classTotals?.sql?.queries ?? 0) > 0;
+  const hasK8s =
+    (classTotals?.k8s?.jobs ?? 0) > 0 || (classTotals?.k8s?.censusPods ?? 0) > 0;
+  const hasLlm = (classTotals?.llm?.records ?? 0) > 0;
 
   const colMax = useMemo(
     () => ({
       mem: Math.max(1, ...projects.map((p) => p.memGBh)),
       cpu: Math.max(1, ...projects.map((p) => p.cpuH)),
+      sql: Math.max(1e-9, ...projects.map((p) => p.sqlExecS ?? 0)),
+      k8s: Math.max(1e-9, ...projects.map((p) => k8sGBh(p))),
       llm: Math.max(1e-9, ...projects.map((p) => p.llmUSD)),
-      rec: Math.max(1, ...projects.map((p) => p.records)),
     }),
     [projects],
   );
@@ -131,8 +200,8 @@ export function ProjectCostPage() {
     [selectedKey],
   );
 
-  const columns = useMemo<ColumnDef<CruProjectRow>[]>(
-    () => [
+  const columns = useMemo<ColumnDef<CruProjectRow>[]>(() => {
+    const cols: ColumnDef<CruProjectRow>[] = [
       {
         id: 'projectKey',
         label: 'Project',
@@ -156,10 +225,15 @@ export function ProjectCostPage() {
       },
       {
         id: 'memGBh',
-        label: 'Memory GB·h',
+        label: 'Mem GB·h',
         align: 'right',
         render: (row) => (
-          <MetricCell value={row.memGBh.toFixed(1)} text={`${row.memGBh} GB·h`} pct={(row.memGBh / colMax.mem) * 100} tone={TONE_BAR[projectTone(row)]} />
+          <MetricCell
+            value={row.memGBh.toFixed(1)}
+            text={`${row.memGBh} GB·h`}
+            pct={(row.memGBh / colMax.mem) * 100}
+            tone={TONE_BAR[projectTone(row)]}
+          />
         ),
         sortValue: (row) => row.memGBh,
       },
@@ -168,31 +242,75 @@ export function ProjectCostPage() {
         label: 'CPU·h',
         align: 'right',
         render: (row) => (
-          <MetricCell value={row.cpuH.toFixed(2)} text={`${row.cpuH} CPU·h`} pct={(row.cpuH / colMax.cpu) * 100} tone="ok" />
+          <MetricCell
+            value={row.cpuH.toFixed(2)}
+            text={`${row.cpuH} CPU·h`}
+            pct={(row.cpuH / colMax.cpu) * 100}
+            tone="ok"
+          />
         ),
         sortValue: (row) => row.cpuH,
       },
-      {
+    ];
+    if (hasSql) {
+      cols.push({
+        id: 'sqlExecS',
+        label: 'SQL engine',
+        align: 'right',
+        render: (row) => (
+          <MetricCell
+            value={row.sqlExecS > 0 ? formatSeconds(row.sqlExecS) : '—'}
+            text={`${row.sqlExecS} engine seconds over ${row.sqlQueries} queries`}
+            pct={((row.sqlExecS ?? 0) / colMax.sql) * 100}
+            tone="info"
+          />
+        ),
+        sortValue: (row) => row.sqlExecS ?? 0,
+      });
+    }
+    if (hasK8s) {
+      cols.push({
+        id: 'k8sGBh',
+        label: 'K8s GB·h',
+        align: 'right',
+        render: (row) => (
+          <MetricCell
+            value={k8sGBh(row) > 0 ? k8sGBh(row).toFixed(1) : '—'}
+            text={`${k8sGBh(row)} GB·h over ${row.k8sJobs} jobs`}
+            pct={(k8sGBh(row) / colMax.k8s) * 100}
+            tone="info"
+          />
+        ),
+        sortValue: (row) => k8sGBh(row),
+      });
+    }
+    if (hasLlm) {
+      cols.push({
         id: 'llmUSD',
         label: 'LLM $',
         align: 'right',
         render: (row) => (
-          <MetricCell value={`$${row.llmUSD.toFixed(4)}`} text={`$${row.llmUSD}`} pct={(row.llmUSD / colMax.llm) * 100} tone="warn" />
+          <MetricCell
+            value={row.llmUSD > 0 ? `$${row.llmUSD.toFixed(4)}` : '—'}
+            text={`$${row.llmUSD}`}
+            pct={(row.llmUSD / colMax.llm) * 100}
+            tone="warn"
+          />
         ),
         sortValue: (row) => row.llmUSD,
-      },
-      {
-        id: 'records',
-        label: 'Records',
-        align: 'right',
-        mono: true,
-        cellClassName: 'text-[var(--text-secondary)]',
-        render: (row) => row.records.toLocaleString(),
-        sortValue: (row) => row.records,
-      },
-    ],
-    [colMax, selectedKey],
-  );
+      });
+    }
+    cols.push({
+      id: 'records',
+      label: 'Records',
+      align: 'right',
+      mono: true,
+      cellClassName: 'text-[var(--text-secondary)]',
+      render: (row) => row.records.toLocaleString(),
+      sortValue: (row) => row.records,
+    });
+    return cols;
+  }, [colMax, selectedKey, hasSql, hasK8s, hasLlm]);
 
   return (
     <div className="page-fill">
@@ -216,35 +334,24 @@ export function ProjectCostPage() {
             <div className="px-4 py-3 text-sm text-[var(--neon-red)]">{error}</div>
           )}
           <div className="grid grid-cols-2 gap-4 px-4 py-4 sm:grid-cols-3 lg:grid-cols-6">
-            <BigStat value={totals ? totals.memGBh.toFixed(1) : '—'} label="Total GB·h" sub="mem" />
-            <BigStat value={totals ? totals.cpuH.toFixed(1) : '—'} label="Total CPU·h" sub="cpu" />
-            <BigStat value={totals ? `$${totals.llmUSD.toFixed(2)}` : '—'} label="LLM cost" />
             <BigStat value={totals ? totals.projectCount : '—'} label="Projects" />
+            <BigStat value={totals ? totals.userCount : '—'} label="Users" />
             <BigStat value={span ? spanDays(span.firstTs, span.lastTs).toFixed(1) : '—'} label="Span (days)" />
             <BigStat value={span ? span.cruRecords.toLocaleString() : '—'} label="CRU records" />
+            <BigStat
+              value={span ? span.linesScanned.toLocaleString() : '—'}
+              label="Audit lines"
+            />
+            <BigStat
+              value={classTotals?.sql?.connections ?? (totals ? 0 : '—')}
+              label="SQL connections"
+            />
           </div>
+          {(data?.daily?.length ?? 0) >= 2 && <DailyStrips daily={data!.daily!} />}
         </div>
 
-        {/* Lens toggle */}
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">Lens</span>
-          <div className="inline-flex overflow-hidden rounded-md border border-[var(--border-glass)]">
-            {LENSES.map((l) => (
-              <button
-                key={l}
-                type="button"
-                onClick={() => setLens(l)}
-                className={`px-3 py-1 font-mono text-xs transition-colors ${
-                  lens === l
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
-                }`}
-              >
-                {LENS_META[l].short} {LENS_META[l].unit}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* Compute classes — the lens selector */}
+        <ClassCards classTotals={classTotals} lens={lens} onLens={setLens} />
 
         {/* Hero treemap */}
         <ProjectCostTreemap
@@ -270,6 +377,16 @@ export function ProjectCostPage() {
           emptyMessage="Waiting for compute usage…"
           scroll="card"
         />
+
+        {/* Per-class panels — rendered only when the class has data */}
+        {hasSql && (
+          <SqlConnectionsPanel
+            connections={data?.connections ?? EMPTY}
+            unattributed={classTotals?.sql?.unattributed}
+          />
+        )}
+        {hasK8s && data?.k8s && <K8sPanel k8s={data.k8s} classTotals={classTotals} />}
+        {hasLlm && <LlmPanel models={data?.llmModels ?? EMPTY} />}
 
         {/* Idle resources panel */}
         {idle.length > 0 && (
@@ -300,6 +417,8 @@ export function ProjectCostPage() {
             </div>
           </div>
         )}
+
+        <TopProcessesPanel processes={data?.topProcesses ?? EMPTY} />
       </div>
     </div>
   );

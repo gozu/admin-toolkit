@@ -170,24 +170,28 @@ export interface CruTotals {
   memGBh: number;
   cpuH: number;
   llmUSD: number;
+  sqlExecS?: number;
+  k8sReservedGBh?: number;
+  k8sActualGBh?: number;
   projectCount: number;
   userCount: number;
 }
 
-export interface CruProjectUserBreakdown {
-  authIdentifier: string;
+// Per-project drilldown row — one shape for byUser/byContextType/byConnection/
+// byModel (the macro emits every metric field on each; the key field varies).
+export interface CruDetailRow {
   memGBh: number;
   cpuH: number;
+  llmUSD: number;
+  sqlExecS: number;
+  k8sGBh: number;
   records: number;
-  llmUSD?: number;
 }
 
-export interface CruProjectContextBreakdown {
-  type: string;
-  memGBh: number;
-  cpuH: number;
-  records: number;
-}
+export type CruProjectUserBreakdown = CruDetailRow & { authIdentifier: string };
+export type CruProjectContextBreakdown = CruDetailRow & { type: string };
+export type CruProjectConnectionBreakdown = CruDetailRow & { connection: string };
+export type CruProjectModelBreakdown = CruDetailRow & { model: string };
 
 export interface CruProjectRow {
   projectKey: string;
@@ -195,9 +199,19 @@ export interface CruProjectRow {
   cpuH: number;
   llmUSD: number;
   llmTokens: number;
+  sqlExecS: number;
+  sqlTotalS: number;
+  sqlRows: number;
+  sqlQueries: number;
+  k8sReservedGBh: number;
+  k8sActualGBh: number;
+  k8sCpuCoreH: number;
+  k8sJobs: number;
   records: number;
   byUser?: CruProjectUserBreakdown[];
   byContextType?: CruProjectContextBreakdown[];
+  byConnection?: CruProjectConnectionBreakdown[];
+  byModel?: CruProjectModelBreakdown[];
 }
 
 export interface CruUserRow {
@@ -205,6 +219,13 @@ export interface CruUserRow {
   memGBh: number;
   cpuH: number;
   llmUSD: number;
+  sqlExecS?: number;
+  sqlTotalS?: number;
+  sqlQueries?: number;
+  k8sReservedGBh?: number;
+  k8sActualGBh?: number;
+  k8sCpuCoreH?: number;
+  k8sJobs?: number;
   records: number;
 }
 
@@ -223,14 +244,121 @@ export interface CruIdleResource {
   cpuH: number;
 }
 
+export interface CruTopProcess {
+  id: string;
+  projectKey: string;
+  contextType: string;
+  commandName: string;
+  memGBh: number;
+  cpuH: number;
+}
+
+export interface CruConnectionRow {
+  connection: string;
+  queries: number;
+  execS: number;
+  totalS: number;
+  rows: number;
+  topProjects: { projectKey: string; execS: number }[];
+  // share of wall time NOT spent in the DB engine — high = fetch/egress-bound
+  fetchOverheadPct: number;
+}
+
+export interface CruLlmModelRow {
+  llmId: string;
+  model: string;
+  llmType: string;
+  connection: string;
+  usd: number;
+  ptok: number;
+  ctok: number;
+  queries: number;
+  cacheHit: number;
+  cacheMiss: number;
+  compS: number;
+}
+
+export interface CruK8sClusterRow {
+  clusterId: string;
+  jobs: number;
+  sparkJobs: number;
+  reservedGBh: number;
+}
+
+export interface CruK8sNodeRow {
+  nodeId: string;
+  actualGBh: number;
+  cpuCoreH: number;
+  pods: number;
+}
+
+export interface CruK8sExecTypeRow {
+  type: string;
+  actualGBh: number;
+  cpuCoreH: number;
+  pods: number;
+}
+
+export interface CruK8sData {
+  clusters?: CruK8sClusterRow[];
+  nodes?: CruK8sNodeRow[];
+  execTypes?: CruK8sExecTypeRow[];
+}
+
+export interface CruDailyRow {
+  date: string;
+  memGBh: number;
+  cpuH: number;
+  llmUSD: number;
+  sqlExecS: number;
+  sqlQueries: number;
+  k8sGBh: number;
+}
+
+export interface CruClassTotals {
+  local?: { memGBh: number; cpuH: number; records: number };
+  sql?: {
+    queries: number;
+    execS: number;
+    totalS: number;
+    rows: number;
+    connections: number;
+    unattributed?: { queries: number; execS: number; totalS: number; rows: number };
+  };
+  k8s?: {
+    jobs: number;
+    sparkJobs: number;
+    reservedGBh: number;
+    actualGBh: number;
+    cpuCoreH: number;
+    censusSnapshots: number;
+    censusPods: number;
+  };
+  llm?: {
+    usd: number;
+    ptok: number;
+    ctok: number;
+    queries: number;
+    cacheHit: number;
+    cacheMiss: number;
+    records: number;
+  };
+}
+
 export interface CruCostData {
   ok?: boolean;
   error?: string;
   auditDir?: string;
   span?: CruSpan;
   totals?: CruTotals;
+  classTotals?: CruClassTotals;
   projects?: CruProjectRow[];
   users?: CruUserRow[];
   contextTypes?: CruContextTypeRow[];
+  connections?: CruConnectionRow[];
+  llmModels?: CruLlmModelRow[];
+  k8s?: CruK8sData;
   idleResources?: CruIdleResource[];
+  topProcesses?: CruTopProcess[];
+  daily?: CruDailyRow[];
 }

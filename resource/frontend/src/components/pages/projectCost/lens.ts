@@ -1,16 +1,37 @@
 import type { CruProjectRow } from '../../../types';
 
-// The three v1 native-unit lenses. SQL (connection-join) and K8s (pod census)
-// are an explicit fast-follow — see CRU.md §5 and the module plan.
-export type CostLens = 'mem' | 'cpu' | 'llm';
+// Five native-unit lenses — one per compute class the CRU parser attributes
+// (local memory, local CPU, SQL engine time, K8s residency, LLM spend). Units
+// are never mixed on one plot: the treemap/leaderboard resize per lens, and
+// the daily strips are small multiples with their own scales.
+export type CostLens = 'mem' | 'cpu' | 'sql' | 'k8s' | 'llm';
 
 export type CostTone = 'ok' | 'warn' | 'crit' | 'neutral';
 
+// Fixed class identity colors (viz.css categorical slots — assigned in slot
+// order, never cycled; every mark using these carries a direct label).
+export const LENS_COLOR: Record<CostLens, string> = {
+  mem: 'var(--viz-cat-1)', // blue
+  cpu: 'var(--viz-cat-2)', // aqua
+  sql: 'var(--viz-cat-3)', // yellow
+  k8s: 'var(--viz-cat-5)', // violet
+  llm: 'var(--viz-cat-4)', // green
+};
+
 export const LENS_META: Record<CostLens, { label: string; short: string; unit: string }> = {
-  mem: { label: 'Memory', short: 'Mem', unit: 'GB·h' },
-  cpu: { label: 'CPU', short: 'CPU', unit: 'CPU·h' },
+  mem: { label: 'Local memory', short: 'Mem', unit: 'GB·h' },
+  cpu: { label: 'Local CPU', short: 'CPU', unit: 'CPU·h' },
+  sql: { label: 'SQL engine', short: 'SQL', unit: 'engine·s' },
+  k8s: { label: 'Kubernetes', short: 'K8s', unit: 'GB·h' },
   llm: { label: 'LLM', short: 'LLM', unit: '$' },
 };
+
+// K8s per-project cost: census actuals when the collector saw the pods,
+// falling back to request×lifetime reservations (never summed — they measure
+// the same residency two ways).
+export function k8sGBh(row: CruProjectRow): number {
+  return Math.max(row.k8sActualGBh ?? 0, row.k8sReservedGBh ?? 0);
+}
 
 export function lensValue(row: CruProjectRow, lens: CostLens): number {
   switch (lens) {
@@ -18,9 +39,19 @@ export function lensValue(row: CruProjectRow, lens: CostLens): number {
       return row.memGBh;
     case 'cpu':
       return row.cpuH;
+    case 'sql':
+      return row.sqlExecS ?? 0;
+    case 'k8s':
+      return k8sGBh(row);
     case 'llm':
       return row.llmUSD;
   }
+}
+
+export function formatSeconds(s: number): string {
+  if (s >= 3600) return `${(s / 3600).toFixed(1)} h`;
+  if (s >= 60) return `${(s / 60).toFixed(1)} min`;
+  return `${s.toFixed(1)} s`;
 }
 
 export function formatLens(value: number, lens: CostLens): string {
@@ -29,6 +60,10 @@ export function formatLens(value: number, lens: CostLens): string {
       return `${value.toFixed(1)} GB·h`;
     case 'cpu':
       return `${value.toFixed(2)} CPU·h`;
+    case 'sql':
+      return formatSeconds(value);
+    case 'k8s':
+      return `${value.toFixed(1)} GB·h`;
     case 'llm':
       return `$${value.toFixed(4)}`;
   }

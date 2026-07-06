@@ -1,7 +1,7 @@
 {
     "meta": {
         "label": "CRU audit parse",
-        "description": "Stream the host audit logs ($DIP_HOME/run/audit/audit.log*) and roll up Compute Resource Usage (memory GB·h + CPU·h from LOCAL_PROCESS, $ from LLM_USAGE) per project / user / context.type. Runs as the dataiku service account so it can read the local audit dir regardless of webapp impersonation.",
+        "description": "Stream the host audit logs ($DIP_HOME/run/audit/audit.log*) and roll up ALL Compute Resource Usage kinds — LOCAL_PROCESS (GB·h/CPU·h), SQL_QUERY joined to SQL_CONNECTION (engine-s vs wall-s vs rows per connection/project), SINGLE_K8S_JOB + SPARK_K8S_JOB (reserved GB·h), the kubernetes-cluster-usage-status pod census (actual GB·h / core·h per node, exec-type, project), and LLM_USAGE ($ per model, cache hit/miss) — plus a per-day activity series. Runs as the dataiku service account so it can read the local audit dir regardless of webapp impersonation.",
         "icon": "icon-money",
         "macroRoles": [
             {

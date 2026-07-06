@@ -5,7 +5,13 @@ import { TreemapController, TreemapElement } from 'chartjs-chart-treemap';
 import { Chart } from 'react-chartjs-2';
 import type { CruProjectRow } from '../types';
 import type { CostLens } from './pages/projectCost/lens';
-import { lensValue, projectTone, type CostTone } from './pages/projectCost/lens';
+import {
+  formatSeconds,
+  k8sGBh,
+  lensValue,
+  projectTone,
+  type CostTone,
+} from './pages/projectCost/lens';
 
 // Register treemap components (idempotent — Chart.js dedupes re-registration).
 ChartJS.register(TreemapController, TreemapElement, Tooltip, Legend);
@@ -109,14 +115,16 @@ export function ProjectCostTreemap({ rows, lens, selectedKey, onSelect }: Projec
               const d = ctx.raw?._data;
               if (!d) return '';
               const r = d.row;
-              return [
+              const lines = [
                 r.projectKey,
                 `Memory: ${r.memGBh.toFixed(1)} GB·h`,
                 `CPU: ${r.cpuH.toFixed(2)} CPU·h`,
-                `LLM: $${r.llmUSD.toFixed(4)}`,
-                `Records: ${r.records.toLocaleString()}`,
-                'Click to inspect',
               ];
+              if ((r.sqlExecS ?? 0) > 0) lines.push(`SQL engine: ${formatSeconds(r.sqlExecS)}`);
+              if (k8sGBh(r) > 0) lines.push(`K8s: ${k8sGBh(r).toFixed(1)} GB·h`);
+              if (r.llmUSD > 0) lines.push(`LLM: $${r.llmUSD.toFixed(4)}`);
+              lines.push(`Records: ${r.records.toLocaleString()}`, 'Click to inspect');
+              return lines;
             },
           },
         },

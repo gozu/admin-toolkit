@@ -4,10 +4,11 @@ Makes a chat turn's trace one click away: DAY-partitioned interaction-logging
 dataset + FULL-mode logging on every AGENTOPS agent + the Dataiku
 `traces-explorer` plugin webapp found-or-created and pointed at that dataset.
 
-The plugin webapp CAN be created programmatically — but only via the raw REST
-endpoint: `DSSProject.create_webapp()` rejects plugin types (verified against
-the 14.7 dataikuapi source), so we POST /projects/<pk>/webapps/ directly. The
-plugin declares autoStartBackend:false, so the backend is started explicitly.
+The plugin webapp CAN be created programmatically — but only by creating a
+STANDARD webapp and flipping its type via the settings PUT (verified live on
+14.7: both create paths reject plugin types server-side; the settings save
+accepts the change and re-materializes the plugin webapp shape). The plugin
+declares autoStartBackend:false, so the backend is started explicitly.
 
 Runs against the caller's client (AGENTOPS may live on the active remote
 host). Returns a provision_all-style steps trail
@@ -110,12 +111,22 @@ def _logging_connection(client):
 
 
 def _create_webapp_raw(client, project_key):
-    """POST the plugin webapp type directly — create_webapp() only accepts
-    STANDARD/BOKEH/DASH/STREAMLIT/SHINY. Returns the new webAppId."""
+    """Create the plugin webapp in two steps (proven live on 14.7): POST a
+    STANDARD webapp, then flip its type via the settings PUT — both the
+    create_webapp() helper AND the raw create endpoint reject plugin types
+    server-side ("Webapp type not supported"), but the settings save accepts
+    the type change and DSS re-materializes the plugin webapp's params (the
+    Trace Explorer html/backend shape) around it. Returns the new webAppId."""
     created = client._perform_json(
         'POST', '/projects/%s/webapps/' % project_key,
-        body={'name': TRACE_EXPLORER_WEBAPP_NAME, 'type': TRACE_EXPLORER_WEBAPP_TYPE})
-    return (created or {}).get('webAppId') or (created or {}).get('id')
+        body={'name': TRACE_EXPLORER_WEBAPP_NAME, 'type': 'STANDARD'})
+    webapp_id = (created or {}).get('webAppId') or (created or {}).get('id')
+    if not webapp_id:
+        return None
+    settings = client.get_project(project_key).get_webapp(webapp_id).get_settings()
+    settings.get_raw()['type'] = TRACE_EXPLORER_WEBAPP_TYPE
+    settings.save()
+    return webapp_id
 
 
 def _configure_webapp(webapp):
@@ -131,6 +142,7 @@ def _configure_webapp(webapp):
     config['llm_responses_dataset'] = DATASET_NAME
     config['llm_responses_column'] = TRACE_COLUMN
     config['log_level'] = config.get('log_level') or 'INFO'
+    params['backendEnabled'] = True  # plugin meta has hasBackend, start needs it
     settings.save()
 
 

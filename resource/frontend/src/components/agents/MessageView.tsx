@@ -62,7 +62,7 @@ export function MessageView({
     return (
       <div className="flex justify-end">
         <div className="max-w-[min(85%,40rem)] rounded-xl rounded-br-sm px-3.5 py-2 bg-[var(--accent-muted)] border border-[var(--accent)]/20 text-sm text-[var(--text-primary)] whitespace-pre-wrap">
-          {message.content}
+          {message.display ?? message.content}
         </div>
       </div>
     );

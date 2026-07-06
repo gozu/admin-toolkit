@@ -83,6 +83,10 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   // Plain text sent back as history (assistant = concatenated text segments).
   content: string;
+  /** Human-facing text when it differs from the model-facing `content` — used
+   * for synthetic approval/handoff messages whose content must carry
+   * confirm_token/item_ref for the agent but shouldn't show them in the UI. */
+  display?: string;
   segments: Segment[];
   /** Native dku-trace id for this turn — fetchable from /api/agents/last-trace
    * while it's still in the backend's short ring buffer. */
@@ -357,10 +361,20 @@ export function decidePlan(
   putConversation({ ...conv, messages });
 }
 
-/** One line of the batch handoff message the actuator receives per item. */
-function handoffLine(batchId: string, item: ActionItemData, index: number): string {
-  const ref = JSON.stringify({ batchId, itemId: item.id });
-  const head = `${index + 1}. [${item.id}] ${item.title} — action=${item.action} host=${item.host} target=${JSON.stringify(item.target)} item_ref=${ref}`;
+/** One line of the batch handoff message the actuator receives per item.
+ * `forModel` includes the machine refs ([id], item_ref) the actuator must echo
+ * into plan_admin_action; the display variant omits them. */
+function handoffLine(
+  batchId: string,
+  item: ActionItemData,
+  index: number,
+  forModel: boolean,
+): string {
+  const ref = forModel
+    ? ` [${item.id}]`
+    : '';
+  const itemRef = forModel ? ` item_ref=${JSON.stringify({ batchId, itemId: item.id })}` : '';
+  const head = `${index + 1}.${ref} ${item.title} — action=${item.action} host=${item.host} target=${JSON.stringify(item.target)}${itemRef}`;
   const why = item.why ? `\n   why: ${item.why}` : '';
   const evidence = item.evidence.length > 0 ? `\n   evidence: ${item.evidence.join(' | ')}` : '';
   return head + why + evidence;
@@ -408,10 +422,14 @@ export function submitActionItemsToActuator(
     `Action-item batch handoff (batch ${batchId}, ${actionable.length} item(s) selected by the user from another agent's findings).\n` +
     `Plan EVERY item below — one plan_admin_action call per item, passing its item_ref verbatim. ` +
     `Present each plan and WAIT for my approval. Do NOT execute anything yet.\n\n` +
-    actionable.map((item, i) => handoffLine(batchId, item, i)).join('\n');
+    actionable.map((item, i) => handoffLine(batchId, item, i, true)).join('\n');
+  const display =
+    `Action-item handoff — ${actionable.length} item(s) selected from another agent's findings. ` +
+    `Plan each item and wait for my approval before executing.\n\n` +
+    actionable.map((item, i) => handoffLine(batchId, item, i, false)).join('\n');
 
   selectAgent(actuatorAgentId);
-  void sendAgentMessage(actuatorAgentId, text);
+  void sendAgentMessage(actuatorAgentId, text, display);
 }
 
 /**
@@ -431,7 +449,12 @@ export function approvePlans(agentId: string, plans: PlanCardData[]): void {
               `${i + 1}. ${plan.action} on host ${plan.host} — confirm_token ${plan.confirmToken}${plan.itemRef ? ` item_ref=${JSON.stringify(plan.itemRef)}` : ''}`,
           )
           .join('\n');
-  void sendAgentMessage(agentId, text);
+  const display =
+    plans.length === 1
+      ? `Approved — execute the planned ${plans[0].action} on host ${plans[0].host}.`
+      : `Approved — execute all ${plans.length} plans:\n` +
+        plans.map((plan, i) => `${i + 1}. ${plan.action} on host ${plan.host}`).join('\n');
+  void sendAgentMessage(agentId, text, display);
 }
 
 /** Reject one or more pending plans in a single message. */
@@ -458,8 +481,14 @@ export function clearConversation(agentId: string): void {
   agentsChatStore.patch({ conversations });
 }
 
-/** Send one user message and stream the agent's reply into the store. */
-export async function sendAgentMessage(agentId: string, text: string): Promise<void> {
+/** Send one user message and stream the agent's reply into the store.
+ * `display` overrides what the user bubble shows; `text` (which may carry
+ * confirm tokens / item refs) is always what goes into the model history. */
+export async function sendAgentMessage(
+  agentId: string,
+  text: string,
+  display?: string,
+): Promise<void> {
   const base = getConversation(agentId);
   if (base.streaming) return;
 
@@ -473,7 +502,7 @@ export async function sendAgentMessage(agentId: string, text: string): Promise<v
     streaming: true,
     messages: [
       ...base.messages,
-      { role: 'user', content: text, segments: [{ type: 'text', text }] },
+      { role: 'user', content: text, display, segments: [{ type: 'text', text: display ?? text }] },
       { role: 'assistant', content: '', segments: [] },
     ],
   };

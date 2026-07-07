@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.660] - 2026-07-07
+
+### Fixed
+- **Legacy secret params survive the upgrade install.** 0.4.659 removed the `red_actions_secret` / `red_actions_password` / `host_keys_password` declarations, and DSS prunes undeclared config keys during the plugin update itself — before the fallback/migration code could ever read them (observed live on both instances). The three legacy params are now kept declared but hidden (`visibilityCondition: "false"`), so upgrading from any pre-0.4.659 version preserves the values and the first backend read migrates them into `master_password`. Installs that already upgraded through 0.4.659 must re-enter the master password once in plugin settings.
+
+## [0.4.659] - 2026-07-07
+
+### Changed
+- **One master password** replaces the three overlapping secrets. The new `master_password` plugin setting (a normal PASSWORD field — typed once, no more hash generation) now covers everything: the browser Advanced Actions unlock (verified and token-signed server-side, PBKDF2-strengthened signing key), remote-host API-key encryption (keys typed into Settings → Remote Hosts encrypt server-side with zero prompts), and the headless agents (triage sweep, actuator confirm tokens, host-key unlock). The `red_actions_secret` hash + `hash.html` generator roundtrip and the duplicate `red_actions_password` / `host_keys_password` agent params are gone.
+- **Encrypted host keys now auto-unlock server-side**: the backend derives the Fernet key from the master password on demand, so the host-keys unlock modal only appears on legacy installs (hash-only config, or blobs encrypted under a different password). A successful Advanced Actions unlock also opens the host-key gate in the same response.
+- **Upgrade is automatic**: a pre-0.4.659 config keeps working untouched — the backend falls back to `red_actions_password` / `host_keys_password` and migrates the value into `master_password` on first use (so it survives DSS pruning undeclared config keys on the next settings save); a legacy `red_actions_secret` PBKDF2 hash still verifies browser unlocks (and existing unlock cookies stay valid) until a master password is set.
+
+### Removed
+- `resource/hash.html` (offline secret generator / host-key encryptor). Blobs it produced (`adkfk1$…`) remain fully supported — KDF params, salt tag and framing are unchanged and now locked by tests.
+
 ## [0.4.658] - 2026-07-07
 
 ### Changed

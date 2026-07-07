@@ -90,7 +90,6 @@ the reason in the notebook card or maintenance summary.
   UI session is available:
   - DSS plugin install page with `https://github.com/gozu/admin-toolkit.git`
     entered.
-  - `hash.html` secret-generator page after a dummy password generated a secret
     (never show a real production password or secret).
   - Admin Toolkit Settings -> Remote Hosts add/edit dialog with dummy host
     values.

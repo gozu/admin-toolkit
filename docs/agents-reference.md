@@ -1010,8 +1010,7 @@ Snapshot failures become a digest warning, never a sweep failure.
 | Param | Meaning |
 |---|---|
 | `backend_url` | Admin Toolkit webapp backend base. Empty = auto-discover on the local DSS (project sweep for an admin-toolkit webapp → `<studioExternalUrl>/web-apps-backends/<project>/<webappId>`). |
-| `red_actions_password` | Plaintext Advanced Actions password. Empty = actuator permanently locked (plans still work, no token minted). |
-| `host_keys_password` | Password for encrypted (`adkfk1$`) remote-host API keys. |
+| `master_password` | The one master password: unlocks red endpoints headlessly AND opens encrypted (`adkfk1$`) remote-host API keys. Empty = actuator permanently locked (plans still work, no token minted). Legacy `red_actions_password` / `host_keys_password` values are honored until migrated. |
 | `host_allowlist` | CSV of allowed host ids. Empty = all. |
 | `default_llm_id` | Mesh LLM for agents when the instance doesn't set one. |
 | `enable_red_actions` | **Master kill-switch** for execute-admin-action. Default false. Only a human admin flips it. |

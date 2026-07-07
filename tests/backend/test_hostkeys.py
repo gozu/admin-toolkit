@@ -1,9 +1,8 @@
 """Crypto invariants for remote-host key encryption (adk_backend.hostkeys).
 
-These lock the byte-compatibility between the server-side encrypt path and the
-hand-rolled JS Fernet in resource/hash.html: same KDF params, same leading-space
-salt tag, same adkfk1$<salt>$<token> framing. A drift in any of them would make a
-blob made in one place undecryptable in the other.
+These lock the KDF params, the leading-space salt tag, and the
+adkfk1$<salt>$<token> framing. Blobs created by the retired hash.html browser
+tool (pre-0.4.659) must stay decryptable, so none of these may drift.
 """
 
 import conftest  # noqa: F401  (installs the python-lib path + DSS stubs)

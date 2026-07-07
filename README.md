@@ -198,34 +198,26 @@ This is the DSS where you will open the Admin Toolkit webapp. It can scan itself
 
 If GitHub access fails, build a plugin ZIP from this repo and install with **Plugins → Add plugin → Upload plugin ZIP**. Git install is preferred when available because DSS can later use **Update from repository**.
 
-### Set the Advanced Actions password
+### Set the master password
 
 Advanced Actions are destructive or mutating workflows: delete, replace, migrate, deploy, send. They are hidden and server-blocked until an admin unlocks them.
 
 Set this up once:
 
 1. Open the plugin settings page for **Admin Toolkit**.
-2. In the **Advanced Actions** section, click the linked secret generator. The URL is:
+2. Type a strong password into **Master password** (store it in your password manager).
+3. Save the plugin settings.
+4. Open the Admin Toolkit webapp and click the red **Advanced Actions** badge in the header.
+5. Enter the same password.
 
-   ```text
-   /plugins/admin-toolkit/resource/hash.html
-   ```
+One password covers everything:
 
-3. Type a strong password that your admins can remember or store in your password manager.
-4. Copy the generated secret. It starts with a hash-like encoded value; it is not the plaintext password.
-5. Return to the plugin settings page.
-6. Paste the generated value into **Advanced Actions secret**.
-7. Save the plugin settings.
-8. Open the Admin Toolkit webapp and click the red **Advanced Actions** badge in the header.
-9. Enter the same password you typed into the generator.
+- It unlocks Advanced Actions in the webapp (remembered per browser in a cookie — use **Forget on this device** on shared machines).
+- It encrypts remote-host API keys at rest (`adkfk1$…` blobs) and decrypts them automatically, with no separate unlock.
+- It lets the headless agents (daily triage, actuator) unlock red endpoints on their own.
+- Leave **Master password** empty if you want the toolkit to stay permanently read-only.
 
-What is happening:
-
-- The plaintext password never needs to be pasted into DSS plugin settings.
-- `hash.html` turns your password into a verifier in your browser.
-- The webapp uses that verifier to check future unlock attempts.
-- The unlock is remembered only in a browser cookie. Use **Forget on this device** on shared machines.
-- Leave **Advanced Actions secret** empty if you want the toolkit to stay permanently read-only.
+Upgrading from a pre-0.4.659 install to 0.4.660 or later? Nothing to do: the old `red_actions_password` / `host_keys_password` values are picked up automatically and migrated into **Master password** on first use, and installs that only ever set the hashed **Advanced Actions secret** keep working through the hash until you set the master password. (Upgrades that passed through 0.4.659 exactly lost the legacy values to DSS config pruning — re-enter the password once.)
 
 ### First launch and local host setup
 
@@ -307,8 +299,8 @@ Avoid manually creating `remote-dss-host` plugin presets unless you know exactly
 |---|---|
 | Git install fails on the main DSS | Use the HTTPS URL exactly: `https://github.com/gozu/admin-toolkit.git`, or install from ZIP. |
 | Webapp starts but pages fail | Rebuild the plugin code env and restart the webapp backend. |
-| Advanced Actions button says no secret is configured | Generate a secret with `/plugins/admin-toolkit/resource/hash.html`, paste it into plugin settings, save, then unlock again. |
-| Remote host says keys are locked | Click unlock and enter the Advanced Actions password. |
+| Advanced Actions button says no password is configured | Set **Master password** in the plugin settings, save, then unlock again. |
+| Remote host says keys are locked | The key was encrypted under a different password — re-save the host in Settings → Remote Hosts, or set the matching **Master password**. |
 | Remote host is reachable but plugin is missing | Use the webapp install dialog, or manually install the plugin on that remote. |
 | Remote host says support project missing | Click **Create and scan** so the app creates `ADMINTOOLKIT` on that host. |
 | Remote git install fails with credential/user errors | Use a personal admin API key for the remote host, or switch to **Upload .zip**. |
@@ -356,8 +348,8 @@ Every module plugs into shared navigation, lifecycle, and availability contracts
 ## Security model
 
 - **Admin-only by design** — install the webapp behind DSS authentication, restricted to admin groups.
-- **Read-only by default** — without the Advanced Actions secret, no mutating endpoint is reachable; mutation routes are additionally gated server-side, not just hidden in the UI.
-- **Explicit unlock for writes** — delete / replace / migrate / deploy / send require the per-session red unlock backed by the plugin-level secret.
+- **Read-only by default** — without the master password, no mutating endpoint is reachable; mutation routes are additionally gated server-side, not just hidden in the UI.
+- **Explicit unlock for writes** — delete / replace / migrate / deploy / send require the per-session red unlock backed by the plugin-level master password.
 - **Scoped host access** — host-bound operations run as DSS macros inside the dedicated `ADMINTOOLKIT` project under the DSS service account, never as arbitrary shell from the webapp.
 - **Backups before destruction** — the Project Cleaner uploads a project backup to a managed folder before any delete.
 

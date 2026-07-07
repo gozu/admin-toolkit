@@ -97,11 +97,11 @@ async function mockAgentsBackend(page: Page) {
   );
   await page.route('**/api/agents/trace-explorer/status', (route: Route) =>
     route.fulfill({
-      json: { installed: false, provisioned: false, projectKey: 'AGENTOPS', sameOrigin: true },
+      json: { installed: false, provisioned: false, projectKey: 'ADMINTOOLKIT', sameOrigin: true },
     }),
   );
   await page.route('**/api/agents', (route: Route) =>
-    route.fulfill({ json: { available: true, projectKey: 'AGENTOPS', agents: AGENTS } }),
+    route.fulfill({ json: { available: true, projectKey: 'ADMINTOOLKIT', agents: AGENTS } }),
   );
   await page.route('**/api/agents/actions**', (route: Route) =>
     route.fulfill({

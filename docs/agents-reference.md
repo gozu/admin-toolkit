@@ -118,7 +118,8 @@ doubles as the fleet-wide cache pre-warmer.
 
 All three are `PLUGIN_AGENT`s (kernel-per-agent, pooled). They register in the
 Mesh as `agent_admin-toolkit-agents_<component>` and are instantiated in the
-`AGENTOPS` project. They share one runtime (`agent_runtime.run_tool_loop`): a
+`ADMINTOOLKIT` project (the toolkit's own macro project — since 0.4.658; they
+lived in a separate `AGENTOPS` project before). They share one runtime (`agent_runtime.run_tool_loop`): a
 deterministic bind-tools → stream model turn → execute tool calls → repeat loop
 (max 12 iterations), chosen over `AgentExecutor` for version stability and
 because it lets us stream the typed event protocol (§4).
@@ -693,7 +694,7 @@ The Trace Explorer is now **auto-provisioned and one click away** from the chat:
 - `python-lib/adk_backend/trace_explorer.py::ensure_trace_explorer` provisions,
   idempotently and with a steps trail: the DAY-partitioned
   `agent_interaction_logs` interaction-logging dataset + FULL-content logging
-  on every AGENTOPS agent, then Dataiku's `traces-explorer` plugin webapp
+  on every ADMINTOOLKIT agent, then Dataiku's `traces-explorer` plugin webapp
   pointed at that dataset's `trace` column, then starts its backend
   (`autoStartBackend` is false in the plugin meta).
 - **Creation trap (verified live on 14.7)**: both `create_webapp()` *and* the
@@ -706,8 +707,8 @@ The Trace Explorer is now **auto-provisioned and one click away** from the chat:
   `{installed, provisioned, webAppId?, viewPath?, projectKey, sameOrigin}`
   (discovery off the per-turn hot path); `POST
   /api/agents/trace-explorer/provision` (`@advanced`-gated, wired to the
-  Agents-page "Set up Trace Explorer" CTA; runs on `g.client`, so AGENTOPS may
-  live on the active remote host).
+  Agents-page "Set up Trace Explorer" CTA; runs on `g.client`, so ADMINTOOLKIT
+  may live on the active remote host).
 - Per-turn deep link: on the local hub (`sameOrigin`), the turn's trace chip is
   **"open trace ↗"** — the frontend fetches the trace JSON (ring first, then
   the chat-persistence copy from §9 as the durable fallback), writes it to
@@ -1037,9 +1038,11 @@ an unset value lands you in builtin-python → `ModuleNotFoundError`.
 
 ## 15. Provisioning
 
-Agents live in the **`AGENTOPS`** project (webapp convention — the Agents page
-lists `AGENTOPS`'s agents on the active host). `AGENTSSANDBOX` is the dev/test
-sandbox.
+Agents live in the **`ADMINTOOLKIT`** project — the same project the toolkit's
+macros and triage scenario use, guaranteed to exist on every configured host
+(webapp convention — the Agents page lists `ADMINTOOLKIT`'s agents on the
+active host). Before 0.4.658 they lived in a separate `AGENTOPS` project;
+`AGENTSSANDBOX` is the dev/test sandbox.
 
 - Registration: `project.create_agent(name, 'PLUGIN_AGENT',
   plugin_agent_type='agent_admin-toolkit-agents_<component>')` — note the
@@ -1048,11 +1051,11 @@ sandbox.
   for the save-shape dance).
 - Standalone tool instances: type `Custom_agent_tool_admin-toolkit-agents_<component>`.
 - One-shot prod provisioning: `scripts/agents/provision_prod.py` (code env +
-  `codeEnvName` + plugin settings + AGENTOPS instances);
+  `codeEnvName` + plugin settings + ADMINTOOLKIT instances);
   `scripts/agents/provision_triage.py` for the daily scenario.
 - The webapp needs no provisioning beyond the admin-toolkit plugin itself; if
-  `AGENTOPS` is missing the page shows a normal empty state (`available:false`),
-  not an error.
+  `ADMINTOOLKIT` is missing or holds no agent instances the page shows a normal
+  empty state (`available:false`), not an error.
 
 DSS 14.7 reporter trap: scenario reporters use `runConditionEnabled` /
 `runCondition` (not the older `active` shape) — provisioning writes that shape.
@@ -1082,7 +1085,7 @@ they die only on idle timeout — and repeated test queries keep them alive
 plugin deploy, force-recycle:
 
 ```python
-project = client.get_project('AGENTOPS')
+project = client.get_project('ADMINTOOLKIT')
 for a in project.list_agents():
     raw = a if isinstance(a, dict) else a.raw
     project.get_agent(raw['id']).shutdown()   # next query spawns a fresh kernel

@@ -35,8 +35,32 @@ from interaction_logging import MANUAL_WEBAPP_STEP, ensure_interaction_logging  
 from test_agent import AGENT_TYPES, ensure_agent  # noqa: E402
 from test_tools import PLUGIN_ID, TOOLS, ensure_tool, run_tool  # noqa: E402
 
-ENV_NAME = 'plugin_%s_managed' % PLUGIN_ID
-DEFAULT_BACKEND = 'https://tam-global.fe-aws.dkucloud-dev.com/web-apps-backends/DIAG_PARSER_BRANCH1/Gv9CLFn'
+ENV_BASE = 'plugin_%s_managed' % PLUGIN_ID
+WEBAPP_TYPE = 'webapp_%s_%s' % (PLUGIN_ID, PLUGIN_ID)
+
+
+def discover_backend_url(client, base_url):
+    """Backend URL of the deployed admin-toolkit webapp on this instance
+    (…/web-apps-backends/<projectKey>/<webappId>), found via the DSS API —
+    the plugin's backend_url setting must point at the instance's own webapp,
+    never a hardcoded one."""
+    hits = []
+    for p in client.list_projects():
+        try:
+            webapps = client.get_project(p['projectKey']).list_webapps() or []
+        except Exception:
+            continue
+        for wa in webapps:
+            raw = wa if isinstance(wa, dict) else getattr(wa, 'raw', {}) or {}
+            if raw.get('type') == WEBAPP_TYPE:
+                hits.append((p['projectKey'], raw.get('id'), raw.get('name')))
+    if not hits:
+        return ''
+    pk, webapp_id, name = hits[0]
+    if len(hits) > 1:
+        print('WARNING: %d admin-toolkit webapps on this instance — using %s/%s (%r)'
+              % (len(hits), pk, webapp_id, name))
+    return '%s/web-apps-backends/%s/%s' % (base_url.rstrip('/'), pk, webapp_id)
 
 
 def wait_future(obj):
@@ -45,24 +69,40 @@ def wait_future(obj):
     return obj
 
 
-def ensure_code_env(client, plugin):
+def resolve_env_name(client, plugin):
+    """DSS auto-renames plugin code envs on recreate (…_managed_1, _2, …).
+    Prefer the env the plugin settings already point at, else the newest
+    family member, else '' (caller creates one). Never assume the base name."""
     names = {e.get('envName') for e in client.list_code_envs()}
-    if ENV_NAME not in names:
-        print('creating code env %s ...' % ENV_NAME)
+    current = (plugin.get_settings().get_raw().get('codeEnvName') or '').strip()
+    if current in names:
+        return current
+    family = sorted((n for n in names
+                     if n and (n == ENV_BASE or n.startswith(ENV_BASE + '_'))),
+                    key=lambda n: (len(n), n))
+    return family[-1] if family else ''
+
+
+def ensure_code_env(client, plugin):
+    env_name = resolve_env_name(client, plugin)
+    if not env_name:
+        print('creating code env %s ...' % ENV_BASE)
         wait_future(plugin.create_code_env())
-    env = client.get_code_env('PYTHON', ENV_NAME)
-    print('installing packages into %s (a few minutes on first run) ...' % ENV_NAME)
+        env_name = resolve_env_name(client, plugin) or ENV_BASE
+    env = client.get_code_env('PYTHON', env_name)
+    print('installing packages into %s (a few minutes on first run) ...' % env_name)
     t0 = time.time()
     # /plugins/<id>/code-env/actions/update can throw ERR_PLUGIN_WITHOUT_CODEENV
     # even with a valid spec — update_packages on the env itself works.
     env.update_packages()
     print('packages installed (%.0fs)' % (time.time() - t0))
+    return env_name
 
 
-def apply_plugin_settings(plugin, args):
+def apply_plugin_settings(plugin, args, env_name):
     settings = plugin.get_settings()
     raw = settings.get_raw()
-    raw['codeEnvName'] = ENV_NAME
+    raw['codeEnvName'] = env_name
     cfg = raw.setdefault('config', {})
     cfg['backend_url'] = args.backend_url
     cfg['default_llm_id'] = args.llm_id
@@ -73,7 +113,7 @@ def apply_plugin_settings(plugin, args):
     cfg.setdefault('enable_red_actions', False)  # kill switch stays OFF
     settings.save()
     print('plugin settings saved: codeEnvName=%s backend_url=%s llm=%s red_pw=%s keys_pw=%s'
-          % (ENV_NAME, args.backend_url, args.llm_id,
+          % (env_name, args.backend_url, args.llm_id,
              'set' if args.red_password else 'EMPTY (actuator locked)',
              'set' if args.keys_password else 'empty'))
 
@@ -96,7 +136,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--url', default='https://tam-global.fe-aws.dkucloud-dev.com')
     ap.add_argument('--key-file', default='')
-    ap.add_argument('--backend-url', default=DEFAULT_BACKEND)
+    ap.add_argument('--backend-url', default='',
+                    help='empty = auto-discover the admin-toolkit webapp backend on the instance')
     ap.add_argument('--llm-id', default='anthropic:kaosclaude:claude-opus-4-8')
     ap.add_argument('--red-password', default='')
     ap.add_argument('--keys-password', default='')
@@ -115,9 +156,16 @@ def main():
         sys.exit('plugin %s is NOT installed on %s — run the secure wrapper first' % (PLUGIN_ID, args.url))
     print('plugin %s v%s installed on %s' % (PLUGIN_ID, installed[PLUGIN_ID].get('version'), args.url))
 
+    if not args.backend_url:
+        args.backend_url = discover_backend_url(client, args.url)
+        if not args.backend_url:
+            sys.exit('no %s webapp found on %s — create the toolkit webapp first, '
+                     'or pass --backend-url' % (WEBAPP_TYPE, args.url))
+        print('discovered backend_url: %s' % args.backend_url)
+
     plugin = client.get_plugin(PLUGIN_ID)
-    ensure_code_env(client, plugin)
-    apply_plugin_settings(plugin, args)
+    env_name = ensure_code_env(client, plugin)
+    apply_plugin_settings(plugin, args, env_name)
 
     project = ensure_project(client, args.project)
     handles = {}

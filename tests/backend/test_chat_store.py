@@ -53,13 +53,13 @@ def test_upsert_turn_creates_conversation_and_messages(store):
         USER, HOST, CONV, AGENT, messages=_turn_messages(),
         title='do the thing', trace_id='trace-abc',
         trace_getter=lambda tid: TRACE if tid == 'trace-abc' else None,
-        last_duration_ms=1234, trace_explorer_path='/projects/AGENTOPS/webapps/x/view')
+        last_duration_ms=1234, trace_explorer_path='/projects/ADMINTOOLKIT/webapps/x/view')
     assert result == {'id': CONV, 'title': 'do the thing'}
 
     conv = store.get_conversation(USER, HOST, CONV)
     assert conv is not None
     assert conv['agentId'] == AGENT
-    assert conv['traceExplorerPath'] == '/projects/AGENTOPS/webapps/x/view'
+    assert conv['traceExplorerPath'] == '/projects/ADMINTOOLKIT/webapps/x/view'
     assert [m['id'] for m in conv['messages']] == ['m-user-1', 'm-asst-1']
     asst = conv['messages'][1]
     assert asst['segments'] == SEGMENTS  # JsonEncoded roundtrip

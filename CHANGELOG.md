@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.658] - 2026-07-07
+
+### Changed
+- **Agents now live in the `ADMINTOOLKIT` project** — the separate `AGENTOPS` project is gone, completing the agents-plugin absorption at the project level. `AGENTS_PROJECT_KEY`, Trace Explorer provisioning, `provision_prod.py` / `interaction_logging.py` defaults, the Agents-page empty state, and the docs all point at `ADMINTOOLKIT` (the toolkit's macro project, guaranteed to exist on every configured host — so a fresh install no longer surfaces `UnauthorizedException: Failed to read project permissions` from probing a nonexistent `AGENTOPS`). Existing installs: re-run `scripts/agents/provision_prod.py` against the host (idempotent) to recreate the tool/agent instances + interaction logging in `ADMINTOOLKIT`; an old `AGENTOPS` project can then be deleted.
+- `provision_prod.py` no longer hardcodes instance specifics: the plugin `backend_url` is **auto-discovered** via the DSS API (finds the deployed `webapp_admin-toolkit_admin-toolkit` webapp → `…/web-apps-backends/<project>/<id>`; `--backend-url` still overrides), and the managed code env is resolved from the existing family (`plugin_admin-toolkit_managed[_N]`, preferring what plugin settings already point at) instead of assuming the base name — a fresh install with a DSS-auto-renamed `_1` env no longer gets its `codeEnvName` clobbered or a duplicate env created.
+
 ## [0.4.657] - 2026-07-07
 
 ### Removed

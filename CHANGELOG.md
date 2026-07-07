@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.680] - 2026-07-07
+
+### Added
+- **`config_inspect domain='projects'`**: a new inventory domain that lists `projectKey`+`name`+`owner`, with `name_filter` matching key OR label (lowercased substring). This is the missing grounding for the per-project domains (`scenarios|webapps|notebooks|jobs|datasets`), which all require `name_filter=<projectKey>` — the agent can now resolve a project label to its KEY itself instead of guessing or asking the user. Backed by the open `GET /api/tools/admin-actions/inventory?domain=projects`. The project-scoped bad-input message now points at it: "…find the key with domain='projects'".
+
+### Fixed
+- **Agent denied lineage tooling that exists**: the in-kernel `config_inspect` tool description in `agent_tools.py` — the SOLE source of agent-facing tool text — still described the pre-0.4.674 datasets shape ("rows carry exposed=true when shared"), so agents honestly refused to claim the flow-lineage capability that shipped in 0.4.674. Refreshed to cover the `projects` domain and `detail='usage'` (per-dataset producing/consuming recipes, webapp/scenario name-refs, `unreferenced`/`deleteCandidates` rollups — the dataset-delete cleanup grounding).
+- **`host-unreachable` flapping in ~13ms**: the kernel `ToolkitClient` used one keep-alive `requests.Session` per agent turn. Tool calls are separated by long LLM pauses and the backend restarts on every deploy, so pooled sockets died and the next call raised an instant `ConnectionError` → mapped to `host-unreachable` (`list_hosts` only "survived" because it's cache-served). Fix: the session now sends `Connection: close` (fresh connection per call, ~ms against multi-second backend queries), and `_do` retries a bare `ConnectionError` once for reads (and opt-in idempotent writes) with a `time.sleep(0.5)` backoff. `ConnectTimeout` (subclass of both `Timeout` and `ConnectionError`) is never sleep-retried; plain POST/DELETE are never auto-retried and get a "verify whether it took effect before re-executing" message. `list_hosts` probe's read-only `/api/hosts/check` POST opts in via `retry_safe=True`.
+
 ## [0.4.679] - 2026-07-07
 
 ### Fixed

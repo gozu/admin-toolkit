@@ -382,7 +382,7 @@ JSON-serialized into `ToolMessage` content).
 | `list_hosts` | Reachable DSS hosts (id, label, url); `probe=true` checks reachability. |
 | `instance_health` | Health snapshot of one host: system/sanity/java/issues/score sections; `include_score=true` forces heavy scans (may return `scan_running`). |
 | `compute_cost` | Compute + LLM cost from CRU audit records, `group_by=project\|user\|context_type`. Span limited to audit retention (`span` field). |
-| `config_inspect` | One config domain: `connections\|code-envs\|plugins\|llms`, `detail=health\|usage`, `name_filter`. For `datasets`, `detail=usage` adds flow lineage (producers/consumers, webapp/scenario name-refs) + `unreferenced`/`deleteCandidates` rollups. |
+| `config_inspect` | One config domain: `projects\|connections\|code-envs\|plugins\|llms`, `detail=health\|usage`, `name_filter`. `domain=projects` lists `projectKey`+`name` (name_filter matches key or label) to resolve a label to its KEY. For `datasets`, `detail=usage` adds flow lineage (producers/consumers, webapp/scenario name-refs) + `unreferenced`/`deleteCandidates` rollups. |
 | `log_errors` | backend.log error groups; `pattern=<regex>` greps the raw tail. |
 | `storage_footprint` | Project storage totals, largest projects, inactive+large cleanup candidates. Heavy scan. |
 | `k8s_health` | K8s clusters: states + reachability sweep; `cluster=<id>` runs a deep audit. |
@@ -670,7 +670,7 @@ plan, ONE confirm token, per-target execution results (continue-on-error,
 Deletes always back up first — a managed folder in the toolkit support project
 is required or the plan fails with remediation. Plan-time reads for the new
 domains go through the open backend GETs (`/api/tools/admin-actions/inventory`
-with `domain=scenarios|webapps|jobs|notebooks|continuous-activities|users|api-keys`,
+with `domain=projects|scenarios|webapps|jobs|notebooks|continuous-activities|users|api-keys`,
 `/api/tools/admin-actions/project-setting`, `…/global-variable`); the same
 inventory backs the `config_inspect` long-tail domains (for the per-project
 ones, `name_filter` is the PROJECT KEY). `domain=datasets&detail=usage` is the

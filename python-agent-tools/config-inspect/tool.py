@@ -10,7 +10,10 @@ class ConfigInspectTool(BaseAgentTool):
     def get_descriptor(self, tool):
         return {
             "description": (
-                "Inspect one configuration domain of a DSS host. Domains: 'connections'"
+                "Inspect one configuration domain of a DSS host. Domains: 'projects'"
+                "(projectKey + name + owner; name_filter matches key or label — use it to"
+                "resolve a project label to the KEY the per-project domains require),"
+                "'connections'"
                 "(counts by type + names; detail='health' probes each connection), 'code-"
                 "envs' (version counts, deprecated-Python envs, unused envs, largest; heavy"
                 "scan — may return scan_running), 'plugins' (installed list, dev plugins;"
@@ -33,7 +36,7 @@ class ConfigInspectTool(BaseAgentTool):
                     "host": adapter.HOST_PROPERTY,
                     "domain": {
                         "type": "string",
-                        "enum": ["connections", "code-envs", "plugins", "llms", "clusters", "scenarios", "webapps", "users", "api-keys", "notebooks", "jobs", "datasets"],
+                        "enum": ["projects", "connections", "code-envs", "plugins", "llms", "clusters", "scenarios", "webapps", "users", "api-keys", "notebooks", "jobs", "datasets"],
                         "description": "Configuration domain to inspect."
                     },
                     "detail": {

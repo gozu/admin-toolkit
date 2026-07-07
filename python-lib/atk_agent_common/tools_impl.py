@@ -82,7 +82,7 @@ def list_hosts(client, probe=False):
     if probe:
         for row in rows:
             try:
-                check = client.post('/api/hosts/check', json={'hostId': row['id']})
+                check = client.post('/api/hosts/check', json={'hostId': row['id']}, retry_safe=True)
                 row['reachable'] = bool(check.get('ok'))
                 row['toolkitPluginVersion'] = check.get('pluginVersion')
                 row['macroProjectExists'] = check.get('adminToolkitProjectExists')
@@ -264,9 +264,9 @@ def compute_cost(client, host='local', group_by='project', top_n=10):
 
 # ── config-inspect ───────────────────────────────────────────────────────────
 
-_CONFIG_DOMAINS = ('connections', 'code-envs', 'plugins', 'llms', 'clusters',
-                   'scenarios', 'webapps', 'users', 'api-keys', 'notebooks',
-                   'jobs', 'datasets')
+_CONFIG_DOMAINS = ('projects', 'connections', 'code-envs', 'plugins', 'llms',
+                   'clusters', 'scenarios', 'webapps', 'users', 'api-keys',
+                   'notebooks', 'jobs', 'datasets')
 # Domains that are per-project listings: name_filter is the PROJECT KEY.
 _PROJECT_SCOPED_DOMAINS = ('scenarios', 'webapps', 'notebooks', 'jobs', 'datasets')
 
@@ -429,14 +429,27 @@ def config_inspect(client, host='local', domain='connections', detail=None,
             out['matching'] = [shaping.pick(l, ('id', 'model', 'type', 'connection'))
                                for l in llms[:top_n]]
 
+    elif domain == 'projects':
+        # Resolve a project label to its KEY: the per-project domains below all
+        # take name_filter=<projectKey>, and the agent rarely knows the key.
+        inv = client.get('/api/tools/admin-actions/inventory', host=host,
+                         params={'domain': 'projects'})
+        projects = inv.get('projects') or []
+        if flt:
+            projects = [p for p in projects if flt in (p.get('projectKey') or '').lower()
+                        or flt in (p.get('name') or '').lower()]
+        out['projectCount'] = len(projects)
+        out['projects'] = projects[:max(1, top_n * 2)]
+
     elif domain in _PROJECT_SCOPED_DOMAINS:
         # These are per-project listings backed by the admin-actions inventory
         # GET; name_filter carries the PROJECT KEY (required).
         project_key = (name_filter or '').strip()
         if not project_key:
             return {'error': {'code': 'bad-input',
-                              'message': "domain %r needs name_filter=<projectKey>"
-                                         % domain}}
+                              'message': "domain %r needs name_filter=<projectKey> — find the "
+                                         "key with domain='projects' (name_filter matches key "
+                                         "or label)" % domain}}
         params = {'domain': domain, 'projectKey': project_key}
         if domain == 'datasets' and detail == 'usage':
             # lineage drill-down: producers/consumers from recipe IO, webapp/

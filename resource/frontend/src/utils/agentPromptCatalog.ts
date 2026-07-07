@@ -131,7 +131,7 @@ export const PROMPT_GROUPS: readonly CatalogGroup[] = [
       {
         id: 'config',
         title: 'Config & plugins',
-        blurb: 'Connections, code envs, plugins — health and drift.',
+        blurb: 'Connections, code envs, plugins, projects — health, drift and dataset cleanup grounding.',
         eduId: 'tool.config_inspect',
         prompts: [
           { id: 'cfg-conn', label: 'Connection health', prompt: 'Inspect all connections on this host (detail=health). Which ones are broken or misconfigured?' },

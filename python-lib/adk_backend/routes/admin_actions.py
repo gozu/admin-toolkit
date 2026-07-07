@@ -352,6 +352,11 @@ def api_admin_actions_inventory():
                 pass
             return jsonify({'ok': True, 'personal': personal[:200],
                             'global': global_keys[:200], 'callerIdentity': caller})
+        if domain == 'projects':
+            rows = [{'projectKey': p.get('projectKey'), 'name': p.get('name'),
+                     'owner': p.get('ownerLogin')}
+                    for p in client.list_projects()]
+            return jsonify({'ok': True, 'projects': rows[:500]})
         return jsonify({'error': 'Unknown inventory domain %r' % domain}), 400
     except Exception as exc:
         return jsonify({'error': 'inventory %s failed: %s'

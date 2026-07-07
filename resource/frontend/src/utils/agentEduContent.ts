@@ -468,7 +468,7 @@ export const EDU: Record<string, EduEntry> = {
   },
   'tool.config_inspect': {
     title: 'config_inspect',
-    body: ['Inspects one config domain — connections, code envs, plugins or LLM Mesh — with health or usage detail.'],
+    body: ['Inspects one config domain — projects, connections, code envs, plugins or LLM Mesh — with health or usage detail. The projects domain resolves a project label to its key; datasets with detail=usage adds flow lineage and delete-candidate rollups for cleanup.'],
   },
   'tool.log_errors': {
     title: 'log_errors',

@@ -45,10 +45,15 @@ def build_langchain_tools(client, names=None):
                          'Compute + LLM cost from CRU audit records (host, group_by=project|user|context_type, '
                          'top_n). Span limited to audit retention — check the span field.'),
         'config_inspect': (tools_impl.config_inspect,
-                           'Inspect config domain (host, domain=connections|code-envs|plugins|llms|clusters|'
-                           'users|api-keys|scenarios|webapps|notebooks|jobs|datasets, detail=health|usage, '
-                           'name_filter, top_n). For scenarios/webapps/notebooks/jobs, name_filter '
-                           'is the PROJECT KEY (required); datasets rows carry exposed=true when shared.'),
+                           'Inspect config domain (host, domain=projects|connections|code-envs|plugins|llms|'
+                           'clusters|users|api-keys|scenarios|webapps|notebooks|jobs|datasets, '
+                           'detail=health|usage, name_filter, top_n). domain=projects lists projectKey+name '
+                           '(name_filter = label/substring) — use it to resolve a project label to its KEY. '
+                           'For scenarios/webapps/notebooks/jobs/datasets, name_filter is the PROJECT KEY '
+                           '(required). datasets rows carry exposed=true when shared; detail=usage adds '
+                           'per-dataset flow lineage (producing/consuming recipes, webapp/scenario name-refs) '
+                           "plus summary rollups 'unreferenced' and 'deleteCandidates' — the grounding for "
+                           'dataset-delete cleanup.'),
         'log_errors': (tools_impl.log_errors,
                        'Backend.log error groups (host, top_n); pattern=<regex> greps the raw tail.'),
         'storage_footprint': (tools_impl.storage_footprint,

@@ -38,6 +38,12 @@ class ToolkitClient:
                 remediation='Set "Backend base URL" in the Admin Toolkit Agents plugin '
                             'settings (or install the Admin Toolkit webapp so it can be discovered).')
         self.session = requests.Session()
+        # Fresh connection per call. Agent turns idle 10-60s between tool calls
+        # and the backend restarts on every plugin deploy, so pooled keep-alive
+        # sockets go stale and the next call dies with an instant ConnectionError
+        # (→ host-unreachable). A new connection costs ~ms against multi-second
+        # backend queries — a trade we always want here.
+        self.session.headers['Connection'] = 'close'
         self.session.verify = settings.get('verify_tls', True)
         self.timeout = settings.get('http_timeout_s', 30)
         self.heavy_timeout = settings.get('heavy_timeout_s', 420)
@@ -72,8 +78,9 @@ class ToolkitClient:
         return self._request('GET', path, host=host, params=params,
                              heavy=heavy, progress_path=progress_path)
 
-    def post(self, path, host='local', json=None, red=False, params=None):
-        return self._request('POST', path, host=host, json=json, red=red, params=params)
+    def post(self, path, host='local', json=None, red=False, params=None, retry_safe=False):
+        return self._request('POST', path, host=host, json=json, red=red, params=params,
+                             retry_safe=retry_safe)
 
     def delete(self, path, host='local', json=None, red=True, params=None, headers=None):
         return self._request('DELETE', path, host=host, json=json, red=red,
@@ -123,29 +130,57 @@ class ToolkitClient:
         return headers
 
     def _do(self, method, path, host=None, params=None, json=None, timeout=None,
-            stream=False, extra_headers=None):
+            stream=False, extra_headers=None, retry_safe=False):
+        # Retry a bare ConnectionError once: with Connection: close the pool is
+        # already fresh-per-call, but a socket can still die mid-flight, and the
+        # failure is instant (no work happened server-side). Retry only reads,
+        # or writes the caller has flagged idempotent (retry_safe). GETs/HEADs
+        # are always safe; POST/DELETE are NOT retried unless opted in.
         url = self.base_url + path
-        try:
-            return self.session.request(
-                method, url, params=params, json=json, stream=stream,
-                headers=self._headers(host, extra_headers), timeout=timeout or self.timeout)
-        except requests.exceptions.Timeout:
-            raise
-        except requests.exceptions.RequestException as exc:
-            raise UnreachableHost(
-                'The Admin Toolkit backend did not respond (%s).' % type(exc).__name__,
-                remediation='The webapp backend may be restarting; retry in ~1 minute. '
-                            'If it persists, an admin should check the webapp in DSS.')
+        retryable = retry_safe or method in ('GET', 'HEAD')
+        for attempt in (1, 2):
+            try:
+                return self.session.request(
+                    method, url, params=params, json=json, stream=stream,
+                    headers=self._headers(host, extra_headers), timeout=timeout or self.timeout)
+            # ConnectTimeout subclasses BOTH Timeout and ConnectionError — this
+            # clause MUST stay first so a connect timeout is never sleep-retried.
+            except requests.exceptions.Timeout:
+                raise
+            except requests.exceptions.ConnectionError:
+                if retryable and attempt == 1:
+                    time.sleep(0.5)
+                    continue
+                if retryable:
+                    raise UnreachableHost(
+                        'The Admin Toolkit backend refused the connection. An instant connection '
+                        'failure usually means a stale socket or the backend restarting (happens on '
+                        'every plugin deploy). Already auto-retried once.',
+                        remediation='Retry now — a fresh connection usually succeeds. If it persists '
+                                    'past ~1 minute, an admin should check the webapp in DSS.')
+                raise UnreachableHost(
+                    'The Admin Toolkit backend refused the connection, and this call was NOT '
+                    'auto-retried: this call may mutate state — verify whether it took effect '
+                    '(read the relevant inventory/audit) before re-executing.',
+                    remediation='Check whether the change landed before retrying; the webapp may be '
+                                'restarting (happens on every plugin deploy).')
+            except requests.exceptions.RequestException as exc:
+                raise UnreachableHost(
+                    'The Admin Toolkit backend did not respond (%s).' % type(exc).__name__,
+                    remediation='The webapp backend may be restarting; retry in ~1 minute. '
+                                'If it persists, an admin should check the webapp in DSS.')
 
     def _request(self, method, path, host='local', params=None, json=None,
-                 heavy=False, red=False, progress_path=None, extra_headers=None):
+                 heavy=False, red=False, progress_path=None, extra_headers=None,
+                 retry_safe=False):
         eff_host = self._effective_host(path, host)
         timeout = self.heavy_timeout if heavy else self.timeout
         retried_red = retried_keys = False
         while True:
             try:
                 resp = self._do(method, path, host=eff_host, params=params, json=json,
-                                timeout=timeout, extra_headers=extra_headers)
+                                timeout=timeout, extra_headers=extra_headers,
+                                retry_safe=retry_safe)
             except requests.exceptions.Timeout:
                 if heavy:
                     raise ScanTimeout(

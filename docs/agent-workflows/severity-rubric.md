@@ -155,11 +155,19 @@ health score:
 ## False-positive doctrine (cross-cutting, very important)
 
 Every thresholded cleanup/size rule honors a **per-item admin whitelist**:
-whitelisted items are silently skipped wherever the rule applies — health
-score, issue lists, agent findings, digest. Agents never resurface
-whitelisted items; they report only "N findings suppressed by admin
-whitelist". Rules that must honor it from day one: code env >5GB, project
->10GB, deprecated-Python delete candidates, disk-usage style rules.
+whitelisted items are suppressed UPSTREAM (health.py scorers drop them), so
+they never appear in health score issues, agent findings, or the digest —
+nothing an agent sees is whitelisted. Agents treat every finding in their
+data as live and propose action items without hedging; when tool output
+reports a suppressed count they relay only the count ("N findings suppressed
+by admin whitelist"), never speculation about what was suppressed. Rules that
+must honor it from day one: code env >5GB, project >10GB, deprecated-Python
+delete candidates, disk-usage style rules.
+
+Consequence of suppress-entirely semantics: a whitelisted finding produces NO
+action item at all (e.g. a whitelisted exec-config-resources finding means no
+k8s-exec-config-tune item) until the admin removes the whitelist entry — by
+design, not a gap.
 
 ## Action-safety doctrine (K97)
 
@@ -174,6 +182,15 @@ whitelist". Rules that must honor it from day one: code env >5GB, project
 - Explicit admin confirmation required on every destructive action
   (misclick protection); pre-authorization never counts.
 - DSS-managed processes are stopped via DSS APIs, never Linux-level kills.
+- Connection and cluster mutations are backup-first too: connection-delete
+  backs up the definition JSON (may carry credential material — admin-scoped
+  folder), cluster-detach backs up the cluster definition before removing
+  the DSS attachment (the cloud-side cluster keeps running until removed in
+  the cloud console — the agent must say so).
+- **Batch protocol**: batchable actions accept `targets[]` — ONE plan, ONE
+  confirm token, N targets. The plan's per-target table is presented
+  verbatim; one approval covers every target, execution is per-target with
+  per-target results (partial success reported per entry).
 
 ## Health score
 

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.662] - 2026-07-07
+
+### Added
+- **Actuator catalog grows from 12 to 18 actions** (first tranche of the actionable-agents expansion). New package `atk_agent_common/actions/` (per-domain SPECS merged into a registry that also *generates* the target-shape prose quoted by all three tool-description sites — catalog and docs can no longer drift). New actions: `connection-test` (green read-only probe), `connection-update` (dot-path into the connection definition, e.g. `params.host`; secret-material paths blocked, drift-guarded, restorable history), `connection-delete` (definition-JSON backup first, usage warning), `cluster-detach` (definition backup, removes the DSS attachment only; k8s_health now marks DNS-dead clusters `suggestedAction: cluster-detach`), `plugin-uninstall` (zip backup, refused while any usage exists, never the toolkit itself), `project-clear-webapp-runs` (new fs-cleanup macro + `fs_paths` policy: only `run_*` dirs under `webappruns/`, keep-newest-N per webapp, running-backend exclusion fetched inside the macro). All new pure-DSS-API actions run as backend red routes on the per-host client (`/api/tools/admin-actions/*`) — fleet-routable by construction.
+- **Batched targets**: batchable actions (`connection-test`, `connection-delete`, `plugin-uninstall`, `project-clear-webapp-runs`, `code-env-delete`, `settings-set`) accept `targets: [dict, ...]` (max 20) — ONE plan, ONE confirm token over a deterministically-sorted combined canonical, per-target execution with continue-on-error (`ok/partial/error`), ONE audit row. `propose_action_items` items carry `targets`/`targetCount` (six dead code envs = one checklist item, not six); the UI shows a ×N chip, a per-target plan list, and per-target execution results.
+- New `config_inspect` domain `clusters` (id/name/state; `detail='health'` adds the reachability sweep); `storage_footprint` sizeBreakdown rows carry `bucketKey` (e.g. `webApps`) so webapp-run findings map mechanically; disabled-feature findings carry `details[].settingsPath` + `proposedValue` (exact `settings-set` targets, impersonation marked `sensitive`); broken-connection findings carry the failing `items` names.
+- Remediation map: broken connections → `connection-update`/`connection-test`/`connection-delete`, DNS-dead clusters → `cluster-detach`, deprecated/unused plugins → `plugin-uninstall`, unreferenced deprecated envs → batched `code-env-delete`, oversized projects with webapp-run bloat → `project-clear-webapp-runs`, feature flags → batched `settings-set` citing `details[].settingsPath`.
+
+### Fixed
+- **Whitelist semantics are now suppress-entirely, everywhere.** The triage sweep no longer forwards `whitelistRule`/`whitelistItems` annotations on LIVE findings to the model (whitelisted findings were already suppressed upstream — the keys only taught the model to hedge), and every prompt/doc that said "never resurface a whitelisted item" now says the truth: nothing an agent sees is whitelisted — propose without hedging, relay suppressed counts only. The flip side, by design: a whitelisted finding produces NO action item at all until the admin removes the whitelist entry (e.g. a whitelisted exec-config-resources finding means no `k8s-exec-config-tune` item appears).
+
 ## [0.4.660] - 2026-07-07
 
 ### Fixed

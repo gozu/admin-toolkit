@@ -203,11 +203,13 @@ with `{max_items}`=10 and `{actions}`=the actuator catalog substituted):
 When your findings imply concrete admin work (cleanup, maintenance, tuning, deletions,
 deploys), finish the investigation by calling propose_action_items ONCE with every piece of
 work you identified (most important first, max 10). Rules:
-- Propose only items at MEDIUM severity or higher (the severity rubric's digest floor), and
-never items suppressed by the admin whitelist.
-- Set `action` + `target` ONLY when they map exactly to the actuator catalog (project-delete,
-code-env-delete, image-delete, db-vacuum, db-analyze, plugin-deploy, k8s-exec-config-tune);
+- Propose only items at MEDIUM severity or higher (the severity rubric's digest floor).
+Whitelist-suppressed findings never reach you — do not hedge live findings; every finding
+you see is live.
+- Set `action` + `target` ONLY when they map exactly to the actuator catalog ({actions});
 anything else stays advisory (title/why/evidence only, no action).
+- Several objects needing the SAME action (e.g. six unused code envs) = ONE item with
+`targets: [dict, ...]` — never burn one item slot per object. Batchable: {batchable}.
 - risk: 'red' for anything destructive or settings-mutating (deletions, config/settings
 changes — all require backup-first / prior-value recording downstream), 'amber' for
 locking/maintenance operations, 'green' for safe low-impact work. Never soften a risk color.
@@ -331,9 +333,11 @@ NEVER MENTION (non-findings): swap (corroborating signal only), backups (Fleet M
 them), permission/governance patterns, shared namespaces, R/conda presence per se, GC
 flags, dataset-version bloat absent disk share, dormant-ratio targets, duplicate-env drift.
 
-WHITELIST: thresholded size/cleanup findings honor a per-item admin whitelist. Never
-resurface a whitelisted item; if tool output reports suppressed findings, relay only the
-count ("N findings suppressed by admin whitelist").
+WHITELIST: thresholded size/cleanup findings honor a per-item admin whitelist, and
+whitelist-suppressed findings are removed UPSTREAM — nothing you see is whitelisted.
+Treat every finding in your data as live and propose items without hedging. When tool
+output reports a suppressed count, relay only the count ("N findings suppressed by
+admin whitelist") — never speculate about what was suppressed.
 ```
 
 `ACTION_SAFETY_RUBRIC` (verbatim):
@@ -352,6 +356,14 @@ from history before they confirm.
 - If restore is impossible for an action, say so explicitly in the plan presentation.
 - Never advise or attempt Linux-level kills of DSS-managed processes (kernels, JEKs, webapp
 backends) — they respawn; they are stopped at the DSS level via DSS APIs.
+- Connection and cluster mutations are backup-first too: connection-delete backs up the
+definition JSON (it may carry credential material — the folder is admin-scoped) and
+cluster-detach backs up the cluster definition before removing the DSS attachment (the
+cloud-side cluster keeps running until removed in the cloud console — say so).
+- BATCH PROTOCOL: batchable actions accept targets[] — ONE plan, ONE confirm token, N
+targets. Present the plan's per-target table verbatim; one approval covers every target,
+execution is per-target with per-target results (partial success is reported per entry).
+Never split a homogeneous batch into N separate plans unless the user asks.
 ```
 
 ---
@@ -393,12 +405,13 @@ description shown to the model (verbatim):
 ```
 Propose up to 10 structured admin action items derived from your findings. Each item:
 {title (<=120 chars), why (<=500), host (default local), risk: red|amber|green,
-action?: exact actuator action name, target?: the action's target dict, evidence: [strings]}.
-Set action ONLY when it maps exactly to one of: project-delete, code-env-delete, image-delete,
-db-vacuum, db-analyze, plugin-deploy, k8s-exec-config-tune — target shapes: project-delete
-{projectKey}; code-env-delete {name, lang}; db-vacuum/db-analyze {connection, table};
-image-delete {provider, cutoff, images}; plugin-deploy {pluginId, targetHostId};
-k8s-exec-config-tune {configName, changes}. Items with no valid action become advisory
+action?: exact actuator action name, target?: the action's target dict,
+targets?: [target dicts] for several objects under ONE item (batchable actions only),
+evidence: [strings]}.
+Set action ONLY when it maps exactly to one of: <full catalog> — target shapes:
+<generated from atk_agent_common.actions.TARGET_SHAPES — single source, never edited by
+hand>. Batchable actions accept targets: [dict, ...] (max 20) — several objects, same
+action, ONE plan and ONE confirm token. Items with no valid action become advisory
 (still shown, not executable). Call ONCE, at the end of the investigation.
 ```
 
@@ -411,7 +424,11 @@ Normalization rules (`action_items.propose_action_items`):
   500, evidence entries to 300 chars / max 6.
 - `risk` normalized to `red|amber|green`; anything else → `amber` + a
   `validation` note.
-- An `action` not in the actuator catalog, or an action without a `target`
+- `targets[]` (batching): capped at **20** per item; non-dict entries dropped
+  with a note; >1 target on a non-batchable action keeps the first target only
+  (noted). Output items carry `targets` + `targetCount`, with `target`
+  mirroring `targets[0]` for back-compat.
+- An `action` not in the actuator catalog, or an action without any target
   dict → **downgraded to advisory** (`actionable:false`, `action:null`) with a
   `validation` note. *Never silently dropped* — the human still sees the finding.
 - Output: `{batchId, items[], count, nextStep, droppedCount?}` where `nextStep`
@@ -587,21 +604,47 @@ The plan **is** the dry run: each planner gathers the exact targets + blast
 radius from read-only scans and shows the human precisely what will happen.
 There is no single-call path to a mutation.
 
-### Action catalog (planners + executors in `actuator.py`)
+### Action catalog
 
-| Action | Target | Plan gathers | Execute does |
-|---|---|---|---|
-| `project-delete` | `{projectKey}` | size (GB), owner, daysInactive, warning if NOT on the inactive list, backup folder | backend project-cleaner delete (zip backup enforced) |
-| `code-env-delete` | `{name, lang}` | usageCount, projectsUsing (breaks-them warning), backup folder | backend code-env-cleaner delete (backup enforced) |
-| `db-vacuum` / `db-analyze` | `{connection, table}` | deadTuples, rowCount, totalSize, lock note | backend db-health vacuum/analyze |
-| `image-delete` | `{provider, cutoff, images}` | backend dryRun of the exact deletion | same call, `dryRun:false` |
-| `plugin-deploy` | `{pluginId, targetHostId}` | hub version, isDev | backend deploy-one to the target host |
-| `k8s-exec-config-tune` | `{configName, changes}` | current vs proposed (`memRequestMB/memLimitMB/cpuRequest/cpuLimit` only), >75%-cut throttle/OOM warnings, observed CRU K8s usage | general-settings write (**local host only** for now — remote plans carry a warning and execute refuses) |
+Legacy planners/executors live in `actuator.py`; every newer action lives in
+`python-lib/atk_agent_common/actions/` (per-domain `SPECS` merged by the
+package registry, which also GENERATES the target-shape prose all three tool
+descriptions quote — the catalog can never drift from its docs). Patterns:
+**A** = in-agent local `dataiku.api_client()` write (LOCAL-ONLY), **B-api** =
+backend red route, pure dataikuapi on `g.client` (fleet-routable), **B-macro**
+= backend red route → ADMINTOOLKIT macro + policy engine.
+
+**Batching**: actions marked ⨯N accept `targets: [dict, ...]` (max 20) — ONE
+plan, ONE confirm token, per-target execution results (continue-on-error,
+`ok/partial/error` overall status, ONE audit row).
+
+| Action | Target | Pattern / notes |
+|---|---|---|
+| `project-delete` | `{projectKey}` | B-api; zip backup enforced |
+| `code-env-delete` ⨯N | `{name, lang}` | B-api; backup enforced; breaks-projects warning |
+| `db-vacuum` / `db-analyze` | `{connection, table}` | B-api; lock note |
+| `image-delete` | `{provider, cutoff, images}` | B-api; plan carries the backend dryRun |
+| `plugin-deploy` | `{pluginId, targetHostId}` | B-api (hub → fleet host) |
+| `k8s-exec-config-tune` | `{configName, changes}` | A (LOCAL-ONLY); >75%-cut OOM warnings |
+| `log-cleanup` | `{roots?, minAgeDays?, maxDeleteGB?}` | B-macro (LOCAL-ONLY); rotated logs only |
+| `docker-prune` | `{mode, keepStorageGB?, filterUntilHours?}` | B-macro (LOCAL-ONLY); fixed argv |
+| `k8s-apply-fix` | `{clusterId, commands[], …}` | B-macro (LOCAL-ONLY); kubectl policy |
+| `code-env-consolidate` | `{sourceEnvName, targetEnvName, …}` | B-api; dry-run usage table |
+| `settings-set` ⨯N | `{path, newValue}` | A (LOCAL-ONLY); blacklist + drift guard + history |
+| `connection-test` ⨯N | `{name}` | B-api, green; read-only probe |
+| `connection-update` | `{name, path, newValue}` | B-api, amber; secret paths blocked, drift-guarded, history hook |
+| `connection-delete` ⨯N | `{name}` | B-api, red; definition JSON backup (may carry credentials — admin-scoped folder), usage warning |
+| `cluster-detach` | `{clusterId}` | B-api, red; definition backup; detaches the DSS attachment ONLY |
+| `plugin-uninstall` ⨯N | `{pluginId}` | B-api, red; zip backup; refused while ANY usage exists; never `admin-toolkit` itself |
+| `project-clear-webapp-runs` ⨯N | `{projectKey, keepDays?, keepLastRuns?}` | B-macro, amber; fs-cleanup macro (fs_paths policy: run_* dirs only, keep-newest-N, running-backend exclusion) |
 
 Deletes always back up first — a managed folder in the toolkit support project
-is required or the plan fails with remediation. Deliberately excluded (highest
-blast radius): container-exec / code-env replace, email send, cs-template
-migrate.
+is required or the plan fails with remediation. Deliberately excluded
+(structural: the agent cannot do these): DSS/backend restart, install.ini /
+systemd / ulimits, license ops, external credential creation/rotation, user
+creation/password reset, SSO/LDAP paths, arbitrary shell, deleting
+ADMINTOOLKIT / the toolkit plugin / its own API key. Still excluded pending
+explicit opt-in: container-exec, email send, cs-template migrate.
 
 ---
 
@@ -921,8 +964,9 @@ namespaces:
 - `agent.*` — the three agents (what they can and cannot do).
 - `concept.*` — `plan`, `confirm-token`, `kill-switch`, `audit-trail`,
   `risk-colors`, `action-items`, `handoff`.
-- `action.*` — all 7 catalog actions, each explaining its blast radius in
-  plain language.
+- `action.*` — every catalog action (enforced by
+  `tests/backend/test_actions_registry.py`), each explaining its blast radius
+  in plain language.
 - `tool.*` — all sensors + `triage_sweep`, `propose_action_items`,
   `plan_admin_action`, `execute_admin_action`.
 
@@ -949,12 +993,16 @@ verified against the live DSS 14.7 `mainpack.js` state table (2026-07-03):
 
 | Action | Link target |
 |---|---|
-| `project-delete` | `<host>/projects/<key>/` |
+| `project-delete`, `project-clear-webapp-runs` | `<host>/projects/<key>/` |
 | `code-env-delete` | `<host>/admin/code-envs/design/<lang>/<name>/` (`admin.codeenvs-design.python-edit` / `r-edit`) |
 | `db-vacuum` / `db-analyze` | `<host>/admin/connections/<connection>/` |
-| `plugin-deploy` | `<targetHost>/plugins/<id>/summary/` (`plugin.summary`) |
+| `connection-test` / `connection-update` / `connection-delete` | `<host>/admin/connections/<name>/` |
+| `cluster-detach` | `<host>/admin/clusters/<clusterId>/` (`admin.clusters.cluster`, re-verified 2026-07-07) |
+| `plugin-deploy`, `plugin-uninstall` | `<targetHost>/plugins/<id>/summary/` (`plugin.summary`) |
 | `k8s-exec-config-tune` | `<host>/admin/general/containers/` (`admin.general.containers`) |
 | `image-delete` | **no link** — registry images have no DSS page |
+
+Batched canonicals (`{batchTargets: [...]}`) link to their FIRST target's page.
 
 `hostBaseUrl(hostId)`: the hostStore preset URL for remote hosts, else
 `getDssBaseUrl()` (derived from the backend URL). Consumers: audit-trail

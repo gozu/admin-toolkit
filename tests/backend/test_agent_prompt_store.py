@@ -34,6 +34,14 @@ def test_normalize_rows_stringifies_non_string_cells():
     assert rows[0]['severity_rubric'] == ''
 
 
+def test_normalize_rows_fills_llm_override_into_pre_upgrade_rows():
+    """Rows written before the LLM picker existed have no llm_override column;
+    normalize_rows must fill it with '' (no override) — zero migration."""
+    rows = store.normalize_rows([{'saved_at': '2026-07-01', 'note': 'old row'}])
+    assert rows[0]['llm_override'] == ''
+    assert store.latest_settings(rows) == {'llm_override': ''}
+
+
 # ---- latest_overrides ----
 
 def test_latest_overrides_takes_newest_row_non_empty_cells_only():
@@ -50,18 +58,39 @@ def test_latest_overrides_empty_store():
     assert store.latest_overrides([]) == {}
 
 
+# ---- latest_settings ----
+
+def test_latest_settings_newest_row_wins():
+    rows = store.normalize_rows([
+        _row('2026-07-01', llm_override='custom:old'),
+        _row('2026-07-02', llm_override='  custom:new  '),
+    ])
+    assert store.latest_settings(rows) == {'llm_override': 'custom:new'}
+    # A newest row with an empty cell clears the override.
+    rows = store.normalize_rows(rows + [_row('2026-07-03')])
+    assert store.latest_settings(rows) == {'llm_override': ''}
+
+
+def test_latest_settings_empty_store():
+    assert store.latest_settings([]) == {'llm_override': ''}
+
+
 # ---- versions_payload ----
 
 def test_versions_payload_newest_first_with_customized_keys():
     rows = store.normalize_rows([
-        _row('2026-07-01', author='a', note='first', scoping_system_prompt='S'),
+        _row('2026-07-01', author='a', note='first', scoping_system_prompt='S',
+             llm_override='custom:gpt'),
         _row('2026-07-02', author='b', note='second'),
     ])
     versions = store.versions_payload(rows)
     assert [v['savedAt'] for v in versions] == ['2026-07-02', '2026-07-01']
     assert versions[0]['customized'] == []
+    assert versions[0]['llmOverride'] == ''
     assert versions[1]['customized'] == ['scoping_system_prompt']
     assert versions[1]['values']['scoping_system_prompt'] == 'S'
+    # llm_override rides along per version so a restore round-trips the model.
+    assert versions[1]['llmOverride'] == 'custom:gpt'
 
 
 def test_versions_payload_respects_limit():
@@ -93,23 +122,65 @@ def test_validate_values_ignores_unknown_keys():
     assert 'not_a_prompt' not in values
 
 
+# ---- validate_settings ----
+
+def test_validate_settings_absent_means_no_overrides():
+    """Pre-picker clients POST no settings key — that must stay a valid save."""
+    assert store.validate_settings(None) == {'llm_override': ''}
+
+
+def test_validate_settings_accepts_strings_and_strips():
+    assert store.validate_settings({'llm_override': '  custom:x  '}) == {'llm_override': 'custom:x'}
+    assert store.validate_settings({}) == {'llm_override': ''}
+    assert store.validate_settings({'llm_override': None}) == {'llm_override': ''}
+
+
+def test_validate_settings_rejects_malformed():
+    assert store.validate_settings([]) is None
+    assert store.validate_settings('custom:x') is None
+    assert store.validate_settings({'llm_override': 42}) is None
+    assert store.validate_settings({'llm_override': 'x' * (store.MAX_SETTING_CHARS + 1)}) is None
+
+
+def test_validate_settings_ignores_unknown_keys():
+    settings = store.validate_settings({'not_a_setting': 'x'})
+    assert settings is not None
+    assert 'not_a_setting' not in settings
+
+
 # ---- build_row ----
 
 def test_build_row_stores_default_valued_cells_as_empty():
     values = {c: '' for c in store.PROMPT_COLUMNS}
     values['triage_system_prompt'] = prompts.TRIAGE_SYSTEM_PROMPT  # verbatim default
     values['scoping_system_prompt'] = 'custom scoping'
-    row = store.build_row(values, author='alex', note='n', saved_at='2026-07-06T00:00:00')
+    row = store.build_row(values, {'llm_override': 'custom:claude'},
+                          author='alex', note='n', saved_at='2026-07-06T00:00:00')
     assert row['triage_system_prompt'] == ''      # default → honest empty cell
     assert row['scoping_system_prompt'] == 'custom scoping'
+    assert row['llm_override'] == 'custom:claude'
     assert row['author'] == 'alex'
     assert row['saved_at'] == '2026-07-06T00:00:00'
 
 
 def test_build_row_clips_note_and_author():
-    row = store.build_row({}, author='a' * 500, note='n' * 500, saved_at='t')
+    row = store.build_row({}, {}, author='a' * 500, note='n' * 500, saved_at='t')
     assert len(row['author']) == 120
     assert len(row['note']) == store.MAX_NOTE_CHARS
+    assert row['llm_override'] == ''
+
+
+def test_settings_round_trip_through_rows():
+    """Save → normalize → latest_settings/versions_payload round-trips the
+    override, and an old-code save (no settings) clears it — the documented
+    downgrade caveat."""
+    row1 = store.build_row({}, {'llm_override': 'custom:claude'},
+                           author='a', note='set', saved_at='2026-07-01')
+    row2 = store.build_row({}, store.validate_settings(None),
+                           author='a', note='old client', saved_at='2026-07-02')
+    rows = store.normalize_rows([row1, row2])
+    assert store.versions_payload(rows)[1]['llmOverride'] == 'custom:claude'
+    assert store.latest_settings(rows) == {'llm_override': ''}
 
 
 # ---- registry sanity ----

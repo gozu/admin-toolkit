@@ -6,7 +6,7 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.669-blue)
+![Version](https://img.shields.io/badge/version-0.4.671-blue)
 ![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-plugin-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)

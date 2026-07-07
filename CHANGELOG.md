@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.671] - 2026-07-07
+
+### Added
+- **Agent Tuning model picker (live override)**: pick the LLM all three agents run on, right on the Agent Tuning page. The override is versioned with the prompts — one Save appends one snapshot row (prompts + model) to `agent_prompt_versions`, new `llm_override` column, latest row wins, restore round-trips it — and takes effect within ~90 s (60 s kernel prompt cache + 30 s backend rows cache), no kernel restart. Precedence: Agent Tuning override > per-agent `llm_id` > plugin `default_llm_id` (`agent_runtime.resolve_llm_id`, shared by all three agents; actuator audit rows carry the overridden id). The override is deliberately NOT validated against the LLM catalog — an override naming a deleted id fails loudly at call time (the UI shows a "not in LLM catalog" warning chip) instead of silently falling back past the admin's choice. Existing datasets need no migration (`normalize_rows` fills the missing column as "no override").
+
+### Changed
+- `/api/agents/tuning/prompts` now returns `{values, settings}`; `/save` accepts and validates `settings.llm_override` (an absent settings key means "no override", so older clients keep working).
+
+### Downgrade caveat
+- A save made by pre-0.4.671 code drops the `llm_override` column from the new row — the newest row wins, so downgrading and saving clears the model override (older versions still show theirs, and restoring one brings it back).
+
 ## [0.4.669] - 2026-07-07
 
 ### Added

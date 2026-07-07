@@ -1094,7 +1094,7 @@ Snapshot failures become a digest warning, never a sweep failure.
 | `backend_url` | Admin Toolkit webapp backend base. Empty = auto-discover on the local DSS (project sweep for an admin-toolkit webapp → `<studioExternalUrl>/web-apps-backends/<project>/<webappId>`). |
 | `master_password` | The one master password: unlocks red endpoints headlessly AND opens encrypted (`adkfk1$`) remote-host API keys. Empty = actuator permanently locked (plans still work, no token minted). Legacy `red_actions_password` / `host_keys_password` values are honored until migrated. |
 | `host_allowlist` | CSV of allowed host ids. Empty = all. |
-| `default_llm_id` | Mesh LLM for agents when the instance doesn't set one. |
+| `default_llm_id` | Mesh LLM for agents when the instance doesn't set one. Full precedence: Agent Tuning `llm_override` > per-agent `llm_id` > this default. |
 | `enable_red_actions` | **Master kill-switch** for execute-admin-action. Default false. Only a human admin flips it. |
 | `verify_tls` / `http_timeout_s` / `heavy_timeout_s` | Client knobs (default true / 30 / 420). |
 | `triage_connection` | Postgres connection for triage rows + the audit trail (same as the toolkit's Agents Audit setting). |
@@ -1110,6 +1110,12 @@ whole stack tests as pure Python against a live backend without DSS.
 | health-triage | `llm_id`, `hosts` (CSV), `score_threshold` (75), `max_recommendations` (5) |
 | scoping-architect | `llm_id` |
 | ops-actuator | `llm_id`, `allow_red_actions` (bool), `allowed_actions` (CSV; empty = full catalog) |
+
+`llm_id` is overridden by the Agent Tuning page's model override (versioned in
+`agent_prompt_versions.llm_override`, latest row wins, effective within ~90 s).
+The override is deliberately NOT validated against the LLM catalog — an
+override naming a deleted id fails loudly at call time instead of silently
+falling back past the admin's choice.
 
 **Trap:** the kernel's Python env comes ONLY from the plugin's
 `PluginSettings.codeEnvName` — creating the code env via API does not set it;

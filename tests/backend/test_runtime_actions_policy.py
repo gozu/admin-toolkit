@@ -217,3 +217,75 @@ def test_project_row_accepts_backend_key_field():
     assert row['key'] == 'SANDBOX'
     with pytest.raises(ToolkitError):
         projects_domain._project_row(client, 'local', 'MISSING')
+
+
+# ── storage tail (phase 3) ───────────────────────────────────────────────────
+
+def test_dataset_clear_refuses_exposed_without_ack():
+    from atk_agent_common.actions import storage
+    client = FakeToolkitClient(_inv('datasets', {
+        'datasets': [{'name': 'shared_ds', 'type': 'PostgreSQL', 'exposed': True}]},
+        projectKey='P1'))
+    with pytest.raises(ToolkitError) as err:
+        storage._plan_dataset_clear(client, 'local',
+                                    {'projectKey': 'P1', 'datasetName': 'shared_ds'}, {})
+    assert 'EXPOSED' in str(err.value)
+    # with the ack it plans, marked irreversible, ack bound into the canonical
+    canonical, plan = storage._plan_dataset_clear(
+        client, 'local', {'projectKey': 'P1', 'datasetName': 'shared_ds',
+                          'ackExposed': True}, {})
+    assert canonical == {'projectKey': 'P1', 'datasetName': 'shared_ds',
+                         'ackExposed': True}
+    assert plan['irreversible'] is True
+
+
+def test_impl_dataset_clear_recheck_exposure():
+    class _Settings:
+        def get_raw(self):
+            return {'exposedObjects': {'objects': [
+                {'type': 'DATASET', 'localName': 'shared_ds'}]}}
+
+    class _Project:
+        def get_settings(self):
+            return _Settings()
+
+        def get_dataset(self, name):
+            raise AssertionError('must not clear without ack')
+
+    class _Client:
+        def get_project(self, pk):
+            return _Project()
+
+    out = admin_actions._impl_dataset_clear(_Client(), {
+        'projectKey': 'P1', 'datasetName': 'shared_ds', 'ackExposed': False})
+    assert out['ok'] is False and 'ackExposed' in out['error']
+
+
+def test_fs_cleanup_planner_scopes_and_defaults():
+    from atk_agent_common.actions import storage
+    scan = {'ok': True, 'totalDirs': 3, 'totalBytes': 3 * 1024 ** 3, 'totalGB': 3.0,
+            'groups': {'P1': {'entries': 4, 'deletable': 3, 'bytes': 3 * 1024 ** 3}}}
+    client = FakeToolkitClient({'/api/tools/fs-cleanup/scan': scan})
+    canonical, plan = storage._plan_job_logs_cleanup(
+        client, 'local', {'projectKey': 'P1'}, {})
+    assert canonical['policy'] == 'joblogs'
+    assert canonical['minAgeDays'] == 15 and canonical['keepLast'] == 5
+    assert canonical['projectKey'] == 'P1'
+    # tmp-cleanup refuses a projectKey (not project-scoped)
+    with pytest.raises(ToolkitError):
+        storage._plan_tmp_cleanup(client, 'local', {'projectKey': 'P1'}, {})
+
+
+def test_fs_cleanup_planner_nothing_to_delete_refuses():
+    from atk_agent_common.actions import storage
+    scan = {'ok': True, 'totalDirs': 0, 'totalBytes': 0, 'groups': {}}
+    client = FakeToolkitClient({'/api/tools/fs-cleanup/scan': scan})
+    with pytest.raises(ToolkitError) as err:
+        storage._plan_exports_cleanup(client, 'local', {}, {})
+    assert 'do not propose' in str(err.value.remediation or err.value)
+
+
+def test_legacy_batchable_flips():
+    from atk_agent_common import actuator
+    assert {'db-vacuum', 'db-analyze', 'plugin-deploy',
+            'project-delete'} <= actuator.BATCHABLE_ACTIONS

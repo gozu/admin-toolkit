@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.669] - 2026-07-07
+
+### Added
+- **Actuator catalog complete at 48 actions** (storage tail). Three new fs-cleanup policies inside the macro (aged-entry model: `<root>/<group>/<entry>`, age by newest inner mtime, keep-newest-N, symlink/depth/containment floor re-applied per entry at delete time): `tmp-cleanup` (inside tmp buckets; bucket dirs and the webappruns bucket never touched), `exports-cleanup` (aged export artifacts), `job-logs-cleanup` (whole aged job dirs, newest N per project kept, optional project scope). Plus `dataset-clear` (red, IRREVERSIBLE data clear; datasets exposed to other projects refused unless the plan carries an admin-approved `ackExposed`) and `db-reindex` (exclusive-lock REINDEX with the same pg_stat_user_tables validation and 1000+-user scale gate as vacuum/analyze).
+- The remaining legacy actions are batchable: `db-vacuum`, `db-analyze`, `plugin-deploy`, `project-delete` accept `targets[]` like the rest of the catalog.
+- `config_inspect` domain `datasets` (per-project; rows carry `exposed=true` when shared — the dataset-clear preflight).
+- Remediation map: disk warnings also propose `job-logs-cleanup` (next-safest reclaim after rotated logs); `db-*` findings also list `db-reindex`.
+
 ## [0.4.668] - 2026-07-07
 
 ### Fixed

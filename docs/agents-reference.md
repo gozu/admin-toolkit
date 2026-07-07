@@ -620,11 +620,11 @@ plan, ONE confirm token, per-target execution results (continue-on-error,
 
 | Action | Target | Pattern / notes |
 |---|---|---|
-| `project-delete` | `{projectKey}` | B-api; zip backup enforced |
+| `project-delete` ⨯N | `{projectKey}` | B-api; zip backup enforced |
 | `code-env-delete` ⨯N | `{name, lang}` | B-api; backup enforced; breaks-projects warning |
-| `db-vacuum` / `db-analyze` | `{connection, table}` | B-api; lock note |
+| `db-vacuum` / `db-analyze` ⨯N | `{connection, table}` | B-api; lock note |
 | `image-delete` | `{provider, cutoff, images}` | B-api; plan carries the backend dryRun |
-| `plugin-deploy` | `{pluginId, targetHostId}` | B-api (hub → fleet host) |
+| `plugin-deploy` ⨯N | `{pluginId, targetHostId}` | B-api (hub → fleet host) |
 | `k8s-exec-config-tune` | `{configName, changes}` | A (LOCAL-ONLY); >75%-cut OOM warnings |
 | `log-cleanup` | `{roots?, minAgeDays?, maxDeleteGB?}` | B-macro (LOCAL-ONLY); rotated logs only |
 | `docker-prune` | `{mode, keepStorageGB?, filterUntilHours?}` | B-macro (LOCAL-ONLY); fixed argv |
@@ -660,6 +660,11 @@ plan, ONE confirm token, per-target execution results (continue-on-error,
 | `user-disable` ⨯N | `{login}` | B-api, red; never deletes; refuses the toolkit's own identity; history hook |
 | `user-enable` | `{login}` | B-api, amber; inverse of user-disable |
 | `api-key-delete` | `{keyType: personal\|global, keyId}` | B-api, red; **IRREVERSIBLE**; refuses the caller's own personal key; global keys carry no owner → plan tells the human to verify |
+| `tmp-cleanup` | `{minAgeDays?, maxDeleteGB?}` | B-macro, amber; aged entries inside tmp buckets (webappruns bucket excluded, bucket dirs kept) |
+| `exports-cleanup` | `{minAgeDays?, maxDeleteGB?}` | B-macro, amber; aged export artifacts |
+| `job-logs-cleanup` | `{projectKey?, minAgeDays?, maxDeleteGB?}` | B-macro, amber; whole aged job dirs, newest N per project kept |
+| `dataset-clear` ⨯N | `{projectKey, datasetName, ackExposed?}` | B-api, red; **IRREVERSIBLE** data clear; exposed datasets refused without explicit ack |
+| `db-reindex` | `{connection, table}` | B-api, amber; exclusive lock; table validated against pg_stat_user_tables; 1000+-user scale gate |
 
 Deletes always back up first — a managed folder in the toolkit support project
 is required or the plan fails with remediation. Plan-time reads for the new

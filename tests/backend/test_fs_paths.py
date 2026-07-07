@@ -47,8 +47,10 @@ def test_run_dir_name_matrix(name, expected):
 # ---- policy resolution ----
 
 def test_unknown_policy_refuses(dip_home):
+    # 'exports' graduated to a real policy in the storage-tail phase — use a
+    # name that will never exist.
     with pytest.raises(fs_paths.FsPolicyError):
-        fs_paths.resolve_roots(dip_home, 'exports')
+        fs_paths.resolve_roots(dip_home, 'definitely-not-a-policy')
 
 
 def test_only_existing_roots_resolve(dip_home):
@@ -145,3 +147,70 @@ def test_scan_age_gate_skips_young(dip_home):
     entry = scan['webapps']['PROJ/w1']
     assert entry['deletableRuns'] == 1
     assert entry['skipped'] == 1
+
+
+# ── aged-entry policies (storage tail: joblogs / tmp / exports) ──────────────
+
+def _mk_aged(tmp_path, rel, age_days, is_dir=True, content=b'x' * 1024):
+    import os, time
+    full = tmp_path / rel
+    if is_dir:
+        full.mkdir(parents=True)
+        (full / 'payload.bin').write_bytes(content)
+    else:
+        full.parent.mkdir(parents=True, exist_ok=True)
+        full.write_bytes(content)
+    stamp = time.time() - age_days * 86400
+    for p in ([full / 'payload.bin', full] if is_dir else [full]):
+        os.utime(p, (stamp, stamp))
+    return str(full)
+
+
+def test_joblogs_scan_keeps_newest_per_project(tmp_path):
+    old1 = _mk_aged(tmp_path, 'jobs/P1/Build_a__NP__2026-01-01T00-00-00.000', 60)
+    old2 = _mk_aged(tmp_path, 'jobs/P1/Build_b__NP__2026-02-01T00-00-00.000', 40)
+    _mk_aged(tmp_path, 'jobs/P1/Build_c__NP__2026-06-30T00-00-00.000', 1)
+    scan = fs_paths.scan_aged_entries(str(tmp_path), 'joblogs', min_age_days=15,
+                                      keep_last=1)
+    assert scan['totalDirs'] == 2
+    assert scan['groups']['P1']['deletable'] == 2
+    assert sorted(scan['groups']['P1']['sample']) == sorted([old1, old2])
+    # keep_last above the count -> nothing deletable
+    scan = fs_paths.scan_aged_entries(str(tmp_path), 'joblogs', min_age_days=15,
+                                      keep_last=5)
+    assert scan['totalDirs'] == 0
+
+
+def test_tmp_policy_excludes_webappruns_bucket(tmp_path):
+    _mk_aged(tmp_path, 'tmp/webappruns/OLDPROJ', 90)
+    keep = _mk_aged(tmp_path, 'tmp/codeenv/stale-build', 90)
+    scan = fs_paths.scan_aged_entries(str(tmp_path), 'tmp', min_age_days=15)
+    assert scan['projectKeys'] == ['codeenv']
+    assert scan['groups']['codeenv']['sample'] == [keep]
+    ok, reason = fs_paths.is_deletable_aged_entry(
+        str(tmp_path / 'tmp/webappruns/OLDPROJ'), str(tmp_path), 'tmp', 15)
+    assert not ok and 'excluded-group' in reason
+
+
+def test_aged_entry_floor_symlink_and_depth(tmp_path):
+    import os
+    real = _mk_aged(tmp_path, 'exports/data/old-export', 30)
+    link = tmp_path / 'exports/data/evil-link'
+    os.symlink(real, str(link))
+    ok, reason = fs_paths.is_deletable_aged_entry(str(link), str(tmp_path), 'exports', 7)
+    assert not ok and reason == 'symlink'
+    # depth: the group dir itself is never a unit
+    ok, reason = fs_paths.is_deletable_aged_entry(
+        str(tmp_path / 'exports/data'), str(tmp_path), 'exports', 7)
+    assert not ok and 'depth' in reason
+    ok, _ = fs_paths.is_deletable_aged_entry(real, str(tmp_path), 'exports', 7)
+    assert ok
+
+
+def test_aged_entry_young_content_protects_dir(tmp_path):
+    import os, time
+    full = _mk_aged(tmp_path, 'jobs/P2/Build_x__NP__2026-01-01T00-00-00.000', 90)
+    fresh = tmp_path / 'jobs/P2/Build_x__NP__2026-01-01T00-00-00.000/still-writing.log'
+    fresh.write_bytes(b'live')
+    ok, reason = fs_paths.is_deletable_aged_entry(full, str(tmp_path), 'joblogs', 15)
+    assert not ok and 'too-young' in reason

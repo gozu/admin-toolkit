@@ -237,6 +237,16 @@ def test_drilldowns_present(result):
     assert 'WEBAPP_BACKEND' in ctx_types
 
 
+def test_top_processes_enriched(result):
+    procs = {p['id']: p for p in result['topProcesses']}
+    lp1 = procs['lp1']
+    assert lp1['authIdentifier'] == 'alice'
+    # seen on both days of the fixture
+    assert lp1['firstDay'] == '2026-06-01'
+    assert lp1['lastDay'] == '2026-06-02'
+    assert lp1['memGBh'] == pytest.approx(3.0)
+
+
 def test_span_and_class_totals(result):
     assert result['ok'] is True
     ct = result['classTotals']

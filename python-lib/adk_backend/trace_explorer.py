@@ -30,8 +30,9 @@ DATASET_NAME = 'agent_interaction_logs'
 FLUSH_EVERY_S = 30
 CONTENT_MODE = 'FULL'  # dku_trace only populates in FULL mode
 # The dku-trace column name in interaction-logging datasets — ground truth
-# from LLMInteractionLogColumn in the DSS 14.7 jar; populated only in FULL mode.
-TRACE_COLUMN = 'trace'
+# from the live 14.7 dataset schema (2026-07-07): the column is `dku_trace`
+# (not `trace`); populated only in FULL mode.
+TRACE_COLUMN = 'dku_trace'
 
 _BACKEND_START_TIMEOUT_S = 30
 
@@ -131,18 +132,23 @@ def _create_webapp_raw(client, project_key):
 
 def _configure_webapp(webapp):
     """Set ONLY the three v1.3.1-known config keys; newer plugin versions'
-    extra params (e.g. the Data Storage selector) are left untouched."""
+    extra params (e.g. the Data Storage selector) are left untouched.
+
+    Plugin-webapp config lives at the TOP LEVEL of the settings raw
+    (`raw['config']`) on DSS 14.7 — a `params.config` write is silently
+    dropped by the settings save (ground truth 2026-07-07: re-provisioned
+    explorers came back with config {} and loaded no traces)."""
     settings = webapp.get_settings()
     raw = settings.get_raw()
-    params = raw.setdefault('params', {})
-    config = params.get('config')
+    config = raw.get('config')
     if not isinstance(config, dict):
         config = {}
-        params['config'] = config
+        raw['config'] = config
     config['llm_responses_dataset'] = DATASET_NAME
     config['llm_responses_column'] = TRACE_COLUMN
     config['log_level'] = config.get('log_level') or 'INFO'
-    params['backendEnabled'] = True  # plugin meta has hasBackend, start needs it
+    # plugin meta has hasBackend; the explicit start still needs the flag
+    raw.setdefault('params', {})['backendEnabled'] = True
     settings.save()
 
 

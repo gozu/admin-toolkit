@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.679] - 2026-07-07
+
+### Fixed
+- **Third batch-cap site, frontend**: `normalizeActionItems` (agentsChatStore) clipped an incoming item's `targets[]` to 20 when ingesting the `action_items` event — so even after 0.4.678 removed the backend caps, a 23-target proposal reached the checklist (and the actuator handoff) with only 20 targets. Clip removed; the checklist stores and hands off the full array. NOTE: items proposed before this fix were persisted with the clipped 20 targets — re-run the investigation to get a fresh full-width item.
+
 ## [0.4.678] - 2026-07-07
 
 ### Changed

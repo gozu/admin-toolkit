@@ -38,6 +38,11 @@ def resolve(plugin_config=None):
         'default_llm_id': pick('default_llm_id'),
         'enable_red_actions': str(pick('enable_red_actions', cfg.get('enable_red_actions', False))).lower() in ('true', '1', 'yes'),
         'triage_connection': pick('triage_connection'),
+        # Audit-DB fallback chain inputs (audit.resolve_connection): the
+        # dedicated param and the legacy Story key must survive this whitelist
+        # or kernels can never resolve them.
+        'agents_audit_postgres_connection': pick('agents_audit_postgres_connection'),
+        'story_postgres_connection': pick('story_postgres_connection'),
         'triage_score_threshold': int(pick('triage_score_threshold', cfg.get('triage_score_threshold') or 75)),
         'triage_mail_channel': pick('triage_mail_channel'),
         'triage_recipient': pick('triage_recipient'),

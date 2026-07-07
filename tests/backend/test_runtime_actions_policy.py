@@ -205,3 +205,15 @@ def test_cluster_row_finds_unavailable_clusters():
                                          'type': 'pycluster_eks-clusters_attach-eks-cluster'}]}})
     row = clusters._cluster_row(client, 'local', 'stale')
     assert row['id'] == 'stale'
+
+
+def test_project_row_accepts_backend_key_field():
+    """/api/projects rows carry 'key', not 'projectKey' — the export planner
+    must find them (akaos live catch)."""
+    from atk_agent_common.actions import projects_domain
+    client = FakeToolkitClient({'/api/projects': {
+        'projects': [{'key': 'SANDBOX', 'name': 'Sandbox', 'owner': 'admin'}]}})
+    row = projects_domain._project_row(client, 'local', 'SANDBOX')
+    assert row['key'] == 'SANDBOX'
+    with pytest.raises(ToolkitError):
+        projects_domain._project_row(client, 'local', 'MISSING')

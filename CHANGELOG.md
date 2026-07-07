@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.668] - 2026-07-07
+
+### Fixed
+- `project-export` (and every project-row lookup in the new domains) matches the backend's `/api/projects` rows by `key` — the planner looked for `projectKey` and refused every real project (akaos live catch).
+- `config_inspect` domain=api-keys and the api-key-delete impl enumerate ALL users' personal keys via `list_all_personal_api_keys` — the plain variant returns only the caller's keys, which is empty for a global-key backend identity (akaos live catch).
+
 ## [0.4.667] - 2026-07-07
 
 ### Added

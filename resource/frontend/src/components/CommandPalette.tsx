@@ -6,6 +6,9 @@ import { COMMAND_PALETTE_MODULES, EXPERIMENTAL_PAGES } from '../utils/moduleRegi
 import { SHOW_EXPERIMENTAL_STORAGE_KEY } from './pages/SettingsPage';
 import { useToggleFlag } from '../hooks/useToggleFlag';
 
+const IS_MAC =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
@@ -304,6 +307,12 @@ function CommandPaletteContent({ onClose }: { onClose: () => void }) {
 
         {/* Footer hint */}
         <div className="flex items-center gap-4 px-4 py-2 border-t border-[var(--border-default)] text-[10px] text-[var(--text-tertiary)]">
+          <span className="flex items-center gap-1">
+            <kbd className="px-1 py-0.5 border border-[var(--border-default)] rounded font-mono">
+              {IS_MAC ? '⌘K' : 'Ctrl K'}
+            </kbd>
+            search
+          </span>
           <span className="flex items-center gap-1">
             <kbd className="px-1 py-0.5 border border-[var(--border-default)] rounded font-mono">
               &uarr;&darr;

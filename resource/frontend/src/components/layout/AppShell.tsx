@@ -19,9 +19,6 @@ const COLLAPSE_BREAKPOINT = 1280;
 const SIDEBAR_COLLAPSED = 56;
 const SCROLL_TOP_THRESHOLD = 600;
 
-const IS_MAC =
-  typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
-
 // Per-page scroll positions — module-level so they survive AppShell remounts
 // within a session; cleared on session-epoch bumps (host switch / cache
 // refresh), where restored offsets would point into stale content.
@@ -183,24 +180,29 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
               alt="Dataiku"
               className="h-5 w-5"
             />
-            <span
-              className="text-base font-bold text-[var(--text-primary)] tracking-tight"            >
-              ADMIN
-            </span>
-            <span
-              className="text-base font-bold text-[#2AB1AC] tracking-tight -ml-1.5"            >
-              TOOLKIT
+            {/* Wordmark stacks the version under ADMINTOOLKIT; Beta rides as a
+                superscript on the final "T". The whole cluster is absolutely
+                positioned in the top bar, so the extra line can't grow its height. */}
+            <span className="flex flex-col items-center leading-none">
+              <span className="whitespace-nowrap leading-none">
+                <span className="text-base font-bold text-[var(--text-primary)] tracking-tight">
+                  ADMIN
+                </span>
+                <span className="text-base font-bold text-[#2AB1AC] tracking-tight -ml-1.5">
+                  TOOLKIT
+                </span>
+                <sup
+                  title="This toolkit is in Beta — features may change."
+                  className="ml-0.5 text-[8px] font-bold uppercase tracking-wider bg-gradient-to-r from-[var(--neon-cyan)] via-[var(--neon-purple)] to-[var(--neon-magenta)] bg-clip-text text-transparent"
+                >
+                  Beta
+                </sup>
+              </span>
+              <span className="mt-px text-[9px] font-mono text-[var(--text-tertiary)] leading-none select-none">
+                v{__APP_VERSION__}
+              </span>
             </span>
           </button>
-          <span
-            title="This toolkit is in Beta — features may change."
-            className="px-1 py-0.5 text-[9px] font-mono font-semibold uppercase tracking-wide rounded border bg-[var(--bg-glass)] text-[var(--text-tertiary)] border-[var(--border-default)] cursor-default select-none"
-          >
-            Beta
-          </span>
-          <span className="text-[10px] font-mono text-[var(--text-tertiary)] select-none">
-            v{__APP_VERSION__}
-          </span>
           <button
             type="button"
             onClick={() => (authed ? toggleShowRed() : setShowUnlock(true))}
@@ -233,14 +235,20 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         </div>
 
         <div className="flex items-center gap-2">
-          {/* ⌘K hint — opens the command palette (handled in App.tsx) */}
+          {/* Search — opens the command palette (handled in App.tsx). The ⌘K
+              shortcut is intentionally not shown here; it's revealed inside the
+              palette itself once opened. */}
           <button
             type="button"
             onClick={() => window.dispatchEvent(new CustomEvent('admin-toolkit:open-palette'))}
-            title="Open command palette"
+            title="Search"
+            aria-label="Search"
             className="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)] border border-[var(--border-default)] rounded-md px-2 py-1 hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
           >
-            <kbd className="font-mono">{IS_MAC ? '⌘K' : 'Ctrl K'}</kbd>
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
             <span>Search</span>
           </button>
 

@@ -109,6 +109,95 @@ def _pick(row, keys):
     return {k: row.get(k) for k in keys if k in row}
 
 
+def _recipe_io_refs(recipe_raw, role):
+    """Dataset-name refs of one recipe's inputs/outputs. Cross-project refs
+    ('PROJ.ds') and managed-folder ids simply never match a local name."""
+    refs = []
+    for slot in (recipe_raw.get(role) or {}).values():
+        for item in (slot or {}).get('items') or []:
+            ref = (item.get('ref') or '').split('.')[-1]
+            if ref:
+                refs.append(ref)
+    return refs
+
+
+def _name_refs(names, blob):
+    """Which of `names` appear in `blob` as standalone tokens. Word-boundary
+    match so 'stats' never fires on 'cgroup_stats'."""
+    return {n for n in names
+            if re.search(r'(?<![A-Za-z0-9_])' + re.escape(n) + r'(?![A-Za-z0-9_])', blob)}
+
+
+def _dataset_lineage(rows, recipes, webapp_blobs, scenario_blobs):
+    """Pure lineage assembly (unit-testable): per-dataset producers/consumers
+    from recipe IO, webapp/scenario name-references from settings blobs, plus
+    the two rollups — `unreferenced` (no direct reference at all) and
+    `deleteCandidates` (not reachable walking upstream from any exposed,
+    webapp-referenced or active-scenario-referenced dataset).
+
+    rows: [{name, type, exposed}]; recipes: raw recipe dicts;
+    webapp_blobs: {label: settings-json-string};
+    scenario_blobs: {label: (settings-json-string, active_bool)}.
+    """
+    names = {r['name'] for r in rows}
+    producers, consumers = {n: [] for n in names}, {n: [] for n in names}
+    recipe_inputs = {}
+    for raw in recipes:
+        rname = raw.get('name') or ''
+        ins = [r for r in _recipe_io_refs(raw, 'inputs') if r in names]
+        outs = [r for r in _recipe_io_refs(raw, 'outputs') if r in names]
+        recipe_inputs[rname] = ins
+        for ds in ins:
+            consumers[ds].append(rname)
+        for ds in outs:
+            producers[ds].append(rname)
+
+    webapp_refs = {label: _name_refs(names, blob) for label, blob in webapp_blobs.items()}
+    scenario_refs = {label: (_name_refs(names, blob), active)
+                     for label, (blob, active) in scenario_blobs.items()}
+
+    roots = {r['name'] for r in rows if r.get('exposed')}
+    roots |= {ds for refs in webapp_refs.values() for ds in refs}
+    roots |= {ds for refs, active in scenario_refs.values() if active for ds in refs}
+
+    # upstream closure: whatever feeds a kept dataset (via its producing
+    # recipes) is kept too — deleting it would break the kept chain.
+    keep, stack = set(roots), list(roots)
+    while stack:
+        ds = stack.pop()
+        for rname in producers.get(ds) or []:
+            for inp in recipe_inputs.get(rname) or []:
+                if inp not in keep:
+                    keep.add(inp)
+                    stack.append(inp)
+
+    out_rows, unreferenced = [], []
+    for r in sorted(rows, key=lambda x: x['name']):
+        name = r['name']
+        in_webapps = sorted(l for l, refs in webapp_refs.items() if name in refs)
+        in_scenarios = sorted(l + ('' if active else ' (inactive)')
+                              for l, (refs, active) in scenario_refs.items() if name in refs)
+        if not r.get('exposed') and not consumers[name] and not in_webapps \
+                and not in_scenarios:
+            unreferenced.append(name)
+        out_rows.append({
+            'name': name, 'type': r.get('type'), 'exposed': bool(r.get('exposed')),
+            'producers': sorted(producers[name])[:10],
+            'consumers': sorted(consumers[name])[:10],
+            'webappRefs': in_webapps[:10],
+            'scenarioRefs': in_scenarios[:10],
+        })
+    return out_rows, {
+        'total': len(rows),
+        'unreferenced': sorted(unreferenced),
+        'deleteCandidates': sorted(names - keep),
+        'roots': {'exposed': sum(1 for r in rows if r.get('exposed')),
+                  'webappReferenced': len({d for refs in webapp_refs.values() for d in refs}),
+                  'activeScenarioReferenced':
+                      len({d for refs, a in scenario_refs.values() if a for d in refs})},
+    }
+
+
 @bp.route('/api/tools/admin-actions/inventory')
 def api_admin_actions_inventory():
     """Read-only target grounding for the runtime/user planners and the
@@ -205,7 +294,36 @@ def api_admin_actions_inventory():
             rows = [{'name': d.get('name'), 'type': d.get('type'),
                      'exposed': d.get('name') in exposed}
                     for d in project.list_datasets()]
-            return jsonify({'ok': True, 'datasets': rows[:300]})
+            if (request.args.get('detail') or '').strip() != 'usage':
+                return jsonify({'ok': True, 'datasets': rows[:300]})
+            recipes = [r if isinstance(r, dict) else getattr(r, '_data', {}) or {}
+                       for r in project.list_recipes()]
+            webapp_blobs, scenario_blobs = {}, {}
+            for w in project.list_webapps()[:50]:
+                raw = w if isinstance(w, dict) else getattr(w, 'raw', {})
+                label = '%s (%s)' % (raw.get('name'), raw.get('type'))
+                try:  # blobs are matched against, never returned (may carry apiKey)
+                    webapp_blobs[label] = json.dumps(
+                        project.get_webapp(raw.get('id')).get_settings().get_raw())
+                except Exception:
+                    pass
+            for s in project.list_scenarios(as_type='objects')[:100]:
+                try:
+                    sraw = s.get_settings().get_raw()
+                    scenario_blobs[sraw.get('name') or s.id] = (
+                        json.dumps(sraw), bool(sraw.get('active')))
+                except Exception:
+                    pass
+            lineage_rows, summary = _dataset_lineage(rows, recipes,
+                                                     webapp_blobs, scenario_blobs)
+            return jsonify({
+                'ok': True, 'datasets': lineage_rows[:300], 'summary': summary,
+                'note': ('webappRefs/scenarioRefs are name-token matches over webapp/'
+                         'scenario definitions — dataset names built dynamically in '
+                         'code are invisible to this scan. deleteCandidates = not '
+                         'reachable upstream from any exposed, webapp-referenced or '
+                         'active-scenario-referenced dataset; a human must still '
+                         'approve every delete.')})
         if domain == 'users':
             rows = [{'login': u.get('login'), 'displayName': u.get('displayName'),
                      'enabled': u.get('enabled', True), 'groups': u.get('groups')}
@@ -673,6 +791,43 @@ def _impl_dataset_clear(client, body):
             'cleared': True, 'result': result}
 
 
+def _impl_dataset_delete(client, body):
+    project_key = body.get('projectKey') or ''
+    name = body.get('datasetName') or ''
+    drop_data = bool(body.get('dropData'))
+    folder_id = body.get('folderId') or ''
+    project = client.get_project(project_key)
+    try:  # re-check exposure at execute time — never trust the plan
+        raw = project.get_settings().get_raw()
+        exposed = any((obj.get('type') or '').upper() == 'DATASET'
+                      and obj.get('localName') == name
+                      for obj in (raw.get('exposedObjects') or {}).get('objects') or [])
+    except Exception:
+        exposed = True  # unknown ⇒ safe side: require the ack
+    if exposed and not bool(body.get('ackExposed')):
+        return {'ok': False, 'error': 'Dataset %s/%s is exposed to other projects — '
+                                      'delete refused without ackExposed.'
+                                      % (project_key, name)}
+    consumers = []
+    try:  # downstream recipes re-checked too (cheap: one list_recipes call)
+        for r in project.list_recipes():
+            rraw = r if isinstance(r, dict) else getattr(r, '_data', {}) or {}
+            if name in _recipe_io_refs(rraw, 'inputs'):
+                consumers.append(rraw.get('name'))
+    except Exception:
+        pass
+    if consumers and not bool(body.get('ackReferenced')):
+        return {'ok': False, 'error': 'Dataset %s/%s is consumed by recipe(s) %s — '
+                                      'delete refused without ackReferenced.'
+                                      % (project_key, name, ', '.join(consumers[:10]))}
+    dataset = project.get_dataset(name)
+    filename = 'dataset-%s-%s.json' % (_safe_name(project_key), _safe_name(name))
+    _backup_json(client, folder_id, filename, dataset.get_settings().get_raw())
+    dataset.delete(drop_data=drop_data)
+    return {'ok': True, 'projectKey': project_key, 'datasetName': name,
+            'deleted': True, 'droppedData': drop_data, 'backupFile': filename}
+
+
 def _impl_connection_index(client, body):
     names = [str(n) for n in (body.get('connectionNames') or []) if str(n).strip()]
     if names:
@@ -708,6 +863,7 @@ _ACTION_IMPLS = {
     'connection-update': _impl_connection_update,
     'connection-index': _impl_connection_index,
     'dataset-clear': _impl_dataset_clear,
+    'dataset-delete': _impl_dataset_delete,
     'cluster-detach': _impl_cluster_detach,
     'cluster-stop': _impl_cluster_stop,
     'cluster-start': _impl_cluster_start,

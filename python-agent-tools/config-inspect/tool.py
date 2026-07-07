@@ -20,7 +20,10 @@ class ConfigInspectTool(BaseAgentTool):
                 "(logins, enabled state, groups), 'api-keys' (personal + global, secrets"
                 "never shown), and the per-project domains 'scenarios', 'webapps',"
                 "'notebooks', 'jobs', 'datasets' (rows carry exposed=true when shared to "
-                "other projects) — for those, name_filter is the PROJECT KEY (required)."
+                "other projects; detail='usage' adds flow lineage per dataset — producing/"
+                "consuming recipes, webapp/scenario name-references, plus 'unreferenced' "
+                "and 'deleteCandidates' rollups for cleanup grounding, slower) — for "
+                "those, name_filter is the PROJECT KEY (required)."
                 "Use name_filter as a substring filter elsewhere."),
             "inputSchema": {
                 "$id": "https://dataiku.com/agents/tools/atk/config-inspect/input",
@@ -36,7 +39,7 @@ class ConfigInspectTool(BaseAgentTool):
                     "detail": {
                         "type": "string",
                         "enum": ["health", "usage"],
-                        "description": "Optional drill-down: 'health' (connections, clusters), 'usage' (plugins). Slower."
+                        "description": "Optional drill-down: 'health' (connections, clusters), 'usage' (plugins, datasets). Slower."
                     },
                     "name_filter": {
                         "type": "string",

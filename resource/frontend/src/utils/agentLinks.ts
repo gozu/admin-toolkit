@@ -167,6 +167,7 @@ export function dssLinkForAction(
     case 'variables-set':
       return `${base}/admin/general/variables/`;
     case 'dataset-clear':
+    case 'dataset-delete':
       return t.projectKey && t.datasetName
         ? `${base}/projects/${enc(String(t.projectKey))}/datasets/${enc(String(t.datasetName))}/`
         : null;

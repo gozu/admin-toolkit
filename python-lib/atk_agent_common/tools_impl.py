@@ -437,12 +437,23 @@ def config_inspect(client, host='local', domain='connections', detail=None,
             return {'error': {'code': 'bad-input',
                               'message': "domain %r needs name_filter=<projectKey>"
                                          % domain}}
+        params = {'domain': domain, 'projectKey': project_key}
+        if domain == 'datasets' and detail == 'usage':
+            # lineage drill-down: producers/consumers from recipe IO, webapp/
+            # scenario name-refs, unreferenced + delete-candidate rollups.
+            params['detail'] = 'usage'
         inv = client.get('/api/tools/admin-actions/inventory', host=host,
-                         params={'domain': domain, 'projectKey': project_key})
+                         params=params, heavy=params.get('detail') == 'usage')
         key = {'scenarios': 'scenarios', 'webapps': 'webapps',
                'notebooks': 'notebooks', 'jobs': 'jobs', 'datasets': 'datasets'}[domain]
         out['projectKey'] = project_key
-        out[key] = (inv.get(key) or [])[:max(1, top_n * 2)]
+        rows = inv.get(key) or []
+        if domain == 'datasets' and detail == 'usage':
+            out['summary'] = inv.get('summary')
+            # rollups carry the verdict; row budget can be tighter than 2×top_n
+            out[key] = rows[:max(1, top_n * 4)]
+        else:
+            out[key] = rows[:max(1, top_n * 2)]
         if inv.get('note'):
             out['note'] = inv['note']
 

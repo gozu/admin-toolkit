@@ -7,6 +7,10 @@ is enforced inside the macro, below both the model and the backend.
 dataset-clear is B-api, red and IRREVERSIBLE: it truncates managed dataset
 data; datasets exposed to other projects are refused unless the target
 carries an explicit ackExposed the human approved.
+dataset-delete is B-api, red and IRREVERSIBLE: the definition JSON is backed
+up first (data is not), and the planner grounds on the lineage inventory
+(detail=usage) — exposed datasets need ackExposed, datasets with consuming
+recipes / webapp refs / active-scenario refs need ackReferenced.
 """
 
 from ..errors import ToolkitError
@@ -149,6 +153,99 @@ def _exec_dataset_clear(client, host, target):
         'ackExposed': bool(target.get('ackExposed'))})
 
 
+def _plan_dataset_delete(client, host, target, params):
+    project_key = _base.require_str(target, 'projectKey', 'dataset-delete')
+    name = _base.require_str(target, 'datasetName', 'dataset-delete')
+    ack_exposed = bool((target or {}).get('ackExposed'))
+    ack_referenced = bool((target or {}).get('ackReferenced'))
+    drop_data = bool((target or {}).get('dropData'))
+    folder = _base.backup_folder(client, host)
+    inv = client.get('/api/tools/admin-actions/inventory', host=host, heavy=True,
+                     params={'domain': 'datasets', 'projectKey': project_key,
+                             'detail': 'usage'})
+    rows = inv.get('datasets') or []
+    row = next((d for d in rows if d.get('name') == name), None)
+    if row is None:
+        names = sorted(str(d.get('name')) for d in rows)
+        raise ToolkitError(
+            'Dataset %r not found in project %r. Datasets: %s'
+            % (name, project_key, ', '.join(names[:15]) or '(none)'),
+            remediation="Check with config_inspect domain='datasets' filter=<projectKey>.")
+    exposed = bool(row.get('exposed'))
+    if exposed and not ack_exposed:
+        raise ToolkitError(
+            'Dataset %s/%s is EXPOSED to other projects — deleting it breaks them. '
+            'Refused without explicit acknowledgement.' % (project_key, name),
+            remediation='If the admin confirms in the conversation, re-plan with '
+                        '"ackExposed": true in the target.')
+    consumers = row.get('consumers') or []
+    webapp_refs = row.get('webappRefs') or []
+    active_scenario_refs = [s for s in (row.get('scenarioRefs') or [])
+                            if not s.endswith('(inactive)')]
+    referenced = consumers or webapp_refs or active_scenario_refs
+    if referenced and not ack_referenced:
+        raise ToolkitError(
+            'Dataset %s/%s is still referenced — consumers: %s; webapps: %s; active '
+            'scenarios: %s. Deleting it breaks them. Refused without explicit '
+            'acknowledgement.' % (project_key, name,
+                                  ', '.join(consumers) or '(none)',
+                                  ', '.join(webapp_refs) or '(none)',
+                                  ', '.join(active_scenario_refs) or '(none)'),
+            remediation='If the admin confirms the blast radius in the conversation, '
+                        're-plan with "ackReferenced": true in the target.')
+    warnings = ['This delete is IRREVERSIBLE — the definition JSON is backed up, the '
+                'DATA is not. dropData=%s: %s' % (
+                    drop_data,
+                    'the underlying files/tables are dropped with it.' if drop_data
+                    else 'the underlying files/tables stay on the connection (set '
+                         '"dropData": true to reclaim managed storage).')]
+    producers = row.get('producers') or []
+    if producers:
+        warnings.append('Producing recipe(s) %s are left ORPHANED (missing output) — '
+                        'delete them separately in the Flow.' % ', '.join(producers))
+    inactive_refs = [s for s in (row.get('scenarioRefs') or []) if s.endswith('(inactive)')]
+    if inactive_refs:
+        warnings.append('Referenced by INACTIVE scenario(s) %s — they fail if ever '
+                        're-enabled.' % ', '.join(inactive_refs))
+    if exposed:
+        warnings.append('Dataset is exposed to other projects and the admin acknowledged '
+                        'the blast radius (ackExposed).')
+    if referenced:
+        warnings.append('Dataset is still referenced and the admin acknowledged the '
+                        'blast radius (ackReferenced).')
+    canonical = {'projectKey': project_key, 'datasetName': name, 'dropData': drop_data}
+    if exposed:
+        canonical['ackExposed'] = True
+    if referenced:
+        canonical['ackReferenced'] = True
+    return canonical, {
+        'summary': 'Back up the definition of dataset %s in project %s (type %s) to %r, '
+                   'then DELETE it%s — irreversible.'
+                   % (name, project_key, row.get('type'), folder['name'],
+                      ' dropping its data' if drop_data else ''),
+        'datasetType': row.get('type'),
+        'exposed': exposed,
+        'lineage': {'producers': producers, 'consumers': consumers,
+                    'webappRefs': webapp_refs, 'scenarioRefs': row.get('scenarioRefs') or []},
+        'backupFolder': folder,
+        'irreversible': True,
+        'warnings': warnings,
+        'note': 'Restore = recreate the dataset from the definition JSON (schema and '
+                'settings only — deleted DATA does not come back). Say so when '
+                'presenting this plan.',
+    }
+
+
+def _exec_dataset_delete(client, host, target):
+    folder = _base.backup_folder(client, host)
+    return _base.post_backend_action(client, host, 'dataset-delete', {
+        'projectKey': target['projectKey'], 'datasetName': target['datasetName'],
+        'dropData': bool(target.get('dropData')),
+        'ackExposed': bool(target.get('ackExposed')),
+        'ackReferenced': bool(target.get('ackReferenced')),
+        'folderId': folder['id']})
+
+
 SPECS = [
     _base.spec('tmp-cleanup',
                'tmp-cleanup {minAgeDays?, maxDeleteGB?}', 'amber',
@@ -163,4 +260,9 @@ SPECS = [
                'dataset-clear {projectKey, datasetName, ackExposed?} (IRREVERSIBLE; '
                'exposed datasets refused without ack)', 'red',
                _plan_dataset_clear, _exec_dataset_clear, batchable=True),
+    _base.spec('dataset-delete',
+               'dataset-delete {projectKey, datasetName, dropData?, ackExposed?, '
+               'ackReferenced?} (IRREVERSIBLE; definition backed up, DATA is not; '
+               'exposed or still-referenced datasets refused without acks)', 'red',
+               _plan_dataset_delete, _exec_dataset_delete, batchable=True),
 ]

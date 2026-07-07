@@ -406,6 +406,14 @@ export const EDU: Record<string, EduEntry> = {
       'Batchable for sweeping stale managed datasets.',
     ],
   },
+  'action.dataset-delete': {
+    title: 'dataset-delete',
+    body: [
+      'Deletes one dataset OBJECT — IRREVERSIBLE. The definition JSON (schema + settings) is backed up to the toolkit backup folder first; the data is NOT backed up. dropData=true also drops the underlying files/tables (reclaims managed storage).',
+      'The planner grounds on the flow lineage inventory: exposed datasets are refused without ackExposed, and datasets with consuming recipes, webapp references or active-scenario references are refused without ackReferenced. Producing recipes are left orphaned — the plan names them.',
+      'Batchable for sweeping the delete-candidates rollup from config_inspect datasets detail=usage.',
+    ],
+  },
   'action.db-reindex': {
     title: 'db-reindex',
     body: [

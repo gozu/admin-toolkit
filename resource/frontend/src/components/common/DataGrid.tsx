@@ -373,7 +373,16 @@ export function DataGrid<R, C = never>({
   }
 
   return (
-    <div className="col-span-full chart-container flex min-h-0 flex-1 flex-col" id={id}>
+    <div
+      className={cx(
+        'col-span-full chart-container flex min-h-0 flex-col',
+        // A maxH-capped body can never use extra height — growing as a flex item
+        // only inflates the card with empty space (flex intrinsic sizing equalizes
+        // flex-1 siblings to the tallest one in an auto-height column).
+        typeof scroll === 'object' ? 'flex-none' : 'flex-1',
+      )}
+      id={id}
+    >
       <div className="chart-header">
         <div className="flex items-center justify-between gap-3">
           <h4>{title}</h4>

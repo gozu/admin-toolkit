@@ -656,13 +656,17 @@ export function LlmProvidersPanel({ models }: { models: CruLlmModelRow[] }) {
       a.calls += m.queries;
       a.models += 1;
     }
-    return PROVIDER_ORDER.map((p) => ({ provider: p, ...agg.get(p)! })).filter(
-      (r) => r.provider !== 'Other' || r.calls > 0,
-    );
+    return PROVIDER_ORDER.map((p) => ({ provider: p, ...agg.get(p)! }))
+      .filter((r) => r.provider !== 'Other' || r.calls > 0)
+      // Rank by popularity; colors stay bound to the provider, not the rank.
+      .sort((a, b) => b.calls - a.calls);
   }, [models]);
   if (models.length === 0) return null;
   const totalCalls = rows.reduce((s, r) => s + r.calls, 0);
   const maxCalls = Math.max(1, ...rows.map((r) => r.calls));
+  // The split bar only earns its place when there is an actual split to show —
+  // a single-provider 100% bar reads as an unexplained stray line.
+  const showSplit = rows.filter((r) => r.calls > 0).length >= 2;
   return (
     <div className="chart-container">
       <div className="chart-header flex items-center justify-between gap-3">
@@ -672,7 +676,7 @@ export function LlmProvidersPanel({ models }: { models: CruLlmModelRow[] }) {
         <span className="text-[10px] text-[var(--text-muted)]">share of LLM calls</span>
       </div>
       <div className="px-4 py-3">
-        {totalCalls > 0 && (
+        {showSplit && (
           <SegmentBar
             height={8}
             segments={rows.map((r) => ({
@@ -682,7 +686,7 @@ export function LlmProvidersPanel({ models }: { models: CruLlmModelRow[] }) {
             }))}
           />
         )}
-        <div className="mt-3 space-y-2.5">
+        <div className={`space-y-2.5 ${showSplit ? 'mt-3' : ''}`}>
           {rows.map((r) => {
             const pct = totalCalls > 0 ? (r.calls / totalCalls) * 100 : 0;
             const empty = r.calls === 0;

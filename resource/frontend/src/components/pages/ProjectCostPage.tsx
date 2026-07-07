@@ -580,7 +580,7 @@ export function ProjectCostPage() {
           renderExpandedRow={(row) => <ProjectDetailPanel row={row} />}
           expandedRowKeys={expandedRowKeys}
           emptyMessage="Waiting for compute usage…"
-          scroll="card"
+          scroll={{ maxH: '46rem' }}
         />
 
         {/* User leaderboard — same conditional class columns */}
@@ -597,7 +597,7 @@ export function ProjectCostPage() {
             }
             defaultSortDir="desc"
             emptyMessage="No attributed users."
-            scroll="card"
+            scroll={{ maxH: '46rem' }}
           />
         )}
 

@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { InfoDot } from '../common/InfoDot';
-import { catalogForAgent, type CatalogSection } from '../../utils/agentPromptCatalog';
+import {
+  PROMPT_GROUPS,
+  type AgentRole,
+  type CatalogGroup,
+  type CatalogSection,
+} from '../../utils/agentPromptCatalog';
 
 const EASE_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -91,28 +96,95 @@ function Section({
   );
 }
 
+function Group({
+  group,
+  filter,
+  onInsert,
+  onSend,
+}: {
+  group: CatalogGroup;
+  filter: string;
+  onInsert: (prompt: string, role: AgentRole) => void;
+  onSend: (prompt: string, role: AgentRole) => void;
+}) {
+  const insert = (prompt: string) => onInsert(prompt, group.role);
+  const send = (prompt: string) => onSend(prompt, group.role);
+  const matches = useMemo(() => {
+    if (!filter) return true;
+    const needle = filter.toLowerCase();
+    return group.sections.some((section) =>
+      section.prompts.some(
+        (p) => p.label.toLowerCase().includes(needle) || p.prompt.toLowerCase().includes(needle),
+      ),
+    );
+  }, [group, filter]);
+  if (!matches) return null;
+  return (
+    <div className="space-y-2">
+      <div className="sticky top-0 z-10 -mx-3.5 border-y border-[var(--border-default)] bg-[var(--bg-elevated)] px-3.5 py-1.5">
+        <div className="text-xs font-bold uppercase tracking-widest text-[var(--accent)]">
+          {group.title}
+        </div>
+        <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">{group.blurb}</p>
+      </div>
+      {!filter && (
+        <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-muted)] p-2.5 space-y-1">
+          <span className="text-[11px] font-semibold text-[var(--accent)]">
+            ★ {group.megapromptTitle}
+          </span>
+          <p className="text-[10px] leading-relaxed text-[var(--text-secondary)]">
+            {group.megapromptBlurb}
+          </p>
+          <div className="flex items-center gap-2 pt-0.5">
+            <button
+              onClick={() => send(group.megaprompt)}
+              className="rounded-md bg-[var(--accent)] px-2.5 py-1 text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
+            >
+              Run it
+            </button>
+            <button
+              onClick={() => insert(group.megaprompt)}
+              className="rounded-md border border-[var(--border-default)] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)]"
+            >
+              Edit first
+            </button>
+          </div>
+        </div>
+      )}
+      {group.sections.map((section) => (
+        <Section
+          key={`${group.role}-${section.id}`}
+          section={section}
+          filter={filter}
+          onInsert={insert}
+          onSend={send}
+        />
+      ))}
+    </div>
+  );
+}
+
 /**
- * Right slide-in drawer with the full prompt catalog for the selected agent:
- * search, the megaprompt hero, and collapsible themed sections. Clicking a
- * prompt inserts it into the composer (edit before sending); the arrow
- * affordance sends it immediately.
+ * Right slide-in drawer with the full prompt catalog: search, then the two
+ * headline groups (Health & Triage, Scoping & Architecture) plus Admin
+ * Actions — each with its megaprompt hero and collapsible themed sections.
+ * Clicking a prompt inserts it into the composer (edit before sending); the
+ * arrow affordance sends it immediately. The group is the routing signal
+ * that picks the backend specialist for the prompt.
  */
 export function PromptLibrary({
   open,
-  agentName,
   onClose,
   onInsert,
   onSend,
 }: {
   open: boolean;
-  agentName: string | undefined;
   onClose: () => void;
-  onInsert: (prompt: string) => void;
-  onSend: (prompt: string) => void;
+  onInsert: (prompt: string, role: AgentRole) => void;
+  onSend: (prompt: string, role: AgentRole) => void;
 }) {
   const [filter, setFilter] = useState('');
   const reduced = useReducedMotion();
-  const catalog = catalogForAgent(agentName);
 
   useEffect(() => {
     if (!open) return;
@@ -123,18 +195,18 @@ export function PromptLibrary({
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  const insert = (prompt: string) => {
-    onInsert(prompt);
+  const insert = (prompt: string, role: AgentRole) => {
+    onInsert(prompt, role);
     onClose();
   };
-  const send = (prompt: string) => {
-    onSend(prompt);
+  const send = (prompt: string, role: AgentRole) => {
+    onSend(prompt, role);
     onClose();
   };
 
   return createPortal(
     <AnimatePresence>
-      {open && catalog && (
+      {open && (
         <>
           <motion.div
             className="fixed inset-0 z-40 bg-black/30"
@@ -155,7 +227,6 @@ export function PromptLibrary({
               <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
                 Prompt library
               </span>
-              <span className="text-[10px] text-[var(--text-muted)]">{agentName?.replace(/^ATK /, '')}</span>
               <button
                 onClick={onClose}
                 className="ml-auto rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
@@ -176,35 +247,9 @@ export function PromptLibrary({
               />
             </div>
 
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3.5 pb-4">
-              {!filter && (
-                <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-muted)] p-3 space-y-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-semibold text-[var(--accent)]">
-                      ★ {catalog.megapromptTitle}
-                    </span>
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-[var(--text-secondary)]">
-                    {catalog.megapromptBlurb}
-                  </p>
-                  <div className="flex items-center gap-2 pt-0.5">
-                    <button
-                      onClick={() => send(catalog.megaprompt)}
-                      className="rounded-md bg-[var(--accent)] px-2.5 py-1 text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
-                    >
-                      Run it
-                    </button>
-                    <button
-                      onClick={() => insert(catalog.megaprompt)}
-                      className="rounded-md border border-[var(--border-default)] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)]"
-                    >
-                      Edit first
-                    </button>
-                  </div>
-                </div>
-              )}
-              {catalog.sections.map((section) => (
-                <Section key={section.id} section={section} filter={filter} onInsert={insert} onSend={send} />
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3.5 pb-4">
+              {PROMPT_GROUPS.map((group) => (
+                <Group key={group.role} group={group} filter={filter} onInsert={insert} onSend={send} />
               ))}
             </div>
           </motion.aside>

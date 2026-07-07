@@ -98,7 +98,7 @@ export function SettingsHistoryCard({ onRestore }: { onRestore: (prompt: string)
                   <button
                     onClick={() => onRestore(restorePrompt(row))}
                     className="rounded px-2 py-0.5 text-xs text-[var(--accent)] transition-colors hover:bg-[var(--accent-muted)]"
-                    title="Prefill the actuator with a plan restoring this item to its prior value"
+                    title="Prefill the agent with a plan restoring this item to its prior value"
                   >
                     Restore…
                   </button>
@@ -108,7 +108,7 @@ export function SettingsHistoryCard({ onRestore }: { onRestore: (prompt: string)
             defaultSortDir="desc"
           />
           <p className="mt-1 text-[10px] text-[var(--text-muted)]">
-            Restore prefills the Ops Actuator with a plan reverting the item to its prior value —
+            Restore prefills the agent with a plan reverting the item to its prior value —
             the usual plan → approve → execute flow applies. Last 50 changes kept per item.
           </p>
         </div>

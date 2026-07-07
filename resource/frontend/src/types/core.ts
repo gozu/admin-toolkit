@@ -321,7 +321,8 @@ export type PageId =
   | 'k8s-insights'
   | 'settings'
   | 'feedback'
-  | 'agents';
+  | 'agents'
+  | 'agent-tuning';
 
 export type AppMode = 'landing' | 'single' | 'comparison' | 'tools' | 'settings';
 

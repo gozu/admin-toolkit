@@ -9,6 +9,13 @@ export interface EduEntry {
 
 export const EDU: Record<string, EduEntry> = {
   /* ── agents ─────────────────────────────────────────────────────────── */
+  'agent.unified': {
+    title: 'Admin Toolkit Agent',
+    body: [
+      'One conversational agent for admin work: fleet health and triage sweeps, scoping/architecture analysis, and — with your explicit approval — executing maintenance actions.',
+      'Under the hood each request is routed to a specialist: read-only sensors answer health and scoping questions; a strictly gated actuator handles actions. Nothing ever changes without you approving that specific plan first.',
+    ],
+  },
   'agent.health-triage': {
     title: 'Health Triage agent',
     body: [

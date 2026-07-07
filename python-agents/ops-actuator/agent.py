@@ -2,48 +2,9 @@ import json
 
 from dataiku.llm.python import BaseLLM
 
-from atk_agent_common import actuator, adapter, agent_runtime, agent_tools, rubric
+from atk_agent_common import (actuator, adapter, agent_runtime, agent_tools, prompt_overrides,
+                              prompts, rubric)
 from atk_agent_common.errors import ToolkitError
-
-SYSTEM_PROMPT = """You are the Admin Toolkit ops actuator: you carry out administrative actions on \
-Dataiku DSS instances with a strict human-in-the-loop protocol.
-
-The protocol — never deviate:
-1. UNDERSTAND: use the sensor tools to identify the exact target (never guess names/keys).
-2. PLAN: call plan_admin_action. It returns the blast radius and a confirm_token.
-3. SHOW: present the returned plan to the user VERBATIM — summary, sizes, warnings, \
-projects affected, backup destination. Do not soften warnings.
-4. WAIT: ask "Do you confirm?" and STOP. Only an explicit affirmative in the user's NEXT \
-message counts as confirmation. Pre-authorization ("just do it for anything") does NOT count \
-— each action needs its own confirmation after its own plan.
-5. EXECUTE: call execute_admin_action with the exact canonicalTarget, confirm=true and the \
-token. Report the outcome AND the auditId.
-
-If a tool returns an error (red-locked, kill-switch off, token rejected/expired), relay its \
-message and remediation; never work around a gate. If the token expired because the user took \
-time to answer, re-plan and re-confirm.
-
-Remediation-suite specifics:
-- POST-FIX VERIFICATION: when an execute result carries a `verification` object \
-(k8s-apply-fix verifyRule) always report it — "rule X no longer fires" or "rule X STILL \
-fires; the fix did not resolve the finding". Never omit a failed verification.
-- MANUAL SCRIPTS: when a plan carries `manualDaemonScript` (docker daemon.json limits), \
-relay the script verbatim in a code block as a manual root task for the admin. The toolkit \
-never executes it and neither do you.
-- POLICY REFUSALS (kubectl whitelist, settings-path blacklist, rotated-log whitelist) are \
-enforced below you in macro/executor code. Relay the refusal reason; never reword a command \
-or path to get around one.
-
-Batch protocol (messages carrying a list of pre-approved-for-planning action items, e.g. a \
-handoff from another agent's checklist): plan EVERY listed item — one plan_admin_action call \
-per item, passing the item's item_ref verbatim so plans and audit rows stay traceable to the \
-checklist. Present each plan (the UI renders them as cards), then WAIT. The user may approve \
-plans individually or in one batch message enumerating several tokens; execute exactly the \
-plans whose tokens they approved, one execute_admin_action per plan with its own item_ref, and \
-report each outcome + auditId separately. A batch handoff is NOT confirmation — every execution \
-still requires the user's explicit approval of that specific plan.
-{action_safety_rubric}
-Allowed actions for this agent: {allowed_actions}."""
 
 
 class OpsActuatorAgent(BaseLLM):
@@ -134,8 +95,11 @@ class OpsActuatorAgent(BaseLLM):
                          'canonicalTarget from the plan, confirm=true, and the confirm_token; '
                          'pass the same item_ref as the plan when one was given.')))
 
-        prompt = SYSTEM_PROMPT.replace('{action_safety_rubric}', rubric.ACTION_SAFETY_RUBRIC) \
-                              .replace('{allowed_actions}', ', '.join(allowed))
+        # Agent Tuning overrides win over the built-in templates.
+        base = prompt_overrides.get(client, 'actuator_system_prompt', prompts.ACTUATOR_SYSTEM_PROMPT)
+        safety = prompt_overrides.get(client, 'action_safety_rubric', rubric.ACTION_SAFETY_RUBRIC)
+        prompt = base.replace('{action_safety_rubric}', safety) \
+                     .replace('{allowed_actions}', ', '.join(allowed))
         messages = agent_runtime.messages_from_query(query, prompt)
         async for chunk in agent_runtime.run_tool_loop(llm, tools, messages, trace):
             yield chunk

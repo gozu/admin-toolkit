@@ -592,7 +592,9 @@ export async function deleteConversation(conversationId: string): Promise<void> 
   }
 }
 
-function deriveTitle(conv: Conversation): string {
+/** Conversation title: explicit title, else the first user message clipped.
+ * Exported for the history drawer's local (not-yet-persisted) rows. */
+export function deriveTitle(conv: Conversation): string {
   if (conv.title) return conv.title;
   const firstUser = conv.messages.find((m) => m.role === 'user');
   const text = (firstUser?.display ?? firstUser?.content ?? '').trim().replace(/\s+/g, ' ');
@@ -775,8 +777,8 @@ export function submitActionItemsToActuator(
     `Present each plan and WAIT for my approval. Do NOT execute anything yet.\n\n` +
     actionable.map((item, i) => handoffLine(batchId, item, i, true)).join('\n');
   const display =
-    `Action-item handoff — ${actionable.length} item(s) selected from another agent's findings. ` +
-    `Plan each item and wait for my approval before executing.\n\n` +
+    `Plan the ${actionable.length} action item(s) I selected from the checklist. ` +
+    `Present each plan and wait for my approval before executing.\n\n` +
     actionable.map((item, i) => handoffLine(batchId, item, i, false)).join('\n');
 
   selectAgent(actuatorAgentId);

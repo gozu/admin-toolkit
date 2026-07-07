@@ -165,9 +165,10 @@ export function ActionItemsCard({
             }}
             disabled={disabled || checkedItems.length === 0 || !actuatorAvailable}
             className="px-3 py-1 text-xs font-semibold rounded-md bg-[var(--accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-            title={actuatorAvailable ? undefined : 'No Ops Actuator agent found on this host'}
+            title={actuatorAvailable ? undefined : 'No action-capable agent found on this host'}
           >
-            Send{checkedItems.length > 0 ? ` ${checkedItems.length}` : ''} to Ops Actuator
+            Plan{checkedItems.length > 0 ? ` ${checkedItems.length}` : ''} selected action
+            {checkedItems.length === 1 ? '' : 's'}
           </button>
           <button
             onClick={() => toggleSelectAll(selectableIds)}

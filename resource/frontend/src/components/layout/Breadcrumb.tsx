@@ -35,6 +35,7 @@ const PAGE_SECTION_MAP: Record<PageId, SectionInfo> = {
   'llm-audit': { label: 'AI Compute', firstPage: 'container-execs' },
   'k8s-insights': { label: 'AI Compute', firstPage: 'container-execs' },
   agents: { label: 'Agents', firstPage: 'agents' },
+  'agent-tuning': { label: 'Agents', firstPage: 'agents' },
   settings: { label: 'Misc', firstPage: 'settings' },
   logs: { label: 'Misc', firstPage: 'settings' },
   'sanity-check': { label: 'Misc', firstPage: 'settings' },
@@ -75,6 +76,7 @@ const PAGE_LABELS: Record<PageId, string> = {
   settings: 'Settings',
   feedback: 'Feedback',
   agents: 'Agents',
+  'agent-tuning': 'Agent Tuning',
 };
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];

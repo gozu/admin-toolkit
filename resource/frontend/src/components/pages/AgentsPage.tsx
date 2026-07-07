@@ -7,7 +7,12 @@ import { PromptLibrary } from '../agents/PromptLibrary';
 import { PendingApprovalsBar } from '../agents/PendingApprovalsBar';
 import { AuditTimeline } from '../agents/AuditTimeline';
 import { SettingsHistoryCard } from '../agents/SettingsHistoryCard';
-import { catalogForAgent } from '../../utils/agentPromptCatalog';
+import {
+  PROMPT_GROUPS,
+  groupForRole,
+  type AgentRole,
+  type CatalogGroup,
+} from '../../utils/agentPromptCatalog';
 import { hostBaseUrl } from '../../utils/agentLinks';
 import { getActiveHostId } from '../../state/hostStore';
 import { ChatHistoryDrawer } from '../agents/ChatHistoryDrawer';
@@ -16,6 +21,7 @@ import {
   agentsChatStore,
   approvePlans,
   clearConversation,
+  deriveTitle,
   ensureChatBootstrapped,
   provisionTraceExplorer,
   rejectPlans,
@@ -24,6 +30,7 @@ import {
   submitActionItemsToActuator,
   type ActionItemData,
   type AgentInfo,
+  type ConversationMeta,
   type PlanCardData,
   type ProvisionResult,
 } from '../../state/agentsChatStore';
@@ -35,17 +42,30 @@ interface AgentsListResponse {
   projectKey: string;
 }
 
-const AGENT_HINTS: Record<string, string> = {
-  'ATK Health Triage': 'fleet health sweeps & triage reports',
-  'ATK Scoping Architect': 'sizing & scoping analysis',
-  'ATK Ops Actuator': 'plans + executes admin actions (with your approval)',
-};
+/** The UI presents ONE agent; the three provisioned specialists stay behind
+ * the curtain and are picked per message (name substring = stable identity). */
+function findByRole(agents: AgentInfo[], role: AgentRole): AgentInfo | undefined {
+  const pattern = { triage: /triage/i, scoping: /scoping/i, actuator: /actuator/i }[role];
+  return agents.find((a) => pattern.test(a.name));
+}
 
-const AGENT_EDU: Record<string, string> = {
-  'ATK Health Triage': 'agent.health-triage',
-  'ATK Scoping Architect': 'agent.scoping-architect',
-  'ATK Ops Actuator': 'agent.ops-actuator',
-};
+/** First prompt of each section, then seconds, until `count` — a spread of
+ * samples across the group's themes rather than one section's list. */
+function samplePrompts(group: CatalogGroup, count: number) {
+  const out: { id: string; label: string; prompt: string }[] = [];
+  for (let depth = 0; out.length < count; depth++) {
+    let added = false;
+    for (const section of group.sections) {
+      const p = section.prompts[depth];
+      if (p && out.length < count) {
+        out.push(p);
+        added = true;
+      }
+    }
+    if (!added) break;
+  }
+  return out;
+}
 
 // Shared fluid column: near full width, capped at 1400px. Header, transcript,
 // composer, and audit block all use it so the page reads as one column.
@@ -74,6 +94,9 @@ export function AgentsPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const stickToBottomRef = useRef(true);
+  // A prompt inserted from the library keeps its group's routing until it is
+  // sent or the composer is cleared — editing the text keeps the intent.
+  const pendingRoleRef = useRef<AgentRole | null>(null);
 
   const chatState = agentsChatStore.use();
   const selectedId = chatState.selectedAgentId;
@@ -82,7 +105,8 @@ export function AgentsPage() {
   const messages = useMemo(() => conversation?.messages ?? [], [conversation]);
   const streaming = conversation?.streaming ?? false;
 
-  const actuator = useMemo(() => agents.find((a) => a.name.includes('Actuator')), [agents]);
+  const actuator = useMemo(() => findByRole(agents, 'actuator'), [agents]);
+  const triage = useMemo(() => findByRole(agents, 'triage'), [agents]);
 
   // Chat persistence config + trace-explorer status, once per host — the
   // session epoch (host switch / in-app Refresh) resets `persistence.loaded`,
@@ -99,7 +123,9 @@ export function AgentsPage() {
         if (data.agents.length > 0) {
           const current = agentsChatStore.get().selectedAgentId;
           if (!current || !data.agents.some((a) => a.id === current)) {
-            const preferred = data.agents.find((a) => a.name.includes('Actuator')) || data.agents[0];
+            // Fresh sessions start on the triage generalist (it has every
+            // sensor tool); free-form messages continue the visible thread.
+            const preferred = findByRole(data.agents, 'triage') || data.agents[0];
             selectAgent(preferred.id);
           }
         }
@@ -145,27 +171,42 @@ export function AgentsPage() {
     stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }, []);
 
+  /** Route one message: an explicit role (library prompt) picks its
+   * specialist; free-form text continues the visible thread, or starts a
+   * fresh one on the triage generalist. */
   const send = useCallback(
-    (text: string) => {
+    (text: string, role?: AgentRole) => {
       const trimmed = text.trim();
-      if (!trimmed || !selectedId || streaming) return;
+      if (!trimmed || streaming || agents.length === 0) return;
+      const routed = role ? findByRole(agents, role) : undefined;
+      const fallback = agents.find((a) => a.id === selectedId) || triage || agents[0];
+      const target = routed || fallback;
       setDraft('');
+      pendingRoleRef.current = null;
       stickToBottomRef.current = true;
-      void sendAgentMessage(selectedId, trimmed);
+      if (target.id !== selectedId) selectAgent(target.id);
+      void sendAgentMessage(target.id, trimmed);
     },
-    [selectedId, streaming],
+    [agents, selectedId, streaming, triage],
   );
 
-  const insertPrompt = useCallback((prompt: string) => {
+  const sendDraft = useCallback(
+    (text: string) => send(text, pendingRoleRef.current ?? undefined),
+    [send],
+  );
+
+  const insertPrompt = useCallback((prompt: string, role?: AgentRole) => {
+    pendingRoleRef.current = role ?? null;
     setDraft(prompt);
     composerRef.current?.focus();
   }, []);
 
-  // Settings-history "Restore…": hand the restore plan to the actuator —
-  // switch to it (restores are its job) and prefill the composer for review.
+  // Settings-history "Restore…": restores are the actuator specialist's job —
+  // prefill the composer for review and route the send to it.
   const onRestore = useCallback(
     (prompt: string) => {
       if (actuator && actuator.id !== selectedId) selectAgent(actuator.id);
+      pendingRoleRef.current = 'actuator';
       setDraft(prompt);
       composerRef.current?.focus();
     },
@@ -208,32 +249,37 @@ export function AgentsPage() {
       .finally(() => setProvisioning(false));
   }, []);
 
-  const selectedAgent = agents.find((a) => a.id === selectedId);
-  const catalog = catalogForAgent(selectedAgent?.name);
+  // History covers server-persisted chats plus local (not-yet-persisted)
+  // ones, so past conversations stay reachable even without chat storage.
+  const historyList = useMemo<ConversationMeta[]>(() => {
+    const serverIds = new Set(chatState.conversationList.map((c) => c.id));
+    const locals = Object.values(chatState.conversations)
+      .filter((c) => !serverIds.has(c.id) && c.messages.length > 0)
+      .map((c) => ({ id: c.id, agentId: c.agentId, title: c.title || deriveTitle(c) }));
+    return [...chatState.conversationList, ...locals];
+  }, [chatState.conversationList, chatState.conversations]);
+
   const errorIsGate = /red|kill|locked|disabled/i.test(conversation?.error || '');
   const traceExplorer = chatState.traceExplorer;
   const explorerViewPath = traceExplorer?.viewPath || conversation?.traceExplorerPath;
+  const heroGroups = useMemo(
+    () => [groupForRole('triage'), groupForRole('scoping')],
+    [],
+  );
 
   return (
     <div className="w-full flex-1 min-h-0 flex flex-col gap-3 py-4">
-      {/* Header: agent picker */}
+      {/* Header: one agent, one identity */}
       <div className={`${COLUMN} flex items-center gap-2 flex-wrap`}>
-        {agents.map((agent) => (
-          <span key={agent.id} className="inline-flex items-center gap-1">
-            <button
-              onClick={() => selectAgent(agent.id)}
-              className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                agent.id === selectedId
-                  ? 'bg-[var(--accent-muted)] border-[var(--accent)]/40 text-[var(--accent)]'
-                  : 'bg-[var(--bg-surface)] border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
-              }`}
-              title={AGENT_HINTS[agent.name]}
-            >
-              {agent.name.replace(/^ATK /, '')}
-            </button>
-            {AGENT_EDU[agent.name] && <InfoDot eduId={AGENT_EDU[agent.name]} />}
+        <span className="inline-flex items-center gap-1.5">
+          <span className="text-sm font-semibold text-[var(--text-primary)]">
+            Admin Toolkit Agent
           </span>
-        ))}
+          <InfoDot eduId="agent.unified" />
+        </span>
+        <span className="text-xs text-[var(--text-tertiary)]">
+          health · triage · scoping · admin actions
+        </span>
         <span className="ml-auto inline-flex items-center gap-2">
           {explorerViewPath ? (
             <a
@@ -265,15 +311,17 @@ export function AgentsPage() {
               Install Traces Explorer plugin ↗
             </a>
           ) : null}
-          {chatState.persistence.enabled && (
-            <button
-              onClick={() => setHistoryOpen(true)}
-              className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-tertiary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors"
-              title="Saved conversations on this host (server-side, per user)"
-            >
-              History
-            </button>
-          )}
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-tertiary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors"
+            title={
+              chatState.persistence.enabled
+                ? 'Saved conversations on this host (server-side, per user)'
+                : 'Past conversations in this browser — enable chat storage in the plugin settings for durable history'
+            }
+          >
+            History
+          </button>
           {messages.length > 0 && (
             <button
               onClick={() => selectedId && clearConversation(selectedId)}
@@ -348,46 +396,51 @@ export function AgentsPage() {
           <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto">
             <div className={`${COLUMN} space-y-4`}>
               {messages.length === 0 && (
-                <div className="pt-16 flex flex-col items-center gap-4 text-center">
+                <div className="pt-10 flex flex-col items-center gap-4 text-center">
                   <p className="text-sm text-[var(--text-secondary)]">
-                    {selectedAgent ? AGENT_HINTS[selectedAgent.name] || 'Ask the agent anything.' : ''}
+                    Ask about fleet health, sizing and scoping, or admin maintenance — or start
+                    from a sample below.
                   </p>
-                  {catalog && (
-                    <div className="glass-card w-full max-w-md p-4 space-y-2 text-left border-l-2 border-l-[var(--accent)]">
-                      <div className="text-xs font-semibold text-[var(--accent)]">
-                        ★ {catalog.megapromptTitle}
-                      </div>
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                        {catalog.megapromptBlurb}
-                      </p>
-                      <div className="flex items-center gap-2 pt-1">
+                  <div className="grid gap-3 w-full max-w-3xl sm:grid-cols-2 text-left">
+                    {heroGroups.map((group) => (
+                      <div
+                        key={group.role}
+                        className="glass-card p-4 space-y-2 border-l-2 border-l-[var(--accent)]"
+                      >
+                        <div className="text-xs font-bold uppercase tracking-widest text-[var(--accent)]">
+                          {group.title}
+                        </div>
+                        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                          {group.blurb}
+                        </p>
                         <button
-                          onClick={() => send(catalog.megaprompt)}
+                          onClick={() => send(group.megaprompt, group.role)}
                           className="px-3 py-1 text-xs font-semibold rounded-md bg-[var(--accent)] text-white hover:opacity-90 transition-opacity"
                         >
-                          Run it
+                          ★ {group.megapromptTitle}
                         </button>
-                        <button
-                          onClick={() => setLibraryOpen(true)}
-                          className="px-3 py-1 text-xs rounded-md border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
-                        >
-                          Browse all prompts…
-                        </button>
+                        <div className="flex flex-col gap-1.5 pt-1">
+                          {samplePrompts(group, 7).map((p) => (
+                            <button
+                              key={p.id}
+                              onClick={() => send(p.prompt, group.role)}
+                              className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors truncate text-left"
+                              title={p.prompt}
+                            >
+                              {p.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-2 w-full max-w-md">
-                    {(catalog?.sections || []).slice(0, 3).map((section) => (
-                      <button
-                        key={section.id}
-                        onClick={() => send(section.prompts[0].prompt)}
-                        className="px-3 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors truncate"
-                        title={section.prompts[0].prompt}
-                      >
-                        {section.prompts[0].label}
-                      </button>
                     ))}
                   </div>
+                  <button
+                    onClick={() => setLibraryOpen(true)}
+                    className="px-3 py-1.5 text-xs rounded-md border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+                  >
+                    Browse all {PROMPT_GROUPS.reduce((n, g) => n + g.sections.reduce((m, s) => m + s.prompts.length, 0), 0)}{' '}
+                    prompts…
+                  </button>
                 </div>
               )}
               <AnimatePresence initial={false}>
@@ -444,11 +497,14 @@ export function AgentsPage() {
               <textarea
                 ref={composerRef}
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  if (!e.target.value) pendingRoleRef.current = null;
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    send(draft);
+                    sendDraft(draft);
                   }
                 }}
                 rows={Math.min(8, Math.max(1, draft.split('\n').length))}
@@ -465,7 +521,7 @@ export function AgentsPage() {
                 </button>
               ) : (
                 <button
-                  onClick={() => send(draft)}
+                  onClick={() => sendDraft(draft)}
                   disabled={!draft.trim()}
                   className="px-3.5 py-2 text-sm font-medium rounded-lg bg-[var(--accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -483,7 +539,6 @@ export function AgentsPage() {
 
           <PromptLibrary
             open={libraryOpen}
-            agentName={selectedAgent?.name}
             onClose={() => setLibraryOpen(false)}
             onInsert={insertPrompt}
             onSend={send}
@@ -492,8 +547,8 @@ export function AgentsPage() {
           <ChatHistoryDrawer
             open={historyOpen}
             onClose={() => setHistoryOpen(false)}
-            conversations={chatState.conversationList}
-            agents={agents}
+            conversations={historyList}
+            persistenceEnabled={chatState.persistence.enabled}
             activeConvIds={Object.values(chatState.activeConvIdByAgent)}
           />
         </>

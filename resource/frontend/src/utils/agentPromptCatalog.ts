@@ -1,7 +1,12 @@
-// Prompt library for the Agents page: dozens of curated prompts per agent,
-// organized in sections, plus one "megaprompt" per agent that sweeps the
-// whole instance. Keyed by agent NAME (the stable identity across installs —
-// ids differ per provisioning).
+// Prompt library for the Agents page: dozens of curated prompts organized in
+// two headline groups (Triage, Scoping) plus an Actions group, each mapped to
+// the backend specialist that handles it. The UI presents ONE agent; the
+// group on a prompt is the routing signal that picks the specialist under
+// the hood (specialists are matched by NAME substring — ids differ per
+// provisioning).
+
+/** Which backend specialist a prompt (or free-form message) is routed to. */
+export type AgentRole = 'triage' | 'scoping' | 'actuator';
 
 export interface CatalogPrompt {
   id: string;
@@ -17,7 +22,10 @@ export interface CatalogSection {
   prompts: CatalogPrompt[];
 }
 
-export interface AgentCatalog {
+export interface CatalogGroup {
+  role: AgentRole;
+  title: string;
+  blurb: string;
   megapromptTitle: string;
   megapromptBlurb: string;
   megaprompt: string;
@@ -50,8 +58,11 @@ const ACTUATOR_MEGAPROMPT = `Take a full maintenance-opportunity inventory of th
 5. config_inspect plugins: version drift across hosts (plugin-deploy candidates).
 Present a prioritized list — most value first, medium+ severity only, skipping anything whitelist-suppressed — with the evidence, the exact action + target you would plan for each, and the risk color. Then STOP and wait: I will tell you which ones to plan.`;
 
-export const PROMPT_CATALOGS: Record<string, AgentCatalog> = {
-  'ATK Health Triage': {
+export const PROMPT_GROUPS: readonly CatalogGroup[] = [
+  {
+    role: 'triage',
+    title: 'Health & Triage',
+    blurb: 'Fleet health sweeps, logs, storage, database, Kubernetes, config — find what is broken or about to break.',
     megapromptTitle: 'Full fleet audit',
     megapromptBlurb:
       'Sweeps every host across every domain — health, logs, storage, database, Kubernetes, config, LLM Mesh — and ends with a ready-to-action checklist.',
@@ -143,7 +154,10 @@ export const PROMPT_CATALOGS: Record<string, AgentCatalog> = {
     ],
   },
 
-  'ATK Scoping Architect': {
+  {
+    role: 'scoping',
+    title: 'Scoping & Architecture',
+    blurb: 'Sizing, migration, capacity and cost questions — build the dossier a field engineer needs.',
     megapromptTitle: 'Full scoping dossier',
     megapromptBlurb:
       'A complete instance dossier — hosts, health, projects, cost, config, Kubernetes, database — with citations and explicit gaps.',
@@ -200,7 +214,10 @@ export const PROMPT_CATALOGS: Record<string, AgentCatalog> = {
     ],
   },
 
-  'ATK Ops Actuator': {
+  {
+    role: 'actuator',
+    title: 'Admin Actions',
+    blurb: 'Plan and (with your approval) execute maintenance: cleanup, vacuum, right-sizing, deploys.',
     megapromptTitle: 'Maintenance-opportunity inventory',
     megapromptBlurb:
       'Read-only sweep of everything worth maintaining — cleanup, vacuum, right-sizing, deploys — prioritized, with explicit "nothing executes yet".',
@@ -283,9 +300,19 @@ export const PROMPT_CATALOGS: Record<string, AgentCatalog> = {
       },
     ],
   },
-};
+];
 
-export function catalogForAgent(agentName: string | undefined): AgentCatalog | null {
+export function groupForRole(role: AgentRole): CatalogGroup {
+  // PROMPT_GROUPS covers every AgentRole — the find can't miss.
+  return PROMPT_GROUPS.find((group) => group.role === role) as CatalogGroup;
+}
+
+/** The specialist an agent-instance name maps to (names are the stable
+ * identity across installs; ids differ per provisioning). */
+export function roleForAgentName(agentName: string | undefined): AgentRole | null {
   if (!agentName) return null;
-  return PROMPT_CATALOGS[agentName] || null;
+  if (/actuator/i.test(agentName)) return 'actuator';
+  if (/scoping/i.test(agentName)) return 'scoping';
+  if (/triage/i.test(agentName)) return 'triage';
+  return null;
 }

@@ -6,7 +6,6 @@ import {
   loadConversationList,
   openConversation,
   renameConversation,
-  type AgentInfo,
   type ConversationMeta,
 } from '../../state/agentsChatStore';
 
@@ -27,12 +26,10 @@ function relativeTime(iso: string | undefined, now: number): string {
 
 function ConversationRow({
   conv,
-  agentName,
   active,
   onOpen,
 }: {
   conv: ConversationMeta;
-  agentName: string;
   active: boolean;
   onOpen: () => void;
 }) {
@@ -79,8 +76,7 @@ function ConversationRow({
             {conv.title || 'Untitled conversation'}
           </span>
           <span className="block truncate text-[10px] text-[var(--text-muted)]">
-            {agentName}
-            {conv.lastModified ? ` · ${relativeTime(conv.lastModified, now)}` : ''}
+            {conv.lastModified ? relativeTime(conv.lastModified, now) : active ? 'current' : 'this browser'}
           </span>
         </button>
       )}
@@ -113,37 +109,35 @@ function ConversationRow({
 }
 
 /**
- * Compact history slide-over (no permanent second column, per UI soul):
- * server-persisted conversations for the current user + host, most recent
- * first. Only reachable when chat persistence is enabled in plugin settings.
+ * Compact history slide-over (no permanent second column, per UI soul).
+ * With chat persistence enabled it lists the server-persisted conversations
+ * for the current user + host; without it, the conversations cached in this
+ * browser — past chats stay reloadable and resumable either way.
  */
 export function ChatHistoryDrawer({
   open,
   onClose,
   conversations,
-  agents,
+  persistenceEnabled,
   activeConvIds,
 }: {
   open: boolean;
   onClose: () => void;
   conversations: ConversationMeta[];
-  agents: AgentInfo[];
+  persistenceEnabled: boolean;
   activeConvIds: string[];
 }) {
   const reduced = useReducedMotion();
 
   useEffect(() => {
     if (!open) return;
-    void loadConversationList();
+    if (persistenceEnabled) void loadConversationList();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  const agentName = (agentId: string) =>
-    agents.find((a) => a.id === agentId)?.name.replace(/^ATK /, '') || agentId;
+  }, [open, onClose, persistenceEnabled]);
 
   const openConv = (id: string) => {
     void openConversation(id).catch(() => loadConversationList());
@@ -188,21 +182,27 @@ export function ChatHistoryDrawer({
             <div className="flex-1 space-y-1.5 overflow-y-auto px-3.5 py-2.5">
               {conversations.length === 0 ? (
                 <p className="pt-6 text-center text-xs text-[var(--text-muted)]">
-                  No saved conversations on this host yet — settled chat turns are
-                  saved automatically.
+                  {persistenceEnabled
+                    ? 'No saved conversations on this host yet — settled chat turns are saved automatically.'
+                    : 'No past conversations yet. Chats are kept in this browser; enable chat storage in the plugin settings for durable, cross-device history.'}
                 </p>
               ) : (
                 conversations.map((conv) => (
                   <ConversationRow
                     key={conv.id}
                     conv={conv}
-                    agentName={agentName(conv.agentId)}
                     active={activeConvIds.includes(conv.id)}
                     onOpen={() => openConv(conv.id)}
                   />
                 ))
               )}
             </div>
+            {!persistenceEnabled && conversations.length > 0 && (
+              <p className="border-t border-[var(--border-default)] px-3.5 py-2 text-[10px] leading-relaxed text-[var(--text-muted)]">
+                Kept in this browser only — enable chat storage in the plugin settings for
+                durable, cross-device history.
+              </p>
+            )}
           </motion.aside>
         </>
       )}

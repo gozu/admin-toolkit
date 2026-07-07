@@ -77,6 +77,9 @@ const K8sInsightsLazy = lazy(() =>
 const AgentsPageLazy = lazy(() =>
   import('../pages/AgentsPage').then((m) => ({ default: m.AgentsPage })),
 );
+const AgentTuningPageLazy = lazy(() =>
+  import('../pages/AgentTuningPage').then((m) => ({ default: m.AgentTuningPage })),
+);
 
 function LoadingSpinner() {
   return (
@@ -163,6 +166,8 @@ function renderPage(activePage: PageId): React.ReactNode {
       return <K8sInsightsLazy />;
     case 'agents':
       return <AgentsPageLazy />;
+    case 'agent-tuning':
+      return <AgentTuningPageLazy />;
     case 'settings':
       return <SettingsPage />;
     case 'feedback':

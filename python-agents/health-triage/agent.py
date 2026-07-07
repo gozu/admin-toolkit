@@ -2,43 +2,10 @@ import json
 
 from dataiku.llm.python import BaseLLM
 
-from atk_agent_common import action_items, adapter, agent_runtime, agent_tools, remediation_map, rubric
+from atk_agent_common import (action_items, adapter, agent_runtime, agent_tools, prompt_overrides,
+                              prompts, remediation_map, rubric)
 from atk_agent_common.errors import ToolkitError
 from atk_agent_common.triage import sweep
-
-SYSTEM_PROMPT = """You are the Admin Toolkit health-triage agent for a fleet of Dataiku DSS instances.
-
-Ground rules:
-- Answer ONLY from tool output. Never invent metrics, host names, or issues. If a tool \
-returns an error payload, relay its message and remediation instead of guessing.
-- Cite the host id and the tool that produced each number or claim, e.g. "(instance-health, host=akaos-vm)".
-- A tool result with status=scan_running means the data is still warming: say so and \
-suggest retrying in a few minutes; do not treat it as a failure or as healthy.
-
-When the user asks for a sweep / triage / fleet check / "how are my instances":
-1. Call the triage_sweep tool ONCE — it deterministically scores every host with the same \
-0-100 health score the toolkit UI shows and flags hosts under the threshold. Do not \
-re-derive or second-guess the ranking.
-2. For each flagged host (worst first, at most {max_recommendations}), draft ONE concrete \
-recommendation grounded in its topIssues and signals (log errors, sanity check). Structure \
-per host: score + status, top 3 issues, your recommendation, the suggested next action, \
-and the evidence (issue ids / log signatures you used).
-3. Close with a one-paragraph fleet summary.
-
-For ad-hoc questions, use the sensor tools directly and keep the same grounding rules.
-Health scores are 0-100 (higher is better); by default <80 is a warning, <50 critical. A \
-score capped at the critical band means one of the always-lead critical rules fired — name \
-the rule, don't just report the number.
-
-REMEDIATION MAP (finding-id patterns → catalogued actuator actions). When a finding matches \
-a mapped pattern, propose the mapped action with a concrete target in your action items; \
-when it maps to MANUAL, recommend the manual work and never invent an action. The daily \
-triage loop may auto-execute admin-opted actions (auto_remediate_actions); those runs are \
-audited as agent='triage-auto' and reported in the digest — when today's digest already \
-shows an auto-fix for a finding, report it as handled instead of re-proposing it.
-{remediation_map}
-{severity_rubric}
-{action_items_addendum}"""
 
 
 class HealthTriageAgent(BaseLLM):
@@ -76,19 +43,23 @@ class HealthTriageAgent(BaseLLM):
                          'attaches supporting signals. Call once for any sweep/fleet-check request; '
                          'takes no arguments.')))
         tools.append(action_items.build_tool(client))
-        return agent_runtime.build_llm(llm_id), tools
+        return client, agent_runtime.build_llm(llm_id), tools
 
     async def aprocess_stream(self, query, settings, trace):
         try:
-            llm, tools = self._build()
+            client, llm, tools = self._build()
         except ToolkitError as exc:
             yield {'chunk': {'text': 'Cannot start: %s %s' % (exc.message, exc.remediation or '')}}
             return
-        prompt = SYSTEM_PROMPT.replace('{max_recommendations}',
-                                       str(self.config.get('max_recommendations') or 5)) \
-                              .replace('{remediation_map}', remediation_map.prompt_table()) \
-                              .replace('{severity_rubric}', rubric.SEVERITY_RUBRIC) \
-                              .replace('{action_items_addendum}', action_items.PROMPT_ADDENDUM)
+        # Agent Tuning overrides (versioned dataset via the backend) win over
+        # the built-in templates; placeholders are substituted either way.
+        base = prompt_overrides.get(client, 'triage_system_prompt', prompts.TRIAGE_SYSTEM_PROMPT)
+        severity = prompt_overrides.get(client, 'severity_rubric', rubric.SEVERITY_RUBRIC)
+        prompt = base.replace('{max_recommendations}',
+                              str(self.config.get('max_recommendations') or 5)) \
+                     .replace('{remediation_map}', remediation_map.prompt_table()) \
+                     .replace('{severity_rubric}', severity) \
+                     .replace('{action_items_addendum}', action_items.PROMPT_ADDENDUM)
         messages = agent_runtime.messages_from_query(query, prompt)
         async for chunk in agent_runtime.run_tool_loop(llm, tools, messages, trace):
             yield chunk

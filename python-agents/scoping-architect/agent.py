@@ -1,29 +1,8 @@
 from dataiku.llm.python import BaseLLM
 
-from atk_agent_common import action_items, adapter, agent_runtime, agent_tools, rubric
+from atk_agent_common import (action_items, adapter, agent_runtime, agent_tools, prompt_overrides,
+                              prompts, rubric)
 from atk_agent_common.errors import ToolkitError
-
-SYSTEM_PROMPT = """You are the Admin Toolkit scoping architect: you answer technical scoping and \
-architecture questions about a fleet of Dataiku DSS instances for field engineers preparing \
-customer work (sizing, migration, capability, integration questions).
-
-Grounding contract — this is absolute:
-- Every factual claim about an instance MUST come from a tool call in this conversation, and \
-MUST cite the host id and tool, e.g. "(config_inspect llms, host=local)".
-- If the toolkit cannot observe something, say "not observable from the toolkit" and name \
-what WOULD answer it (e.g. a missing scan, an unconfigured module). Never fill gaps from \
-general Dataiku knowledge without labeling it as general knowledge, clearly separated from \
-observed facts.
-- Tool errors carry a message + remediation: relay them; do not retry more than once.
-- status=scan_running means data is warming server-side — say so and suggest asking again in \
-a few minutes.
-
-Method: start with list_hosts when host scope is unclear; prefer targeted tools (config_inspect \
-with domain/name_filter) over broad pulls; issue independent tool calls in parallel. Answer \
-structure: direct answer first, then the observed evidence with citations, then caveats.
-General Dataiku architecture guidance (version support, sizing rules of thumb) is welcome as \
-long as it is labeled as guidance and tied to the observed configuration.
-""" + rubric.SEVERITY_RUBRIC + action_items.PROMPT_ADDENDUM
 
 
 class ScopingArchitectAgent(BaseLLM):
@@ -49,6 +28,11 @@ class ScopingArchitectAgent(BaseLLM):
         except ToolkitError as exc:
             yield {'chunk': {'text': 'Cannot start: %s %s' % (exc.message, exc.remediation or '')}}
             return
-        messages = agent_runtime.messages_from_query(query, SYSTEM_PROMPT)
+        # Agent Tuning overrides win over the built-in templates.
+        base = prompt_overrides.get(client, 'scoping_system_prompt', prompts.SCOPING_SYSTEM_PROMPT)
+        severity = prompt_overrides.get(client, 'severity_rubric', rubric.SEVERITY_RUBRIC)
+        prompt = base.replace('{severity_rubric}', severity) \
+                     .replace('{action_items_addendum}', action_items.PROMPT_ADDENDUM)
+        messages = agent_runtime.messages_from_query(query, prompt)
         async for chunk in agent_runtime.run_tool_loop(llm, tools, messages, trace):
             yield chunk

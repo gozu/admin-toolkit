@@ -53,7 +53,7 @@ _CENSUS_MAX_GAP_MS = 15 * 60 * 1000
 _DETAIL_ROWS = 12
 _CONNECTION_ROWS = 40
 _MODEL_ROWS = 24
-_PROCESS_ROWS = 15
+_PROCESS_ROWS = 40
 
 _ANNOT_PROJECT = 'dataiku.com/dku-project-key'
 _ANNOT_EXEC_TYPE = 'dataiku.com/dku-execution-type'
@@ -195,10 +195,16 @@ def _parse_audit(audit_dir, max_files=0):
                             'authIdentifier': ctx.get('authIdentifier'),
                             'ctxType': ctx.get('type'),
                             'commandName': lp.get('commandName'),
+                            'firstDay': day, 'lastDay': day,
                         }
                         daily.add(day, 'memGBh', mem / 1024.0 / 3600.0)
                         daily.add(day, 'cpuH', cpu / 1000.0 / 3600.0)
                     else:
+                        if day:
+                            if e['firstDay'] is None or day < e['firstDay']:
+                                e['firstDay'] = day
+                            if e['lastDay'] is None or day > e['lastDay']:
+                                e['lastDay'] = day
                         if mem > e['maxMem']:
                             daily.add(day, 'memGBh', (mem - e['maxMem']) / 1024.0 / 3600.0)
                             e['maxMem'] = mem
@@ -437,7 +443,9 @@ def _aggregate(files, files_read, lines_scanned, first_ts, last_ts,
             top_procs.append({
                 'id': cid, 'projectKey': e['projectKey'] or 'NONE',
                 'contextType': e['ctxType'] or 'NONE',
-                'commandName': (e.get('commandName') or '')[:80],
+                'authIdentifier': e.get('authIdentifier') or 'NONE',
+                'commandName': (e.get('commandName') or '')[:400],
+                'firstDay': e.get('firstDay'), 'lastDay': e.get('lastDay'),
                 'memGBh': memgbh, 'cpuH': cpu_h})
 
     # ---- SQL: join queries to connections, aggregate by connection + project ----

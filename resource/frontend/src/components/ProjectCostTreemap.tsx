@@ -123,7 +123,7 @@ export function ProjectCostTreemap({ rows, lens, selectedKey, onSelect }: Projec
               if ((r.sqlExecS ?? 0) > 0) lines.push(`SQL engine: ${formatSeconds(r.sqlExecS)}`);
               if (k8sGBh(r) > 0) lines.push(`K8s: ${k8sGBh(r).toFixed(1)} GB·h`);
               if (r.llmUSD > 0) lines.push(`LLM: $${r.llmUSD.toFixed(4)}`);
-              lines.push(`Records: ${r.records.toLocaleString()}`, 'Click to inspect');
+              lines.push(`Records: ${r.records.toLocaleString()}`, 'Click to open the drilldown below');
               return lines;
             },
           },
@@ -154,15 +154,32 @@ export function ProjectCostTreemap({ rows, lens, selectedKey, onSelect }: Projec
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
     >
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-3">
         <h3 className="text-lg font-semibold text-neon-subtle">Compute by Project</h3>
-        <div className="text-xs text-[var(--text-muted)]">
-          Size = current lens · color = idle ratio · click to inspect
+        <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--text-muted)]">
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 rounded-sm" style={{ background: TONE_FILL.ok }} />
+            active
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 rounded-sm" style={{ background: TONE_FILL.warn }} />
+            idle-leaning
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-2 w-2 rounded-sm" style={{ background: TONE_FILL.crit }} />
+            idle-resident
+          </span>
+          <span className="text-[var(--text-tertiary)]">
+            size = {lens.toUpperCase()} · click a tile to drill down ↓
+          </span>
         </div>
       </div>
       <div style={{ height: '360px' }} className="relative">
+        {/* updateMode="none": selection/lens changes swap data in place without
+            replaying the layout animation (a full re-animation reads as a page
+            reload and hides that the click actually did something). */}
         {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        <Chart type="treemap" data={chartData as any} options={options as any} />
+        <Chart type="treemap" data={chartData as any} options={options as any} updateMode="none" />
       </div>
     </motion.div>
   );

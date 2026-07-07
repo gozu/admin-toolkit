@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { DataGrid } from '../../common/DataGrid';
-import { BarRow, ColumnStrip } from '../missionControl/microViz';
+import { BarRow, ColumnStrip, SegmentBar, UsageBar } from '../missionControl/microViz';
 import type { SparkPoint } from '../missionControl/microViz';
 import type { ColumnDef } from '../../../utils/dataGridTypes';
 import {
@@ -16,6 +16,7 @@ import type {
   CruDailyRow,
   CruK8sData,
   CruLlmModelRow,
+  CruProjectRow,
   CruTopProcess,
 } from '../../../types';
 
@@ -112,7 +113,7 @@ export function ClassCards({
   );
 }
 
-// ── Daily activity: small multiples, one strip per class, shared x buckets ──
+// ── Daily activity: small multiples with a shared date axis + crosshair hover ──
 
 const DAILY_FIELDS: { lens: CostLens; field: keyof Omit<CruDailyRow, 'date'> }[] = [
   { lens: 'mem', field: 'memGBh' },
@@ -122,17 +123,37 @@ const DAILY_FIELDS: { lens: CostLens; field: keyof Omit<CruDailyRow, 'date'> }[]
   { lens: 'llm', field: 'llmUSD' },
 ];
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function fmtDay(date: string): string {
+  const m = Number(date.slice(5, 7));
+  const d = Number(date.slice(8, 10));
+  if (!m || !d) return date;
+  return `${MONTHS[m - 1]} ${d}`;
+}
+
+// Left label / right total gutters of each strip row — the hover overlay and the
+// date axis must align with the plot column, so these are shared constants.
+const STRIP_GUTTER_L = 'calc(6rem + 0.5rem)'; // w-24 + gap-2
+const STRIP_GUTTER_R = 'calc(4rem + 0.5rem)'; // w-16 + gap-2
+
 export function DailyStrips({ daily }: { daily: CruDailyRow[] }) {
+  const [hover, setHover] = useState<number | null>(null);
   if (daily.length < 2) return null;
   const strips = DAILY_FIELDS.map(({ lens, field }) => {
     const points: SparkPoint[] = daily.map((d) => ({
-      label: `${d.date} — ${formatLens(d[field], lens)}`,
+      label: `${fmtDay(d.date)} — ${formatLens(d[field], lens)}`,
       value: d[field],
     }));
     const total = points.reduce((s, p) => s + p.value, 0);
-    return { lens, points, total };
+    return { lens, field, points, total };
   }).filter((s) => s.total > 0);
   if (strips.length === 0) return null;
+  const n = daily.length;
+  const step = Math.max(1, Math.ceil(n / 7));
+  const ticks: number[] = [];
+  for (let i = 0; i < n; i += step) ticks.push(i);
+  const hovered = hover !== null ? daily[hover] : null;
   return (
     <div className="border-t border-[var(--border-glass)] px-4 py-3">
       <div className="mb-2 flex items-baseline justify-between">
@@ -140,29 +161,223 @@ export function DailyStrips({ daily }: { daily: CruDailyRow[] }) {
           Daily activity
         </span>
         <span className="font-mono text-[10px] text-[var(--text-muted)]">
-          {daily[0].date} → {daily[daily.length - 1].date}
+          {fmtDay(daily[0].date)} → {fmtDay(daily[n - 1].date)} · {n} days
         </span>
       </div>
-      <div className="space-y-1.5">
-        {strips.map(({ lens, points, total }) => (
-          <div key={lens} className="flex items-center gap-2">
-            <span className="flex w-24 flex-shrink-0 items-center gap-1.5">
-              <span
-                className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                style={{ background: LENS_COLOR[lens] }}
-              />
-              <span className="truncate text-[10px] text-[var(--text-secondary)]">
-                {LENS_META[lens].short} {LENS_META[lens].unit}
+      <div className="relative">
+        <div className="space-y-1.5">
+          {strips.map(({ lens, points, total }) => (
+            <div key={lens} className="flex items-center gap-2">
+              <span className="flex w-24 flex-shrink-0 items-center gap-1.5">
+                <span
+                  className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                  style={{ background: LENS_COLOR[lens] }}
+                />
+                <span className="truncate text-[10px] text-[var(--text-secondary)]">
+                  {LENS_META[lens].short} {LENS_META[lens].unit}
+                </span>
               </span>
-            </span>
-            <div className="min-w-0 flex-1">
-              <ColumnStrip points={points} color={LENS_COLOR[lens]} height={16} />
+              <div className="min-w-0 flex-1">
+                <ColumnStrip points={points} color={LENS_COLOR[lens]} height={16} />
+              </div>
+              <span className="w-16 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
+                {formatLens(total, lens)}
+              </span>
             </div>
-            <span className="w-16 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
-              {formatLens(total, lens)}
-            </span>
+          ))}
+        </div>
+        {/* shared date axis under the strips, aligned with the plot column */}
+        <div className="mt-1 flex items-center gap-2">
+          <span className="w-24 flex-shrink-0" />
+          <div className="relative h-[11px] min-w-0 flex-1">
+            {ticks.map((i) => (
+              <span
+                key={i}
+                className="absolute top-0 -translate-x-1/2 whitespace-nowrap font-mono text-[8px] leading-none text-[var(--text-tertiary)]"
+                style={{ left: `${((i + 0.5) / n) * 100}%` }}
+              >
+                {fmtDay(daily[i].date)}
+              </span>
+            ))}
           </div>
-        ))}
+          <span className="w-16 flex-shrink-0" />
+        </div>
+        {/* crosshair hover layer over the plot column: one band across all strips */}
+        <div
+          className="absolute inset-y-0"
+          style={{ left: STRIP_GUTTER_L, right: STRIP_GUTTER_R }}
+          onMouseLeave={() => setHover(null)}
+        >
+          {hover !== null && (
+            <div
+              className="pointer-events-none absolute inset-y-0 rounded-sm"
+              style={{
+                left: `${(hover / n) * 100}%`,
+                width: `${100 / n}%`,
+                background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
+              }}
+            />
+          )}
+          <div className="absolute inset-0 flex">
+            {daily.map((d, i) => (
+              <span key={d.date} className="h-full min-w-0 flex-1" onMouseEnter={() => setHover(i)} />
+            ))}
+          </div>
+          {hovered && hover !== null && (
+            <div
+              className="pointer-events-none absolute top-0 z-10 min-w-36 rounded-md border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-2.5 py-2 shadow-lg"
+              style={
+                hover < n / 2
+                  ? { left: `${((hover + 1) / n) * 100}%`, marginLeft: 6 }
+                  : { right: `${((n - hover) / n) * 100}%`, marginRight: 6 }
+              }
+            >
+              <div className="mb-1 font-mono text-[10px] font-semibold text-[var(--text-primary)]">
+                {fmtDay(hovered.date)}{' '}
+                <span className="font-normal text-[var(--text-tertiary)]">{hovered.date}</span>
+              </div>
+              {strips.map(({ lens, field }) => (
+                <div key={lens} className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                      style={{ background: LENS_COLOR[lens] }}
+                    />
+                    <span className="text-[10px] text-[var(--text-secondary)]">
+                      {LENS_META[lens].label}
+                    </span>
+                  </span>
+                  <span
+                    className={`font-mono text-[10px] tabular-nums ${
+                      hovered[field] > 0 ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'
+                    }`}
+                  >
+                    {formatLens(hovered[field], lens)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── CPU burn: local host vs Kubernetes (same unit ⇒ one axis is legitimate) ──
+
+export function CpuSplitPanel({
+  classTotals,
+  projects,
+}: {
+  classTotals: CruClassTotals | undefined;
+  projects: CruProjectRow[];
+}) {
+  const localCpu = classTotals?.local?.cpuH ?? 0;
+  const k8sCpu = classTotals?.k8s?.cpuCoreH ?? 0;
+  const rows = useMemo(
+    () =>
+      projects
+        .map((p) => ({ key: p.projectKey, local: p.cpuH, k8s: p.k8sCpuCoreH ?? 0 }))
+        .filter((r) => r.local + r.k8s > 0)
+        .sort((a, b) => b.local + b.k8s - (a.local + a.k8s))
+        .slice(0, 10),
+    [projects],
+  );
+  if (localCpu <= 0 && k8sCpu <= 0) return null;
+  const max = Math.max(1e-9, ...rows.map((r) => Math.max(r.local, r.k8s)));
+  const total = localCpu + k8sCpu;
+  return (
+    <div className="chart-container">
+      <div className="chart-header flex items-center justify-between gap-3">
+        <h4 title="Local CPU·h comes from LOCAL_PROCESS cpuTotalMS on the DSS host; Kubernetes core·h integrates each pod's cpuCurrentMillis over the census snapshots. Same unit, so they share one axis.">
+          CPU Burn — local host vs Kubernetes
+        </h4>
+        <span className="flex items-center gap-3 text-[10px] text-[var(--text-muted)]">
+          <span className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: LENS_COLOR.cpu }} />
+            local CPU·h
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: LENS_COLOR.k8s }} />
+            K8s core·h
+          </span>
+        </span>
+      </div>
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-4">
+          <div className="flex-shrink-0">
+            <div className="font-mono text-lg font-semibold leading-none text-[var(--text-primary)]">
+              {localCpu.toFixed(1)}
+            </div>
+            <div className="mt-1 text-[9px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+              Local CPU·h
+            </div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <SegmentBar
+              height={8}
+              segments={[
+                {
+                  value: localCpu,
+                  color: LENS_COLOR.cpu,
+                  title: `Local host: ${localCpu.toFixed(1)} CPU·h (${((localCpu / total) * 100).toFixed(0)}%)`,
+                },
+                {
+                  value: k8sCpu,
+                  color: LENS_COLOR.k8s,
+                  title: `Kubernetes: ${k8sCpu.toFixed(1)} core·h (${((k8sCpu / total) * 100).toFixed(0)}%)`,
+                },
+              ]}
+            />
+          </div>
+          <div className="flex-shrink-0 text-right">
+            <div className="font-mono text-lg font-semibold leading-none text-[var(--text-primary)]">
+              {k8sCpu.toFixed(1)}
+            </div>
+            <div className="mt-1 text-[9px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+              K8s core·h
+            </div>
+          </div>
+        </div>
+        {k8sCpu <= 0 && (
+          <div className="mt-2 text-[10px] text-[var(--text-muted)]">
+            No Kubernetes CPU measured in this window — every CPU hour burned on the DSS host
+            itself.
+          </div>
+        )}
+        {rows.length > 0 && (
+          <div className="mt-3 space-y-2 border-t border-[var(--border-glass)] pt-3">
+            {rows.map((r) => (
+              <div key={r.key} className="min-w-0">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="min-w-0 truncate font-mono text-xs text-[var(--text-primary)]">
+                    {r.key}
+                  </span>
+                  <span className="flex-shrink-0 font-mono text-[10px] tabular-nums text-[var(--text-secondary)]">
+                    {r.local.toFixed(2)} local{r.k8s > 0 && ` · ${r.k8s.toFixed(2)} k8s`}
+                  </span>
+                </div>
+                <div className="mt-0.5 space-y-[2px]">
+                  <div className="h-[5px] overflow-hidden rounded-sm bg-[var(--bg-elevated)]">
+                    <div
+                      className="h-full rounded-sm"
+                      style={{ width: `${(r.local / max) * 100}%`, background: LENS_COLOR.cpu }}
+                    />
+                  </div>
+                  {r.k8s > 0 && (
+                    <div className="h-[5px] overflow-hidden rounded-sm bg-[var(--bg-elevated)]">
+                      <div
+                        className="h-full rounded-sm"
+                        style={{ width: `${(r.k8s / max) * 100}%`, background: LENS_COLOR.k8s }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -405,79 +620,322 @@ export function LlmPanel({ models }: { models: CruLlmModelRow[] }) {
   );
 }
 
-// ── Top local processes (collapsed by default; commandName reveals code-env/plugin) ──
+// ── LLM: frontier-provider popularity (OpenAI vs Anthropic vs Gemini) ──
 
-const PROCESS_COLUMNS: ColumnDef<CruTopProcess>[] = [
-  {
-    id: 'projectKey',
-    label: 'Project',
-    mono: true,
-    render: (p) => p.projectKey,
-    sortValue: (p) => p.projectKey,
-  },
-  {
-    id: 'contextType',
-    label: 'Context',
-    cellClassName: 'text-[var(--text-muted)]',
-    render: (p) => p.contextType,
-    sortValue: (p) => p.contextType,
-  },
-  {
-    id: 'commandName',
-    label: 'Command',
-    mono: true,
-    cellClassName: 'text-[var(--text-muted)] max-w-72 truncate',
-    render: (p) => p.commandName || '—',
-    sortValue: (p) => p.commandName,
-  },
-  {
-    id: 'memGBh',
-    label: 'GB·h',
-    align: 'right',
-    mono: true,
-    render: (p) => p.memGBh.toFixed(1),
-    sortValue: (p) => p.memGBh,
-  },
-  {
-    id: 'cpuH',
-    label: 'CPU·h',
-    align: 'right',
-    mono: true,
-    render: (p) => p.cpuH.toFixed(2),
-    sortValue: (p) => p.cpuH,
-  },
-];
+type Provider = 'OpenAI' | 'Anthropic' | 'Gemini' | 'Other';
 
-export function TopProcessesPanel({ processes }: { processes: CruTopProcess[] }) {
-  const [open, setOpen] = useState(false);
-  const rows = useMemo(() => (open ? processes : []), [open, processes]);
-  if (processes.length === 0) return null;
-  if (!open) {
-    return (
-      <div className="chart-container">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-expanded={false}
-          className="chart-header flex w-full items-center justify-between gap-3 text-left"
-        >
-          <h4>Heaviest Local Processes</h4>
-          <span className="font-mono text-[10px] text-[var(--text-muted)]">
-            {processes.length} processes ▸
-          </span>
-        </button>
-      </div>
+// Fixed identity slots (viz-cat order, never cycled). "Other" wears the last
+// slot so the three frontier providers keep stable colors.
+const PROVIDER_ORDER: Provider[] = ['OpenAI', 'Anthropic', 'Gemini', 'Other'];
+const PROVIDER_COLOR: Record<Provider, string> = {
+  OpenAI: 'var(--viz-cat-1)',
+  Anthropic: 'var(--viz-cat-2)',
+  Gemini: 'var(--viz-cat-3)',
+  Other: 'var(--viz-cat-6)',
+};
+
+// Provider detection over every identity field DSS gives us (llmType is the
+// connection type, e.g. OPENAI / ANTHROPIC / VERTEX / BEDROCK; model names
+// disambiguate aggregators like Bedrock that host several providers).
+function providerOf(m: CruLlmModelRow): Provider {
+  const s = `${m.llmType} ${m.llmId} ${m.model} ${m.connection}`.toLowerCase();
+  if (/anthropic|claude/.test(s)) return 'Anthropic';
+  if (/gemini|vertex|palm|bison|google/.test(s)) return 'Gemini';
+  if (/openai|gpt|davinci|o[134][- ]?(mini|preview)?\b/.test(s)) return 'OpenAI';
+  return 'Other';
+}
+
+export function LlmProvidersPanel({ models }: { models: CruLlmModelRow[] }) {
+  const rows = useMemo(() => {
+    const agg = new Map<Provider, { usd: number; tok: number; calls: number; models: number }>();
+    for (const p of PROVIDER_ORDER) agg.set(p, { usd: 0, tok: 0, calls: 0, models: 0 });
+    for (const m of models) {
+      const a = agg.get(providerOf(m))!;
+      a.usd += m.usd;
+      a.tok += m.ptok + m.ctok;
+      a.calls += m.queries;
+      a.models += 1;
+    }
+    return PROVIDER_ORDER.map((p) => ({ provider: p, ...agg.get(p)! })).filter(
+      (r) => r.provider !== 'Other' || r.calls > 0,
     );
-  }
+  }, [models]);
+  if (models.length === 0) return null;
+  const totalCalls = rows.reduce((s, r) => s + r.calls, 0);
+  const maxCalls = Math.max(1, ...rows.map((r) => r.calls));
+  return (
+    <div className="chart-container">
+      <div className="chart-header flex items-center justify-between gap-3">
+        <h4 title="Every model in the window mapped to its frontier provider (connection type + model name). Popularity = share of LLM calls.">
+          Frontier Providers — popularity
+        </h4>
+        <span className="text-[10px] text-[var(--text-muted)]">share of LLM calls</span>
+      </div>
+      <div className="px-4 py-3">
+        {totalCalls > 0 && (
+          <SegmentBar
+            height={8}
+            segments={rows.map((r) => ({
+              value: r.calls,
+              color: PROVIDER_COLOR[r.provider],
+              title: `${r.provider}: ${r.calls.toLocaleString()} calls (${((r.calls / totalCalls) * 100).toFixed(0)}%)`,
+            }))}
+          />
+        )}
+        <div className="mt-3 space-y-2.5">
+          {rows.map((r) => {
+            const pct = totalCalls > 0 ? (r.calls / totalCalls) * 100 : 0;
+            const empty = r.calls === 0;
+            return (
+              <div key={r.provider} className={`min-w-0 ${empty ? 'opacity-50' : ''}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span
+                      className="h-2 w-2 flex-shrink-0 rounded-full"
+                      style={{ background: PROVIDER_COLOR[r.provider] }}
+                    />
+                    <span className="truncate text-xs font-medium text-[var(--text-primary)]">
+                      {r.provider}
+                    </span>
+                  </span>
+                  <span className="flex-shrink-0 font-mono text-xs tabular-nums text-[var(--text-primary)]">
+                    {empty ? '—' : `${r.calls.toLocaleString()} calls · ${pct.toFixed(0)}%`}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${(r.calls / maxCalls) * 100}%`,
+                        background: PROVIDER_COLOR[r.provider],
+                      }}
+                    />
+                  </div>
+                  <span className="flex-shrink-0 whitespace-nowrap font-mono text-[10px] text-[var(--text-muted)]">
+                    {empty
+                      ? 'no usage seen'
+                      : `$${r.usd.toFixed(4)} · ${r.tok.toLocaleString()} tok · ${r.models} model${r.models === 1 ? '' : 's'}`}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Heaviest local processes: first-class, always open, drillable rows ──
+
+function ProcessDetail({
+  proc,
+  onSelectProject,
+}: {
+  proc: CruTopProcess;
+  onSelectProject: (key: string) => void;
+}) {
+  const idleResident = proc.memGBh >= 1 && proc.cpuH < 0.05;
+  return (
+    <div className="border-t border-[var(--border-glass)] bg-[var(--bg-glass)] px-4 py-3">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 md:grid-cols-4">
+        <div>
+          <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+            User
+          </div>
+          <div className="font-mono text-xs text-[var(--text-primary)]">
+            {proc.authIdentifier ?? '—'}
+          </div>
+        </div>
+        <div>
+          <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+            Active
+          </div>
+          <div className="font-mono text-xs text-[var(--text-primary)]">
+            {proc.firstDay && proc.lastDay
+              ? proc.firstDay === proc.lastDay
+                ? fmtDay(proc.firstDay)
+                : `${fmtDay(proc.firstDay)} → ${fmtDay(proc.lastDay)}`
+              : '—'}
+          </div>
+        </div>
+        <div>
+          <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+            Memory / CPU
+          </div>
+          <div className="font-mono text-xs text-[var(--text-primary)]">
+            {proc.memGBh.toFixed(1)} GB·h · {proc.cpuH.toFixed(2)} CPU·h
+            {idleResident && (
+              <span className="badge-warning ml-1.5 rounded px-1.5 py-0.5 font-mono text-[9px]">
+                idle-resident
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="min-w-0">
+          <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+            Project
+          </div>
+          <button
+            type="button"
+            onClick={() => onSelectProject(proc.projectKey)}
+            className="font-mono text-xs text-[var(--text-primary)] hover:text-[var(--neon-cyan)]"
+            title="Open this project's compute drilldown"
+          >
+            {proc.projectKey} ↗
+          </button>
+        </div>
+      </div>
+      {proc.commandName && (
+        <div className="mt-2">
+          <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+            Command
+          </div>
+          <div className="break-all font-mono text-[10px] leading-relaxed text-[var(--text-secondary)]">
+            {proc.commandName}
+          </div>
+        </div>
+      )}
+      <div className="mt-2 break-all font-mono text-[9px] text-[var(--text-muted)]" title="CRU id">
+        {proc.id}
+      </div>
+    </div>
+  );
+}
+
+export function TopProcessesPanel({
+  processes,
+  onSelectProject,
+}: {
+  processes: CruTopProcess[];
+  onSelectProject: (key: string) => void;
+}) {
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const maxMem = useMemo(
+    () => Math.max(1e-9, ...processes.map((p) => p.memGBh)),
+    [processes],
+  );
+  const maxCpu = useMemo(() => Math.max(1e-9, ...processes.map((p) => p.cpuH)), [processes]);
+  const columns = useMemo<ColumnDef<CruTopProcess>[]>(
+    () => [
+      {
+        id: 'contextType',
+        label: 'Process',
+        render: (p) => {
+          const open = expanded.has(p.id);
+          return (
+            <button
+              type="button"
+              onClick={() =>
+                setExpanded((cur) => {
+                  const next = new Set(cur);
+                  if (!next.delete(p.id)) next.add(p.id);
+                  return next;
+                })
+              }
+              aria-expanded={open}
+              className="flex max-w-full items-center gap-1.5 text-left hover:text-[var(--neon-cyan)]"
+            >
+              <span className="font-mono text-[10px] text-[var(--text-tertiary)]">
+                {open ? '▾' : '▸'}
+              </span>
+              <span className="truncate">{p.contextType}</span>
+            </button>
+          );
+        },
+        sortValue: (p) => p.contextType,
+      },
+      {
+        id: 'projectKey',
+        label: 'Project',
+        mono: true,
+        render: (p) =>
+          p.projectKey === 'NONE' ? (
+            <span className="text-[var(--text-muted)]">—</span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onSelectProject(p.projectKey)}
+              className="hover:text-[var(--neon-cyan)]"
+              title="Open this project's compute drilldown"
+            >
+              {p.projectKey}
+            </button>
+          ),
+        sortValue: (p) => p.projectKey,
+      },
+      {
+        id: 'authIdentifier',
+        label: 'User',
+        mono: true,
+        cellClassName: 'text-[var(--text-secondary)]',
+        render: (p) => (p.authIdentifier && p.authIdentifier !== 'NONE' ? p.authIdentifier : '—'),
+        sortValue: (p) => p.authIdentifier ?? '',
+      },
+      {
+        id: 'lastDay',
+        label: 'Last seen',
+        mono: true,
+        cellClassName: 'text-[var(--text-secondary)] whitespace-nowrap',
+        render: (p) => (p.lastDay ? fmtDay(p.lastDay) : '—'),
+        sortValue: (p) => p.lastDay ?? '',
+      },
+      {
+        id: 'commandName',
+        label: 'Command',
+        mono: true,
+        cellClassName: 'text-[var(--text-muted)] max-w-64 truncate',
+        render: (p) => p.commandName || '—',
+        sortValue: (p) => p.commandName,
+      },
+      {
+        id: 'memGBh',
+        label: 'GB·h',
+        align: 'right',
+        render: (p) => (
+          <div className="flex items-center justify-end gap-2">
+            <span className="font-mono text-xs tabular-nums text-[var(--text-primary)]">
+              {p.memGBh.toFixed(1)}
+            </span>
+            <span className="w-14">
+              <UsageBar pct={(p.memGBh / maxMem) * 100} tone="info" />
+            </span>
+          </div>
+        ),
+        sortValue: (p) => p.memGBh,
+      },
+      {
+        id: 'cpuH',
+        label: 'CPU·h',
+        align: 'right',
+        render: (p) => (
+          <div className="flex items-center justify-end gap-2">
+            <span className="font-mono text-xs tabular-nums text-[var(--text-primary)]">
+              {p.cpuH.toFixed(2)}
+            </span>
+            <span className="w-14">
+              <UsageBar pct={(p.cpuH / maxCpu) * 100} tone="ok" />
+            </span>
+          </div>
+        ),
+        sortValue: (p) => p.cpuH,
+      },
+    ],
+    [expanded, maxMem, maxCpu, onSelectProject],
+  );
+  if (processes.length === 0) return null;
   return (
     <DataGrid
       title="Heaviest Local Processes"
       countBadge={{ total: processes.length }}
-      rows={rows}
-      columns={PROCESS_COLUMNS}
+      rows={processes}
+      columns={columns}
       rowKey={(p) => p.id}
       defaultSortColumnId="memGBh"
       defaultSortDir="desc"
+      renderExpandedRow={(p) => <ProcessDetail proc={p} onSelectProject={onSelectProject} />}
+      expandedRowKeys={expanded}
       emptyMessage="No heavy processes."
       scroll="card"
     />

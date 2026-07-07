@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDiag } from '../../context/DiagContext';
 import { projectCostScan } from '../../state/projectCostScan';
 import { resolveLifecycleById } from '../../utils/pageLifecycle';
@@ -8,16 +8,26 @@ import { BigStat, BarRow, UsageBar } from './missionControl/microViz';
 import { ProjectCostTreemap } from '../ProjectCostTreemap';
 import {
   ClassCards,
+  CpuSplitPanel,
   DailyStrips,
   K8sPanel,
   LlmPanel,
+  LlmProvidersPanel,
   SqlConnectionsPanel,
   TopProcessesPanel,
 } from './projectCost/panels';
-import { LENS_COLOR, formatSeconds, k8sGBh, projectTone } from './projectCost/lens';
+import {
+  LENS_COLOR,
+  LENS_META,
+  formatLens,
+  formatSeconds,
+  k8sGBh,
+  lensValue,
+  projectTone,
+} from './projectCost/lens';
 import type { CostLens } from './projectCost/lens';
 import type { ColumnDef } from '../../utils/dataGridTypes';
-import type { CruDetailRow, CruProjectRow } from '../../types';
+import type { CruDetailRow, CruProjectRow, CruUserRow } from '../../types';
 
 const EMPTY: never[] = [];
 const LENS_COLUMN_ID: Record<CostLens, string> = {
@@ -39,6 +49,12 @@ const TONE_BAR: Record<ReturnType<typeof projectTone>, 'ok' | 'warn' | 'crit' | 
   warn: 'warn',
   crit: 'crit',
   neutral: 'info',
+};
+const TONE_LABEL: Record<ReturnType<typeof projectTone>, string> = {
+  ok: 'compute-active',
+  warn: 'idle-leaning',
+  crit: 'idle-resident',
+  neutral: 'low footprint',
 };
 
 function spanDays(firstTs?: string | null, lastTs?: string | null): number {
@@ -156,6 +172,70 @@ function ProjectDetailPanel({ row }: { row: CruProjectRow }) {
   );
 }
 
+// The treemap's drill target: a full inspector for the selected project,
+// rendered directly under the treemap so a tile click has visible effect.
+function ProjectInspector({ row, onClose }: { row: CruProjectRow; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [row.projectKey]);
+  const tone = projectTone(row);
+  const lenses: CostLens[] = ['mem', 'cpu', 'sql', 'k8s', 'llm'];
+  return (
+    <div ref={ref} className="chart-container">
+      <div className="chart-header flex items-center justify-between gap-3">
+        <h4 className="flex min-w-0 items-center gap-2">
+          <span className={`truncate font-mono ${TONE_TEXT[tone]}`}>{row.projectKey}</span>
+          <span
+            className="flex-shrink-0 rounded bg-[var(--bg-glass)] px-1.5 py-0.5 font-mono text-[9px] font-normal text-[var(--text-secondary)]"
+            title="Idle-ratio signal: memory residency held relative to CPU actually burned"
+          >
+            {TONE_LABEL[tone]}
+          </span>
+        </h4>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex-shrink-0 rounded px-1.5 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          aria-label="Close project drilldown"
+        >
+          ✕
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
+        {lenses.map((l) => {
+          const v = lensValue(row, l);
+          if (v <= 0) return null;
+          return (
+            <span
+              key={l}
+              className="flex items-center gap-1.5 rounded border border-[var(--border-glass)] bg-[var(--bg-glass)] px-2 py-1"
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: LENS_COLOR[l] }} />
+              <span className="text-[10px] text-[var(--text-secondary)]">{LENS_META[l].short}</span>
+              <span className="font-mono text-[11px] font-semibold tabular-nums text-[var(--text-primary)]">
+                {formatLens(v, l)}
+              </span>
+            </span>
+          );
+        })}
+        <span className="font-mono text-[10px] text-[var(--text-muted)]">
+          {row.records.toLocaleString()} CRU records
+          {row.sqlQueries > 0 && ` · ${row.sqlQueries.toLocaleString()} SQL queries`}
+          {row.k8sJobs > 0 && ` · ${row.k8sJobs.toLocaleString()} K8s jobs`}
+        </span>
+      </div>
+      <div className="mt-3">
+        <ProjectDetailPanel row={row} />
+      </div>
+    </div>
+  );
+}
+
+function userK8sGBh(u: CruUserRow): number {
+  return Math.max(u.k8sActualGBh ?? 0, u.k8sReservedGBh ?? 0);
+}
+
 export function ProjectCostPage() {
   const { state } = useDiag();
   const { data, scanStarted, error } = projectCostScan.use();
@@ -172,6 +252,10 @@ export function ProjectCostPage() {
   const projects = useMemo<CruProjectRow[]>(
     () => (data?.projects ?? EMPTY).filter((p) => p.projectKey !== 'NONE'),
     [data?.projects],
+  );
+  const userRows = useMemo<CruUserRow[]>(
+    () => (data?.users ?? EMPTY).filter((u) => u.authIdentifier !== 'NONE'),
+    [data?.users],
   );
   const idle = data?.idleResources ?? EMPTY;
   const totals = data?.totals;
@@ -193,7 +277,15 @@ export function ProjectCostPage() {
     [projects],
   );
 
-  const toggleSelect = (key: string) => setSelectedKey((cur) => (cur === key ? null : key));
+  const toggleSelect = useCallback(
+    (key: string) => setSelectedKey((cur) => (cur === key ? null : key)),
+    [],
+  );
+  const drillTo = useCallback((key: string) => setSelectedKey(key), []);
+  const selectedRow = useMemo(
+    () => (selectedKey ? projects.find((p) => p.projectKey === selectedKey) ?? null : null),
+    [projects, selectedKey],
+  );
 
   const expandedRowKeys = useMemo(
     () => new Set(selectedKey ? [selectedKey] : []),
@@ -310,7 +402,117 @@ export function ProjectCostPage() {
       sortValue: (row) => row.records,
     });
     return cols;
-  }, [colMax, selectedKey, hasSql, hasK8s, hasLlm]);
+  }, [colMax, selectedKey, hasSql, hasK8s, hasLlm, toggleSelect]);
+
+  const userColMax = useMemo(
+    () => ({
+      mem: Math.max(1, ...userRows.map((u) => u.memGBh)),
+      cpu: Math.max(1, ...userRows.map((u) => u.cpuH)),
+      sql: Math.max(1e-9, ...userRows.map((u) => u.sqlExecS ?? 0)),
+      k8s: Math.max(1e-9, ...userRows.map((u) => userK8sGBh(u))),
+      llm: Math.max(1e-9, ...userRows.map((u) => u.llmUSD)),
+    }),
+    [userRows],
+  );
+
+  const userColumns = useMemo<ColumnDef<CruUserRow>[]>(() => {
+    const cols: ColumnDef<CruUserRow>[] = [
+      {
+        id: 'authIdentifier',
+        label: 'User',
+        mono: true,
+        defaultSortDir: 'asc',
+        render: (u) => u.authIdentifier,
+        sortValue: (u) => u.authIdentifier,
+      },
+      {
+        id: 'memGBh',
+        label: 'Mem GB·h',
+        align: 'right',
+        render: (u) => (
+          <MetricCell
+            value={u.memGBh.toFixed(1)}
+            text={`${u.memGBh} GB·h`}
+            pct={(u.memGBh / userColMax.mem) * 100}
+            tone="info"
+          />
+        ),
+        sortValue: (u) => u.memGBh,
+      },
+      {
+        id: 'cpuH',
+        label: 'CPU·h',
+        align: 'right',
+        render: (u) => (
+          <MetricCell
+            value={u.cpuH.toFixed(2)}
+            text={`${u.cpuH} CPU·h`}
+            pct={(u.cpuH / userColMax.cpu) * 100}
+            tone="ok"
+          />
+        ),
+        sortValue: (u) => u.cpuH,
+      },
+    ];
+    if (hasSql) {
+      cols.push({
+        id: 'sqlExecS',
+        label: 'SQL engine',
+        align: 'right',
+        render: (u) => (
+          <MetricCell
+            value={(u.sqlExecS ?? 0) > 0 ? formatSeconds(u.sqlExecS ?? 0) : '—'}
+            text={`${u.sqlExecS ?? 0} engine seconds`}
+            pct={((u.sqlExecS ?? 0) / userColMax.sql) * 100}
+            tone="info"
+          />
+        ),
+        sortValue: (u) => u.sqlExecS ?? 0,
+      });
+    }
+    if (hasK8s) {
+      cols.push({
+        id: 'k8sGBh',
+        label: 'K8s GB·h',
+        align: 'right',
+        render: (u) => (
+          <MetricCell
+            value={userK8sGBh(u) > 0 ? userK8sGBh(u).toFixed(1) : '—'}
+            text={`${userK8sGBh(u)} GB·h`}
+            pct={(userK8sGBh(u) / userColMax.k8s) * 100}
+            tone="info"
+          />
+        ),
+        sortValue: (u) => userK8sGBh(u),
+      });
+    }
+    if (hasLlm) {
+      cols.push({
+        id: 'llmUSD',
+        label: 'LLM $',
+        align: 'right',
+        render: (u) => (
+          <MetricCell
+            value={u.llmUSD > 0 ? `$${u.llmUSD.toFixed(4)}` : '—'}
+            text={`$${u.llmUSD}`}
+            pct={(u.llmUSD / userColMax.llm) * 100}
+            tone="warn"
+          />
+        ),
+        sortValue: (u) => u.llmUSD,
+      });
+    }
+    cols.push({
+      id: 'records',
+      label: 'Records',
+      align: 'right',
+      mono: true,
+      cellClassName: 'text-[var(--text-secondary)]',
+      render: (u) => u.records.toLocaleString(),
+      sortValue: (u) => u.records,
+    });
+    return cols;
+  }, [userColMax, hasSql, hasK8s, hasLlm]);
 
   return (
     <div className="page-fill">
@@ -353,13 +555,16 @@ export function ProjectCostPage() {
         {/* Compute classes — the lens selector */}
         <ClassCards classTotals={classTotals} lens={lens} onLens={setLens} />
 
-        {/* Hero treemap */}
+        {/* Hero treemap; clicking a tile opens the inspector right below */}
         <ProjectCostTreemap
           rows={projects}
           lens={lens}
           selectedKey={selectedKey}
           onSelect={toggleSelect}
         />
+        {selectedRow && (
+          <ProjectInspector row={selectedRow} onClose={() => setSelectedKey(null)} />
+        )}
 
         {/* Leaderboard */}
         <DataGrid
@@ -378,6 +583,27 @@ export function ProjectCostPage() {
           scroll="card"
         />
 
+        {/* User leaderboard — same conditional class columns */}
+        {userRows.length > 0 && (
+          <DataGrid
+            key={`users-${lens}`}
+            title="User Leaderboard"
+            countBadge={{ total: userRows.length }}
+            rows={userRows}
+            columns={userColumns}
+            rowKey={(u) => u.authIdentifier}
+            defaultSortColumnId={
+              lens === 'k8s' ? 'k8sGBh' : LENS_COLUMN_ID[lens]
+            }
+            defaultSortDir="desc"
+            emptyMessage="No attributed users."
+            scroll="card"
+          />
+        )}
+
+        {/* CPU burn: local host vs Kubernetes */}
+        <CpuSplitPanel classTotals={classTotals} projects={projects} />
+
         {/* Per-class panels — rendered only when the class has data */}
         {hasSql && (
           <SqlConnectionsPanel
@@ -386,7 +612,12 @@ export function ProjectCostPage() {
           />
         )}
         {hasK8s && data?.k8s && <K8sPanel k8s={data.k8s} classTotals={classTotals} />}
-        {hasLlm && <LlmPanel models={data?.llmModels ?? EMPTY} />}
+        {hasLlm && (
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <LlmPanel models={data?.llmModels ?? EMPTY} />
+            <LlmProvidersPanel models={data?.llmModels ?? EMPTY} />
+          </div>
+        )}
 
         {/* Idle resources panel */}
         {idle.length > 0 && (
@@ -418,7 +649,7 @@ export function ProjectCostPage() {
           </div>
         )}
 
-        <TopProcessesPanel processes={data?.topProcesses ?? EMPTY} />
+        <TopProcessesPanel processes={data?.topProcesses ?? EMPTY} onSelectProject={drillTo} />
       </div>
     </div>
   );

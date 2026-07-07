@@ -248,6 +248,10 @@ export interface CruTopProcess {
   id: string;
   projectKey: string;
   contextType: string;
+  // Enriched in v0.4.651+ macro payloads; absent on older cached payloads.
+  authIdentifier?: string;
+  firstDay?: string | null;
+  lastDay?: string | null;
   commandName: string;
   memGBh: number;
   cpuH: number;

@@ -1,9 +1,19 @@
 import { motion } from 'framer-motion';
 import { InfoDot } from '../common/InfoDot';
-import { dssLinkForAction } from '../../utils/agentLinks';
+import { dssLinkForAction, humanTarget } from '../../utils/agentLinks';
 import type { PlanCardData } from '../../state/agentsChatStore';
 
-const PLAN_HIDDEN_KEYS = new Set(['summary', 'warning', 'warnings', 'irreversible', 'backupFolder', 'note']);
+const PLAN_HIDDEN_KEYS = new Set([
+  'summary', 'warning', 'warnings', 'irreversible', 'backupFolder', 'note',
+  'targets', 'targetCount',
+]);
+
+const BATCH_TARGETS_SHOWN = 8;
+
+interface BatchTargetRow {
+  target?: Record<string, unknown>;
+  summary?: string;
+}
 
 export function PlanCard({
   plan,
@@ -28,6 +38,9 @@ export function PlanCard({
   );
   const backup = plan.plan.backupFolder as { name?: string } | undefined;
   const targetLink = dssLinkForAction(plan.action, plan.canonicalTarget, plan.host);
+  const batchTargets = Array.isArray(plan.plan.targets)
+    ? (plan.plan.targets as BatchTargetRow[])
+    : null;
 
   return (
     <motion.div
@@ -80,6 +93,31 @@ export function PlanCard({
             </>
           )}
         </p>
+      )}
+
+      {batchTargets && batchTargets.length > 0 && (
+        <div className="space-y-0.5">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+            {batchTargets.length} targets — one approval covers all
+          </div>
+          <ol className="space-y-0.5">
+            {batchTargets.slice(0, BATCH_TARGETS_SHOWN).map((row, i) => (
+              <li
+                key={i}
+                className="text-xs text-[var(--text-secondary)] leading-snug truncate"
+                title={row.summary || humanTarget(row.target)}
+              >
+                <span className="text-[var(--text-muted)] tabular-nums">{i + 1}.</span>{' '}
+                {row.summary || humanTarget(row.target)}
+              </li>
+            ))}
+          </ol>
+          {batchTargets.length > BATCH_TARGETS_SHOWN && (
+            <div className="text-[10px] text-[var(--text-muted)]">
+              +{batchTargets.length - BATCH_TARGETS_SHOWN} more targets in this batch
+            </div>
+          )}
+        </div>
       )}
 
       {details.length > 0 && (

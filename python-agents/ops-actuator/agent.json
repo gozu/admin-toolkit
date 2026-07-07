@@ -27,7 +27,7 @@
             "name": "allowed_actions",
             "label": "Allowed actions",
             "type": "STRING",
-            "description": "Comma-separated allowlist (empty = all catalog actions): project-delete, code-env-delete, image-delete, db-vacuum, db-analyze, plugin-deploy.",
+            "description": "Comma-separated allowlist (empty = all catalog actions). Highest-blast actions worth trimming first: connection-delete, cluster-detach, plugin-uninstall, project-delete (e.g. 'db-vacuum, db-analyze, connection-test' keeps a read-mostly actuator).",
             "mandatory": false,
             "defaultValue": ""
         }

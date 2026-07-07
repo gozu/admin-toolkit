@@ -1,7 +1,13 @@
 import { motion } from 'framer-motion';
 import { InfoDot } from '../common/InfoDot';
-import { dssLinkForAction, hostBaseUrl } from '../../utils/agentLinks';
+import { dssLinkForAction, hostBaseUrl, humanTarget, targetTitle } from '../../utils/agentLinks';
 import type { ExecutionCardData } from '../../state/agentsChatStore';
+
+interface BatchEntryResult {
+  target?: Record<string, unknown>;
+  status?: string;
+  error?: { message?: string };
+}
 
 export function ExecutionCard({
   execution,
@@ -12,9 +18,12 @@ export function ExecutionCard({
   onShowAudit?: (auditId: number) => void;
 }) {
   const ok = execution.status === 'ok';
+  const partial = execution.status === 'partial';
   // No link after a successful delete — the linked object no longer exists.
   const objectGone = ok && (execution.action === 'project-delete' || execution.action === 'code-env-delete');
   const targetLink = objectGone ? null : dssLinkForAction(execution.action, execution.target, execution.host);
+  const result = execution.result as { perTarget?: BatchEntryResult[] } | undefined;
+  const perTarget = Array.isArray(result?.perTarget) ? result.perTarget : null;
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.98 }}
@@ -29,7 +38,7 @@ export function ExecutionCard({
               : 'bg-[var(--status-critical-bg)] border-[var(--status-critical-border)] text-[var(--danger)]'
           }`}
         >
-          {ok ? 'Executed' : 'Failed'}
+          {ok ? 'Executed' : partial ? 'Partial' : 'Failed'}
         </span>
         <span className="text-sm font-mono text-[var(--text-primary)]">{execution.action}</span>
         <InfoDot eduId={`action.${execution.action}`} />
@@ -67,6 +76,25 @@ export function ExecutionCard({
       </div>
       {execution.auditWarning && (
         <div className="text-xs text-[var(--neon-amber)]">{execution.auditWarning}</div>
+      )}
+      {perTarget && (
+        <ol className="space-y-0.5">
+          {perTarget.map((entry, i) => (
+            <li key={i} className="text-xs leading-snug flex items-start gap-1.5">
+              <span className={entry.status === 'ok' ? 'text-[var(--accent)]' : 'text-[var(--danger)]'}>
+                {entry.status === 'ok' ? '✓' : '✕'}
+              </span>
+              <span className="text-[var(--text-secondary)] font-mono truncate" title={targetTitle(entry.target)}>
+                {humanTarget(entry.target)}
+              </span>
+              {entry.status !== 'ok' && entry.error?.message && (
+                <span className="text-[var(--danger)] truncate" title={entry.error.message}>
+                  — {entry.error.message}
+                </span>
+              )}
+            </li>
+          ))}
+        </ol>
       )}
       {targetLink && (
         <a

@@ -264,26 +264,44 @@ def _score_filesystem(filesystem_info, is_whitelisted):
     return worst, issues
 
 
+def _feature_details(disabled_features):
+    """[{name, settingsPath, proposedValue, sensitive?}] for the issue — the
+    exact settings-set targets an agent needs (cap 10). Entries without a
+    settings path (e.g. Deployer Client mode) carry name only."""
+    details = []
+    for name, entry in list(disabled_features.items())[:10]:
+        row = {'name': name}
+        path = (entry or {}).get('settingsPath')
+        if path:
+            row['settingsPath'] = path
+            row['proposedValue'] = (entry or {}).get('proposedValue', True)
+        if (entry or {}).get('sensitive'):
+            row['sensitive'] = True
+        details.append(row)
+    return details
+
+
 def _score_disabled_features(disabled_features):
     if not disabled_features:
         return 100, None
     count = len(disabled_features)
     if count == 0:
         return 100, None
+    details = _feature_details(disabled_features)
     if count <= 2:
         return 80, _issue('features-disabled-few', 'runtime_config', 'info',
                           '%d feature%s disabled' % (count, 's' if count > 1 else ''),
                           'Review disabled features to ensure they are intentionally disabled.',
-                          value=count)
+                          value=count, details=details)
     if count <= 5:
         return 60, _issue('features-disabled-several', 'runtime_config', 'warning',
                           '%d features disabled' % count,
                           'Review disabled features and enable those needed for your use case.',
-                          value=count)
+                          value=count, details=details)
     return 40, _issue('features-disabled-many', 'runtime_config', 'warning',
                       '%d features disabled' % count,
                       'Review disabled features list and discuss with your admin or Dataiku support.',
-                      value=count)
+                      value=count, details=details)
 
 
 def _score_security_settings(parsed):
@@ -557,7 +575,8 @@ def _score_connection_health(health, dataset_usages, llm_usages, is_whitelisted)
             'Run the usage scan on the Connections → Insights page to confirm impact.',
             description='%s. The connection usage scan has not completed, so it is unknown '
                         'whether projects actively depend on these connections.' % preview(names),
-            value=n, whitelistRule='connection-broken', whitelistItems=names)]
+            value=n, items=names,
+            whitelistRule='connection-broken', whitelistItems=names)]
 
     ds_by_name = {u.get('name'): u for u in (dataset_usages or [])}
     llm_by_name = {u.get('name'): u for u in (llm_usages or [])}
@@ -586,7 +605,8 @@ def _score_connection_health(health, dataset_usages, llm_usages, is_whitelisted)
             description='%s. Projects actively depend on these connections — datasets and '
                         'recipes on them are broken for every user right now.'
                         % preview(used_preview),
-            value=n, whitelistRule='connection-broken', whitelistItems=used))
+            value=n, items=used,
+            whitelistRule='connection-broken', whitelistItems=used))
     if unused:
         n = len(unused)
         issues.append(_issue(
@@ -595,7 +615,8 @@ def _score_connection_health(health, dataset_usages, llm_usages, is_whitelisted)
             'Repair or delete these unused connections.',
             description='%s. No project references these connections — a failing test alone '
                         'is low-impact mess.' % preview(unused),
-            value=n, whitelistRule='connection-broken', whitelistItems=unused))
+            value=n, items=unused,
+            whitelistRule='connection-broken', whitelistItems=unused))
     return issues
 
 
@@ -715,45 +736,54 @@ def _parse_cgroup_settings(raw):
 
 def _check_disabled_features(raw):
     """Port of GeneralSettingsParser.checkDisabledFeatures — only the feature
-    NAMES matter for scoring (the score counts keys)."""
+    NAMES matter for scoring (the score counts keys). Each entry also carries
+    the exact general-settings path (+ proposedValue True) so agents can name
+    a concrete settings-set target; impersonation is marked `sensitive`
+    (flipping it has UIF-wide consequences — never a casual toggle)."""
     d = raw or {}
     disabled = {}
 
-    def add(name):
-        disabled[name] = {'status': 'Disabled'}
+    def add(name, settings_path=None, sensitive=False):
+        entry = {'status': 'Disabled'}
+        if settings_path:
+            entry['settingsPath'] = settings_path
+            entry['proposedValue'] = True
+        if sensitive:
+            entry['sensitive'] = True
+        disabled[name] = entry
 
     ai = d.get('aiDrivenAnalyticsSettings')
     if ai:
         if 'enabled' in ai:
             if ai.get('enabled') is False:
-                add('AI Assistants')
+                add('AI Assistants', 'aiDrivenAnalyticsSettings.enabled')
         else:
             if not ai.get('prepareAICompletionEnabled'):
-                add('AI: Prepare Completion')
+                add('AI: Prepare Completion', 'aiDrivenAnalyticsSettings.prepareAICompletionEnabled')
             if not ai.get('aiGenerateSQLEnabled'):
-                add('AI: Generate SQL')
+                add('AI: Generate SQL', 'aiDrivenAnalyticsSettings.aiGenerateSQLEnabled')
             if not ai.get('aiExplanationsEnabled'):
-                add('AI: Explanations')
+                add('AI: Explanations', 'aiDrivenAnalyticsSettings.aiExplanationsEnabled')
             if not ai.get('storiesAIEnabled'):
-                add('AI: Stories')
+                add('AI: Stories', 'aiDrivenAnalyticsSettings.storiesAIEnabled')
     if (d.get('codeAssistantSettings') or {}).get('codeAssistantEnabled') is False:
-        add('Code Assistant')
+        add('Code Assistant', 'codeAssistantSettings.codeAssistantEnabled')
     if (d.get('askDataikuSettings') or {}).get('enabled') is False:
-        add('Ask Dataiku')
+        add('Ask Dataiku', 'askDataikuSettings.enabled')
     if (d.get('sparkSettings') or {}).get('sparkEnabled') is False:
-        add('Spark')
+        add('Spark', 'sparkSettings.sparkEnabled')
     if (d.get('containerSettings') or {}).get('cdeEnabled') is False:
-        add('Container Execution (CDE)')
+        add('Container Execution (CDE)', 'containerSettings.cdeEnabled')
     if (d.get('containerSettings') or {}).get('k8sEnabled') is False:
-        add('Kubernetes')
+        add('Kubernetes', 'containerSettings.k8sEnabled')
     if (d.get('cgroupSettings') or {}).get('enabled') is False:
-        add('CGroups')
+        add('CGroups', 'cgroupSettings.enabled')
     if (d.get('governIntegrationSettings') or {}).get('enabled') is False:
-        add('Govern Integration')
+        add('Govern Integration', 'governIntegrationSettings.enabled')
     if (d.get('popularDatasetsSettings') or {}).get('enablePopularDatasets') is False:
-        add('Popular Datasets')
+        add('Popular Datasets', 'popularDatasetsSettings.enablePopularDatasets')
     if (d.get('impersonation') or {}).get('enabled') is False:
-        add('Impersonation')
+        add('Impersonation', 'impersonation.enabled', sensitive=True)
     mode = (d.get('deployerClientSettings') or {}).get('mode')
     if mode and mode != 'LOCAL':
         disabled['Deployer Client'] = {'status': 'Mode: %s' % mode}

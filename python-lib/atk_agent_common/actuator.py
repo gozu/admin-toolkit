@@ -10,30 +10,49 @@ The plan IS the dry run: it gathers the exact targets + blast radius from
 read-only scans and shows the human what will happen. There is no single-call
 path to a mutation.
 
-Deliberately excluded (highest blast radius, documented later opt-in):
-container-exec, email send, cs-template migrate. (code-env replace joined the
-catalog as `code-env-consolidate` — explicit user opt-in, dry-run-first.)
+Deliberately excluded (structural, not policy — the agent cannot do these):
+DSS/backend restart (kills the toolkit itself), install.ini / systemd /
+ulimits (root/host-level files), license operations, external credential
+creation or rotation (the agent holds no cloud/DB secrets), user creation and
+password resets, SSO/LDAP paths (settings blacklist), arbitrary shell, and
+deleting the ADMINTOOLKIT project / the admin-toolkit plugin / the toolkit's
+own API key (planner-refused). Also still excluded pending explicit opt-in:
+container-exec, email send, cs-template migrate.
 
 Remediation-suite actions (log-cleanup, docker-prune, k8s-apply-fix,
-settings-set) are POLICY-GATED below the model: the pattern/verb/path
-whitelists in atk_agent_common.policies are re-enforced inside the macro
-scripts / executors, so a compromised or confused LLM cannot widen the blast
-radius by rephrasing a target.
+settings-set, project-clear-webapp-runs) are POLICY-GATED below the model:
+the pattern/verb/path whitelists in atk_agent_common.policies are re-enforced
+inside the macro scripts / executors, so a compromised or confused LLM cannot
+widen the blast radius by rephrasing a target.
+
+The non-legacy catalog lives in atk_agent_common.actions (per-domain SPECS
+merged into a registry); this module keeps the 12 legacy planners/executors
+and the plan/execute protocol (confirm tokens, batching, audit).
 """
 
 import json
 
+from . import actions as actions_registry
 from . import confirm, shaping
 from .errors import RedLocked, ToolkitError
 from .policies import kubectl_policy, settings_paths
 
-ACTIONS = ('project-delete', 'code-env-delete', 'image-delete',
-           'db-vacuum', 'db-analyze', 'plugin-deploy', 'k8s-exec-config-tune',
-           'log-cleanup', 'docker-prune', 'k8s-apply-fix',
-           'code-env-consolidate', 'settings-set')
+_LEGACY_ACTIONS = ('project-delete', 'code-env-delete', 'image-delete',
+                   'db-vacuum', 'db-analyze', 'plugin-deploy', 'k8s-exec-config-tune',
+                   'log-cleanup', 'docker-prune', 'k8s-apply-fix',
+                   'code-env-consolidate', 'settings-set')
+
+ACTIONS = _LEGACY_ACTIONS + actions_registry.NEW_ACTIONS
+
+# Generated prose quoted by every tool-description site (single source).
+TARGET_SHAPES = actions_registry.TARGET_SHAPES
+
+# Actions accepting targets[] batching: one plan, one token, N targets.
+BATCHABLE_ACTIONS = actions_registry.BATCHABLE
+MAX_BATCH_TARGETS = 20
 
 _LOCAL_ONLY_ACTIONS = ('k8s-exec-config-tune', 'log-cleanup', 'docker-prune',
-                       'k8s-apply-fix', 'settings-set')
+                       'k8s-apply-fix', 'settings-set') + actions_registry.LOCAL_ONLY_EXTRA
 
 # k8s-exec-config-tune: the only keys an agent may change, all inside
 # kubernetesRuntimeConfig.kubernetesResources of one named execution config.
@@ -510,6 +529,7 @@ _PLANNERS = {
     'image-delete': _plan_image_delete,
     'plugin-deploy': _plan_plugin_deploy,
 }
+_PLANNERS.update(actions_registry.PLANNERS)
 
 
 # ── executors: drive the backend red endpoints ───────────────────────────────
@@ -706,6 +726,7 @@ _SETTINGS_CHANGE_HOOKS = {
     'settings-set': _changes_settings_set,
     'k8s-apply-fix': _changes_k8s_apply_fix,
 }
+_SETTINGS_CHANGE_HOOKS.update(actions_registry.SETTINGS_CHANGE_HOOKS)
 
 
 def _settings_changes_from_result(action, target, result):
@@ -735,17 +756,78 @@ _EXECUTORS = {
                                             json={'pluginId': t['pluginId'],
                                                   'targetHostId': t['targetHostId']}),
 }
+_EXECUTORS.update(actions_registry.EXECUTORS)
 
 
 # ── the two tool impls ───────────────────────────────────────────────────────
 
 
-def plan_admin_action(client, host='local', action=None, target=None, params=None):
+def _canonical_sort_key(canonical):
+    return json.dumps(canonical, sort_keys=True, separators=(',', ':'), default=str)
+
+
+def _normalize_targets(target, targets):
+    """One list of target dicts from the target/targets pair (raises on both
+    empty). A single-element targets[] collapses to the plain single path."""
+    if isinstance(targets, list) and targets:
+        clean = [t for t in targets if isinstance(t, dict)]
+        if len(clean) != len(targets):
+            raise ToolkitError('targets must be a list of target dicts.')
+        if target is not None and target != {}:
+            raise ToolkitError('Pass either target or targets, not both.')
+        if len(clean) > MAX_BATCH_TARGETS:
+            raise ToolkitError('targets is capped at %d entries per plan — split the batch.'
+                               % MAX_BATCH_TARGETS)
+        return clean
+    if target is None:
+        raise ToolkitError('A target (or targets[]) is required.')
+    return [target]
+
+
+def _plan_batch(client, host, action, target_list, params):
+    """Per-target planner runs → ONE combined canonical + plan. Canonicals
+    sort deterministically so the same batch always signs identically."""
+    pairs = [_PLANNERS[action](client, host, t, params) for t in target_list]
+    pairs.sort(key=lambda pair: _canonical_sort_key(pair[0]))
+    canonical = {'batchTargets': [c for c, _ in pairs]}
+    per_target = []
+    warnings = []
+    for i, (target_canonical, target_plan) in enumerate(pairs):
+        per_target.append({'target': target_canonical,
+                           'summary': target_plan.get('summary')})
+        raw_warning = target_plan.get('warning') or target_plan.get('warnings')
+        for w in ([raw_warning] if isinstance(raw_warning, str) else (raw_warning or [])):
+            warnings.append('[target %d] %s' % (i + 1, w))
+    first_plan = pairs[0][1]
+    plan = {
+        'summary': 'BATCH %s × %d targets — ONE approval and ONE confirm token cover '
+                   'every target below; execution is per-target with per-target results.'
+                   % (action, len(pairs)),
+        'targetCount': len(pairs),
+        'targets': per_target,
+        'warnings': warnings or None,
+    }
+    for key in ('backupFolder', 'irreversible', 'note'):
+        if key in first_plan:
+            plan[key] = first_plan[key]
+    return canonical, plan
+
+
+def plan_admin_action(client, host='local', action=None, target=None, params=None,
+                      targets=None):
     if action not in ACTIONS:
         return {'error': {'code': 'bad-input',
                           'message': 'action must be one of: %s' % ', '.join(ACTIONS)}}
     host = host or 'local'
-    canonical, plan = _PLANNERS[action](client, host, target, params or {})
+    target_list = _normalize_targets(target, targets)
+    if len(target_list) > 1 and action not in BATCHABLE_ACTIONS:
+        raise ToolkitError(
+            '%s does not accept batched targets — plan each target separately. '
+            'Batchable actions: %s.' % (action, ', '.join(sorted(BATCHABLE_ACTIONS))))
+    if len(target_list) == 1:
+        canonical, plan = _PLANNERS[action](client, host, target_list[0], params or {})
+    else:
+        canonical, plan = _plan_batch(client, host, action, target_list, params or {})
     password = client.settings.get('master_password') or ''
     if not password:
         return {'plan': plan, 'canonicalTarget': canonical,
@@ -764,6 +846,30 @@ def plan_admin_action(client, host='local', action=None, target=None, params=Non
                      'in the conversation. Only then call execute-admin-action with this exact '
                      'action/host/target, confirm=true, and the confirm_token.'),
     })
+
+
+def _execute_batch(client, host, action, batch_targets):
+    """Per-entry execution with continue-on-error. Returns (status, result,
+    settings_changes): status 'ok' / 'partial' / 'error', one result row per
+    entry, settings-change history collected per SUCCESSFUL entry."""
+    per_target = []
+    changes = []
+    ok_count = 0
+    for entry in batch_targets:
+        try:
+            entry_result = _EXECUTORS[action](client, host, entry)
+            per_target.append({'target': entry, 'status': 'ok', 'result': entry_result})
+            ok_count += 1
+            changes.extend(_settings_changes_from_result(action, entry, entry_result))
+        except (RedLocked, ToolkitError) as exc:
+            per_target.append({'target': entry, 'status': 'error',
+                               'error': exc.to_output()['error']})
+    error_count = len(batch_targets) - ok_count
+    status = 'ok' if error_count == 0 else ('partial' if ok_count else 'error')
+    result = {'ok': error_count == 0, 'batch': True,
+              'okCount': ok_count, 'errorCount': error_count,
+              'perTarget': per_target}
+    return status, result, changes
 
 
 def execute_admin_action(client, host='local', action=None, target=None,
@@ -789,10 +895,15 @@ def execute_admin_action(client, host='local', action=None, target=None,
         return {'error': {'code': 'confirm-token-rejected', 'message': str(exc)}}
 
     from . import audit
+    batch_targets = target.get('batchTargets') if isinstance(target, dict) else None
     status, snippet, result = 'error', '', None
+    batch_changes = []
     try:
-        result = _EXECUTORS[action](client, host, target)
-        status = 'ok'
+        if isinstance(batch_targets, list):
+            status, result, batch_changes = _execute_batch(client, host, action, batch_targets)
+        else:
+            result = _EXECUTORS[action](client, host, target)
+            status = 'ok'
         snippet = json.dumps(result, default=str)[:500]
     except RedLocked as exc:
         snippet = exc.message
@@ -803,6 +914,7 @@ def execute_admin_action(client, host='local', action=None, target=None,
     finally:
         # provenance (e.g. action-item batch/item refs) lands in the params
         # column so audit rows can be traced back to the proposing checklist.
+        # A batch is ONE audit row: the signed target carries every entry.
         audit_id = audit.record(settings.get('triage_connection'), agent_name, llm_id, host,
                                 action, target, provenance, confirm.token_hash(confirm_token),
                                 status, snippet)
@@ -813,7 +925,10 @@ def execute_admin_action(client, host='local', action=None, target=None,
     if audit_id is None:
         out['auditWarning'] = ('Audit row could not be written (no triage connection or DB error) '
                                '— the action still ran; check backend logs.')
-    changes = _settings_changes_from_result(action, target, result) if status == 'ok' else []
+    if isinstance(batch_targets, list):
+        changes = batch_changes
+    else:
+        changes = _settings_changes_from_result(action, target, result) if status == 'ok' else []
     if changes:
         written = audit.record_settings_changes(settings.get('triage_connection'), host, changes,
                                                 agent=agent_name, audit_id=audit_id)

@@ -4,6 +4,7 @@ from dataiku.llm.python import BaseLLM
 
 from atk_agent_common import (actuator, adapter, agent_runtime, agent_tools, prompt_overrides,
                               prompts, rubric)
+from atk_agent_common import actions as actions_registry
 from atk_agent_common.errors import ToolkitError
 
 
@@ -36,14 +37,16 @@ class OpsActuatorAgent(BaseLLM):
                            'config_inspect', 'db_health', 'compute_cost'])
         from langchain_core.tools import StructuredTool
 
-        def plan_admin_action(action, target, host='local', params=None, item_ref=None):
+        def plan_admin_action(action, target=None, targets=None, host='local', params=None,
+                              item_ref=None):
             if action not in allowed:
                 return json.dumps({'error': {'code': 'action-not-allowed',
                                              'message': 'Action %r is not in this agent\'s allowlist (%s).'
                                                         % (action, ', '.join(allowed))}})
             try:
                 result = actuator.plan_admin_action(client, host=host, action=action,
-                                                    target=target, params=params)
+                                                    target=target, targets=targets,
+                                                    params=params)
                 # Checklist provenance rides along for the UI; deliberately NOT
                 # part of the signed token payload (confirm.py is untouched).
                 if item_ref and isinstance(result, dict):
@@ -72,23 +75,11 @@ class OpsActuatorAgent(BaseLLM):
         tools.append(StructuredTool.from_function(
             plan_admin_action, name='plan_admin_action',
             description=('Plan an admin action (read-only dry run): blast radius + confirm_token. '
-                         'Actions: %s. Targets: project-delete {projectKey}; code-env-delete '
-                         '{name, lang}; db-vacuum/db-analyze {connection, table}; image-delete '
-                         '{provider, cutoff, images}; plugin-deploy {pluginId, targetHostId}; '
-                         'k8s-exec-config-tune {configName, changes:{memRequestMB|memLimitMB|'
-                         'cpuRequest|cpuLimit}} (ground in compute_cost/k8s evidence first); '
-                         'log-cleanup {roots?, minAgeDays?, maxDeleteGB?} (rotated logs only, '
-                         'whitelisted DIP_HOME roots); docker-prune {mode: builder|image, '
-                         'keepStorageGB?, filterUntilHours?}; k8s-apply-fix {clusterId, '
-                         'commands: [kubectl arg strings], manifestYaml?, execConfigPatch?: '
-                         '{configName, changes}, verifyRule?: k8s-insights rule id to re-check '
-                         'after execution}; code-env-consolidate {sourceEnvName, targetEnvName, '
-                         'language?, projectKeys?, usageTypes?, retireSource?}; settings-set '
-                         '{path: dot/index path into DSS general settings, newValue} '
-                         '(security/auth/licensing paths are blacklisted). '
+                         'Actions: %s. Target shapes: %s. %s '
                          'item_ref {batchId, itemId} (optional): pass through verbatim when the '
                          'request came from an action-item checklist.'
-                         % ', '.join(allowed))))
+                         % (', '.join(allowed), actuator.TARGET_SHAPES,
+                            actions_registry.BATCH_NOTE))))
         tools.append(StructuredTool.from_function(
             execute_admin_action, name='execute_admin_action',
             description=('Execute a planned + user-confirmed admin action. Pass the exact '

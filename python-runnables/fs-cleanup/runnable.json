@@ -1,0 +1,68 @@
+{
+    "meta": {
+        "label": "FS Cleanup",
+        "description": "Scan and delete policy-scoped filesystem debris under DIP_HOME (webapp run directories first). Roots, age gates, keep-newest-N and running-webapp exclusions are enforced inside this macro.",
+        "icon": "icon-trash",
+        "macroRoles": [{"type": "PROJECT_MACROS"}]
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": [
+        {
+            "name": "operation",
+            "label": "Operation",
+            "description": "scan or delete.",
+            "type": "STRING",
+            "mandatory": true
+        },
+        {
+            "name": "policy",
+            "label": "Policy",
+            "description": "Which cleanup policy to apply (currently: webappruns).",
+            "type": "STRING",
+            "mandatory": true,
+            "defaultValue": "webappruns"
+        },
+        {
+            "name": "project_key",
+            "label": "Project key",
+            "description": "Restrict to one project's webapp run dirs. Empty = all projects.",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
+            "name": "min_age_days",
+            "label": "Minimum age (days)",
+            "description": "Only run directories whose newest content is older than this are eligible.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 7
+        },
+        {
+            "name": "keep_last_runs",
+            "label": "Keep newest runs",
+            "description": "Per webapp, always keep this many newest run directories.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 2
+        },
+        {
+            "name": "max_delete_gb",
+            "label": "Delete cap (GB)",
+            "description": "Abort if the delete candidates exceed this total size.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 50
+        },
+        {
+            "name": "dry_run",
+            "label": "Dry run",
+            "description": "When true, list what would be deleted without deleting.",
+            "type": "BOOLEAN",
+            "mandatory": false,
+            "defaultValue": true
+        }
+    ]
+}

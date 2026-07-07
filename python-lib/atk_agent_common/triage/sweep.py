@@ -6,8 +6,15 @@ LLMs only ever DRAFT recommendations on top of this data (agent or daily
 runnable); they never decide what is unhealthy.
 """
 
-from .. import health, tools_impl
+from .. import health, shaping, tools_impl
 from ..errors import ScanTimeout, ToolkitError
+
+# Issue keys forwarded to LLM consumers. whitelistRule/whitelistItems stay
+# OUT: whitelisted findings are already suppressed upstream (health.py), so
+# those keys would only annotate LIVE findings with the rule an admin could
+# use to hide them — which reads as hedging fuel, never as signal.
+_ISSUE_KEYS = ('id', 'severity', 'category', 'title', 'recommendation',
+               'description', 'value', 'items', 'details')
 
 
 def sweep_fleet(client, hosts=None, score_threshold=75, payload_sink=None):
@@ -33,7 +40,7 @@ def sweep_fleet(client, hosts=None, score_threshold=75, payload_sink=None):
                 'score': score['overall'],
                 'status': score['status'],
                 'categoryScores': {c['category']: round(c['score'], 1) for c in score['categories']},
-                'topIssues': score['issues'][:8],
+                'topIssues': [shaping.pick(i, _ISSUE_KEYS) for i in score['issues'][:8]],
                 'criticalCount': score['criticalCount'],
                 'warningCount': score['warningCount'],
             })

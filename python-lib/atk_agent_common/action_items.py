@@ -11,45 +11,48 @@ one fresh (blast radius + confirm token minted at approval time, not here).
 import json
 import uuid
 
+from . import actions as actions_registry
 from . import actuator
 
 MAX_ITEMS = 10
+MAX_TARGETS_PER_ITEM = 20
 _RISKS = ('red', 'amber', 'green')
 
-_TARGET_SHAPES = ('project-delete {projectKey}; code-env-delete {name, lang}; '
-                  'db-vacuum/db-analyze {connection, table}; image-delete {provider, cutoff, images}; '
-                  'plugin-deploy {pluginId, targetHostId}; k8s-exec-config-tune {configName, changes}; '
-                  'log-cleanup {roots?, minAgeDays?, maxDeleteGB?}; '
-                  'docker-prune {mode: builder|image, keepStorageGB?, filterUntilHours?}; '
-                  'k8s-apply-fix {clusterId, commands[], manifestYaml?, execConfigPatch?, verifyRule?}; '
-                  'code-env-consolidate {sourceEnvName, targetEnvName, language?, projectKeys?, '
-                  'usageTypes?, retireSource?}; '
-                  'settings-set {path, newValue}')
+# Single source: generated from the actions registry (legacy + domains).
+_TARGET_SHAPES = actuator.TARGET_SHAPES
 
 TOOL_DESCRIPTION = (
     'Propose up to %d structured admin action items derived from your findings. Each item: '
     '{title (<=120 chars), why (<=500), host (default local), risk: red|amber|green, '
-    'action?: exact actuator action name, target?: the action\'s target dict, evidence: [strings]}. '
-    'Set action ONLY when it maps exactly to one of: %s — target shapes: %s. Items with no valid '
-    'action become advisory (still shown, not executable). Call ONCE, at the end of the '
-    'investigation.' % (MAX_ITEMS, ', '.join(actuator.ACTIONS), _TARGET_SHAPES))
+    'action?: exact actuator action name, target?: the action\'s target dict, '
+    'targets?: [target dicts] for several objects under ONE item (batchable actions only), '
+    'evidence: [strings]}. '
+    'Set action ONLY when it maps exactly to one of: %s — target shapes: %s. %s '
+    'Items with no valid action become advisory (still shown, not executable). Call ONCE, '
+    'at the end of the investigation.'
+    % (MAX_ITEMS, ', '.join(actuator.ACTIONS), _TARGET_SHAPES,
+       actions_registry.BATCH_NOTE))
 
 # Appended to the sensor agents' system prompts.
 PROMPT_ADDENDUM = """
 When your findings imply concrete admin work (cleanup, maintenance, tuning, deletions, \
 deploys), finish the investigation by calling propose_action_items ONCE with every piece of \
 work you identified (most important first, max {max_items}). Rules:
-- Propose only items at MEDIUM severity or higher (the severity rubric's digest floor), and \
-never items suppressed by the admin whitelist.
+- Propose only items at MEDIUM severity or higher (the severity rubric's digest floor). \
+Whitelist-suppressed findings never reach you — do not hedge live findings; every finding \
+you see is live.
 - Set `action` + `target` ONLY when they map exactly to the actuator catalog ({actions}); \
 anything else stays advisory (title/why/evidence only, no action).
+- Several objects needing the SAME action (e.g. six unused code envs) = ONE item with \
+`targets: [dict, ...]` — never burn one item slot per object. Batchable: {batchable}.
 - risk: 'red' for anything destructive or settings-mutating (deletions, config/settings \
 changes — all require backup-first / prior-value recording downstream), 'amber' for \
 locking/maintenance operations, 'green' for safe low-impact work. Never soften a risk color.
 - Every item needs concrete `evidence` entries citing tool + host + the numbers that justify it.
 The items render as a checklist; the USER decides what is handed to the ops-actuator for \
 planning and approval. Never plan, never execute, never promise execution yourself.""".format(
-    max_items=MAX_ITEMS, actions=', '.join(actuator.ACTIONS))
+    max_items=MAX_ITEMS, actions=', '.join(actuator.ACTIONS),
+    batchable=', '.join(sorted(actuator.BATCHABLE_ACTIONS)))
 
 
 def build_tool(client):
@@ -73,12 +76,35 @@ def _clip(value, limit):
     return text[:limit]
 
 
+def _normalize_item_targets(raw, action, notes):
+    """One list of target dicts from an item's target/targets pair. Caps at
+    MAX_TARGETS_PER_ITEM; multi-target on a non-batchable action keeps only
+    the first target (noted, never silently)."""
+    targets = []
+    raw_targets = raw.get('targets')
+    if isinstance(raw_targets, list):
+        targets = [t for t in raw_targets if isinstance(t, dict)]
+        if len(targets) != len(raw_targets):
+            notes.append('non-dict entries in targets were dropped')
+    if not targets and isinstance(raw.get('target'), dict):
+        targets = [raw['target']]
+    if len(targets) > MAX_TARGETS_PER_ITEM:
+        notes.append('targets capped at %d (had %d)' % (MAX_TARGETS_PER_ITEM, len(targets)))
+        targets = targets[:MAX_TARGETS_PER_ITEM]
+    if action and len(targets) > 1 and action not in actuator.BATCHABLE_ACTIONS:
+        notes.append('action %r is not batchable — kept the first target only '
+                     '(batchable: %s)' % (action, ', '.join(sorted(actuator.BATCHABLE_ACTIONS))))
+        targets = targets[:1]
+    return targets
+
+
 def propose_action_items(client, items):
     """Normalize a batch of proposed action items (cap MAX_ITEMS, server ids).
 
-    Item in: {title, why, host?, risk?, action?, target?, evidence?}
-    Item out adds: id ('ai-<8hex>'), actionable (bool), validation (note when
-    the proposal was downgraded to advisory instead of dropped).
+    Item in: {title, why, host?, risk?, action?, target?, targets?, evidence?}
+    Item out adds: id ('ai-<8hex>'), actionable (bool), targets/targetCount,
+    validation (note when the proposal was downgraded to advisory instead of
+    dropped). `target` mirrors targets[0] for back-compat consumers.
     """
     if not isinstance(items, list) or not items:
         return {'error': {'code': 'bad-input',
@@ -98,13 +124,14 @@ def propose_action_items(client, items):
                 notes.append('risk %r is not one of %s — defaulted to amber' % (risk, '/'.join(_RISKS)))
             risk = 'amber'
         action = str(raw.get('action') or '').strip() or None
-        target = raw.get('target') if isinstance(raw.get('target'), dict) else None
         if action and action not in actuator.ACTIONS:
             notes.append('action %r is not in the actuator catalog (%s) — downgraded to advisory'
                          % (action, ', '.join(actuator.ACTIONS)))
-            action, target = None, None
-        if action and target is None:
-            notes.append('action %r proposed without a target dict — downgraded to advisory' % action)
+            action = None
+        targets = _normalize_item_targets(raw, action, notes) if action else []
+        if action and not targets:
+            notes.append('action %r proposed without any target dict — downgraded to advisory'
+                         % action)
             action = None
         evidence = raw.get('evidence')
         evidence = [_clip(e, 300) for e in evidence if str(e or '').strip()] \
@@ -116,9 +143,11 @@ def propose_action_items(client, items):
             'host': str(raw.get('host') or 'local').strip() or 'local',
             'risk': risk,
             'action': action,
-            'target': target,
+            'target': targets[0] if targets else None,
+            'targets': targets or None,
+            'targetCount': len(targets),
             'evidence': evidence[:6],
-            'actionable': action is not None,
+            'actionable': action is not None and len(targets) >= 1,
             'validation': '; '.join(notes) or None,
         })
     if not out:

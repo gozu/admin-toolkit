@@ -15,6 +15,7 @@ _CRU_AUDIT_MACRO_ID = 'pyrunnable_admin-toolkit_cru-audit'
 _LOG_CLEANER_MACRO_ID = 'pyrunnable_admin-toolkit_log-cleaner'
 _DOCKER_GOVERNOR_MACRO_ID = 'pyrunnable_admin-toolkit_docker-governor'
 _K8S_APPLY_MACRO_ID = 'pyrunnable_admin-toolkit_k8s-apply'
+_FS_CLEANUP_MACRO_ID = 'pyrunnable_admin-toolkit_fs-cleanup'
 
 
 def _host_metrics_macro(client: Any) -> Dict[str, Any]:
@@ -137,6 +138,14 @@ def _docker_governor_macro(client: Any, operation: str, **params: Any) -> Dict[s
     keep_storage_gb, filter_until_hours, dry_run. Fixed-argv policy is
     enforced inside the macro."""
     return _generic_op_macro(client, _DOCKER_GOVERNOR_MACRO_ID, operation, **params)
+
+
+def _fs_cleanup_macro(client: Any, operation: str, **params: Any) -> Dict[str, Any]:
+    """Invoke the fs-cleanup macro (operation ∈ {scan, delete}). Extra params:
+    policy, project_key, min_age_days, keep_last_runs, max_delete_gb, dry_run.
+    Roots/age/keep-newest policy and the running-webapp exclusion are enforced
+    inside the macro (atk_agent_common.policies.fs_paths)."""
+    return _generic_op_macro(client, _FS_CLEANUP_MACRO_ID, operation, **params)
 
 
 def _k8s_apply_macro(client: Any, operation: str, **params: Any) -> Dict[str, Any]:

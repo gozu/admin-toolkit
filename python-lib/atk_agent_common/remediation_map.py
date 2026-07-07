@@ -51,11 +51,49 @@ REMEDIATIONS = [
               auto=True, build_target=_log_cleanup_target),
     ]),
 
+    # ── connections ──────────────────────────────────────────────────────────
+    ('cap-connection-broken', [
+        _spec('connection-update', 'high', 'Repair the broken definition field (e.g. a blank '
+              'host: path=params.host) — drift-guarded, secret paths blocked, prior value '
+              'restorable from history.'),
+        _spec('connection-test', 'low', 'Verify the repair immediately: the test result '
+              'reports connectionOK true/false.'),
+    ]),
+    ('connection-broken-unused', [
+        _spec('connection-delete', 'medium', 'Nothing references the connection — back up its '
+              'definition JSON and delete it (batchable: one item, N names).'),
+        _spec('connection-update', 'medium', 'Or repair it instead when the admin wants to '
+              'keep it (path into the definition, drift-guarded).'),
+    ]),
+    ('connection-broken-unverified', [
+        _spec('connection-test', 'low', 'Re-probe the connection; run the usage scan before '
+              'proposing anything destructive.'),
+    ]),
+
+    # ── clusters ─────────────────────────────────────────────────────────────
+    ('cluster-endpoint-unreachable*', [
+        _spec('cluster-detach', 'medium', 'A DNS-dead endpoint means the cluster is gone and '
+              'the attachment is stale — back up the definition JSON and detach it from DSS. '
+              'Other error classes (auth, timeout) need investigation first, not detachment.'),
+    ]),
+
+    # ── plugins ──────────────────────────────────────────────────────────────
+    ('plugin-deprecated*', [
+        _spec('plugin-uninstall', 'medium', 'Deprecated plugin (rubric DSS-14 list): zip '
+              'backup first, uninstall refused while any usage exists (batchable).'),
+    ]),
+    ('plugin-unused*', [
+        _spec('plugin-uninstall', 'medium', 'Zero-usage plugin past the 3-month cleanup '
+              'window: zip backup first, usage re-checked at execute (batchable).'),
+    ]),
+
     # ── code-env sprawl / lifecycle ──────────────────────────────────────────
     ('python-lifecycle-*', [
         _spec('code-env-consolidate', 'medium', 'Repoint usages of deprecated-Python envs onto '
               'a supported target env (dry-run usage table shown at approval), optionally '
               'retiring the source afterwards.'),
+        _spec('code-env-delete', 'medium', 'UNREFERENCED deprecated envs skip consolidation: '
+              'backup-first delete, several envs as ONE batched item (targets[]).'),
     ]),
     ('project-codenv-*', [
         _spec('code-env-consolidate', 'medium', 'Consolidate per-project env sprawl onto shared '
@@ -73,12 +111,16 @@ REMEDIATIONS = [
               'that live in install.ini are NOT reachable — say so instead of guessing a path.'),
     ]),
     ('features-disabled-*', [
-        _spec('settings-set', 'low', 'Re-enable the disabled feature flags one path at a time; '
-              'each change is drift-guarded and restorable from history.'),
+        _spec('settings-set', 'low', 'Re-enable the disabled feature flags using the exact '
+              'paths in the finding\'s details[].settingsPath — several flags as ONE batched '
+              'settings-set item (targets[]). Skip entries marked sensitive (impersonation) '
+              'unless the admin asks.'),
     ]),
     ('cgroups-*', [
-        _spec('settings-set', 'medium', 'cgroup integration toggles live in general settings; '
-              'propose the exact path + value and let the human approve the diff.'),
+        _spec('settings-set', 'medium', 'cgroup integration toggles live in general settings '
+              '(the enable flag is cgroupSettings.enabled; empty target types live under '
+              'cgroupSettings.<targetType>.targets); propose the exact path + value and let '
+              'the human approve the diff.'),
     ]),
 
     # ── k8s (k8s-insights rule ids) ──────────────────────────────────────────
@@ -114,6 +156,13 @@ REMEDIATIONS = [
     ('cluster-autoscaler-scale-down-*', [
         _spec('k8s-apply-fix', 'medium', 'Autoscaler behaviour is configured on its deployment '
               '(kube-system patch/annotate is within policy for deployments).'),
+    ]),
+
+    # ── project storage ──────────────────────────────────────────────────────
+    ('project-size-*', [
+        _spec('project-clear-webapp-runs', 'medium', 'When the footprint breakdown names '
+              '"Web app runs" (bucketKey webApps), trim dead run dirs — keeps the newest N '
+              'per webapp, never touches a running backend.'),
     ]),
 
     # ── DB ───────────────────────────────────────────────────────────────────

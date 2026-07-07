@@ -15,7 +15,9 @@ class ConfigInspectTool(BaseAgentTool):
                 "'code-envs' (version counts, deprecated-Python envs, unused envs, largest; "
                 "heavy scan — may return scan_running), 'plugins' (installed list, dev plugins; "
                 "detail='usage' adds projects-using counts, slower), 'llms' (LLM Mesh models "
-                "grouped by connection). Use name_filter to find a specific item."),
+                "grouped by connection), 'clusters' (attached k8s clusters: id/name/state; "
+                "detail='health' adds the reachability sweep). Use name_filter to find a "
+                "specific item."),
             "inputSchema": {
                 "$id": "https://dataiku.com/agents/tools/atk/config-inspect/input",
                 "title": "Input for the config-inspect tool",
@@ -24,13 +26,13 @@ class ConfigInspectTool(BaseAgentTool):
                     "host": adapter.HOST_PROPERTY,
                     "domain": {
                         "type": "string",
-                        "enum": ["connections", "code-envs", "plugins", "llms"],
+                        "enum": ["connections", "code-envs", "plugins", "llms", "clusters"],
                         "description": "Configuration domain to inspect."
                     },
                     "detail": {
                         "type": "string",
                         "enum": ["health", "usage"],
-                        "description": "Optional drill-down: 'health' (connections), 'usage' (plugins). Slower."
+                        "description": "Optional drill-down: 'health' (connections, clusters), 'usage' (plugins). Slower."
                     },
                     "name_filter": {
                         "type": "string",

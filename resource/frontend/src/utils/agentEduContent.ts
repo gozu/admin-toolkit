@@ -79,6 +79,7 @@ export const EDU: Record<string, EduEntry> = {
     title: 'Action items',
     body: [
       'When a sensor agent finds work worth doing, it proposes structured action items: title, reasoning, evidence, risk color, and — when the work maps exactly to the actuator catalog — a ready-to-plan action + target.',
+      'Several objects needing the same action (say, six unused code envs) arrive as ONE batched item (the ×N chip): one plan, one approval, one confirm token covering every target, with per-target results at execution.',
       'Nothing is planned or executed at this stage. You check the items you want and hand them to the Ops Actuator, which plans each one fresh so blast radius and tokens are current at approval time.',
     ],
   },
@@ -168,6 +169,48 @@ export const EDU: Record<string, EduEntry> = {
     body: [
       'Sets one path in DSS general settings, with a current → proposed diff at approval. Security/auth/licensing paths and anything touching secret material are blacklisted below the agent.',
       'The observed current value is bound into the confirm token (drift between plan and execute refuses), and every applied change lands in the restorable settings history.',
+    ],
+  },
+  'action.connection-test': {
+    title: 'connection-test',
+    body: [
+      'Runs the native DSS connection test for one connection — a read-only probe reporting connectionOK true/false. Green risk: nothing is changed.',
+      'The natural verification step right after a connection-update repair.',
+    ],
+  },
+  'action.connection-update': {
+    title: 'connection-update',
+    body: [
+      'Sets one path in a connection\'s definition (e.g. params.host for a blank-host repair), with a current → proposed diff at approval. Paths touching secret material (passwords, tokens, keys) are blacklisted below the agent — credentials are never readable or writable this way.',
+      'The observed current value is bound into the confirm token (drift between plan and execute refuses), and every applied change lands in the restorable settings history.',
+    ],
+  },
+  'action.connection-delete': {
+    title: 'connection-delete',
+    body: [
+      'Backs up the connection definition as JSON into a managed folder, then deletes the connection. The plan warns when anything still uses it — deleting a used connection breaks those datasets and recipes.',
+      'The backup may carry credential material, so the folder is admin-scoped. Restore = recreate the connection from the JSON.',
+    ],
+  },
+  'action.cluster-detach': {
+    title: 'cluster-detach',
+    body: [
+      'Backs up the cluster definition, then removes the DSS attachment only — the cloud-side cluster keeps running (and costing) until removed in the cloud console.',
+      'Meant for stale attachments whose endpoint no longer resolves (DNS-dead). The plan warns when the cluster is RUNNING or still reachable.',
+    ],
+  },
+  'action.plugin-uninstall': {
+    title: 'plugin-uninstall',
+    body: [
+      'Backs the plugin up as a zip into a managed folder, then uninstalls it. Refused outright while ANY usage exists (checked at plan time and re-checked at execute), and the toolkit never uninstalls itself.',
+      'Restore = re-upload the backed-up zip.',
+    ],
+  },
+  'action.project-clear-webapp-runs': {
+    title: 'project-clear-webapp-runs',
+    body: [
+      'Deletes dead webapp run directories of one project (the "Web app runs" bucket in the footprint breakdown), keeping the newest N per webapp and never touching a running backend\'s directory.',
+      'The roots/age/keep-newest policy is enforced inside a macro on the target host, below both the agent and the backend — like log-cleanup.',
     ],
   },
   'concept.auto-remediation': {

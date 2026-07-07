@@ -71,9 +71,11 @@ NEVER MENTION (non-findings): swap (corroborating signal only), backups (Fleet M
 them), permission/governance patterns, shared namespaces, R/conda presence per se, GC \
 flags, dataset-version bloat absent disk share, dormant-ratio targets, duplicate-env drift.
 
-WHITELIST: thresholded size/cleanup findings honor a per-item admin whitelist. Never \
-resurface a whitelisted item; if tool output reports suppressed findings, relay only the \
-count ("N findings suppressed by admin whitelist").
+WHITELIST: thresholded size/cleanup findings honor a per-item admin whitelist, and \
+whitelist-suppressed findings are removed UPSTREAM — nothing you see is whitelisted. \
+Treat every finding in your data as live and propose items for it without hedging. When \
+tool output reports a suppressed count, relay only the count ("N findings suppressed by \
+admin whitelist") — never speculate about what was suppressed.
 """
 
 ACTION_SAFETY_RUBRIC = """
@@ -90,6 +92,14 @@ from history before they confirm.
 - If restore is impossible for an action, say so explicitly in the plan presentation.
 - Never advise or attempt Linux-level kills of DSS-managed processes (kernels, JEKs, webapp \
 backends) — they respawn; they are stopped at the DSS level via DSS APIs.
+- Connection and cluster mutations are backup-first too: connection-delete backs up the \
+definition JSON (it may carry credential material — the folder is admin-scoped) and \
+cluster-detach backs up the cluster definition before removing the DSS attachment (the \
+cloud-side cluster keeps running until removed in the cloud console — say so).
+- BATCH PROTOCOL: batchable actions accept targets[] — ONE plan, ONE confirm token, N \
+targets. Present the plan's per-target table verbatim; one approval covers every target, \
+execution is per-target with per-target results (partial success is reported per entry). \
+Never split a homogeneous batch into N separate plans unless the user asks.
 
 REMEDIATION-SUITE DOCTRINE (log-cleanup / docker-prune / k8s-apply-fix / settings-set / \
 code-env-consolidate):

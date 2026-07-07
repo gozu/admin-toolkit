@@ -54,6 +54,14 @@ function ItemRow({
                 <InfoDot eduId={`action.${item.action}`} />
               </span>
             )}
+            {item.targets && item.targets.length > 1 && (
+              <span
+                className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--accent-muted)] border border-[var(--accent)]/30 text-[var(--accent)]"
+                title={`Batched: ${item.targets.length} targets, one plan and one approval`}
+              >
+                ×{item.targets.length}
+              </span>
+            )}
             {item.host !== 'local' && (
               <span className="text-[10px] text-[var(--text-muted)]">@{item.host}</span>
             )}

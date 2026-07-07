@@ -64,7 +64,10 @@ export interface ActionItemData {
   host: string;
   risk: ActionItemRisk;
   action: string | null;
+  /** First target — kept for back-compat consumers; targets is the full list. */
   target: Record<string, unknown> | null;
+  /** All targets of a batched item (one action × N objects, one plan/token). */
+  targets: Record<string, unknown>[] | null;
   evidence: string[];
   actionable: boolean;
   validation: string | null;
@@ -422,6 +425,15 @@ function normalizeActionItems(raw: unknown): ActionItemData[] {
     if (!title) continue;
     const risk = String(item.risk || 'amber');
     const action = item.action ? String(item.action) : null;
+    const singleTarget =
+      item.target && typeof item.target === 'object' && !Array.isArray(item.target)
+        ? (item.target as Record<string, unknown>)
+        : null;
+    const targets = Array.isArray(item.targets)
+      ? item.targets
+          .filter((t): t is Record<string, unknown> => Boolean(t) && typeof t === 'object' && !Array.isArray(t))
+          .slice(0, 20)
+      : null;
     out.push({
       id: String(item.id || `ai-${out.length}-${Date.now().toString(16)}`),
       title,
@@ -429,10 +441,8 @@ function normalizeActionItems(raw: unknown): ActionItemData[] {
       host: String(item.host || 'local'),
       risk: risk === 'red' || risk === 'green' ? risk : 'amber',
       action,
-      target:
-        item.target && typeof item.target === 'object' && !Array.isArray(item.target)
-          ? (item.target as Record<string, unknown>)
-          : null,
+      target: singleTarget ?? (targets?.[0] || null),
+      targets: targets && targets.length > 0 ? targets : singleTarget ? [singleTarget] : null,
       evidence: Array.isArray(item.evidence) ? item.evidence.map(String).slice(0, 6) : [],
       actionable: Boolean(item.actionable) && action !== null,
       validation: item.validation ? String(item.validation) : null,
@@ -723,7 +733,15 @@ function handoffLine(
     ? ` [${item.id}]`
     : '';
   const itemRef = forModel ? ` item_ref=${JSON.stringify({ batchId, itemId: item.id })}` : '';
-  const head = `${index + 1}.${ref} ${item.title} — action=${item.action} host=${item.host} target=${JSON.stringify(item.target)}${itemRef}`;
+  const batched = item.targets && item.targets.length > 1;
+  // Batched items carry the full targets[] for the model (ONE plan call with
+  // targets); the display variant shows a compact ×N instead of raw JSON.
+  const targetPart = batched
+    ? forModel
+      ? `targets=${JSON.stringify(item.targets)}`
+      : `×${item.targets!.length} targets`
+    : `target=${JSON.stringify(item.target)}`;
+  const head = `${index + 1}.${ref} ${item.title} — action=${item.action} host=${item.host} ${targetPart}${itemRef}`;
   const why = item.why ? `\n   why: ${item.why}` : '';
   const evidence = item.evidence.length > 0 ? `\n   evidence: ${item.evidence.join(' | ')}` : '';
   return head + why + evidence;
@@ -774,6 +792,7 @@ export function submitActionItemsToActuator(
   const text =
     `Action-item batch handoff (batch ${batchId}, ${actionable.length} item(s) selected by the user from another agent's findings).\n` +
     `Plan EVERY item below — one plan_admin_action call per item, passing its item_ref verbatim. ` +
+    `Items carrying targets=[...] are batched: pass the targets array as-is in that ONE call (one plan, one token, N targets). ` +
     `Present each plan and WAIT for my approval. Do NOT execute anything yet.\n\n` +
     actionable.map((item, i) => handoffLine(batchId, item, i, true)).join('\n');
   const display =

@@ -263,13 +263,14 @@ def compute_cost(client, host='local', group_by='project', top_n=10):
 
 # ── config-inspect ───────────────────────────────────────────────────────────
 
-_CONFIG_DOMAINS = ('connections', 'code-envs', 'plugins', 'llms')
+_CONFIG_DOMAINS = ('connections', 'code-envs', 'plugins', 'llms', 'clusters')
 
 
 def config_inspect(client, host='local', domain='connections', detail=None,
                    name_filter=None, top_n=15):
     """Per-domain configuration summaries. `detail` unlocks slower drill-downs:
-    connections+health (probe), plugins+usage (project scan)."""
+    connections+health (probe), plugins+usage (project scan), clusters+health
+    (reachability sweep)."""
     if domain not in _CONFIG_DOMAINS:
         return {'error': {'code': 'bad-input',
                           'message': 'domain must be one of: %s' % ', '.join(_CONFIG_DOMAINS)}}
@@ -379,6 +380,30 @@ def config_inspect(client, host='local', domain='connections', detail=None,
             out['unusedPlugins'] = sorted(p['id'] for p in rows if not p['projectsUsingCount'])[:top_n * 2]
             out['mostUsed'] = shaping.top_rows(rows, 'projectsUsingCount', top_n)
 
+    elif domain == 'clusters':
+        data = client.get('/api/k8s-insights/clusters', host=host)
+        rows = data.get('clusters') or []
+        if flt:
+            rows = [c for c in rows if flt in (c.get('id') or '').lower()
+                    or flt in (c.get('name') or '').lower()]
+        out['totalDiscovered'] = data.get('totalDiscovered')
+        out['unavailableCount'] = len(data.get('unavailable') or [])
+        out['clusters'] = [shaping.pick(c, ('id', 'name', 'state', 'architecture', 'type'))
+                           for c in rows[:max(1, top_n * 2)]]
+        if detail == 'health':
+            try:
+                health = client.get('/api/k8s-insights/clusters/health', host=host, heavy=True)
+                probes = health.get('clusters') or []
+                if flt:
+                    probes = [p for p in probes if flt in (p.get('id') or '').lower()]
+                out['reachability'] = {
+                    'ok': sum(1 for p in probes if p.get('ok')),
+                    'failing': [shaping.pick(p, ('id', 'errorClass', 'errorSummary'))
+                                for p in probes if not p.get('ok')][:top_n],
+                }
+            except ToolkitError as exc:
+                out['reachabilityError'] = exc.message
+
     elif domain == 'llms':
         data = client.get('/api/llms', host=host)
         llms = data.get('llms') or []
@@ -461,8 +486,8 @@ def storage_footprint(client, host='local', top_n=10, min_size_gb=0):
     for row in top:
         buckets = (breakdown_by_key.get(row.get('projectKey')) or {}).get('buckets') or []
         row['sizeBreakdown'] = [
-            {'what': b.get('label'), 'location': b.get('location'),
-             'size': _fmt_bytes(b.get('bytes') or 0)}
+            {'what': b.get('label'), 'bucketKey': b.get('name'),
+             'location': b.get('location'), 'size': _fmt_bytes(b.get('bytes') or 0)}
             for b in buckets[:3]]
     inactive_by_key = {}
     try:
@@ -511,10 +536,20 @@ def k8s_health(client, host='local', cluster=None, top_n=10):
     try:
         health = client.get('/api/k8s-insights/clusters/health', host=host, heavy=True)
         probes = health.get('clusters') or []
+        failing = []
+        for p in probes:
+            if p.get('ok'):
+                continue
+            row = shaping.pick(p, ('id', 'errorClass', 'errorSummary'))
+            # DNS-dead endpoint ⇒ the cluster is gone and this is a stale
+            # attachment — mechanically mappable to cluster-detach. Other
+            # error classes (auth, timeout) need investigation first.
+            if p.get('errorClass') == 'dns':
+                row['suggestedAction'] = 'cluster-detach'
+            failing.append(row)
         out['reachability'] = {
             'ok': sum(1 for p in probes if p.get('ok')),
-            'failing': [shaping.pick(p, ('id', 'errorClass', 'errorSummary'))
-                        for p in probes if not p.get('ok')][:top_n],
+            'failing': failing[:top_n],
         }
     except ToolkitError as exc:
         out['reachabilityError'] = exc.message

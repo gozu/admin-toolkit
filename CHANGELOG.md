@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.675] - 2026-07-07
+
+### Fixed
+- **Trace Explorer showed no traces after (re-)provisioning**: `_configure_webapp` wrote the explorer's config under `params.config`, but plugin-webapp config lives at the TOP LEVEL of the settings raw on DSS 14.7 — the save silently dropped it, leaving `config: {}` and an explorer with no dataset wired. Also the interaction-logging trace column is `dku_trace`, not `trace` (live 14.7 schema), so even a correctly-placed config loaded 0 traces. Both live explorers (tam 7Qx3DM4 on plugin v1.4.0, akaos jDg9liR on v1.3.1) were repaired in place and verified serving traces; the `readTraceFromLS` handoff contract is unchanged in plugin v1.4.0.
+
 ## [0.4.674] - 2026-07-07
 
 ### Added

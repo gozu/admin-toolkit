@@ -29,11 +29,12 @@ def test_batched_targets_one_item():
     assert out['validation'] is None
 
 
-def test_targets_capped_at_20():
+def test_large_target_list_uncapped():
     targets = [{'name': 'env%d' % i} for i in range(25)]
     out = _one([], action='code-env-delete', targets=targets)
-    assert out['targetCount'] == 20
-    assert 'capped at 20' in out['validation']
+    assert out['targetCount'] == 25
+    assert out['targets'] == targets
+    assert out['validation'] is None
 
 
 def test_non_batchable_multi_target_keeps_first():

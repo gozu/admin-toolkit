@@ -410,7 +410,7 @@ targets?: [target dicts] for several objects under ONE item (batchable actions o
 evidence: [strings]}.
 Set action ONLY when it maps exactly to one of: <full catalog> — target shapes:
 <generated from atk_agent_common.actions.TARGET_SHAPES — single source, never edited by
-hand>. Batchable actions accept targets: [dict, ...] (max 20) — several objects, same
+hand>. Batchable actions accept targets: [dict, ...] — several objects, same
 action, ONE plan and ONE confirm token. Items with no valid action become advisory
 (still shown, not executable). Call ONCE, at the end of the investigation.
 ```
@@ -424,10 +424,10 @@ Normalization rules (`action_items.propose_action_items`):
   500, evidence entries to 300 chars / max 6.
 - `risk` normalized to `red|amber|green`; anything else → `amber` + a
   `validation` note.
-- `targets[]` (batching): capped at **20** per item; non-dict entries dropped
-  with a note; >1 target on a non-batchable action keeps the first target only
-  (noted). Output items carry `targets` + `targetCount`, with `target`
-  mirroring `targets[0]` for back-compat.
+- `targets[]` (batching): uncapped (was 20 pre-0.4.678); non-dict entries
+  dropped with a note; >1 target on a non-batchable action keeps the first
+  target only (noted). Output items carry `targets` + `targetCount`, with
+  `target` mirroring `targets[0]` for back-compat.
 - An `action` not in the actuator catalog, or an action without any target
   dict → **downgraded to advisory** (`actionable:false`, `action:null`) with a
   `validation` note. *Never silently dropped* — the human still sees the finding.
@@ -614,7 +614,7 @@ descriptions quote — the catalog can never drift from its docs). Patterns:
 backend red route, pure dataikuapi on `g.client` (fleet-routable), **B-macro**
 = backend red route → ADMINTOOLKIT macro + policy engine.
 
-**Batching**: actions marked ⨯N accept `targets: [dict, ...]` (max 20) — ONE
+**Batching**: actions marked ⨯N accept `targets: [dict, ...]` (uncapped) — ONE
 plan, ONE confirm token, per-target execution results (continue-on-error,
 `ok/partial/error` overall status, ONE audit row).
 

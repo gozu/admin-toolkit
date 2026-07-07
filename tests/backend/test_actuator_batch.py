@@ -84,11 +84,16 @@ def test_non_batchable_refused():
                                             {'configName': 'b', 'changes': {'memLimitMB': 1}}])
 
 
-def test_batch_cap_refused():
+def test_large_batch_uncapped():
+    """No batch-size ceiling (the 20-target cap was removed in 0.4.678) —
+    23 targets = the real-world dataset-delete sweep that hit the old cap."""
     client = FakeClient()
-    too_many = [{'path': 'sparkSettings.sparkEnabled', 'newValue': True}] * 21
-    with pytest.raises(ToolkitError, match='capped at 20'):
-        actuator.plan_admin_action(client, action='settings-set', targets=too_many)
+    many = [{'path': 'sparkSettings.sparkEnabled', 'newValue': True}] * 23
+    plan = actuator.plan_admin_action(client, action='settings-set', targets=many)
+    assert plan['plan']['targetCount'] == 23
+    assert len(plan['canonicalTarget']['batchTargets']) == 23
+    assert confirm.verify(PASSWORD, plan['confirm_token'], 'settings-set', 'local',
+                          plan['canonicalTarget'])
 
 
 def test_target_and_targets_both_refused():

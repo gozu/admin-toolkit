@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.678] - 2026-07-07
+
+### Changed
+- **Batch target cap removed**: batchable actions no longer cap `targets[]` at 20 — neither at proposal time (`propose_action_items` silently truncated with a "targets capped at 20 (had N)" note) nor at plan time (`plan_admin_action` raised). A 23-dataset `dataset-delete` sweep now goes through as ONE item / ONE plan / ONE confirm token / ONE audit row, per-target continue-on-error as before. Tool descriptors, sensor prompt addendum and docs updated to match.
+
 ## [0.4.675] - 2026-07-07
 
 ### Fixed

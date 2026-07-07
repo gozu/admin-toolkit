@@ -12,6 +12,17 @@ import logging
 
 logger = logging.getLogger('atk-agents')
 
+
+def resolve_connection(settings):
+    """Audit-DB connection from plugin settings — the same fallback chain as
+    db_adapter.load_agents_audit_config (the backend's read side): the
+    dedicated audit param first, then the legacy Story key, then the triage
+    connection. Passing only triage_connection silently skips auditing on
+    instances that configured the dedicated param (live-acceptance catch)."""
+    return ((settings.get('agents_audit_postgres_connection')
+             or settings.get('story_postgres_connection')
+             or settings.get('triage_connection') or '').strip() or None)
+
 # One-time move of tables written under the removed Story feature's schema.
 # Runs in every schema-ensure; the guards make it a no-op once migrated.
 _MIGRATE_LEGACY_SQL = """

@@ -915,7 +915,7 @@ def execute_admin_action(client, host='local', action=None, target=None,
         # provenance (e.g. action-item batch/item refs) lands in the params
         # column so audit rows can be traced back to the proposing checklist.
         # A batch is ONE audit row: the signed target carries every entry.
-        audit_id = audit.record(settings.get('triage_connection'), agent_name, llm_id, host,
+        audit_id = audit.record(audit.resolve_connection(settings), agent_name, llm_id, host,
                                 action, target, provenance, confirm.token_hash(confirm_token),
                                 status, snippet)
     out = {'action': action, 'host': host, 'target': target, 'status': status,
@@ -930,7 +930,7 @@ def execute_admin_action(client, host='local', action=None, target=None,
     else:
         changes = _settings_changes_from_result(action, target, result) if status == 'ok' else []
     if changes:
-        written = audit.record_settings_changes(settings.get('triage_connection'), host, changes,
+        written = audit.record_settings_changes(audit.resolve_connection(settings), host, changes,
                                                 agent=agent_name, audit_id=audit_id)
         if written is None:
             out['historyWarning'] = ('Settings-change history NOT recorded (audit DB not '

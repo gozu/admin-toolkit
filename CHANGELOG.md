@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.674] - 2026-07-07
+
+### Added
+- **Dataset flow lineage for agents**: `config_inspect` `domain='datasets'` now takes `detail='usage'` — per-dataset producing/consuming recipes (from recipe IO), webapp and scenario name-token references (matched server-side against settings blobs that are never returned to the agent — they can carry `apiKey`), the `exposed` flag, plus two rollups: `unreferenced` (no direct reference at all) and `deleteCandidates` (not reachable walking upstream from any exposed, webapp-referenced or active-scenario-referenced dataset). Closes the gap where the agent could list a project's datasets but could not say which ones the current webapps/flow still use. Dynamically-built dataset names are invisible to the name scan — the response says so.
+- **`dataset-delete` action (49th)**: red, **IRREVERSIBLE**, batchable. The definition JSON (schema + settings) is backed up to the toolkit backup folder first; the data is not. `dropData=true` also drops the underlying files/tables. The planner grounds on the new lineage inventory: exposed datasets are refused without `ackExposed`, datasets with consuming recipes / webapp references / active-scenario references are refused without `ackReferenced`; orphaned producing recipes and inactive-scenario references are surfaced as warnings. Consumers and exposure are re-checked at execute time.
+
 ## [0.4.671] - 2026-07-07
 
 ### Added

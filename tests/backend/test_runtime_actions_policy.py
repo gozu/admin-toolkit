@@ -261,6 +261,103 @@ def test_impl_dataset_clear_recheck_exposure():
     assert out['ok'] is False and 'ackExposed' in out['error']
 
 
+def _delete_inv(row):
+    """Fake gets for _plan_dataset_delete: backup folder + usage inventory."""
+    gets = {'/api/managed-folders': {'folders': [{'id': 'F1', 'name': 'backups'}]}}
+    gets.update(_inv('datasets', {'datasets': [row]}, detail='usage', projectKey='P1'))
+    return gets
+
+
+def test_dataset_delete_refuses_exposed_without_ack():
+    from atk_agent_common.actions import storage
+    row = {'name': 'shared_ds', 'type': 'PostgreSQL', 'exposed': True,
+           'producers': [], 'consumers': [], 'webappRefs': [], 'scenarioRefs': []}
+    client = FakeToolkitClient(_delete_inv(row))
+    with pytest.raises(ToolkitError) as err:
+        storage._plan_dataset_delete(client, 'local',
+                                     {'projectKey': 'P1', 'datasetName': 'shared_ds'}, {})
+    assert 'EXPOSED' in str(err.value)
+    canonical, plan = storage._plan_dataset_delete(
+        client, 'local', {'projectKey': 'P1', 'datasetName': 'shared_ds',
+                          'ackExposed': True}, {})
+    assert canonical == {'projectKey': 'P1', 'datasetName': 'shared_ds',
+                         'dropData': False, 'ackExposed': True}
+    assert plan['irreversible'] is True
+
+
+def test_dataset_delete_refuses_referenced_without_ack():
+    from atk_agent_common.actions import storage
+    row = {'name': 'mid', 'type': 'Filesystem', 'exposed': False,
+           'producers': ['r1'], 'consumers': ['r2'],
+           'webappRefs': ['app (STANDARD)'], 'scenarioRefs': ['mon (inactive)']}
+    client = FakeToolkitClient(_delete_inv(row))
+    with pytest.raises(ToolkitError) as err:
+        storage._plan_dataset_delete(client, 'local',
+                                     {'projectKey': 'P1', 'datasetName': 'mid'}, {})
+    assert 'referenced' in str(err.value)
+    canonical, plan = storage._plan_dataset_delete(
+        client, 'local', {'projectKey': 'P1', 'datasetName': 'mid',
+                          'ackReferenced': True, 'dropData': True}, {})
+    assert canonical == {'projectKey': 'P1', 'datasetName': 'mid',
+                         'dropData': True, 'ackReferenced': True}
+    # orphaned producer + inactive scenario surfaced as warnings, not refusals
+    assert any('ORPHANED' in w for w in plan['warnings'])
+    assert any('INACTIVE' in w for w in plan['warnings'])
+
+
+def test_dataset_delete_inactive_scenario_ref_alone_does_not_refuse():
+    from atk_agent_common.actions import storage
+    row = {'name': 'old_out', 'type': 'Filesystem', 'exposed': False,
+           'producers': [], 'consumers': [], 'webappRefs': [],
+           'scenarioRefs': ['mon (inactive)']}
+    client = FakeToolkitClient(_delete_inv(row))
+    canonical, plan = storage._plan_dataset_delete(
+        client, 'local', {'projectKey': 'P1', 'datasetName': 'old_out'}, {})
+    assert canonical == {'projectKey': 'P1', 'datasetName': 'old_out',
+                         'dropData': False}
+    assert any('INACTIVE' in w for w in plan['warnings'])
+
+
+def test_impl_dataset_delete_recheck_exposure_and_consumers():
+    class _Settings:
+        def __init__(self, objs):
+            self._objs = objs
+
+        def get_raw(self):
+            return {'exposedObjects': {'objects': self._objs}}
+
+    class _Project:
+        def __init__(self, objs, recipes):
+            self._objs, self._recipes = objs, recipes
+
+        def get_settings(self):
+            return _Settings(self._objs)
+
+        def list_recipes(self):
+            return self._recipes
+
+        def get_dataset(self, name):
+            raise AssertionError('must not delete without the required ack')
+
+    class _Client:
+        def __init__(self, project):
+            self._project = project
+
+        def get_project(self, pk):
+            return self._project
+
+    exposed = _Client(_Project([{'type': 'DATASET', 'localName': 'ds'}], []))
+    out = admin_actions._impl_dataset_delete(exposed, {
+        'projectKey': 'P1', 'datasetName': 'ds', 'ackExposed': False})
+    assert out['ok'] is False and 'ackExposed' in out['error']
+
+    consumed = _Client(_Project([], [
+        {'name': 'r2', 'inputs': {'main': {'items': [{'ref': 'ds'}]}}, 'outputs': {}}]))
+    out = admin_actions._impl_dataset_delete(consumed, {
+        'projectKey': 'P1', 'datasetName': 'ds', 'ackReferenced': False})
+    assert out['ok'] is False and 'ackReferenced' in out['error']
+
+
 def test_fs_cleanup_planner_scopes_and_defaults():
     from atk_agent_common.actions import storage
     scan = {'ok': True, 'totalDirs': 3, 'totalBytes': 3 * 1024 ** 3, 'totalGB': 3.0,

@@ -382,7 +382,7 @@ JSON-serialized into `ToolMessage` content).
 | `list_hosts` | Reachable DSS hosts (id, label, url); `probe=true` checks reachability. |
 | `instance_health` | Health snapshot of one host: system/sanity/java/issues/score sections; `include_score=true` forces heavy scans (may return `scan_running`). |
 | `compute_cost` | Compute + LLM cost from CRU audit records, `group_by=project\|user\|context_type`. Span limited to audit retention (`span` field). |
-| `config_inspect` | One config domain: `connections\|code-envs\|plugins\|llms`, `detail=health\|usage`, `name_filter`. |
+| `config_inspect` | One config domain: `connections\|code-envs\|plugins\|llms`, `detail=health\|usage`, `name_filter`. For `datasets`, `detail=usage` adds flow lineage (producers/consumers, webapp/scenario name-refs) + `unreferenced`/`deleteCandidates` rollups. |
 | `log_errors` | backend.log error groups; `pattern=<regex>` greps the raw tail. |
 | `storage_footprint` | Project storage totals, largest projects, inactive+large cleanup candidates. Heavy scan. |
 | `k8s_health` | K8s clusters: states + reachability sweep; `cluster=<id>` runs a deep audit. |
@@ -664,6 +664,7 @@ plan, ONE confirm token, per-target execution results (continue-on-error,
 | `exports-cleanup` | `{minAgeDays?, maxDeleteGB?}` | B-macro, amber; aged export artifacts |
 | `job-logs-cleanup` | `{projectKey?, minAgeDays?, maxDeleteGB?}` | B-macro, amber; whole aged job dirs, newest N per project kept |
 | `dataset-clear` ⨯N | `{projectKey, datasetName, ackExposed?}` | B-api, red; **IRREVERSIBLE** data clear; exposed datasets refused without explicit ack |
+| `dataset-delete` ⨯N | `{projectKey, datasetName, dropData?, ackExposed?, ackReferenced?}` | B-api, red; **IRREVERSIBLE** object delete; definition JSON backed up (data is not); planner grounds on the lineage inventory — exposed needs `ackExposed`, consuming recipes / webapp refs / active-scenario refs need `ackReferenced`; consumers re-checked at execute |
 | `db-reindex` | `{connection, table}` | B-api, amber; exclusive lock; table validated against pg_stat_user_tables; 1000+-user scale gate |
 
 Deletes always back up first — a managed folder in the toolkit support project
@@ -672,7 +673,13 @@ domains go through the open backend GETs (`/api/tools/admin-actions/inventory`
 with `domain=scenarios|webapps|jobs|notebooks|continuous-activities|users|api-keys`,
 `/api/tools/admin-actions/project-setting`, `…/global-variable`); the same
 inventory backs the `config_inspect` long-tail domains (for the per-project
-ones, `name_filter` is the PROJECT KEY). Deliberately excluded (structural:
+ones, `name_filter` is the PROJECT KEY). `domain=datasets&detail=usage` is the
+lineage drill-down: per-dataset producers/consumers (recipe IO), webapp/scenario
+name-token references (matched server-side against settings blobs that are
+never returned — they can carry `apiKey`), and `unreferenced` /
+`deleteCandidates` rollups (`deleteCandidates` = not reachable walking upstream
+from any exposed, webapp-referenced or active-scenario-referenced dataset;
+dynamically-built dataset names are invisible to the name scan). Deliberately excluded (structural:
 the agent cannot do these): DSS/backend restart, install.ini / systemd /
 ulimits, license ops, external credential creation/rotation, user
 creation/password reset, SSO/LDAP paths, arbitrary shell, deleting

@@ -6,7 +6,7 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.649-blue)
+![Version](https://img.shields.io/badge/version-0.4.669-blue)
 ![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-plugin-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -33,7 +33,7 @@ It scores what it finds, explains *why* something is unhealthy, and — behind a
 
 ## Feature tour
 
-The toolkit is organized into 9 sidebar sections covering 31 pages. Pages marked **tool** perform mutations and are hidden behind the [Advanced Actions unlock](#advanced-actions-red-unlock).
+The toolkit is organized into 9 sidebar sections covering 32 pages. Pages marked **tool** perform mutations and are hidden behind the [Advanced Actions unlock](#advanced-actions-red-unlock).
 
 ### Overview
 
@@ -93,6 +93,7 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 |---|---|---|
 | Overview | Mission Control | Dense operations wall for fleet-wide health |
 | Agents | Agents | Chat with the triage/scoping/actuator agents; plan → approve → execute cards |
+| Agents | Tuning | Versioned prompt overrides + model override for the agents |
 | Overview | Summary | Composite health score, issues, instance facts |
 | Overview | Filesystem | Mount usage, data-dir treemap + directory tree |
 | Overview | Memory | System/process RAM, workload headroom |
@@ -148,11 +149,11 @@ flowchart LR
         SPA["React 19 SPA<br/>Vite + Tailwind + Chart.js"]
     end
     subgraph Webapp["DSS plugin webapp"]
-        API["Flask backend<br/>31 route groups, SSE streaming,<br/>caching + prewarm"]
+        API["Flask backend<br/>32 route groups, SSE streaming,<br/>caching + prewarm"]
     end
     subgraph DSS["Dataiku DSS (local or remote)"]
         PYAPI["DSS Python API<br/>(reads + gated writes)"]
-        MACROS["11 privileged macros<br/>(ADMINTOOLKIT project)"]
+        MACROS["12 privileged macros<br/>(ADMINTOOLKIT project)"]
         HOST["Host resources:<br/>filesystem, /proc, kubectl,<br/>Docker registries, runtimedb"]
     end
     SPA -->|"fetch + SSE, X-DSS-Host-Id"| API
@@ -331,8 +332,8 @@ In addition, Under Settings, you can create python notebooks with the same algor
 ```
 plugin.json                  # plugin manifest (params, version, secrets)
 webapps/admin-toolkit/       # Flask webapp entrypoint
-python-lib/                  # backend: adk_backend/ (31 route groups) + shared libs
-python-runnables/            # 11 host-bound macros (metrics, process, k8s, images, db, cs, cru, agent-triage, log-cleaner, docker-governor, k8s-apply)
+python-lib/                  # backend: adk_backend/ (32 route groups) + shared libs
+python-runnables/            # 12 host-bound macros (metrics, process, k8s, images, db, cs, cru, agent-triage, log-cleaner, docker-governor, k8s-apply, fs-cleanup)
 python-lib/atk_agent_common/ # agents layer shared lib (tools impl, actuator, triage, audit)
 python-agents/               # 3 plugin agents (health-triage, scoping-architect, ops-actuator)
 python-agent-tools/          # 11 agent tools over the toolkit's sensor APIs

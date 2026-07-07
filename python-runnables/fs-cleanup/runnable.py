@@ -1,4 +1,5 @@
-"""FS Cleanup macro — policy-scoped filesystem deletion (webapp run dirs).
+"""FS Cleanup macro — policy-scoped filesystem deletion (webapp run dirs +
+the aged-entry storage tail: joblogs / tmp / exports).
 
 The macro NEVER trusts a passed list: `delete` re-walks the filesystem and
 re-applies atk_agent_common.policies.fs_paths per run directory immediately
@@ -151,6 +152,70 @@ def _candidate_dirs(dip_home, webapp_key, min_age_days, keep_last_runs, exclusio
     return out
 
 
+def _delete_aged(dip_home, policy, group, min_age_days, keep_last,
+                 max_delete_gb, dry_run):
+    """Aged-entry delete: re-enumerate through aged_candidates, re-apply the
+    per-entry policy floor immediately before each removal."""
+    now = time.time()
+    scan = fs_paths.scan_aged_entries(dip_home, policy, group=group or None,
+                                      min_age_days=min_age_days,
+                                      keep_last=keep_last, now=now)
+    cap_bytes = float(max_delete_gb) * (1024 ** 3)
+    if scan['totalBytes'] > cap_bytes:
+        return {
+            'ok': False,
+            'error': 'cap-exceeded',
+            'message': ('Delete candidates total %.2f GB which exceeds the %s GB cap — '
+                        'nothing was deleted. Raise max_delete_gb or narrow the scope.'
+                        % (scan['totalBytes'] / (1024 ** 3), max_delete_gb)),
+            'candidateDirs': scan['totalDirs'],
+            'candidateBytes': scan['totalBytes'],
+        }
+    per_group = {}
+    skipped = []
+    reclaimed = 0
+    deleted = 0
+    for group_name, full, _mtime in fs_paths.aged_candidates(
+            dip_home, policy, group=group or None, keep_last=keep_last):
+        out = per_group.setdefault(group_name, {'deleted': 0, 'reclaimedBytes': 0,
+                                                'skipped': 0, 'sample': []})
+        ok, reason = fs_paths.is_deletable_aged_entry(
+            full, dip_home, policy, min_age_days, now=now)
+        if not ok:
+            out['skipped'] += 1
+            if len(skipped) < 20:
+                skipped.append({'path': full, 'reason': reason})
+            continue
+        size = fs_paths._entry_size(full)
+        if not dry_run:
+            try:
+                if os.path.isdir(full) and not os.path.islink(full):
+                    shutil.rmtree(full)
+                else:
+                    os.remove(full)
+            except OSError as exc:
+                out['skipped'] += 1
+                if len(skipped) < 20:
+                    skipped.append({'path': full, 'reason': 'remove-failed: %s' % exc})
+                continue
+        out['deleted'] += 1
+        out['reclaimedBytes'] += size
+        reclaimed += size
+        deleted += 1
+        if len(out['sample']) < fs_paths.SAMPLE_LIMIT:
+            out['sample'].append(full)
+    return {
+        'ok': True,
+        'dryRun': bool(dry_run),
+        'policy': policy,
+        'groups': per_group,
+        'skippedDetail': skipped,
+        'totalDeletedRuns': deleted,
+        'totalReclaimedBytes': reclaimed,
+        'totalReclaimedGB': round(reclaimed / (1024 ** 3), 3),
+    }
+
+
 class MyRunnable(Runnable):
     def __init__(self, project_key, config, plugin_config):
         self.project_key = project_key
@@ -164,9 +229,14 @@ class MyRunnable(Runnable):
         operation = str(self.config.get('operation') or '').strip().lower()
         policy = str(self.config.get('policy') or 'webappruns').strip().lower()
         target_project = str(self.config.get('project_key') or '').strip()
+        aged_spec = fs_paths.AGED_POLICIES.get(policy)
+        default_age = aged_spec['default_min_age_days'] if aged_spec else 7
+        default_keep = aged_spec['default_keep_last'] if aged_spec else 2
         try:
-            min_age_days = int(self.config.get('min_age_days') or 7)
-            keep_last_runs = int(self.config.get('keep_last_runs') or 2)
+            min_age_days = int(self.config.get('min_age_days') or default_age)
+            keep_last_runs = int(self.config.get('keep_last_runs')
+                                 if self.config.get('keep_last_runs') not in (None, '')
+                                 else default_keep)
             max_delete_gb = int(self.config.get('max_delete_gb') or 50)
         except (TypeError, ValueError):
             return json.dumps({'ok': False, 'error': 'min_age_days, keep_last_runs and '
@@ -176,25 +246,41 @@ class MyRunnable(Runnable):
         if not dip_home:
             return json.dumps({'ok': False, 'error': 'DIP_HOME not set'})
         try:
-            if policy != 'webappruns':
+            if policy == 'webappruns':
+                if operation == 'scan':
+                    exclusions, warnings = _running_webapp_keys(target_project or None)
+                    result = fs_paths.scan_webappruns(
+                        dip_home, project_key=target_project or None,
+                        min_age_days=min_age_days, keep_last_runs=keep_last_runs,
+                        running_exclusions=exclusions)
+                    result.update({'ok': True, 'policy': policy, 'minAgeDays': min_age_days,
+                                   'keepLastRuns': keep_last_runs,
+                                   'runningExcluded': sorted(exclusions),
+                                   'totalGB': round(result['totalBytes'] / (1024 ** 3), 3),
+                                   'warnings': warnings or None})
+                    return json.dumps(result)
+                if operation == 'delete':
+                    return json.dumps(_delete_webappruns(
+                        dip_home, target_project, min_age_days, keep_last_runs,
+                        max_delete_gb, dry_run))
+            elif policy in fs_paths.AGED_POLICIES:
+                if operation == 'scan':
+                    result = fs_paths.scan_aged_entries(
+                        dip_home, policy, group=target_project or None,
+                        min_age_days=min_age_days, keep_last=keep_last_runs)
+                    result.update({'ok': True, 'policy': policy,
+                                   'minAgeDays': min_age_days,
+                                   'keepLast': keep_last_runs,
+                                   'totalGB': round(result['totalBytes'] / (1024 ** 3), 3)})
+                    return json.dumps(result)
+                if operation == 'delete':
+                    return json.dumps(_delete_aged(
+                        dip_home, policy, target_project, min_age_days,
+                        keep_last_runs, max_delete_gb, dry_run))
+            else:
                 return json.dumps({'ok': False, 'error': 'unknown-policy',
-                                   'message': 'Only the webappruns policy is implemented.'})
-            if operation == 'scan':
-                exclusions, warnings = _running_webapp_keys(target_project or None)
-                result = fs_paths.scan_webappruns(
-                    dip_home, project_key=target_project or None,
-                    min_age_days=min_age_days, keep_last_runs=keep_last_runs,
-                    running_exclusions=exclusions)
-                result.update({'ok': True, 'policy': policy, 'minAgeDays': min_age_days,
-                               'keepLastRuns': keep_last_runs,
-                               'runningExcluded': sorted(exclusions),
-                               'totalGB': round(result['totalBytes'] / (1024 ** 3), 3),
-                               'warnings': warnings or None})
-                return json.dumps(result)
-            if operation == 'delete':
-                return json.dumps(_delete_webappruns(
-                    dip_home, target_project, min_age_days, keep_last_runs,
-                    max_delete_gb, dry_run))
+                                   'message': 'Unknown policy %r (known: webappruns, %s).'
+                                              % (policy, ', '.join(sorted(fs_paths.AGED_POLICIES)))})
             return json.dumps({'ok': False, 'error': 'Unknown operation: %s' % operation})
         except fs_paths.FsPolicyError as exc:
             return json.dumps({'ok': False, 'error': 'policy-refused', 'message': str(exc)})

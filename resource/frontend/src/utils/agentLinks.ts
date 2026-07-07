@@ -166,6 +166,15 @@ export function dssLinkForAction(
       return t.login ? `${base}/admin/security/users/edit/${enc(String(t.login))}/` : null;
     case 'variables-set':
       return `${base}/admin/general/variables/`;
+    case 'dataset-clear':
+      return t.projectKey && t.datasetName
+        ? `${base}/projects/${enc(String(t.projectKey))}/datasets/${enc(String(t.datasetName))}/`
+        : null;
+    case 'job-logs-cleanup':
+      return t.projectKey ? `${base}/projects/${enc(String(t.projectKey))}/jobs/` : null;
+    case 'db-reindex':
+      return t.connection ? `${base}/admin/connections/${enc(String(t.connection))}/` : null;
+    // tmp-cleanup / exports-cleanup act on host filesystem paths — no DSS page.
     case 'plugin-deploy':
       return t.pluginId
         ? `${hostBaseUrl(t.targetHostId ? String(t.targetHostId) : hostId)}/plugins/${enc(String(t.pluginId))}/summary/`

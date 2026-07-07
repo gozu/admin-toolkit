@@ -19,7 +19,8 @@ class ConfigInspectTool(BaseAgentTool):
                 "detach candidates; detail='health' adds the reachability sweep), 'users'"
                 "(logins, enabled state, groups), 'api-keys' (personal + global, secrets"
                 "never shown), and the per-project domains 'scenarios', 'webapps',"
-                "'notebooks', 'jobs' — for those, name_filter is the PROJECT KEY (required)."
+                "'notebooks', 'jobs', 'datasets' (rows carry exposed=true when shared to "
+                "other projects) — for those, name_filter is the PROJECT KEY (required)."
                 "Use name_filter as a substring filter elsewhere."),
             "inputSchema": {
                 "$id": "https://dataiku.com/agents/tools/atk/config-inspect/input",
@@ -29,7 +30,7 @@ class ConfigInspectTool(BaseAgentTool):
                     "host": adapter.HOST_PROPERTY,
                     "domain": {
                         "type": "string",
-                        "enum": ["connections", "code-envs", "plugins", "llms", "clusters", "scenarios", "webapps", "users", "api-keys", "notebooks", "jobs"],
+                        "enum": ["connections", "code-envs", "plugins", "llms", "clusters", "scenarios", "webapps", "users", "api-keys", "notebooks", "jobs", "datasets"],
                         "description": "Configuration domain to inspect."
                     },
                     "detail": {

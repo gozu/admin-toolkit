@@ -12,8 +12,12 @@ Policies:
       plus an `initial/` dir and `instance-info.json` per webapp — those are
       never deletable (only run_* directories match). `tmp/webappruns` is
       kept as a legacy fallback root for older layouts.
-  tmp / exports / joblogs — reserved for the storage-tail phase; scanning an
-      unimplemented policy raises so nothing silently no-ops.
+  tmp / exports / joblogs — "aged entries" policies. Deletable unit =
+      <root>/<group>/<entry> (depth 2): jobs/<PROJECT>/<jobDir>,
+      tmp/<bucket>/<entry>, exports/<kind>/<entry>. Group dirs themselves are
+      never deleted (DSS expects its tmp buckets to exist); entries age out by
+      NEWEST inner mtime, with keep-newest-N per group. tmp excludes the
+      webappruns bucket (legacy layout overlap with the webappruns policy).
 """
 
 import os
@@ -26,6 +30,19 @@ SAMPLE_LIMIT = 5
 # Policy name → roots relative to DIP_HOME. Deletion never leaves these.
 POLICY_ROOTS = {
     'webappruns': ('webappruns', 'tmp/webappruns'),
+    'joblogs': ('jobs',),
+    'tmp': ('tmp',),
+    'exports': ('exports',),
+}
+
+# Aged-entry policies (storage tail): per-policy defaults + excluded groups.
+AGED_POLICIES = {
+    'joblogs': {'default_min_age_days': 15, 'default_keep_last': 5,
+                'exclude_groups': ()},
+    'tmp': {'default_min_age_days': 15, 'default_keep_last': 0,
+            'exclude_groups': ('webappruns',)},
+    'exports': {'default_min_age_days': 7, 'default_keep_last': 0,
+                'exclude_groups': ()},
 }
 
 # A deletable webapp-run directory basename: run_2026-04-09-15-19-29-765.
@@ -185,3 +202,115 @@ def scan_webappruns(dip_home, project_key=None, min_age_days=7, keep_last_runs=2
                     webapps[key] = entry
     return {'webapps': webapps, 'totalDirs': total_dirs, 'totalBytes': total_bytes,
             'projectKeys': sorted(projects_seen)}
+
+
+def is_deletable_aged_entry(path, dip_home, policy, min_age_days, now=None,
+                            newest_mtime=None):
+    """Authoritative per-entry check for the aged-entry policies (joblogs /
+    tmp / exports). Enforces: known policy, symlink refusal, realpath
+    containment, depth (exactly <root>/<group>/<entry>), excluded groups, and
+    minimum age by the newest inner mtime. Keep-newest-N is the caller's
+    ordering decision — this is the floor below it."""
+    spec = AGED_POLICIES.get(policy)
+    if spec is None:
+        return False, 'not-an-aged-policy'
+    try:
+        st = os.lstat(path)
+    except OSError as exc:
+        return False, 'stat-failed: %s' % exc
+    if stat_mod.S_ISLNK(st.st_mode):
+        return False, 'symlink'
+    real = os.path.realpath(path)
+    parent = os.path.dirname(real)
+    group = os.path.basename(parent)
+    grandparent = os.path.dirname(parent)
+    roots = resolve_roots(dip_home, policy)
+    if not any(grandparent == root_real for _, root_real in roots):
+        return False, 'outside-allowed-depth'
+    if not any(_contained_under(real, root_real) for _, root_real in roots):
+        return False, 'outside-allowed-roots'
+    if group in spec['exclude_groups']:
+        return False, 'excluded-group (%s)' % group
+    now = now if now is not None else time.time()
+    if newest_mtime is None:
+        newest_mtime = _newest_mtime(real) if stat_mod.S_ISDIR(st.st_mode) else st.st_mtime
+    age_days = (now - newest_mtime) / 86400.0
+    if age_days < float(min_age_days):
+        return False, 'too-young (%.1fd < %sd)' % (age_days, min_age_days)
+    return True, 'ok'
+
+
+def _entry_size(path):
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return 0
+    if stat_mod.S_ISDIR(st.st_mode):
+        return _dir_size(path)
+    return st.st_size
+
+
+def aged_candidates(dip_home, policy, group=None, keep_last=None):
+    """[(group, path, mtime)] of keep-newest-filtered entries for one aged
+    policy (delete re-enumerates through this too — no trusted lists). The
+    per-entry policy floor is NOT applied here; callers run
+    is_deletable_aged_entry on every path."""
+    spec = AGED_POLICIES.get(policy)
+    if spec is None:
+        raise FsPolicyError('policy %r is not an aged-entry policy' % policy)
+    keep = spec['default_keep_last'] if keep_last is None else max(0, int(keep_last))
+    out = []
+    for _rel, root in resolve_roots(dip_home, policy):
+        for group_name in sorted(os.listdir(root)):
+            if group and group_name != group:
+                continue
+            if group_name in spec['exclude_groups']:
+                continue
+            group_dir = os.path.join(root, group_name)
+            if os.path.islink(group_dir) or not os.path.isdir(group_dir):
+                continue
+            entries = []
+            for name in os.listdir(group_dir):
+                full = os.path.join(group_dir, name)
+                try:
+                    mtime = os.lstat(full).st_mtime
+                except OSError:
+                    continue
+                entries.append((full, mtime))
+            entries.sort(key=lambda e: e[1], reverse=True)  # newest first
+            out.extend((group_name, full, mtime) for full, mtime in entries[keep:])
+    return out
+
+
+def scan_aged_entries(dip_home, policy, group=None, min_age_days=None,
+                      keep_last=None, now=None):
+    """Enumerate deletable aged entries. Returns {'groups': {group: {entries,
+    deletable, bytes, sample[<=5], skipped}}, 'totalDirs', 'totalBytes',
+    'projectKeys' (= group names, so the webappruns consumers keep working)}."""
+    spec = AGED_POLICIES.get(policy)
+    if spec is None:
+        raise FsPolicyError('policy %r is not an aged-entry policy' % policy)
+    now = now if now is not None else time.time()
+    age = spec['default_min_age_days'] if min_age_days is None else min_age_days
+    groups = {}
+    total_dirs = 0
+    total_bytes = 0
+    for group_name, full, _mtime in aged_candidates(dip_home, policy, group=group,
+                                                    keep_last=keep_last):
+        entry = groups.setdefault(group_name, {'entries': 0, 'deletable': 0,
+                                               'bytes': 0, 'sample': [], 'skipped': 0})
+        entry['entries'] += 1
+        ok, _reason = is_deletable_aged_entry(full, dip_home, policy, age, now=now)
+        if not ok:
+            entry['skipped'] += 1
+            continue
+        size = _entry_size(full)
+        entry['deletable'] += 1
+        entry['bytes'] += size
+        total_dirs += 1
+        total_bytes += size
+        if len(entry['sample']) < SAMPLE_LIMIT:
+            entry['sample'].append(full)
+    groups = {k: v for k, v in groups.items() if v['deletable'] or v['skipped']}
+    return {'groups': groups, 'totalDirs': total_dirs, 'totalBytes': total_bytes,
+            'projectKeys': sorted(groups)}

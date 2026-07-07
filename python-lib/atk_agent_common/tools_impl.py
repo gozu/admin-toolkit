@@ -266,9 +266,9 @@ def compute_cost(client, host='local', group_by='project', top_n=10):
 
 _CONFIG_DOMAINS = ('connections', 'code-envs', 'plugins', 'llms', 'clusters',
                    'scenarios', 'webapps', 'users', 'api-keys', 'notebooks',
-                   'jobs')
+                   'jobs', 'datasets')
 # Domains that are per-project listings: name_filter is the PROJECT KEY.
-_PROJECT_SCOPED_DOMAINS = ('scenarios', 'webapps', 'notebooks', 'jobs')
+_PROJECT_SCOPED_DOMAINS = ('scenarios', 'webapps', 'notebooks', 'jobs', 'datasets')
 
 
 def config_inspect(client, host='local', domain='connections', detail=None,
@@ -440,7 +440,7 @@ def config_inspect(client, host='local', domain='connections', detail=None,
         inv = client.get('/api/tools/admin-actions/inventory', host=host,
                          params={'domain': domain, 'projectKey': project_key})
         key = {'scenarios': 'scenarios', 'webapps': 'webapps',
-               'notebooks': 'notebooks', 'jobs': 'jobs'}[domain]
+               'notebooks': 'notebooks', 'jobs': 'jobs', 'datasets': 'datasets'}[domain]
         out['projectKey'] = project_key
         out[key] = (inv.get(key) or [])[:max(1, top_n * 2)]
         if inv.get('note'):

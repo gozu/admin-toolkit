@@ -49,7 +49,8 @@ _LEGACY_SHAPES = (
 
 # Legacy actions that accept targets[] batching (their planners already build
 # one canonical per target; the batch layer in actuator.py does the rest).
-LEGACY_BATCHABLE = frozenset({'code-env-delete', 'settings-set'})
+LEGACY_BATCHABLE = frozenset({'code-env-delete', 'settings-set', 'db-vacuum',
+                              'db-analyze', 'plugin-deploy', 'project-delete'})
 
 BATCHABLE = LEGACY_BATCHABLE | frozenset(
     spec['action'] for spec in SPECS if spec.get('batchable'))

@@ -608,6 +608,38 @@ def api_db_health_vacuum():
         return jsonify({'error': _sanitize_pg_error(str(exc))}), 500
 
 
+@bp.route('/api/tools/db-health/reindex', methods=['POST'])
+@advanced
+def api_db_health_reindex():
+    body = request.get_json(force=True, silent=True) or {}
+    connection_name = body.get('connection', '')
+    table_name = body.get('table', '')
+    validation = _validate_pg_connection(connection_name)
+    if validation:
+        return validation
+    if not table_name:
+        return jsonify({'error': 'Missing table parameter'}), 400
+
+    user_password = body.get('password', '') or _get_dbhealth_config().password or ''
+
+    # Whitelist: validate table name against pg_stat_user_tables
+    try:
+        valid_tables = _pg_query_rows(connection_name,
+            "SELECT relname FROM pg_stat_user_tables",
+            user_password=user_password)
+        valid_names = {str(r.get('relname', '')) for r in valid_tables}
+        if table_name not in valid_names:
+            return jsonify({'error': 'Invalid table name'}), 400
+    except Exception as exc:
+        return jsonify({'error': 'Could not validate table: %s' % _sanitize_pg_error(str(exc))}), 500
+
+    try:
+        result = _pg_exec_ddl(connection_name, "REINDEX TABLE {}", table_name, user_password=user_password)
+        return jsonify(result)
+    except Exception as exc:
+        return jsonify({'error': _sanitize_pg_error(str(exc))}), 500
+
+
 @bp.route('/api/tools/db-health/analyze', methods=['POST'])
 @advanced
 def api_db_health_analyze():

@@ -379,6 +379,40 @@ export const EDU: Record<string, EduEntry> = {
       'The toolkit refuses to delete personal keys of its own identity; global keys carry no owner, so the plan tells the human to verify it is not the key the toolkit uses.',
     ],
   },
+  'action.tmp-cleanup': {
+    title: 'tmp-cleanup',
+    body: [
+      'Deletes aged entries INSIDE the DIP_HOME tmp buckets (tmp/<bucket>/<entry>, older than the age gate by newest inner mtime). The bucket directories themselves — and the webappruns bucket — are never touched.',
+      'Depth, containment, symlink refusal and the age gate are re-applied per entry inside the fs-cleanup macro at delete time.',
+    ],
+  },
+  'action.exports-cleanup': {
+    title: 'exports-cleanup',
+    body: [
+      'Deletes aged export artifacts (exports/<kind>/<entry>) — one-shot downloads users can regenerate from the original object.',
+    ],
+  },
+  'action.job-logs-cleanup': {
+    title: 'job-logs-cleanup',
+    body: [
+      'Deletes whole aged job directories (jobs/<PROJECT>/<jobDir>) — activity logs and job metadata go with them; the newest N per project always survive. Rubric: job-log severity is judged by share of the /data disk.',
+      'Optionally scoped to one project. The cap (maxDeleteGB) aborts the whole delete when candidates exceed it.',
+    ],
+  },
+  'action.dataset-clear': {
+    title: 'dataset-clear',
+    body: [
+      'Clears the DATA of one dataset — IRREVERSIBLE (schema and settings survive; rebuilding regenerates the data). Datasets exposed to other projects are refused unless the plan carries an explicit ackExposed the admin approved in conversation.',
+      'Batchable for sweeping stale managed datasets.',
+    ],
+  },
+  'action.db-reindex': {
+    title: 'db-reindex',
+    body: [
+      'REINDEX one runtime-DB table (table name validated against pg_stat_user_tables inside the backend — never raw SQL). Takes an exclusive lock for the duration — maintenance-window material.',
+      'Same scale gate as vacuum/analyze: propose only on ~1000+-user instances.',
+    ],
+  },
   'concept.auto-remediation': {
     title: 'Auto-remediation',
     body: [

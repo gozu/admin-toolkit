@@ -49,6 +49,9 @@ REMEDIATIONS = [
     ('disk-warning-*', [
         _spec('log-cleanup', 'low', 'Early cleanup keeps the warning from becoming critical.',
               auto=True, build_target=_log_cleanup_target),
+        _spec('job-logs-cleanup', 'low', 'Aged job directories (jobs/<PROJECT>/<jobDir>) are '
+              'the next-safest reclaim after rotated logs — newest N per project survive; '
+              'severity is judged by share of the /data disk (rubric).'),
     ]),
 
     # ── connections ──────────────────────────────────────────────────────────
@@ -194,6 +197,8 @@ REMEDIATIONS = [
     # ── DB ───────────────────────────────────────────────────────────────────
     ('db-*', [
         _spec('db-vacuum', 'low', 'Vacuum the bloated table (locks briefly).'),
+        _spec('db-reindex', 'low', 'Rebuild badly bloated indexes (exclusive lock — '
+              'maintenance window; same 1000+-user scale gate as vacuum).'),
     ]),
 
     # ── documented gaps: detectable but NOT agent-remediable ─────────────────

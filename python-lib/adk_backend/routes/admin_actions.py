@@ -190,6 +190,22 @@ def api_admin_actions_inventory():
                     note = (note or '') + ' Notebook list truncated at 200.'
                     break
             return jsonify({'ok': True, 'notebooks': rows[:200], 'note': note})
+        if domain == 'datasets':
+            if not project_key:
+                return jsonify({'error': 'projectKey is required for datasets'}), 400
+            project = client.get_project(project_key)
+            exposed = set()
+            try:
+                raw = project.get_settings().get_raw()
+                for obj in (raw.get('exposedObjects') or {}).get('objects') or []:
+                    if (obj.get('type') or '').upper() == 'DATASET':
+                        exposed.add(obj.get('localName'))
+            except Exception:
+                pass
+            rows = [{'name': d.get('name'), 'type': d.get('type'),
+                     'exposed': d.get('name') in exposed}
+                    for d in project.list_datasets()]
+            return jsonify({'ok': True, 'datasets': rows[:300]})
         if domain == 'users':
             rows = [{'login': u.get('login'), 'displayName': u.get('displayName'),
                      'enabled': u.get('enabled', True), 'groups': u.get('groups')}
@@ -636,6 +652,27 @@ def _impl_api_key_delete(client, body):
     return {'ok': True, 'keyType': key_type, 'deleted': key_id}
 
 
+def _impl_dataset_clear(client, body):
+    project_key = body.get('projectKey') or ''
+    name = body.get('datasetName') or ''
+    ack = bool(body.get('ackExposed'))
+    project = client.get_project(project_key)
+    try:  # re-check exposure at execute time — never trust the plan
+        raw = project.get_settings().get_raw()
+        exposed = any((obj.get('type') or '').upper() == 'DATASET'
+                      and obj.get('localName') == name
+                      for obj in (raw.get('exposedObjects') or {}).get('objects') or [])
+    except Exception:
+        exposed = True  # unknown ⇒ safe side: require the ack
+    if exposed and not ack:
+        return {'ok': False, 'error': 'Dataset %s/%s is exposed to other projects — '
+                                      'clear refused without ackExposed.'
+                                      % (project_key, name)}
+    result = project.get_dataset(name).clear()
+    return {'ok': True, 'projectKey': project_key, 'datasetName': name,
+            'cleared': True, 'result': result}
+
+
 def _impl_connection_index(client, body):
     names = [str(n) for n in (body.get('connectionNames') or []) if str(n).strip()]
     if names:
@@ -670,6 +707,7 @@ _ACTION_IMPLS = {
     'connection-delete': _impl_connection_delete,
     'connection-update': _impl_connection_update,
     'connection-index': _impl_connection_index,
+    'dataset-clear': _impl_dataset_clear,
     'cluster-detach': _impl_cluster_detach,
     'cluster-stop': _impl_cluster_stop,
     'cluster-start': _impl_cluster_start,

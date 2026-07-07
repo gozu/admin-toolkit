@@ -1,7 +1,7 @@
 {
     "meta": {
         "label": "FS Cleanup",
-        "description": "Scan and delete policy-scoped filesystem debris under DIP_HOME (webapp run directories first). Roots, age gates, keep-newest-N and running-webapp exclusions are enforced inside this macro.",
+        "description": "Scan and delete policy-scoped filesystem debris under DIP_HOME: webapp run dirs, aged job dirs, tmp-bucket entries, export artifacts. Roots, depth, age gates, keep-newest-N and running-webapp exclusions are enforced inside this macro.",
         "icon": "icon-trash",
         "macroRoles": [{"type": "PROJECT_MACROS"}]
     },
@@ -19,7 +19,7 @@
         {
             "name": "policy",
             "label": "Policy",
-            "description": "Which cleanup policy to apply (currently: webappruns).",
+            "description": "Which cleanup policy to apply: webappruns, joblogs, tmp or exports.",
             "type": "STRING",
             "mandatory": true,
             "defaultValue": "webappruns"

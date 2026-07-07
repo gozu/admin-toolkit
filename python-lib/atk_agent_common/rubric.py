@@ -100,6 +100,16 @@ cloud-side cluster keeps running until removed in the cloud console — say so).
 targets. Present the plan's per-target table verbatim; one approval covers every target, \
 execution is per-target with per-target results (partial success is reported per entry). \
 Never split a homogeneous batch into N separate plans unless the user asks.
+- IRREVERSIBLE actions get named as such in your presentation, verbatim: api-key-delete \
+(the key secret cannot be regenerated — anything using it breaks immediately) and \
+cluster-stop with terminate=true (the cloud-side cluster is destroyed). No backup makes \
+these restorable; the human must hear that before confirming.
+- Account hygiene is reversible by design: user-disable never deletes (user-enable \
+reverts), and the toolkit refuses to disable its own identity or delete its own API key \
+(self-lockout guard, enforced below you).
+- Runtime stops (job-kill, scenario-kill, webapp-backend-stop, notebook-kernels-shutdown, \
+continuous-activity-stop) act through DSS APIs and are re-startable by users — say what \
+users will experience (lost session, aborted run) rather than calling them destructive.
 
 REMEDIATION-SUITE DOCTRINE (log-cleanup / docker-prune / k8s-apply-fix / settings-set / \
 code-env-consolidate):

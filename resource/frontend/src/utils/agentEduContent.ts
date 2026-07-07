@@ -213,6 +213,172 @@ export const EDU: Record<string, EduEntry> = {
       'The roots/age/keep-newest policy is enforced inside a macro on the target host, below both the agent and the backend — like log-cleanup.',
     ],
   },
+  'action.connection-index': {
+    title: 'connection-index',
+    body: [
+      'Re-indexes one or more connections (or all of them) in the DSS catalog — a read-only metadata crawl, green risk.',
+      'Useful after repairing a connection or when catalog search is stale. Large connections can take a while.',
+    ],
+  },
+  'action.cluster-stop': {
+    title: 'cluster-stop',
+    body: [
+      'Stops a DSS-managed cluster. With terminate=true the cloud-side resources are DESTROYED — that variant is irreversible and the plan says so explicitly.',
+      'Without terminate, cluster-start brings it back. Manual attachments cannot be stopped (use cluster-detach for those).',
+    ],
+  },
+  'action.cluster-start': {
+    title: 'cluster-start',
+    body: [
+      'Starts a stopped DSS-managed cluster — provisions cloud resources, so cost resumes when it comes up.',
+    ],
+  },
+  'action.cluster-pods-cleanup': {
+    title: 'cluster-pods-cleanup',
+    body: [
+      'Deletes FINISHED pods and job objects on one cluster — running workloads are untouched. Green risk: only completed/failed leftovers go away.',
+    ],
+  },
+  'action.plugin-update': {
+    title: 'plugin-update',
+    body: [
+      'Backs the current plugin version up as a zip, then updates the plugin from the Dataiku store. Rollback = re-upload the backup.',
+      'Dev plugins cannot be store-updated; code-env-based components keep their env until plugin-code-env-rebuild runs.',
+    ],
+  },
+  'action.plugin-code-env-rebuild': {
+    title: 'plugin-code-env-rebuild',
+    body: [
+      'Rebuilds the managed code env of one plugin (after an update, or when the env is broken). Running kernels keep the old env until they recycle.',
+    ],
+  },
+  'action.code-env-update': {
+    title: 'code-env-update',
+    body: [
+      'Re-resolves and updates the packages of one code env (optionally a full rebuild), then refreshes its container images when any are configured.',
+      'A failed package resolution leaves the env unchanged; running kernels keep the old env until restarted.',
+    ],
+  },
+  'action.project-export': {
+    title: 'project-export',
+    body: [
+      'Exports one project as the standard DSS zip bundle into a managed folder — a read-only snapshot, green risk, batchable.',
+      'The natural prelude to project-delete, and the cheapest way to hand a project to another instance.',
+    ],
+  },
+  'action.project-set-cluster': {
+    title: 'project-set-cluster',
+    body: [
+      'Points one project at an explicit K8s cluster (settings.k8sCluster → EXPLICIT_CLUSTER) — the fix for the "No cluster selected in project" sanity warning.',
+      'Drift-guarded and recorded in the restorable settings history.',
+    ],
+  },
+  'action.project-change-owner': {
+    title: 'project-change-owner',
+    body: [
+      'Changes the owner of one project (permissions stay as they are). The current owner is bound into the confirm token and the change lands in history.',
+      'The new owner must be an existing enabled user.',
+    ],
+  },
+  'action.project-variables-set': {
+    title: 'project-variables-set',
+    body: [
+      'Sets one PROJECT variable via a scoped path (standard.myVar / local.myVar) with a current → proposed diff. Secret-material paths are blocked.',
+      'Drift-guarded and restorable from the settings history — the project-level sibling of variables-set.',
+    ],
+  },
+  'action.job-kill': {
+    title: 'job-kill',
+    body: [
+      'Aborts one job through the DSS job API (never a Linux-level kill — DSS-managed processes respawn). Aborting a finished job is a no-op.',
+      'Batchable: several runaway jobs = one item with targets[].',
+    ],
+  },
+  'action.scenario-disable': {
+    title: 'scenario-disable',
+    body: [
+      'Turns OFF the auto-triggers of one scenario — the standard response to a failure/retry storm. Reversible with scenario-enable; the toggle lands in the restorable history.',
+      'A running instance of the scenario is not aborted by this (use scenario-kill for that).',
+    ],
+  },
+  'action.scenario-enable': {
+    title: 'scenario-enable',
+    body: [
+      'Turns the auto-triggers of one scenario back ON — the inverse of scenario-disable, same drift guard and history trail.',
+    ],
+  },
+  'action.scenario-kill': {
+    title: 'scenario-kill',
+    body: [
+      'Aborts the CURRENT run of one scenario at the DSS level. The scenario itself stays enabled — pair with scenario-disable to stop it from re-firing.',
+    ],
+  },
+  'action.scenario-run': {
+    title: 'scenario-run',
+    body: [
+      'Triggers one manual scenario run — works even when auto-triggers are disabled. The plan warns when a run is already in flight.',
+    ],
+  },
+  'action.continuous-activity-stop': {
+    title: 'continuous-activity-stop',
+    body: [
+      'Stops the continuous activity of one recipe; DSS persists the desired state, so it stays stopped until someone starts it again.',
+    ],
+  },
+  'action.webapp-backend-stop': {
+    title: 'webapp-backend-stop',
+    body: [
+      'Stops the backend of one webapp through the DSS API — users lose their session until it is started again. The go-to for zero-traffic 24/7 webapps.',
+      'Batchable; webapp-backend-restart is the recovering sibling.',
+    ],
+  },
+  'action.webapp-backend-restart': {
+    title: 'webapp-backend-restart',
+    body: [
+      'Starts (or restarts) the backend of one webapp — the standard fix for a wedged backend, and the revert for webapp-backend-stop.',
+    ],
+  },
+  'action.notebook-kernels-shutdown': {
+    title: 'notebook-kernels-shutdown',
+    body: [
+      'Shuts down the ACTIVE Jupyter kernels of one project (or the whole instance) via the DSS API. Notebook files and outputs stay on disk — only running kernels and their memory go away; users just restart.',
+      'The rubric answer to kernels alive beyond ~days. The plan lists every kernel before approval.',
+    ],
+  },
+  'action.notebook-clear-outputs': {
+    title: 'notebook-clear-outputs',
+    body: [
+      'Clears the SAVED cell outputs of one notebook — shrinks a bloated .ipynb; code cells are untouched. Outputs are not restorable, but re-running regenerates them.',
+      'Batchable: several oversized notebooks = one item.',
+    ],
+  },
+  'action.variables-set': {
+    title: 'variables-set',
+    body: [
+      'Sets one GLOBAL instance variable via a dot/index path with a current → proposed diff. Secret-material paths are blocked, and the toolkit\'s own finding whitelist is protected — agents never edit their own suppression list.',
+      'Drift-guarded and restorable from the settings history.',
+    ],
+  },
+  'action.user-disable': {
+    title: 'user-disable',
+    body: [
+      'Disables one user account — never deletes it, so user-enable reverts cleanly. The toolkit refuses to disable the identity it runs as (self-lockout guard).',
+      'The plan warns when the target is in the administrators group. Batchable for departed-user sweeps.',
+    ],
+  },
+  'action.user-enable': {
+    title: 'user-enable',
+    body: [
+      'Re-enables a disabled user account — the inverse of user-disable, same drift guard and history trail.',
+    ],
+  },
+  'action.api-key-delete': {
+    title: 'api-key-delete',
+    body: [
+      'Deletes one personal or global API key. IRREVERSIBLE: the key secret cannot be restored or regenerated — anything still using it breaks immediately.',
+      'The toolkit refuses to delete personal keys of its own identity; global keys carry no owner, so the plan tells the human to verify it is not the key the toolkit uses.',
+    ],
+  },
   'concept.auto-remediation': {
     title: 'Auto-remediation',
     body: [

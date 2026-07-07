@@ -65,8 +65,99 @@ def _exec_plugin_uninstall(client, host, target):
                                       'folderId': folder['id']})
 
 
+def _plan_plugin_update(client, host, target, params):
+    plugin_id = _base.require_str(target, 'pluginId', 'plugin-update')
+    row = _plugin_row(client, host, plugin_id)
+    folder = _base.backup_folder(client, host)
+    warnings = []
+    if row.get('isDev'):
+        warnings.append('%s is a DEV plugin — store update will fail; update it from its '
+                        'git repo or a zip instead.' % plugin_id)
+    return {'pluginId': plugin_id}, {
+        'summary': 'Back up plugin %s (currently v%s) as a zip to %r, then UPDATE it from '
+                   'the Dataiku store.' % (plugin_id, row.get('installedVersion'),
+                                           folder['name']),
+        'installedVersion': row.get('installedVersion'),
+        'backupFolder': folder,
+        'warnings': warnings or None,
+        'note': 'Rollback = re-upload the backed-up zip. Code-env-based components keep '
+                'their env until plugin-code-env-rebuild runs.',
+    }
+
+
+def _exec_plugin_update(client, host, target):
+    folder = _base.backup_folder(client, host)
+    return _base.post_backend_action(client, host, 'plugin-update',
+                                     {'pluginId': target['pluginId'],
+                                      'folderId': folder['id']})
+
+
+def _plan_plugin_code_env_rebuild(client, host, target, params):
+    plugin_id = _base.require_str(target, 'pluginId', 'plugin-code-env-rebuild')
+    row = _plugin_row(client, host, plugin_id)
+    return {'pluginId': plugin_id}, {
+        'summary': 'Rebuild the managed code env of plugin %s (v%s).'
+                   % (plugin_id, row.get('installedVersion')),
+        'installedVersion': row.get('installedVersion'),
+        'note': 'Kernels already running keep the old env until they recycle; new ones '
+                'pick up the rebuilt env.',
+    }
+
+
+def _exec_plugin_code_env_rebuild(client, host, target):
+    return _base.post_backend_action(client, host, 'plugin-code-env-rebuild',
+                                     {'pluginId': target['pluginId']})
+
+
+def _code_env_row(client, host, name):
+    # Same heavy scan + shape the legacy code-env-delete planner uses.
+    data = client.get('/api/code-envs', host=host, heavy=True,
+                      progress_path='/api/code-envs/progress')
+    envs = data.get('codeEnvs') or []
+    row = next((e for e in envs if e.get('name') == name), None)
+    if row is None:
+        names = sorted(str(e.get('name')) for e in envs)
+        raise ToolkitError(
+            'Code env %r not found on host %r. Envs: %s'
+            % (name, host, ', '.join(names[:25]) or '(none)'),
+            remediation="Check the name with config_inspect domain='code-envs'.")
+    return row
+
+
+def _plan_code_env_update(client, host, target, params):
+    name = _base.require_str(target, 'name', 'code-env-update')
+    row = _code_env_row(client, host, name)
+    force_rebuild = bool((target or {}).get('forceRebuild'))
+    lang = str((target or {}).get('lang') or row.get('lang')
+               or row.get('envLang') or 'PYTHON').upper()
+    canonical = {'name': name, 'lang': lang, 'forceRebuild': force_rebuild}
+    return canonical, {
+        'summary': 'Update packages of code env %s (%s)%s, then refresh its container '
+                   'images if any are configured.'
+                   % (name, lang, ' with a full rebuild' if force_rebuild else ''),
+        'usageCount': row.get('usageCount'),
+        'note': 'Running kernels keep the old env until restarted. A failed package '
+                'resolution leaves the env unchanged.',
+    }
+
+
+def _exec_code_env_update(client, host, target):
+    return _base.post_backend_action(client, host, 'code-env-update', {
+        'name': target['name'], 'lang': target.get('lang') or 'PYTHON',
+        'forceRebuild': bool(target.get('forceRebuild'))})
+
+
 SPECS = [
     _base.spec('plugin-uninstall',
                'plugin-uninstall {pluginId}', 'red',
                _plan_plugin_uninstall, _exec_plugin_uninstall, batchable=True),
+    _base.spec('plugin-update',
+               'plugin-update {pluginId} (store update; zip backup first)', 'amber',
+               _plan_plugin_update, _exec_plugin_update),
+    _base.spec('plugin-code-env-rebuild',
+               'plugin-code-env-rebuild {pluginId}', 'amber',
+               _plan_plugin_code_env_rebuild, _exec_plugin_code_env_rebuild),
+    _base.spec('code-env-update',
+               'code-env-update {name, lang?, forceRebuild?}', 'amber',
+               _plan_code_env_update, _exec_code_env_update),
 ]

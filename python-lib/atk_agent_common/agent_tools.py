@@ -45,8 +45,10 @@ def build_langchain_tools(client, names=None):
                          'Compute + LLM cost from CRU audit records (host, group_by=project|user|context_type, '
                          'top_n). Span limited to audit retention — check the span field.'),
         'config_inspect': (tools_impl.config_inspect,
-                           'Inspect config domain (host, domain=connections|code-envs|plugins|llms|clusters, '
-                           'detail=health|usage, name_filter, top_n).'),
+                           'Inspect config domain (host, domain=connections|code-envs|plugins|llms|clusters|'
+                           'users|api-keys|scenarios|webapps|notebooks|jobs, detail=health|usage, '
+                           'name_filter, top_n). For scenarios/webapps/notebooks/jobs, name_filter '
+                           'is the PROJECT KEY (required).'),
         'log_errors': (tools_impl.log_errors,
                        'Backend.log error groups (host, top_n); pattern=<regex> greps the raw tail.'),
         'storage_footprint': (tools_impl.storage_footprint,

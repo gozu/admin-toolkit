@@ -165,6 +165,32 @@ REMEDIATIONS = [
               'per webapp, never touches a running backend.'),
     ]),
 
+    # ── runtime workloads (sanity codes surface as sanity-warning-<CODE>) ────
+    ('sanity-*LONG_RUNNING*', [
+        _spec('notebook-kernels-shutdown', 'medium', 'Kernels alive beyond ~days rarely do '
+              'real work (rubric): shut down the active kernels via the DSS API — files and '
+              'outputs untouched, users just restart. Never a Linux-level kill.'),
+    ]),
+    ('sanity-*JUPYTER*', [
+        _spec('notebook-kernels-shutdown', 'medium', 'Idle/leaked notebook kernels are '
+              'reclaimed at the DSS level; the plan lists every kernel before approval.'),
+    ]),
+    ('sanity-*CLUSTERS_NONE_SELECTED*', [
+        _spec('project-set-cluster', 'low', 'Point the flagged project at an explicit K8s '
+              'cluster (settings.k8sCluster) — drift-guarded, restorable from history.'),
+    ]),
+    ('sanity-*SCENARIO*', [
+        _spec('scenario-disable', 'medium', 'Failure-storm or log-spamming scenarios are '
+              'disabled (auto-triggers off) — reversible with scenario-enable; history '
+              'records the toggle.'),
+    ]),
+
+    # ── users & licenses ─────────────────────────────────────────────────────
+    ('users-departed*', [
+        _spec('user-disable', 'low', 'Departed-but-enabled accounts are disabled, never '
+              'deleted — user-enable reverts; the toolkit refuses its own identity.'),
+    ]),
+
     # ── DB ───────────────────────────────────────────────────────────────────
     ('db-*', [
         _spec('db-vacuum', 'low', 'Vacuum the bloated table (locks briefly).'),

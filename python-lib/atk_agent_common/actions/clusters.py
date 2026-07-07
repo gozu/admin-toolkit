@@ -13,7 +13,9 @@ from . import _base
 
 def _cluster_row(client, host, cluster_id):
     data = client.get('/api/k8s-insights/clusters', host=host)
-    rows = data.get('clusters') or []
+    # `unavailable` (no kubeconfig, not RUNNING) is where the stale attachments
+    # live — exactly the detach candidates. Search both lists.
+    rows = (data.get('clusters') or []) + (data.get('unavailable') or [])
     row = next((c for c in rows if c.get('id') == cluster_id), None)
     if row is None:
         ids = sorted(str(c.get('id')) for c in rows)
@@ -69,8 +71,94 @@ def _exec_cluster_detach(client, host, target):
                                       'folderId': folder['id']})
 
 
+def _plan_cluster_stop(client, host, target, params):
+    cluster_id = _base.require_str(target, 'clusterId', 'cluster-stop')
+    terminate = bool((target or {}).get('terminate'))
+    row = _cluster_row(client, host, cluster_id)
+    if str(row.get('type') or '') == 'manual':
+        raise ToolkitError('Cluster %s is a manual attachment — DSS cannot stop it. '
+                           'Use cluster-detach to remove the attachment instead.' % cluster_id)
+    warnings = []
+    if terminate:
+        warnings.append('terminate=true DESTROYS the cloud-side cluster — this is '
+                        'IRREVERSIBLE (state cannot be restored from any backup).')
+    canonical = {'clusterId': cluster_id, 'terminate': terminate}
+    return canonical, {
+        'summary': 'STOP managed cluster %s (%s)%s.' % (
+            cluster_id, row.get('name') or '?',
+            ' and TERMINATE the cloud-side resources' if terminate else ''),
+        'clusterName': row.get('name'),
+        'state': row.get('state'),
+        'irreversible': terminate or None,
+        'warnings': warnings or None,
+        'note': ('Without terminate, the cluster can be started again with cluster-start.'
+                 if not terminate else
+                 'Restore is NOT possible — the cloud resources are destroyed.'),
+    }
+
+
+def _exec_cluster_stop(client, host, target):
+    return _base.post_backend_action(client, host, 'cluster-stop',
+                                     {'clusterId': target['clusterId'],
+                                      'terminate': bool(target.get('terminate'))})
+
+
+def _plan_cluster_start(client, host, target, params):
+    cluster_id = _base.require_str(target, 'clusterId', 'cluster-start')
+    row = _cluster_row(client, host, cluster_id)
+    if str(row.get('type') or '') == 'manual':
+        raise ToolkitError('Cluster %s is a manual attachment — DSS cannot start it.'
+                           % cluster_id)
+    return {'clusterId': cluster_id}, {
+        'summary': 'START managed cluster %s (%s).' % (cluster_id, row.get('name') or '?'),
+        'clusterName': row.get('name'),
+        'state': row.get('state'),
+        'note': 'Starting a managed cluster provisions cloud resources — cost resumes.',
+    }
+
+
+def _exec_cluster_start(client, host, target):
+    return _base.post_backend_action(client, host, 'cluster-start',
+                                     {'clusterId': target['clusterId']})
+
+
+def _plan_cluster_pods_cleanup(client, host, target, params):
+    cluster_id = _base.require_str(target, 'clusterId', 'cluster-pods-cleanup')
+    row = _cluster_row(client, host, cluster_id)
+    probe = _reachability(client, host, cluster_id)
+    warnings = []
+    if probe is not None and not probe.get('ok'):
+        warnings.append('Cluster %s is currently UNREACHABLE (%s) — the cleanup will '
+                        'likely fail until connectivity is restored.'
+                        % (cluster_id, probe.get('errorClass')))
+    return {'clusterId': cluster_id}, {
+        'summary': 'Delete FINISHED pods and jobs on cluster %s (%s) — running workloads '
+                   'are untouched.' % (cluster_id, row.get('name') or '?'),
+        'clusterName': row.get('name'),
+        'state': row.get('state'),
+        'warnings': warnings or None,
+        'note': 'Only completed/failed pod and job objects are removed '
+                '(DSSCluster.delete_finished_pods/delete_finished_jobs).',
+    }
+
+
+def _exec_cluster_pods_cleanup(client, host, target):
+    return _base.post_backend_action(client, host, 'cluster-pods-cleanup',
+                                     {'clusterId': target['clusterId']})
+
+
 SPECS = [
     _base.spec('cluster-detach',
                'cluster-detach {clusterId}', 'red',
                _plan_cluster_detach, _exec_cluster_detach),
+    _base.spec('cluster-stop',
+               'cluster-stop {clusterId, terminate?} (managed clusters only; '
+               'terminate=true destroys cloud resources — irreversible)', 'red',
+               _plan_cluster_stop, _exec_cluster_stop),
+    _base.spec('cluster-start',
+               'cluster-start {clusterId} (managed clusters only)', 'amber',
+               _plan_cluster_start, _exec_cluster_start),
+    _base.spec('cluster-pods-cleanup',
+               'cluster-pods-cleanup {clusterId} (finished pods/jobs only)', 'green',
+               _plan_cluster_pods_cleanup, _exec_cluster_pods_cleanup),
 ]

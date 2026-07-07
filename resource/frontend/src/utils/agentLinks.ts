@@ -3,14 +3,23 @@
 // Route contract (same rule as utils/codeEnvUsageLinks.ts): every path here
 // corresponds to a concrete (non-abstract) Angular ui-router state, verified
 // against the live DSS 14.7 mainpack state table (2026-07-03; clusters
-// re-verified 2026-07-07):
+// re-verified 2026-07-07; scenarios/jobs/notebooks/users re-verified
+// 2026-07-07 for the runtime long tail):
 //   admin.general.containers      → /admin/general/containers/
 //   admin.codeenvs-design.*-edit  → /admin/code-envs/design/<lang>/<name>/
 //   connection admin              → /admin/connections/<name>/
 //   admin.clusters.cluster        → /admin/clusters/<clusterId>/
+//   admin.security.users.edit     → /admin/security/users/edit/<login>/
 //   plugin.summary                → /plugins/<id>/summary/
 //   project home                  → /projects/<KEY>/
-// image-delete has no DSS page (registry-side object) → no link.
+//   projects.project.scenarios.scenario → /projects/<KEY>/scenarios/<id>/
+//   projects.project.jobs.job     → /projects/<KEY>/jobs/<jobId>/
+//   projects.project.notebooks.jupyter_notebook → /projects/<KEY>/notebooks/jupyter/<name>/
+//   projects.project.continuous-activities.continuous-activity → /projects/<KEY>/continuous-activities/<recipeId>/
+//   admin.general.variables       → /admin/general/variables/
+//   webapp detail needs {id}_{name} in the URL → link the list page instead.
+// image-delete has no DSS page (registry-side object) → no link; API keys have
+// no per-key page → no link.
 
 import { getDssBaseUrl } from './codeEnvUsageLinks';
 import { hostStore } from '../state/hostStore';
@@ -105,11 +114,58 @@ export function dssLinkForAction(
     case 'connection-delete':
       return t.name ? `${base}/admin/connections/${enc(String(t.name))}/` : null;
     case 'cluster-detach':
+    case 'cluster-stop':
+    case 'cluster-start':
+    case 'cluster-pods-cleanup':
       return t.clusterId ? `${base}/admin/clusters/${enc(String(t.clusterId))}/` : null;
     case 'plugin-uninstall':
+    case 'plugin-update':
+    case 'plugin-code-env-rebuild':
       return t.pluginId ? `${base}/plugins/${enc(String(t.pluginId))}/summary/` : null;
     case 'project-clear-webapp-runs':
+    case 'project-export':
+    case 'project-set-cluster':
+    case 'project-change-owner':
+    case 'project-variables-set':
       return t.projectKey ? `${base}/projects/${enc(String(t.projectKey))}/` : null;
+    case 'code-env-update':
+      return t.name
+        ? `${base}/admin/code-envs/design/${enc(String(t.lang || 'python').toLowerCase())}/${enc(String(t.name))}/`
+        : null;
+    case 'connection-index':
+      return `${base}/admin/connections/`;
+    case 'job-kill':
+      return t.projectKey && t.jobId
+        ? `${base}/projects/${enc(String(t.projectKey))}/jobs/${enc(String(t.jobId))}/`
+        : null;
+    case 'scenario-disable':
+    case 'scenario-enable':
+    case 'scenario-kill':
+    case 'scenario-run':
+      return t.projectKey && t.scenarioId
+        ? `${base}/projects/${enc(String(t.projectKey))}/scenarios/${enc(String(t.scenarioId))}/`
+        : null;
+    case 'continuous-activity-stop':
+      return t.projectKey && t.recipeId
+        ? `${base}/projects/${enc(String(t.projectKey))}/continuous-activities/${enc(String(t.recipeId))}/`
+        : null;
+    case 'webapp-backend-stop':
+    case 'webapp-backend-restart':
+      // Webapp detail URLs need {id}_{name}; the id alone 404s → list page.
+      return t.projectKey ? `${base}/projects/${enc(String(t.projectKey))}/webapps/` : null;
+    case 'notebook-clear-outputs':
+      return t.projectKey && t.notebookName
+        ? `${base}/projects/${enc(String(t.projectKey))}/notebooks/jupyter/${enc(String(t.notebookName))}/`
+        : null;
+    case 'notebook-kernels-shutdown':
+      return t.projectKey
+        ? `${base}/projects/${enc(String(t.projectKey))}/notebooks/`
+        : null;
+    case 'user-disable':
+    case 'user-enable':
+      return t.login ? `${base}/admin/security/users/edit/${enc(String(t.login))}/` : null;
+    case 'variables-set':
+      return `${base}/admin/general/variables/`;
     case 'plugin-deploy':
       return t.pluginId
         ? `${hostBaseUrl(t.targetHostId ? String(t.targetHostId) : hostId)}/plugins/${enc(String(t.pluginId))}/summary/`

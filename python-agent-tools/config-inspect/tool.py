@@ -10,14 +10,17 @@ class ConfigInspectTool(BaseAgentTool):
     def get_descriptor(self, tool):
         return {
             "description": (
-                "Inspect one configuration domain of a DSS host. Domains: 'connections' "
-                "(counts by type + names; detail='health' probes each connection), "
-                "'code-envs' (version counts, deprecated-Python envs, unused envs, largest; "
-                "heavy scan — may return scan_running), 'plugins' (installed list, dev plugins; "
-                "detail='usage' adds projects-using counts, slower), 'llms' (LLM Mesh models "
-                "grouped by connection), 'clusters' (attached k8s clusters: id/name/state; "
-                "detail='health' adds the reachability sweep). Use name_filter to find a "
-                "specific item."),
+                "Inspect one configuration domain of a DSS host. Domains: 'connections'"
+                "(counts by type + names; detail='health' probes each connection), 'code-"
+                "envs' (version counts, deprecated-Python envs, unused envs, largest; heavy"
+                "scan — may return scan_running), 'plugins' (installed list, dev plugins;"
+                "detail='usage' adds projects-using counts, slower), 'llms' (LLM Mesh models"
+                "grouped by connection), 'clusters' (attached k8s clusters incl. unavailable"
+                "detach candidates; detail='health' adds the reachability sweep), 'users'"
+                "(logins, enabled state, groups), 'api-keys' (personal + global, secrets"
+                "never shown), and the per-project domains 'scenarios', 'webapps',"
+                "'notebooks', 'jobs' — for those, name_filter is the PROJECT KEY (required)."
+                "Use name_filter as a substring filter elsewhere."),
             "inputSchema": {
                 "$id": "https://dataiku.com/agents/tools/atk/config-inspect/input",
                 "title": "Input for the config-inspect tool",
@@ -26,7 +29,7 @@ class ConfigInspectTool(BaseAgentTool):
                     "host": adapter.HOST_PROPERTY,
                     "domain": {
                         "type": "string",
-                        "enum": ["connections", "code-envs", "plugins", "llms", "clusters"],
+                        "enum": ["connections", "code-envs", "plugins", "llms", "clusters", "scenarios", "webapps", "users", "api-keys", "notebooks", "jobs"],
                         "description": "Configuration domain to inspect."
                     },
                     "detail": {

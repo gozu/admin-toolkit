@@ -264,7 +264,11 @@ def compute_cost(client, host='local', group_by='project', top_n=10):
 
 # ── config-inspect ───────────────────────────────────────────────────────────
 
-_CONFIG_DOMAINS = ('connections', 'code-envs', 'plugins', 'llms', 'clusters')
+_CONFIG_DOMAINS = ('connections', 'code-envs', 'plugins', 'llms', 'clusters',
+                   'scenarios', 'webapps', 'users', 'api-keys', 'notebooks',
+                   'jobs')
+# Domains that are per-project listings: name_filter is the PROJECT KEY.
+_PROJECT_SCOPED_DOMAINS = ('scenarios', 'webapps', 'notebooks', 'jobs')
 
 
 def config_inspect(client, host='local', domain='connections', detail=None,
@@ -424,6 +428,42 @@ def config_inspect(client, host='local', domain='connections', detail=None,
         if flt:
             out['matching'] = [shaping.pick(l, ('id', 'model', 'type', 'connection'))
                                for l in llms[:top_n]]
+
+    elif domain in _PROJECT_SCOPED_DOMAINS:
+        # These are per-project listings backed by the admin-actions inventory
+        # GET; name_filter carries the PROJECT KEY (required).
+        project_key = (name_filter or '').strip()
+        if not project_key:
+            return {'error': {'code': 'bad-input',
+                              'message': "domain %r needs name_filter=<projectKey>"
+                                         % domain}}
+        inv = client.get('/api/tools/admin-actions/inventory', host=host,
+                         params={'domain': domain, 'projectKey': project_key})
+        key = {'scenarios': 'scenarios', 'webapps': 'webapps',
+               'notebooks': 'notebooks', 'jobs': 'jobs'}[domain]
+        out['projectKey'] = project_key
+        out[key] = (inv.get(key) or [])[:max(1, top_n * 2)]
+        if inv.get('note'):
+            out['note'] = inv['note']
+
+    elif domain == 'users':
+        inv = client.get('/api/tools/admin-actions/inventory', host=host,
+                         params={'domain': 'users'})
+        users = inv.get('users') or []
+        if flt:
+            users = [u for u in users if flt in (u.get('login') or '').lower()
+                     or flt in (u.get('displayName') or '').lower()]
+        out['userCount'] = len(users)
+        out['disabled'] = [u.get('login') for u in users if not u.get('enabled', True)][:top_n]
+        out['users'] = users[:max(1, top_n * 2)]
+
+    elif domain == 'api-keys':
+        inv = client.get('/api/tools/admin-actions/inventory', host=host,
+                         params={'domain': 'api-keys'})
+        out['personal'] = (inv.get('personal') or [])[:max(1, top_n * 2)]
+        out['global'] = (inv.get('global') or [])[:max(1, top_n * 2)]
+        out['note'] = ('Key secrets are never shown. api-key-delete is IRREVERSIBLE; '
+                       'the toolkit refuses its own key.')
 
     return shaping.enforce_budget(out)
 

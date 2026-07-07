@@ -135,10 +135,39 @@ def _changes_connection_update(target, result):
              'before': result.get('before'), 'after': result.get('after')}]
 
 
+def _plan_connection_index(client, host, target, params):
+    names = [str(n).strip() for n in ((target or {}).get('connectionNames') or [])
+             if str(n).strip()]
+    data = client.get('/api/connections', host=host)
+    known = {c.get('name') for c in data.get('connectionDetails') or []}
+    unknown = [n for n in names if n not in known]
+    if unknown:
+        raise ToolkitError('Unknown connection(s): %s.' % ', '.join(unknown),
+                           remediation="Check names with config_inspect "
+                                       "domain='connections'.")
+    canonical = {'connectionNames': sorted(names)}
+    return canonical, {
+        'summary': 'Re-index %s in the DSS catalog (read-only crawl of table/dataset '
+                   'metadata).' % (('connections ' + ', '.join(sorted(names)))
+                                   if names else 'ALL connections'),
+        'connectionCount': len(names) or len(known),
+        'note': 'Indexing only refreshes catalog metadata — no data or configuration '
+                'changes. Large connections can take a while.',
+    }
+
+
+def _exec_connection_index(client, host, target):
+    return _base.post_backend_action(client, host, 'connection-index',
+                                     {'connectionNames': target.get('connectionNames') or []})
+
+
 SPECS = [
     _base.spec('connection-test',
                'connection-test {name}', 'green',
                _plan_connection_test, _exec_connection_test, batchable=True),
+    _base.spec('connection-index',
+               'connection-index {connectionNames?} (empty = all)', 'green',
+               _plan_connection_index, _exec_connection_index),
     _base.spec('connection-update',
                'connection-update {name, path, newValue} (path into the connection '
                'definition, e.g. params.host; secret paths blocked)', 'amber',

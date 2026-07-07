@@ -1,7 +1,7 @@
 """Trace Explorer auto-provisioning (DSS >= 14.5, ground-truthed on 14.7).
 
 Makes a chat turn's trace one click away: DAY-partitioned interaction-logging
-dataset + FULL-mode logging on every AGENTOPS agent + the Dataiku
+dataset + FULL-mode logging on every ADMINTOOLKIT agent + the Dataiku
 `traces-explorer` plugin webapp found-or-created and pointed at that dataset.
 
 The plugin webapp CAN be created programmatically — but only by creating a
@@ -10,7 +10,7 @@ STANDARD webapp and flipping its type via the settings PUT (verified live on
 accepts the change and re-materializes the plugin webapp shape). The plugin
 declares autoStartBackend:false, so the backend is started explicitly.
 
-Runs against the caller's client (AGENTOPS may live on the active remote
+Runs against the caller's client (ADMINTOOLKIT may live on the active remote
 host). Returns a provision_all-style steps trail
 (atk_agent_common/triage/provision.py shape): {'ok', 'steps', 'webAppId'?,
 'viewPath'?}. Also imported by scripts/agents/interaction_logging.py.
@@ -161,7 +161,7 @@ def _start_backend(webapp):
     return False
 
 
-def ensure_trace_explorer(client, project_key='AGENTOPS'):
+def ensure_trace_explorer(client, project_key='ADMINTOOLKIT'):
     """Find-or-create + configure + start the Trace Explorer webapp, plus the
     interaction-logging dataset it reads. Idempotent; every step lands in the
     steps trail even on failure."""

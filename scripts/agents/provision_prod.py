@@ -6,7 +6,7 @@ wrapper). Idempotent — safe to re-run.
     DSS_API_KEY=<admin key> .venv/bin/python scripts/agents/provision_prod.py \
         --url https://tam-global.fe-aws.dkucloud-dev.com \
         [--key-file <path>] [--red-password <pw>] [--keys-password <pw>] \
-        [--llm-id anthropic:kaosclaude:claude-opus-4-8] [--project AGENTOPS] [--no-smoke]
+        [--llm-id anthropic:kaosclaude:claude-opus-4-8] [--project ADMINTOOLKIT] [--no-smoke]
 
 Does, in order:
   1. verify the plugin is installed (list_plugins)
@@ -80,8 +80,10 @@ def apply_plugin_settings(plugin, args):
 
 def ensure_project(client, key):
     if key not in {p['projectKey'] for p in client.list_projects()}:
-        client.create_project(key, 'Agent Ops', 'admin',
-                              description='admin-toolkit agents: tools + agents for Agent Hub')
+        # Same identity the webapp's macro-project bootstrap creates — agents
+        # live in the toolkit's own ADMINTOOLKIT project.
+        client.create_project(key, 'Admin Toolkit', 'admin',
+                              description='admin-toolkit: macros + agent tools + agent instances')
         print('created project %s' % key)
     project = client.get_project(key)
     ps = project.get_settings()
@@ -98,7 +100,7 @@ def main():
     ap.add_argument('--llm-id', default='anthropic:kaosclaude:claude-opus-4-8')
     ap.add_argument('--red-password', default='')
     ap.add_argument('--keys-password', default='')
-    ap.add_argument('--project', default='AGENTOPS')
+    ap.add_argument('--project', default='ADMINTOOLKIT')
     ap.add_argument('--no-smoke', action='store_true')
     args = ap.parse_args()
 

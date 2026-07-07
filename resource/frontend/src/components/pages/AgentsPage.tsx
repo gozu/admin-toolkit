@@ -296,7 +296,7 @@ export function AgentsPage() {
               onClick={onProvisionTraceExplorer}
               disabled={provisioning}
               className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--accent)] border border-[var(--accent)]/40 bg-[var(--accent-muted)] hover:brightness-110 transition-[filter] disabled:opacity-60"
-              title="Create + configure the Trace Explorer webapp in AGENTOPS over the agent interaction-logging dataset"
+              title="Create + configure the Trace Explorer webapp in ADMINTOOLKIT over the agent interaction-logging dataset"
             >
               {provisioning ? 'Setting up…' : 'Set up Trace Explorer'}
             </button>
@@ -384,8 +384,8 @@ export function AgentsPage() {
           <div className="glass-card p-6 max-w-lg space-y-2">
             <h3 className="text-sm font-semibold text-[var(--text-primary)]">No agents on this host</h3>
             <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-              The Admin Toolkit agents plugin is not provisioned here (no AGENTOPS project with agent
-              instances was found).
+              The Admin Toolkit agents are not provisioned here (no agent instances found in the
+              ADMINTOOLKIT project — run scripts/agents/provision_prod.py against this host).
               {unavailableReason ? ` — ${unavailableReason}` : ''}
             </p>
           </div>

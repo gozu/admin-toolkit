@@ -42,9 +42,9 @@
   {
    "q": "What did we spend on LLMs in the covered audit window, and which project drives it?",
    "expect": [
-    "AGENTOPS"
+    "ADMINTOOLKIT"
    ],
-   "source": "akaos drifted 2026-07-03: top LLM spender in the rolling window is AGENTOPS (agent runs themselves, ~$3 of ~$5 total); pin project identity, never $ amounts"
+   "source": "top LLM spender in the rolling window is the agents' own project (agent runs themselves); ADMINTOOLKIT since the 0.4.658 AGENTOPS merge (akaos rebuilt from scratch 2026-07-07, old AGENTOPS usage gone); pin project identity, never $ amounts"
   },
   {
    "q": "Is the DSS runtime database on PostgreSQL?",

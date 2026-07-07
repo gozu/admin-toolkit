@@ -15,7 +15,7 @@ see trace_explorer.ensure_trace_explorer, also exposed in the webapp as the
 Importable helper (used by provision_prod.py); also runnable standalone:
 
     DSS_API_KEY=<admin key> .venv/bin/python scripts/agents/interaction_logging.py \
-        [--url https://...] [--project AGENTOPS] [--connection <conn>] [--webapp]
+        [--url https://...] [--project ADMINTOOLKIT] [--connection <conn>] [--webapp]
 """
 
 import argparse
@@ -53,7 +53,7 @@ def main():
 
     ap = argparse.ArgumentParser()
     ap.add_argument('--url', default='')
-    ap.add_argument('--project', default='AGENTOPS')
+    ap.add_argument('--project', default='ADMINTOOLKIT')
     ap.add_argument('--connection', default='',
                     help='connection for the logging dataset; empty = plugin triage_connection, then filesystem_managed')
     ap.add_argument('--webapp', action='store_true',

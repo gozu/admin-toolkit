@@ -5,7 +5,7 @@ POST /api/agents/chat streams the agents' own event protocol — token deltas,
 tool_call / tool_result activity, plan / execution cards — straight from
 `agent.as_llm().new_completion().execute_streamed()` on the active host, so
 the webapp renders plans as approve/reject cards instead of prose. Agent
-instances live in the AGENTOPS project (provisioned by scripts/agents/).
+instances live in the ADMINTOOLKIT project (provisioned by scripts/agents/).
 The audit timeline reads agents.agent_actions, written by the agents layer
 into the shared audit Postgres — hub-scoped → @local_only.
 """
@@ -26,7 +26,7 @@ from db_adapter import load_agents_audit_config
 bp = Blueprint('agents', __name__)
 _LOGGER = logging.getLogger(__name__)
 
-AGENTS_PROJECT_KEY = 'AGENTOPS'
+AGENTS_PROJECT_KEY = 'ADMINTOOLKIT'
 _MAX_MESSAGES = 40
 _MAX_MESSAGE_CHARS = 20000
 
@@ -34,7 +34,7 @@ _MAX_MESSAGE_CHARS = 20000
 # the full dku-trace. It is never streamed over SSE — the done event only says
 # it exists (traceAvailable + traceId); the JSON is fetched on demand from this
 # in-memory ring (last few turns, gone on backend restart — the durable copy
-# lives in the AGENTOPS interaction-logging dataset).
+# lives in the ADMINTOOLKIT interaction-logging dataset).
 _trace_ring: 'deque' = deque(maxlen=8)  # (trace_id, trace dict)
 _trace_lock = threading.Lock()
 # Trace Explorer plugin webapp — discovered per host; only hits (not misses)
@@ -63,7 +63,7 @@ def get_ring_trace(trace_id: str) -> Optional[Any]:
 
 def _trace_explorer_info(client: Any, host_id: str) -> Optional[Dict[str, str]]:
     """{'viewPath','webAppId','projectKey'} of a Trace Explorer webapp in
-    AGENTOPS, or None. viewPath is DSS-relative — the frontend prefixes the
+    ADMINTOOLKIT, or None. viewPath is DSS-relative — the frontend prefixes the
     active host's base URL (multi-instance rule); webAppId feeds the native
     readTraceFromLS localStorage handoff (same-origin only)."""
     cached = _trace_explorer_cache.get(host_id)
@@ -100,8 +100,8 @@ def api_agents_list():
         return jsonify({'available': True, 'projectKey': AGENTS_PROJECT_KEY,
                         'agents': _agent_rows(g.client)})
     except Exception as exc:
-        # No AGENTOPS project / no agents plugin on this host is a normal state,
-        # not an error — the page shows its provisioning empty-state.
+        # No ADMINTOOLKIT project / no agents provisioned on this host is a
+        # normal state, not an error — the page shows its provisioning empty-state.
         _LOGGER.info('agents list unavailable on host %s: %s',
                      getattr(g, 'host_id', 'local'), str(exc)[:200])
         return jsonify({'available': False, 'projectKey': AGENTS_PROJECT_KEY,
@@ -206,9 +206,9 @@ def api_trace_explorer_status():
 @advanced
 def api_trace_explorer_provision():
     """One-click provisioning: interaction-logging dataset + FULL logging on
-    all AGENTOPS agents + the traces-explorer plugin webapp created via raw
+    all ADMINTOOLKIT agents + the traces-explorer plugin webapp created via raw
     REST, configured onto the dataset's `trace` column, backend started.
-    Mutating → @advanced-gated. Uses g.client — AGENTOPS may live on the
+    Mutating → @advanced-gated. Uses g.client — ADMINTOOLKIT may live on the
     active remote host."""
     host_id = str(getattr(g, 'host_id', 'local') or 'local')
     result = trace_explorer.ensure_trace_explorer(g.client,

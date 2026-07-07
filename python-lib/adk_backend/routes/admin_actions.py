@@ -201,8 +201,14 @@ def api_admin_actions_inventory():
                 pass
             return jsonify({'ok': True, 'users': rows[:500], 'callerIdentity': caller})
         if domain == 'api-keys':
+            # list_personal_api_keys returns only the CALLER's keys; admins
+            # enumerate everyone's through the *_all_* variant.
+            try:
+                personal_rows = client.list_all_personal_api_keys()
+            except Exception:
+                personal_rows = client.list_personal_api_keys()
             personal = [_pick(k, ('id', 'user', 'label', 'createdOn', 'createdBy'))
-                        for k in client.list_personal_api_keys()]
+                        for k in personal_rows]
             global_keys = [_pick(k, ('id', 'label', 'createdOn', 'groups'))
                            for k in client.list_global_api_keys()]
             caller = ''
@@ -611,8 +617,11 @@ def _impl_api_key_delete(client, body):
     except Exception:
         pass
     if key_type == 'personal':
-        row = next((k for k in client.list_personal_api_keys()
-                    if k.get('id') == key_id), None)
+        try:
+            rows = client.list_all_personal_api_keys()
+        except Exception:
+            rows = client.list_personal_api_keys()
+        row = next((k for k in rows if k.get('id') == key_id), None)
         if row is None:
             return {'ok': False, 'error': 'Personal API key %r not found.' % key_id}
         if caller and row.get('user') == caller:

@@ -67,8 +67,11 @@ def _exec_project_clear_webapp_runs(client, host, target):
 
 
 def _project_row(client, host, project_key):
+    # /api/projects rows carry the key as 'key' (backend shaping), not
+    # 'projectKey' — accept both so a reshape can't silently break lookups.
     rows = (client.get('/api/projects', host=host) or {}).get('projects') or []
-    row = next((p for p in rows if p.get('projectKey') == project_key), None)
+    row = next((p for p in rows
+                if (p.get('projectKey') or p.get('key')) == project_key), None)
     if row is None:
         raise ToolkitError('Project %r not found on host %r.' % (project_key, host),
                            remediation='Check the key with storage_footprint or '

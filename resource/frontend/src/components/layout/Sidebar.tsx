@@ -45,6 +45,14 @@ const icons: Record<string, ReactNode> = {
       <path d="M9.5 15.25h5" />
     </svg>
   ),
+  'agent-tuning': (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 4v6M6 14v6M12 4v3M12 11v9M18 4v9M18 17v3" />
+      <circle cx="6" cy="12" r="2" />
+      <circle cx="12" cy="9" r="2" />
+      <circle cx="18" cy="15" r="2" />
+    </svg>
+  ),
   'mission-control': (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="9" />

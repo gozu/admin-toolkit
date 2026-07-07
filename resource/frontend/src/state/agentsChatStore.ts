@@ -430,9 +430,9 @@ function normalizeActionItems(raw: unknown): ActionItemData[] {
         ? (item.target as Record<string, unknown>)
         : null;
     const targets = Array.isArray(item.targets)
-      ? item.targets
-          .filter((t): t is Record<string, unknown> => Boolean(t) && typeof t === 'object' && !Array.isArray(t))
-          .slice(0, 20)
+      ? item.targets.filter(
+          (t): t is Record<string, unknown> => Boolean(t) && typeof t === 'object' && !Array.isArray(t),
+        )
       : null;
     out.push({
       id: String(item.id || `ai-${out.length}-${Date.now().toString(16)}`),

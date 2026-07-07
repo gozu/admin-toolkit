@@ -12,6 +12,9 @@ import time
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
+from . import prompt_overrides
+from .errors import ToolkitError
+
 MAX_ITERATIONS = 12
 
 # Tool names whose (JSON) results are surfaced to the UI as dedicated events,
@@ -24,6 +27,24 @@ _ACTION_ITEMS_TOOL = 'propose_action_items'
 def build_llm(llm_id):
     from dataiku.langchain.dku_llm import DKUChatModel
     return DKUChatModel(llm_id=llm_id)
+
+
+def resolve_llm_id(client, config):
+    """The LLM id an agent must use, by precedence: Agent Tuning live
+    override > per-agent llm_id > plugin default_llm_id.
+
+    Deliberately NOT validated against the LLM catalog: an override naming a
+    deleted id fails loudly at call time — silently falling back would mask
+    the admin's explicit model choice."""
+    llm_id = (prompt_overrides.llm_override(client)
+              or (config or {}).get('llm_id') or '').strip() \
+        or (client.settings.get('default_llm_id') or '').strip()
+    if not llm_id:
+        raise ToolkitError(
+            'No LLM configured.',
+            remediation='Pick a model on the Agent Tuning page, or set llm_id on the '
+                        'agent / default_llm_id in the plugin settings.')
+    return llm_id
 
 
 def messages_from_query(query, system_prompt):

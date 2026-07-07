@@ -16,10 +16,8 @@ class ScopingArchitectAgent(BaseLLM):
     async def aprocess_stream(self, query, settings, trace):
         try:
             client = adapter.build_client(self.plugin_config)
-            llm_id = (self.config.get('llm_id') or '').strip() or client.settings.get('default_llm_id')
-            if not llm_id:
-                raise ToolkitError('No LLM configured.',
-                                   remediation='Set llm_id on the agent or default_llm_id in the plugin settings.')
+            # Agent Tuning override > per-agent llm_id > plugin default_llm_id.
+            llm_id = agent_runtime.resolve_llm_id(client, self.config)
             tools = agent_tools.build_langchain_tools(
                 client, names=['list_hosts', 'config_inspect', 'instance_health', 'k8s_health',
                                'db_health', 'compute_cost', 'storage_footprint'])

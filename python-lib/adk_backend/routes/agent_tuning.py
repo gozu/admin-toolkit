@@ -2,8 +2,8 @@
 
 The tuning store is a managed Dataiku dataset in the toolkit's OWN project
 (local-scoped, same write path as Save Tables as Datasets): one column per
-prompt type, one row per save. The newest row is the active version; agents
-read its non-empty cells through GET /api/agents/tuning/prompts
+prompt type plus setting columns (LLM override), one row per save. The newest
+row is the active version; agents read it through GET /api/agents/tuning/prompts
 (atk_agent_common.prompt_overrides fetches it at turn start with a short
 kernel-side cache, falling back to the built-in templates on any failure).
 Saving is a mutation → @advanced, like every other agent-surface mutation.
@@ -33,16 +33,19 @@ _rows_cache = {'ts': 0.0, 'rows': None}
 _write_lock = threading.Lock()
 
 
+def _plugin_config() -> dict:
+    try:
+        raw = _local_toolkit_client().get_plugin('admin-toolkit').get_settings().get_raw()
+        return raw.get('config', {}) if isinstance(raw, dict) else {}
+    except Exception:
+        return {}
+
+
 def _connection() -> str:
     """Target connection: the Save-Tables-as-Datasets connection when the
     admin configured one, else DSS's built-in filesystem_managed."""
-    try:
-        raw = _local_toolkit_client().get_plugin('admin-toolkit').get_settings().get_raw()
-        config = raw.get('config', {}) if isinstance(raw, dict) else {}
-        configured = (config.get('dataset_export_connection') or '').strip()
-        return configured or 'filesystem_managed'
-    except Exception:
-        return 'filesystem_managed'
+    configured = (_plugin_config().get('dataset_export_connection') or '').strip()
+    return configured or 'filesystem_managed'
 
 
 def _dataset_exists(project) -> bool:
@@ -92,6 +95,10 @@ def _state_payload(rows) -> dict:
         'connection': _connection(),
         'promptTypes': prompt_types,
         'versions': store.versions_payload(rows),
+        'llmOverride': store.latest_settings(rows).get('llm_override', ''),
+        # Best-effort context for the picker's "what happens without an
+        # override" line — '' when unset or unreadable.
+        'pluginDefaultLlmId': (_plugin_config().get('default_llm_id') or '').strip(),
     }
 
 
@@ -108,14 +115,16 @@ def api_agent_tuning_state():
 @bp.route('/api/agents/tuning/prompts')
 @local_only
 def api_agent_tuning_prompts():
-    """Active overrides only — the agents' runtime read (prompt_overrides)."""
+    """Active overrides + settings — the agents' runtime read (prompt_overrides)."""
     try:
-        return jsonify({'values': store.latest_overrides(_read_rows())})
+        rows = _read_rows()
+        return jsonify({'values': store.latest_overrides(rows),
+                        'settings': store.latest_settings(rows)})
     except Exception as exc:
         # The agents fall back to built-in templates on any failure; keep the
         # payload shape so their client never sees a hard error here.
         _LOGGER.warning('agent tuning prompts read failed: %s', str(exc)[:200])
-        return jsonify({'values': {}})
+        return jsonify({'values': {}, 'settings': {}})
 
 
 @bp.route('/api/agents/tuning/save', methods=['POST'])
@@ -123,14 +132,19 @@ def api_agent_tuning_prompts():
 @advanced
 def api_agent_tuning_save():
     """Append one version row (full snapshot). Body: {values: {key: text},
-    note?: str}. A cell equal to the built-in default is stored empty."""
+    settings?: {llm_override?: str}, note?: str}. A cell equal to the
+    built-in default is stored empty."""
     body = request.get_json(silent=True) or {}
     values = store.validate_values(body.get('values'))
     if values is None:
         return jsonify({'error': 'values must map known prompt types to strings '
                                  '(max %d chars each)' % store.MAX_PROMPT_CHARS}), 400
+    settings = store.validate_settings(body.get('settings'))
+    if settings is None:
+        return jsonify({'error': 'settings must map known setting keys to strings '
+                                 '(max %d chars each)' % store.MAX_SETTING_CHARS}), 400
     note = str(body.get('note') or '')
-    row = store.build_row(values, author=resolve_chat_user(), note=note,
+    row = store.build_row(values, settings, author=resolve_chat_user(), note=note,
                           saved_at=datetime.now(timezone.utc).isoformat())
     try:
         import pandas as pd

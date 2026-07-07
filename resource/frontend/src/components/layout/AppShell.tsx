@@ -180,25 +180,24 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
               alt="Dataiku"
               className="h-5 w-5"
             />
-            {/* Wordmark stacks the version under ADMINTOOLKIT; Beta rides as a
-                superscript on the final "T". The whole cluster is absolutely
-                positioned in the top bar, so the extra line can't grow its height. */}
-            <span className="flex flex-col items-center leading-none">
-              <span className="whitespace-nowrap leading-none">
-                <span className="text-base font-bold text-[var(--text-primary)] tracking-tight">
-                  ADMIN
-                </span>
-                <span className="text-base font-bold text-[#2AB1AC] tracking-tight -ml-1.5">
-                  TOOLKIT
-                </span>
-                <sup
-                  title="This toolkit is in Beta — features may change."
-                  className="ml-0.5 text-[8px] font-bold uppercase tracking-wider bg-gradient-to-r from-[var(--neon-cyan)] via-[var(--neon-purple)] to-[var(--neon-magenta)] bg-clip-text text-transparent"
-                >
-                  Beta
-                </sup>
+            {/* Wordmark keeps a single-line height so the logo stays centered
+                on it; the version hangs BELOW via absolute positioning (adds no
+                layout height, no misalignment). Beta rides high as a superscript
+                on the final "T". */}
+            <span className="relative whitespace-nowrap leading-none">
+              <span className="text-base font-bold text-[var(--text-primary)] tracking-tight">
+                ADMIN
               </span>
-              <span className="mt-px text-[9px] font-mono text-[var(--text-tertiary)] leading-none select-none">
+              <span className="text-base font-bold text-[#2AB1AC] tracking-tight -ml-1.5">
+                TOOLKIT
+              </span>
+              <sup
+                title="This toolkit is in Beta — features may change."
+                className="relative -top-1 ml-0.5 text-[8px] font-bold uppercase tracking-wider text-[var(--neon-magenta)]"
+              >
+                Beta
+              </sup>
+              <span className="absolute left-1/2 top-full -translate-x-1/2 mt-0.5 text-[9px] font-mono text-[var(--text-tertiary)] leading-none select-none">
                 v{__APP_VERSION__}
               </span>
             </span>

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.666] - 2026-07-07
+
+### Fixed
+- `config.resolve()` (the kernel-side settings whitelist) now carries `agents_audit_postgres_connection` and the legacy `story_postgres_connection` through to agent/tool kernels — without them the 0.4.665 audit fallback chain had nothing to resolve (its input was pre-filtered; akaos live catch #2).
+
 ## [0.4.665] - 2026-07-07
 
 ### Fixed

@@ -166,3 +166,14 @@ def test_audit_connection_fallback_chain():
     assert audit.resolve_connection({'triage_connection': 'tri'}) == 'tri'
     assert audit.resolve_connection({'triage_connection': '  '}) is None
     assert audit.resolve_connection({}) is None
+
+
+def test_config_resolve_carries_audit_chain_keys():
+    """config.resolve() whitelists settings keys — if it drops the dedicated
+    audit param, kernels can never resolve the audit DB (akaos live catch #2:
+    the resolver was right but its input was pre-filtered)."""
+    from atk_agent_common import audit, config
+    settings = config.resolve({'agents_audit_postgres_connection': 'kaosdb',
+                               'triage_connection': ''})
+    assert settings['agents_audit_postgres_connection'] == 'kaosdb'
+    assert audit.resolve_connection(settings) == 'kaosdb'

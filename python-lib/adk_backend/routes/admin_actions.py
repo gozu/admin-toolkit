@@ -104,7 +104,10 @@ def api_admin_actions_plugin_usages():
 def _impl_connection_test(client, body):
     name = body.get('name') or ''
     result = client.get_connection(name).test()
-    return {'ok': bool((result or {}).get('connectionOK')), 'name': name,
+    # A failing test is a successful probe with a negative result — only an
+    # exception (unknown connection, API failure) is an action failure.
+    return {'ok': True, 'name': name,
+            'connectionOK': bool((result or {}).get('connectionOK')),
             'result': _redact_secrets(result or {})}
 
 

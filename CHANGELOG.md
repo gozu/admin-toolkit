@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.665] - 2026-07-07
+
+### Fixed
+- **Actuator audit rows now resolve the audit DB through the full fallback chain** (`agents_audit_postgres_connection` → legacy `story_postgres_connection` → `triage_connection`) via the new `audit.resolve_connection()`, matching the backend's read side (`db_adapter`). The actuator previously passed `triage_connection` only, so instances configured through the dedicated audit param (akaos) silently skipped every audit row and settings-history write — executes still ran but carried `auditWarning` (live-acceptance catch).
+
 ## [0.4.664] - 2026-07-07
 
 ### Fixed

@@ -151,3 +151,18 @@ def test_batch_execute_token_drift_refused(monkeypatch):
     out = actuator.execute_admin_action(client, action='settings-set', target=canonical,
                                         confirm_flag=True, confirm_token=token)
     assert out['error']['code'] == 'confirm-token-rejected'
+
+
+def test_audit_connection_fallback_chain():
+    """The actuator must resolve the audit DB through the same chain as the
+    backend's read side (db_adapter): dedicated audit param first, then the
+    legacy Story key, then triage_connection. akaos live-acceptance caught the
+    actuator passing triage_connection only — auditing silently skipped on
+    instances configured via agents_audit_postgres_connection."""
+    from atk_agent_common import audit
+    assert audit.resolve_connection({'agents_audit_postgres_connection': 'kaosdb',
+                                     'triage_connection': ''}) == 'kaosdb'
+    assert audit.resolve_connection({'story_postgres_connection': 'legacy'}) == 'legacy'
+    assert audit.resolve_connection({'triage_connection': 'tri'}) == 'tri'
+    assert audit.resolve_connection({'triage_connection': '  '}) is None
+    assert audit.resolve_connection({}) is None

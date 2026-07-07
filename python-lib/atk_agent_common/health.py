@@ -42,6 +42,13 @@ WHITELISTABLE_RULES = ('project-size', 'project-code-envs', 'code-env-size',
                        'python-env-lifecycle', 'disk-usage', 'connection-broken',
                        'exec-config-resources', 'sanity-check')
 
+# Issue keys safe to relay to LLM consumers (triage sweep + instance_health
+# score). whitelistRule/whitelistItems stay OUT — suppression happens upstream,
+# so those keys would only annotate LIVE findings with hedging fuel. items and
+# details are the plain enrichment fields action targets are built from.
+ISSUE_PICK_KEYS = ('id', 'severity', 'category', 'title', 'recommendation',
+                   'description', 'value', 'items', 'details')
+
 
 def _whitelist_lookup(entries):
     """entries: [{rule, item, ...}] → membership predicate (rule, item).

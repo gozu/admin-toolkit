@@ -56,7 +56,7 @@ const ACTUATOR_MEGAPROMPT = `Take a full maintenance-opportunity inventory of th
 3. db_health: tables with the most dead tuples (db-vacuum) and stale-stats tables (db-analyze).
 4. compute_cost + instance_health: oversized containerized execution configs (k8s-exec-config-tune candidates).
 5. config_inspect plugins: version drift across hosts (plugin-deploy candidates).
-Present a prioritized list — most value first, medium+ severity only, skipping anything whitelist-suppressed — with the evidence, the exact action + target you would plan for each, and the risk color. Then STOP and wait: I will tell you which ones to plan.`;
+Present a prioritized list — most value first, medium+ severity only (whitelist-suppressed findings are already removed from your data — treat everything you see as live) — with the evidence, the exact action + target you would plan for each, and the risk color. Then STOP and wait: I will tell you which ones to plan.`;
 
 export const PROMPT_GROUPS: readonly CatalogGroup[] = [
   {

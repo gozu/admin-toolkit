@@ -116,8 +116,9 @@ def instance_health(client, host='local', sections=None, top_n=20, include_score
                 'overall': score['overall'],
                 'status': score['status'],
                 'categoryScores': {c['category']: round(c['score'], 1) for c in score['categories']},
-                'topIssues': [shaping.pick(i, ('severity', 'category', 'title', 'recommendation', 'value'))
+                'topIssues': [shaping.pick(i, health_mod.ISSUE_PICK_KEYS)
                               for i in score['issues'][:top_n]],
+                'whitelistSuppressed': score.get('whitelistSuppressed', 0),
             }
         except ScanTimeout as exc:
             wanted_score = exc.to_output()
@@ -388,6 +389,10 @@ def config_inspect(client, host='local', domain='connections', detail=None,
                     or flt in (c.get('name') or '').lower()]
         out['totalDiscovered'] = data.get('totalDiscovered')
         out['unavailableCount'] = len(data.get('unavailable') or [])
+        # Unavailable = no kubeconfig and not RUNNING: stale attachments, the
+        # natural cluster-detach candidates — name them, don't just count them.
+        out['unavailable'] = [shaping.pick(c, ('id', 'state', 'type'))
+                              for c in (data.get('unavailable') or [])[:max(1, top_n * 2)]]
         out['clusters'] = [shaping.pick(c, ('id', 'name', 'state', 'architecture', 'type'))
                            for c in rows[:max(1, top_n * 2)]]
         if detail == 'health':

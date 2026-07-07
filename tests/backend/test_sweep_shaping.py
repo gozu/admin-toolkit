@@ -49,3 +49,29 @@ def test_feature_details_from_health():
     assert names == {'Spark', 'Impersonation'}
     spark = next(d for d in issue['details'] if d['name'] == 'Spark')
     assert spark['proposedValue'] is True
+
+
+def test_issue_keys_single_sourced():
+    from atk_agent_common import health
+    assert sweep._ISSUE_KEYS is health.ISSUE_PICK_KEYS
+    assert 'whitelistRule' not in health.ISSUE_PICK_KEYS
+    assert 'whitelistItems' not in health.ISSUE_PICK_KEYS
+    # the enrichment fields action targets are built from must survive
+    assert {'id', 'items', 'details'} <= set(health.ISSUE_PICK_KEYS)
+
+
+def test_instance_health_score_branch_uses_shared_keys():
+    """The instance_health score relay must forward the same enriched issue
+    keys as the sweep (id/items/details) plus the suppressed count — checked
+    textually to avoid a live client."""
+    import inspect
+    from atk_agent_common import tools_impl
+    src = inspect.getsource(tools_impl.instance_health)
+    assert 'ISSUE_PICK_KEYS' in src
+    assert 'whitelistSuppressed' in src
+
+
+def test_sweep_relays_suppressed_count():
+    import inspect
+    src = inspect.getsource(sweep.sweep_fleet)
+    assert "whitelistSuppressed" in src

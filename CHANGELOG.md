@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.663] - 2026-07-07
+
+### Fixed
+- **Enriched findings actually reach the agents** (live-acceptance follow-up to 0.4.662). `instance_health`'s score relay was still shaping issues with the old 5-key pick, silently dropping the new `id`/`items`/`details` enrichment and the suppressed-findings count; it now uses the same `health.ISSUE_PICK_KEYS` as the triage sweep (single-sourced) and forwards `whitelistSuppressed`. The sweep rows relay `whitelistSuppressed` too, so digests can state "N findings suppressed by admin whitelist" instead of guessing.
+- `config_inspect` domain=clusters now names the unavailable clusters (`id`/`state`/`type`) instead of only counting them — these stale attachments are exactly the `cluster-detach` candidates.
+- Actuator megaprompt in the prompt library no longer says "skipping anything whitelist-suppressed" (suppression happens upstream; the instruction only taught the model to hedge live findings).
+
 ## [0.4.662] - 2026-07-07
 
 ### Added

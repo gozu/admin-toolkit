@@ -180,28 +180,24 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
               alt="Dataiku"
               className="h-5 w-5"
             />
-            {/* Wordmark keeps a single-line height so the logo stays centered
-                on it; the version hangs BELOW via absolute positioning (adds no
-                layout height, no misalignment). Beta rides high as a superscript
-                on the final "T". */}
-            <span className="relative whitespace-nowrap leading-none">
-              <span className="text-base font-bold text-[var(--text-primary)] tracking-tight">
-                ADMIN
-              </span>
-              <span className="text-base font-bold text-[#2AB1AC] tracking-tight -ml-1.5">
-                TOOLKIT
-              </span>
-              <sup
-                title="This toolkit is in Beta — features may change."
-                className="relative -top-1 ml-0.5 text-[8px] font-bold uppercase tracking-wider text-[var(--neon-magenta)]"
-              >
-                Beta
-              </sup>
-              <span className="absolute left-1/2 top-full -translate-x-1/2 mt-0.5 text-[9px] font-mono text-[var(--text-tertiary)] leading-none select-none">
-                v{__APP_VERSION__}
-              </span>
+            <span
+              className="text-base font-bold text-[var(--text-primary)] tracking-tight"            >
+              ADMIN
+            </span>
+            <span
+              className="text-base font-bold text-[#2AB1AC] tracking-tight -ml-1.5"            >
+              TOOLKIT
             </span>
           </button>
+          <span
+            title="This toolkit is in Beta — features may change."
+            className="px-1 py-0.5 text-[9px] font-mono font-semibold uppercase tracking-wide rounded border bg-[var(--bg-glass)] text-[var(--text-tertiary)] border-[var(--border-default)] cursor-default select-none"
+          >
+            Beta
+          </span>
+          <span className="text-[10px] font-mono text-[var(--text-tertiary)] select-none">
+            v{__APP_VERSION__}
+          </span>
           <button
             type="button"
             onClick={() => (authed ? toggleShowRed() : setShowUnlock(true))}

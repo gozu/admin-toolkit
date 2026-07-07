@@ -234,21 +234,19 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Search — opens the command palette (handled in App.tsx). The ⌘K
-              shortcut is intentionally not shown here; it's revealed inside the
-              palette itself once opened. */}
+          {/* Search — opens the command palette (handled in App.tsx). Icon-only
+              to stay compact; the ⌘K shortcut is revealed inside the palette. */}
           <button
             type="button"
             onClick={() => window.dispatchEvent(new CustomEvent('admin-toolkit:open-palette'))}
             title="Search"
             aria-label="Search"
-            className="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)] border border-[var(--border-default)] rounded-md px-2 py-1 hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+            className={toolbarButtonClass}
           >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <svg className={toolbarIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="7" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            <span>Search</span>
           </button>
 
           {/* Feedback — always-visible cyan-outline button (EAP). Distinct from

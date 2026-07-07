@@ -154,6 +154,12 @@ realaudit/
 getaudittam.sh
 # Local CRU/audit how-to scratch (anonymized, but kept out of the plugin repo).
 CRU.md
+# Captured live API-response fixtures for manual frontend/agent dev. These are
+# real instance snapshots (user logins, display names, emails, project keys) —
+# never committable. Keep dev captures local; the small hand-authored stubs in
+# scripts/agents/shapes/ (status/threshold/overview) are fine and stay tracked.
+scripts/agents/shapes/adoption.json
+scripts/agents/shapes/cru.json
 # Local API-key scratch files — live credentials, never commit (repo is public).
 *.key
 

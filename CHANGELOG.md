@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.664] - 2026-07-07
+
+### Fixed
+- `connection-test` no longer reports a *failing connection* as a *failed action*: the backend impl mapped `connectionOK: false` to `ok: false`, so the route returned 409 and the executor said "backend-error" for exactly the population the probe exists to check (live-acceptance catch). A completed test now returns `ok: true` with `connectionOK` in the result; only exceptions (unknown connection, API failure) fail the action.
+
 ## [0.4.663] - 2026-07-07
 
 ### Fixed

@@ -109,3 +109,23 @@ def test_impl_rechecks_secret_blacklist():
     assert result['ok'] is False
     assert 'blocked' in result['error']
     assert dss.conn.saved is None
+
+
+def test_connection_test_failing_probe_is_still_ok():
+    """A test that RUNS but reports connectionOK=false is a successful action
+    with a negative result — mapping it to ok:False made the route 409 and the
+    executor report 'backend-error' for every broken connection (the exact
+    population the action exists to probe)."""
+    from adk_backend.routes import admin_actions
+
+    class _Conn:
+        def test(self):
+            return {'connectionOK': False, 'connectionErrorMessage': 'Host should not be left blank'}
+
+    class _Client:
+        def get_connection(self, name):
+            return _Conn()
+
+    out = admin_actions._impl_connection_test(_Client(), {'name': 'fake'})
+    assert out['ok'] is True
+    assert out['connectionOK'] is False

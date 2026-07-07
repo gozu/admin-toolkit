@@ -637,14 +637,43 @@ plan, ONE confirm token, per-target execution results (continue-on-error,
 | `cluster-detach` | `{clusterId}` | B-api, red; definition backup; detaches the DSS attachment ONLY |
 | `plugin-uninstall` ⨯N | `{pluginId}` | B-api, red; zip backup; refused while ANY usage exists; never `admin-toolkit` itself |
 | `project-clear-webapp-runs` ⨯N | `{projectKey, keepDays?, keepLastRuns?}` | B-macro, amber; fs-cleanup macro (fs_paths policy: run_* dirs only, keep-newest-N, running-backend exclusion) |
+| `connection-index` | `{connectionNames?}` | B-api, green; catalog re-crawl, empty = all |
+| `cluster-stop` | `{clusterId, terminate?}` | B-api, red; managed only; `terminate=true` **IRREVERSIBLE** (cloud resources destroyed) |
+| `cluster-start` | `{clusterId}` | B-api, amber; managed only; cost resumes |
+| `cluster-pods-cleanup` | `{clusterId}` | B-api, green; finished pods/jobs only |
+| `plugin-update` | `{pluginId}` | B-api, amber; pre-update zip backup; store update (dev plugins refused) |
+| `plugin-code-env-rebuild` | `{pluginId}` | B-api, amber; kernels recycle lazily |
+| `code-env-update` | `{name, lang?, forceRebuild?}` | B-api, amber; packages + container images |
+| `project-export` ⨯N | `{projectKey}` | B-api, green; zip bundle → managed folder |
+| `project-set-cluster` | `{projectKey, clusterId}` | B-api, amber; drift-guarded; history hook; fixes WARN_CLUSTERS_NONE_SELECTED_PROJECT |
+| `project-change-owner` | `{projectKey, newOwner}` | B-api, amber; drift-guarded; history hook |
+| `project-variables-set` | `{projectKey, path, newValue}` | B-api, amber; scoped path (standard./local.); secret paths blocked; history hook |
+| `job-kill` ⨯N | `{projectKey, jobId}` | B-api, amber; DSS-level abort |
+| `scenario-disable` / `scenario-enable` ⨯N | `{projectKey, scenarioId}` | B-api, amber; drift-guarded toggle; history hook; each is the other's revert |
+| `scenario-kill` | `{projectKey, scenarioId}` | B-api, amber; aborts the current run only |
+| `scenario-run` | `{projectKey, scenarioId}` | B-api, amber; manual trigger |
+| `continuous-activity-stop` | `{projectKey, recipeId}` | B-api, amber; desired state persisted |
+| `webapp-backend-stop` / `webapp-backend-restart` ⨯N | `{projectKey, webappId}` | B-api, amber; users lose their session |
+| `notebook-kernels-shutdown` | `{projectKey?}` | B-api, amber; active kernels only; files/outputs untouched |
+| `notebook-clear-outputs` ⨯N | `{projectKey, notebookName}` | B-api, amber; outputs not restorable (re-run regenerates) |
+| `variables-set` | `{path, newValue}` | B-api, amber; GLOBAL variables; secret paths + `admin_toolkit_finding_whitelist` blocked; history hook |
+| `user-disable` ⨯N | `{login}` | B-api, red; never deletes; refuses the toolkit's own identity; history hook |
+| `user-enable` | `{login}` | B-api, amber; inverse of user-disable |
+| `api-key-delete` | `{keyType: personal\|global, keyId}` | B-api, red; **IRREVERSIBLE**; refuses the caller's own personal key; global keys carry no owner → plan tells the human to verify |
 
 Deletes always back up first — a managed folder in the toolkit support project
-is required or the plan fails with remediation. Deliberately excluded
-(structural: the agent cannot do these): DSS/backend restart, install.ini /
-systemd / ulimits, license ops, external credential creation/rotation, user
+is required or the plan fails with remediation. Plan-time reads for the new
+domains go through the open backend GETs (`/api/tools/admin-actions/inventory`
+with `domain=scenarios|webapps|jobs|notebooks|continuous-activities|users|api-keys`,
+`/api/tools/admin-actions/project-setting`, `…/global-variable`); the same
+inventory backs the `config_inspect` long-tail domains (for the per-project
+ones, `name_filter` is the PROJECT KEY). Deliberately excluded (structural:
+the agent cannot do these): DSS/backend restart, install.ini / systemd /
+ulimits, license ops, external credential creation/rotation, user
 creation/password reset, SSO/LDAP paths, arbitrary shell, deleting
-ADMINTOOLKIT / the toolkit plugin / its own API key. Still excluded pending
-explicit opt-in: container-exec, email send, cs-template migrate.
+ADMINTOOLKIT / the toolkit plugin / its own API key / its own identity or the
+finding whitelist. Still excluded pending explicit opt-in: container-exec,
+email send, cs-template migrate.
 
 ---
 

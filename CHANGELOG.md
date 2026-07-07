@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.667] - 2026-07-07
+
+### Added
+- **Actuator catalog grows from 18 to 43 actions** (runtime + lifecycle long tail, all B-api on the per-host client — fleet-routable). Clusters: `cluster-stop` (managed-only; `terminate=true` named IRREVERSIBLE in the plan), `cluster-start`, `cluster-pods-cleanup` (finished pods/jobs only). Lifecycle: `code-env-update`, `plugin-update` (pre-update zip backup), `plugin-code-env-rebuild`. Projects: `project-export` (⨯N), `project-set-cluster` (fixes WARN_CLUSTERS_NONE_SELECTED_PROJECT), `project-change-owner`, `project-variables-set` — all drift-guarded with restorable history. Runtime: `job-kill` (⨯N), `scenario-disable`/`scenario-enable` (⨯N, drift-guarded toggle, each the other's revert), `scenario-kill`, `scenario-run`, `continuous-activity-stop`, `webapp-backend-stop`/`webapp-backend-restart` (⨯N), `notebook-kernels-shutdown` (DSS-level, files untouched), `notebook-clear-outputs` (⨯N). Security: `user-disable` (⨯N, red, never deletes, refuses the toolkit's own identity)/`user-enable`, `api-key-delete` (red, IRREVERSIBLE, refuses the caller's own personal key). Plus `connection-index` and `variables-set` (GLOBAL variables; secret paths AND `admin_toolkit_finding_whitelist` blocked — agents never edit their own suppression list).
+- **6 new `config_inspect` domains**: `users`, `api-keys` (secrets never shown), and per-project `scenarios`, `webapps`, `notebooks`, `jobs` (`name_filter` = project key), backed by new open inventory GETs on the backend (`/api/tools/admin-actions/inventory`, `…/project-setting`, `…/global-variable`).
+- Remediation map: long-running-kernel sanity warnings → `notebook-kernels-shutdown`, WARN_CLUSTERS_NONE_SELECTED_PROJECT → `project-set-cluster`, scenario failure storms → `scenario-disable`, departed users → `user-disable`. ACTION_SAFETY rubric names the irreversible pair (api-key-delete, cluster-stop terminate) and the reversible-by-design account hygiene doctrine.
+
+### Fixed
+- `cluster-detach` (and the new cluster actions) can now plan against **unavailable** clusters — the Phase-1 lookup searched only the available list, refusing exactly the stale attachments the action exists for.
+
 ## [0.4.666] - 2026-07-07
 
 ### Fixed

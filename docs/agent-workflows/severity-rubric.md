@@ -191,6 +191,18 @@ design, not a gap.
   confirm token, N targets. The plan's per-target table is presented
   verbatim; one approval covers every target, execution is per-target with
   per-target results (partial success reported per entry).
+- **Irreversible actions are named as such** in the plan presentation:
+  `api-key-delete` (the key secret cannot be regenerated) and `cluster-stop`
+  with `terminate=true` (cloud-side resources destroyed). No backup makes
+  these restorable.
+- **Account hygiene is reversible by design**: `user-disable` never deletes
+  (`user-enable` reverts), and the toolkit refuses to disable its own
+  identity or delete its own API key (self-lockout guard, enforced below the
+  model).
+- **Runtime stops** (job-kill, scenario-kill, webapp-backend-stop,
+  notebook-kernels-shutdown, continuous-activity-stop) act through DSS APIs
+  and are user-restartable — plans state the user impact (lost session,
+  aborted run) rather than calling them destructive.
 
 ## Health score
 

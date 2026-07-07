@@ -1,9 +1,0 @@
-/* Agent tool: adoption & engagement metrics from the project-git commit spine */
-{
-    "meta": {
-        "label": "Admin Toolkit: Adoption metrics",
-        "description": "Builder trends, active projects, cohorts and engagement metrics for one DSS host (from persistent project git history).",
-        "icon": "icon-group"
-    },
-    "params": []
-}

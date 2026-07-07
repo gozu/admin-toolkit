@@ -225,44 +225,6 @@ def instance_health(client, host='local', sections=None, top_n=20, include_score
     return shaping.enforce_budget(out)
 
 
-# ── adoption-metrics ─────────────────────────────────────────────────────────
-
-
-def adoption_metrics(client, host='local', window_months=12, top_n=10):
-    data = client.get('/api/adoption', host=host, heavy=True)
-    if not data.get('ok', True):
-        return {'host': host or 'local', 'error': {'code': 'adoption-unavailable',
-                'message': str(data.get('error') or 'adoption data unavailable')}}
-    trend = data.get('monthlyTrend') or []
-    window = trend[-max(1, int(window_months)):]
-    totals = data.get('totals') or {}
-
-    def _delta(field):
-        if len(window) >= 2:
-            return window[-1].get(field, 0) - window[-2].get(field, 0)
-        return None
-
-    out = {
-        'host': host or 'local',
-        'totals': shaping.pick(totals, ('projectCount', 'activeProjectCount', 'builderCount',
-                                        'commitCount', 'avgPeoplePerProject', 'automationCount',
-                                        'inactiveThresholdDays')),
-        'monthlyTrend': window,
-        'latestMonthDelta': {'commits': _delta('commits'), 'activeBuilders': _delta('activeBuilders')},
-        'repeatBuilders': data.get('repeatBuilders'),
-        'topBuilders': shaping.top_rows(data.get('builderStats'), 'commits', top_n,
-                                        keys=('login', 'displayName', 'commits', 'projectCount', 'activeMonths')),
-        'topGroups': shaping.top_rows(data.get('groups'), 'commits', top_n,
-                                      keys=('name', 'commits', 'builderCount', 'memberCount', 'projectCount')),
-        'newUserCohorts': (data.get('cohorts') or [])[-max(1, int(window_months)):],
-        'generatedAtMs': data.get('generatedAtMs'),
-    }
-    if totals.get('truncatedProjectCount'):
-        out['note'] = ('%d projects hit the commit-page cap; their counts are floors (≥).'
-                       % totals['truncatedProjectCount'])
-    return shaping.enforce_budget(out)
-
-
 # ── compute-cost ─────────────────────────────────────────────────────────────
 
 _CRU_GROUPS = {'project': 'projects', 'user': 'users', 'context_type': 'contextTypes'}

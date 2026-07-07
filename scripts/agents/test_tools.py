@@ -6,7 +6,7 @@ agent-tool runtime (not just pure-Python impls).
 
 Reads .dss-url/.dss-api-key (akaos dev server). Ensures the sandbox project +
 one instance per plugin tool, then runs: list-hosts (probe), instance-health
-(local + bad host id), adoption-metrics, compute-cost. Prints outputs + wall
+(local + bad host id), compute-cost. Prints outputs + wall
 times (the tool-timeout measurement the plan asks for).
 """
 
@@ -20,7 +20,7 @@ import dataikuapi
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 PLUGIN_ID = "admin-toolkit"
-TOOLS = ["list-hosts", "instance-health", "adoption-metrics", "compute-cost",
+TOOLS = ["list-hosts", "instance-health", "compute-cost",
          "config-inspect", "log-errors", "storage-footprint",
          "k8s-health", "db-health", "plan-admin-action", "execute-admin-action"]
 
@@ -86,7 +86,6 @@ def main():
     run_tool(handles["list-hosts"], "list-hosts probe", {"probe": True})
     run_tool(handles["instance-health"], "instance-health local", {"host": "local"})
     run_tool(handles["instance-health"], "instance-health BAD HOST", {"host": "hallucinated-host"})
-    run_tool(handles["adoption-metrics"], "adoption-metrics", {"window_months": 6, "top_n": 5})
     run_tool(handles["compute-cost"], "compute-cost by project", {"group_by": "project", "top_n": 5})
     run_tool(handles["config-inspect"], "config-inspect connections", {"domain": "connections", "top_n": 8})
     run_tool(handles["log-errors"], "log-errors grouped", {"top_n": 5})

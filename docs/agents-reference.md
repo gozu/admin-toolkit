@@ -163,9 +163,9 @@ the rule, don't just report the number.
 
 ### 2.2 ATK Scoping Architect (`scoping-architect`) — read-only analyst
 
-Sizing, adoption, migration and capability questions for field engineers. Tools:
+Sizing, migration and capability questions for field engineers. Tools:
 `list_hosts`, `config_inspect`, `instance_health`, `k8s_health`, `db_health`,
-`compute_cost`, `storage_footprint`, `adoption_metrics` + `propose_action_items`.
+`compute_cost`, `storage_footprint` + `propose_action_items`.
 
 System prompt (verbatim; the severity rubric (§2.5) then the action-items
 addendum (§2.3) are appended):
@@ -368,7 +368,6 @@ JSON-serialized into `ToolMessage` content).
 |---|---|
 | `list_hosts` | Reachable DSS hosts (id, label, url); `probe=true` checks reachability. |
 | `instance_health` | Health snapshot of one host: system/sanity/java/issues/score sections; `include_score=true` forces heavy scans (may return `scan_running`). |
-| `adoption_metrics` | Adoption/engagement from persistent project git history: trends, totals, top builders/groups, cohorts. Survives audit-log rotation. |
 | `compute_cost` | Compute + LLM cost from CRU audit records, `group_by=project\|user\|context_type`. Span limited to audit retention (`span` field). |
 | `config_inspect` | One config domain: `connections\|code-envs\|plugins\|llms`, `detail=health\|usage`, `name_filter`. |
 | `log_errors` | backend.log error groups; `pattern=<regex>` greps the raw tail. |
@@ -849,7 +848,7 @@ Section taxonomy:
 | Agent | Sections |
 |---|---|
 | Health Triage | Fleet sweep · Storage · Database · Kubernetes · Logs & errors · Config & plugins · LLM Mesh |
-| Scoping Architect | Adoption · Projects · Compute cost · Envs & plugins · Capacity · Licensing & users |
+| Scoping Architect | Projects · Compute cost · Envs & plugins · Capacity · Licensing & users |
 | Ops Actuator | Project cleanup · Code-env hygiene · Container images · DB maintenance · Plugin deploys · K8s tuning · **Safety drills** |
 
 The Safety drills section deserves a call-out: it teaches the gates by
@@ -883,12 +882,11 @@ honest risk colors, evidence on every item.
 Build a full scoping dossier of this fleet — every tool, every host. Cover:
 1. Hosts and reachability (list_hosts probe=true).
 2. Instance health and sizing signals per host (instance_health).
-3. Adoption: trends, top builders, groups, cohorts, momentum (adoption_metrics).
-4. Project landscape: storage totals, largest and inactive projects (storage_footprint).
-5. Compute + LLM cost by project and context type (compute_cost).
-6. Configuration: connections, code envs, plugins, LLM Mesh (config_inspect, each domain).
-7. Kubernetes capability and cluster states (k8s_health).
-8. Runtime database health (db_health).
+3. Project landscape: storage totals, largest and inactive projects (storage_footprint).
+4. Compute + LLM cost by project and context type (compute_cost).
+5. Configuration: connections, code envs, plugins, LLM Mesh (config_inspect, each domain).
+6. Kubernetes capability and cluster states (k8s_health).
+7. Runtime database health (db_health).
 Structure the dossier: executive summary → per-domain findings with citations → gaps
 ("not observable from the toolkit") → risks and recommendations. Apply your severity rubric
 throughout: always-lead criticals open the risk section, medium+ floor, cost-class findings

@@ -54,13 +54,6 @@
    "source": "instance_health score path / settings raw internalDatabase"
   },
   {
-   "q": "How many builders are active and how many projects are actively worked on?",
-   "expect": [
-    "builder"
-   ],
-   "source": "adoption_metrics totals \u2014 builderCount grows with project git history (135\u2192136 within days) and activeProjectCount is a rolling window: pin neither"
-  },
-  {
    "q": "Is Agent Hub installed on the local host and at what version?",
    "expect": [
     "1.2.3"

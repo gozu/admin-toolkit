@@ -41,9 +41,6 @@ def build_langchain_tools(client, names=None):
                             'Health snapshot of one DSS host (host, sections list of system/sanity/java/issues/score, '
                             'top_n, include_score). include_score=true adds the 0-100 UI health score but forces '
                             'heavy scans (may return scan_running — retry later).'),
-        'adoption_metrics': (tools_impl.adoption_metrics,
-                             'Adoption/engagement metrics for a host from persistent project git history '
-                             '(host, window_months, top_n): trends, totals, top builders/groups, cohorts.'),
         'compute_cost': (tools_impl.compute_cost,
                          'Compute + LLM cost from CRU audit records (host, group_by=project|user|context_type, '
                          'top_n). Span limited to audit retention — check the span field.'),

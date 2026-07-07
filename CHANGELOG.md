@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.657] - 2026-07-07
+
+### Removed
+- **`adoption_metrics` agent tool** — the last remaining piece of the Adoption feature (the UI subpage was removed in 0.4.638-640). Gone full-stack: the `python-agent-tools/adoption-metrics/` plugin tool, `tools_impl.adoption_metrics`, the `GET /api/adoption` route (`routes/adoption.py`), `_adoption_git_aggregate` and its now-orphaned git-log helpers (`_git_commit_month`, `_fill_month_range`, `_classify_git_author`, `_continue_git_log`, `_fetch_all_git_logs`) in `clients.py`, the Scoping Architect's tool binding, the adoption golden question (set is now 9), and the scripts/docs references (`test_tools.py`, `verify_endpoints.py`, `golden_check.py`, `agents-reference.md`). The severity-rubric line excluding adoption/QBR metrics from digests stays — that's editorial policy, not a tool reference.
+
 ## [0.4.655] - 2026-07-06
 
 ### Added

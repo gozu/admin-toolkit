@@ -102,7 +102,6 @@ def main():
     hosts = probe(s, args.base, "hosts", "GET", "/api/hosts", out_dir)
     probe(s, args.base, "overview", "GET", "/api/overview", out_dir)
     probe(s, args.base, "host-summary", "GET", "/api/host/summary", out_dir)
-    probe(s, args.base, "adoption", "GET", "/api/adoption", out_dir, timeout=300)
     probe(s, args.base, "threshold-defaults", "GET", "/api/settings/threshold-defaults", out_dir)
     probe(s, args.base, "cru", "GET", "/api/cru", out_dir, timeout=420)
 

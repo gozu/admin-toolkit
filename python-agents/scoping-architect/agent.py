@@ -22,7 +22,7 @@ class ScopingArchitectAgent(BaseLLM):
                                    remediation='Set llm_id on the agent or default_llm_id in the plugin settings.')
             tools = agent_tools.build_langchain_tools(
                 client, names=['list_hosts', 'config_inspect', 'instance_health', 'k8s_health',
-                               'db_health', 'compute_cost', 'storage_footprint', 'adoption_metrics'])
+                               'db_health', 'compute_cost', 'storage_footprint'])
             tools.append(action_items.build_tool(client))
             llm = agent_runtime.build_llm(llm_id)
         except ToolkitError as exc:

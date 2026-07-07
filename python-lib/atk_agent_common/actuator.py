@@ -82,7 +82,7 @@ def _plan_project_delete(client, host, target, params):
     row = next((p for p in footprint.get('projects') or [] if p.get('projectKey') == key), None)
     if row is None:
         raise ToolkitError('Project %r not found on host %r.' % (key, host),
-                           remediation='Check the key with storage-footprint or adoption-metrics.')
+                           remediation='Check the key with storage-footprint.')
     inactive = client.get('/api/tools/inactive-projects', host=host)
     inactive_row = next((p for p in inactive.get('projects') or [] if p.get('projectKey') == key), None)
     folder = _backup_folder(client, host)

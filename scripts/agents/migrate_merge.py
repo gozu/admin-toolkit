@@ -57,7 +57,7 @@ NEW_AGENT_TYPE = 'agent_%s_%%s' % NEW_PLUGIN
 
 # the 17 params that moved onto the merged plugin's settings page
 AGENT_PARAM_KEYS = [
-    'backend_url', 'red_actions_password', 'host_keys_password', 'host_allowlist',
+    'backend_url', 'master_password', 'red_actions_password', 'host_keys_password', 'host_allowlist',
     'verify_tls', 'http_timeout_s', 'heavy_timeout_s', 'default_llm_id',
     'enable_red_actions', 'triage_connection', 'triage_score_threshold',
     'triage_mail_channel', 'triage_recipient',
@@ -320,9 +320,9 @@ def smokes(client, handles, args):
                      'target': {'configName': 'eks-default', 'changes': {'memRequestMB': 2048}}})
     out = (plan or {}).get('output') or {}
     if out.get('confirm_token'):
-        print('  red_actions_password check: PASS (confirm token minted)')
+        print('  master password check: PASS (confirm token minted)')
     else:
-        manual('plan-admin-action minted no confirm token — red_actions_password not working '
+        manual('plan-admin-action minted no confirm token — master password not working '
                'on the merged settings page: %s' % json.dumps(out.get('error'))[:200])
     project = client.get_project(args.project)
     for name in AGENT_TYPES:

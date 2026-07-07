@@ -191,17 +191,28 @@ def _remote_host_config(host_id: str) -> Optional[Dict[str, Any]]:
             continue
         cfg = preset.get('config') or {}
         # Remote-host keys may be stored encrypted (adkfk1$ blob). Decrypt
-        # transparently with the process-cached key; raise RemoteKeysLocked (→
-        # 409, frontend pops the unlock modal) when locked or undecryptable.
+        # transparently with the process-cached key, else derive it from the
+        # master password in plugin settings (zero user action); raise
+        # RemoteKeysLocked (→ 409, frontend pops the unlock modal) only when
+        # neither opens it — a legacy hash-only install, or a blob made under
+        # a different password.
         raw_key = cfg.get('apiKey') or ''
         if hostkeys.is_encrypted(raw_key):
+            api_key = None
             active = hostkeys.get_active_key()
-            if active is None:
-                raise hostkeys.RemoteKeysLocked(host_id)
-            try:
-                api_key = hostkeys.decrypt_blob(raw_key, active)
-            except Exception:
-                raise hostkeys.RemoteKeysLocked(host_id)
+            if active is not None:
+                try:
+                    api_key = hostkeys.decrypt_blob(raw_key, active)
+                except Exception:
+                    api_key = None
+            if api_key is None:
+                # Lazy import — routes.auth pulls in Flask; keep that out of
+                # this module's import time.
+                from adk_backend.routes.auth import auto_unlock_host_keys
+                fernet_key = auto_unlock_host_keys(raw_key)
+                if fernet_key is None:
+                    raise hostkeys.RemoteKeysLocked(host_id)
+                api_key = hostkeys.decrypt_blob(raw_key, fernet_key)
         else:
             api_key = raw_key
         return {

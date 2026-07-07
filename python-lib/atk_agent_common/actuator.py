@@ -746,11 +746,11 @@ def plan_admin_action(client, host='local', action=None, target=None, params=Non
                           'message': 'action must be one of: %s' % ', '.join(ACTIONS)}}
     host = host or 'local'
     canonical, plan = _PLANNERS[action](client, host, target, params or {})
-    password = client.settings.get('red_actions_password') or ''
+    password = client.settings.get('master_password') or ''
     if not password:
         return {'plan': plan, 'canonicalTarget': canonical,
                 'error': {'code': 'red-locked',
-                          'message': 'Plan built, but no Advanced Actions password is configured — '
+                          'message': 'Plan built, but no master password is configured — '
                                      'no confirm token can be minted and execution is impossible.'}}
     token, exp = confirm.mint(password, action, host, canonical)
     return shaping.enforce_budget({
@@ -782,7 +782,7 @@ def execute_admin_action(client, host='local', action=None, target=None,
         return {'error': {'code': 'not-confirmed',
                           'message': 'execute requires confirm=true, sent only after the user '
                                      'explicitly approved the plan in the conversation.'}}
-    password = settings.get('red_actions_password') or ''
+    password = settings.get('master_password') or ''
     try:
         confirm.verify(password, confirm_token, action, host, target)
     except confirm.ConfirmTokenError as exc:

@@ -26,7 +26,7 @@ from adk_backend.clients import (
     _remote_host_config,
     _resolve_client,
 )
-from adk_backend.routes.auth import _red_secret, _verify_red_password, set_hostkey_cookie
+from adk_backend.routes.auth import _master_password, _red_secret_source, _verify_red_password, set_hostkey_cookie
 from adk_backend.utils import _sse_response, advanced, local_only
 
 bp = Blueprint('hosts', __name__)
@@ -341,9 +341,10 @@ def api_hosts_install_toolkit():
 #
 # The webapp owns the whole remote-dss-host preset. The plaintext API key is
 # sent here over HTTPS and encrypted SERVER-SIDE into an adkfk1$ blob before it
-# touches saved settings (never stored in plaintext). Key/salt provenance is the
-# B→A failover (see _encrypt_api_key): prefer the already-unlocked host-key
-# Fernet key (no user action); fail over to the Advanced Actions password.
+# touches saved settings (never stored in plaintext). Key/salt provenance (see
+# _encrypt_api_key): a typed password wins (verified against the master
+# password), else the settings-stored master password (zero user action), else
+# an already-unlocked Fernet key, else prompt.
 #
 # All routes are @advanced (gated on the red unlock cookie — managing hosts is
 # an advanced action) + @local_only (plugin settings are local-only; never
@@ -407,35 +408,39 @@ def _encrypt_api_key(
     """Encrypt a plaintext API key into an adkfk1$ blob via the B→A failover.
 
     Returns (blob, fernet_key, error). On success error is None; fernet_key is
-    non-None only on path A (so the caller auto-unlocks via set_active_key +
-    cookie). On failure blob/fernet_key are None and error is a (payload, status)
-    tuple to return verbatim."""
+    non-None only when a password was in play (so the caller auto-unlocks via
+    set_active_key + cookie). On failure blob/fernet_key are None and error is
+    a (payload, status) tuple to return verbatim."""
     salt = _existing_salt_source()
     password = (password or '').strip()
 
-    if not password:
-        # ── Path B: use the already-unlocked host key (no user action) ──
-        active = hostkeys.get_active_key()
-        # No cached key, or no salt to key against yet (first key ever) → prompt.
-        if active is None or salt is None:
-            return None, None, ({'ok': False, 'needPassword': True}, 200)
-        try:
-            return hostkeys.encrypt_blob(plaintext, active, salt), None, None
-        except Exception:
-            return None, None, ({'ok': False, 'needPassword': True}, 200)
+    if password:
+        # ── Typed password: verify against the master password (or the
+        #    legacy hash on a pre-master install) before trusting it ──
+        kind, stored = _red_secret_source()
+        if not stored:
+            return None, None, ({
+                'ok': False,
+                'error': 'advanced-not-configured',
+                'message': 'No master password is configured yet. Set one in the plugin '
+                           'settings first, then add the host.',
+            }, 400)
+        if not _verify_red_password(password, kind, stored):
+            return None, None, ({'ok': False, 'error': 'invalid-password',
+                                 'message': 'Incorrect password.'}, 401)
+    else:
+        # ── No password typed: the settings-stored master password covers it ──
+        password = _master_password()
+        if not password:
+            # Legacy hash-only install: fall back to the already-unlocked key.
+            active = hostkeys.get_active_key()
+            if active is None or salt is None:
+                return None, None, ({'ok': False, 'needPassword': True}, 200)
+            try:
+                return hostkeys.encrypt_blob(plaintext, active, salt), None, None
+            except Exception:
+                return None, None, ({'ok': False, 'needPassword': True}, 200)
 
-    # ── Path A: master password supplied → verify, derive, auto-unlock ──
-    stored = _red_secret()
-    if not stored:
-        return None, None, ({
-            'ok': False,
-            'error': 'advanced-not-configured',
-            'message': 'No Advanced Actions password is configured yet. Set one first, '
-                       'then add the host.',
-        }, 400)
-    if not _verify_red_password(password, stored):
-        return None, None, ({'ok': False, 'error': 'invalid-password',
-                             'message': 'Incorrect password.'}, 401)
     if salt is None:
         salt = hostkeys.host_salt(password)  # first key ever
     fernet_key = hostkeys.derive_fernet_key(password, salt)

@@ -27,8 +27,10 @@ def resolve(plugin_config=None):
 
     settings = {
         'backend_url': (pick('backend_url') or '').rstrip('/'),
-        'red_actions_password': pick('red_actions_password'),
-        'host_keys_password': pick('host_keys_password'),
+        # One password unlocks red endpoints AND opens encrypted host keys.
+        # Legacy keys cover a pre-0.4.659 config DSS hasn't pruned yet.
+        'master_password': (pick('master_password') or cfg.get('red_actions_password')
+                            or cfg.get('host_keys_password') or ''),
         'host_allowlist': [h.strip() for h in (pick('host_allowlist') or '').split(',') if h.strip()],
         'verify_tls': str(pick('verify_tls', cfg.get('verify_tls', True))).lower() not in ('false', '0', 'no'),
         'http_timeout_s': int(pick('http_timeout_s', cfg.get('http_timeout_s') or 30)),

@@ -65,11 +65,11 @@ class MyRunnable(Runnable):
         # while the backend still caches a key from an interactive UI unlock —
         # any backend restart then breaks remote hosts. Surface it every run.
         config_warning = None
-        if not settings.get('host_keys_password'):
+        if not settings.get('master_password'):
             try:
                 if (client.get('/api/hosts/keys/status') or {}).get('configured'):
-                    config_warning = ('A remote host API key is encrypted but host_keys_password '
-                                      'is not set in the Admin Toolkit Agents plugin settings; '
+                    config_warning = ('A remote host API key is encrypted but no master password '
+                                      'is set in the Admin Toolkit plugin settings; '
                                       'remote hosts will fail after any backend restart.')
             except Exception:
                 pass

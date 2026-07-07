@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.658",
+    "version": "0.4.659",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -12,14 +12,14 @@
         {
             "name": "sep_security",
             "label": "Advanced Actions",
-            "description": "Create your secret on <a href=\"/plugins/admin-toolkit/resource/hash.html\" target=\"_blank\" rel=\"noopener noreferrer\">the secret generator</a> \u2014 type a password there, then paste the result below.",
+            "description": "One master password covers everything: it unlocks advanced actions (delete / replace / migrate / deploy / send) in the webapp, encrypts remote-host API keys at rest, and lets the agents run headlessly.",
             "type": "SEPARATOR"
         },
         {
-            "name": "red_actions_secret",
-            "label": "Advanced Actions secret",
-            "description": "Paste the secret from the link above to enable advanced actions (delete / replace / migrate / deploy / send). Leave empty to keep them locked.",
-            "type": "STRING",
+            "name": "master_password",
+            "label": "Master password",
+            "description": "Leave empty to keep all mutating actions permanently locked (read-only toolkit).",
+            "type": "PASSWORD",
             "mandatory": false,
             "defaultValue": ""
         },
@@ -157,22 +157,6 @@
             "label": "Backend base URL",
             "description": "Admin Toolkit webapp backend base, e.g. https://dss.example.com/web-apps-backends/PROJECT/webappId \u2014 leave empty to auto-discover the webapp on the local DSS.",
             "type": "STRING",
-            "mandatory": false,
-            "defaultValue": ""
-        },
-        {
-            "name": "red_actions_password",
-            "label": "Advanced Actions password",
-            "description": "Plaintext Advanced Actions password (used to unlock red endpoints headlessly). Leave empty to keep all mutating actions permanently locked.",
-            "type": "PASSWORD",
-            "mandatory": false,
-            "defaultValue": ""
-        },
-        {
-            "name": "host_keys_password",
-            "label": "Remote host keys password",
-            "description": "Password for encrypted remote-host API keys (adkfk1$ blobs). Leave empty if no remote host uses an encrypted key.",
-            "type": "PASSWORD",
             "mandatory": false,
             "defaultValue": ""
         },

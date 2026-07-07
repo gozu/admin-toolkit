@@ -15,10 +15,8 @@ export const SELECTED_MAIL_CHANNEL_STORAGE_KEY = 'selectedMailChannel';
 export const SHOW_EXPERIMENTAL_STORAGE_KEY = 'showExperimental';
 export const SHOW_DEPRECATED_STORAGE_KEY = 'showDeprecated';
 
-// The only place to turn a password into a secret. Served statically by DSS from
-// the plugin's resource/ dir; type the password there and paste the result into
-// the plugin setting.
-const SECRET_PAGE_URL = '/plugins/admin-toolkit/resource/hash.html';
+// Where the admin sets the one master password (a PASSWORD field).
+const PLUGIN_SETTINGS_URL = '/plugins/admin-toolkit/settings/';
 
 export function SettingsPage() {
   const { state } = useDiag();
@@ -131,17 +129,17 @@ export function SettingsPage() {
 
         <p className="text-sm text-[var(--text-muted)]">
           <span className="font-medium text-[var(--text-secondary)]">Admin setup:</span>{' '}
-          open the{' '}
+          set one master password in{' '}
           <a
-            href={SECRET_PAGE_URL}
+            href={PLUGIN_SETTINGS_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[var(--accent)] hover:underline"
           >
-            secret generator
+            plugin settings → “Master password”
           </a>
-          , type a password to get a secret, then paste it into Plugin settings →
-          “Advanced Actions secret”. The plaintext never leaves the browser.
+          . It unlocks advanced actions here, encrypts remote-host API keys, and powers the
+          agents.
         </p>
       </section>
 

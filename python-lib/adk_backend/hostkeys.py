@@ -6,8 +6,9 @@ safe to import from both `clients.py` (preset resolution) and the auth route
 
 Scheme
 ------
-- KDF: PBKDF2-HMAC-SHA256, 600 000 iterations, 32-byte output (same params as
-  hash.html). Salt = 16 random bytes, generated in the browser tool.
+- KDF: PBKDF2-HMAC-SHA256, 600 000 iterations, 32-byte output. Salt = 16
+  bytes, derived deterministically from the password (host_salt) or reused
+  from an existing blob.
 - Cipher: Fernet (AES-128-CBC + HMAC-SHA256, authenticated). The Fernet key is
   `base64.urlsafe_b64encode(PBKDF2(password, salt))` — that 44-byte token IS the
   "derived key" the unlock cookie carries.
@@ -31,14 +32,14 @@ from typing import Optional
 BLOB_PREFIX = 'adkfk1$'
 KEY_COOKIE_NAME = 'admin_toolkit_hostkey'
 
-# Same KDF params as hash.html / the red-secret verifier.
+# Same KDF params as the legacy hash.html / red-secret verifier (kept so
+# pre-0.4.659 blobs and hashes still open).
 _PBKDF2_ITERATIONS = 600000
 _PBKDF2_DKLEN = 32
 
-# Deterministic-salt derivation tag. The leading space is significant and MUST
-# match hash.html's `HOST_SALT_TAG = ' adk-hostkey-salt-v1'` byte-for-byte, or a
-# blob made in the browser tool and one made server-side would get different
-# salts → different keys → cross-decrypt failures.
+# Deterministic-salt derivation tag. The leading space is significant: it
+# matches the retired hash.html browser tool byte-for-byte, so blobs made
+# there before 0.4.659 still derive the same salt → same key server-side.
 HOST_SALT_TAG = b' adk-hostkey-salt-v1'
 
 
@@ -78,7 +79,7 @@ def salt_from_blob(blob: str) -> bytes:
 def host_salt(password: str) -> bytes:
     """Deterministic 16-byte salt = PBKDF2(pw, HOST_SALT_TAG, 600k)[:16].
 
-    Mirrors hash.html's hostSalt(): the salt is derived through the full KDF (not
+    The salt is derived through the full KDF (not
     a bare hash) so the stored salt can't serve as a fast offline password
     verifier. Same password → same salt → one derived key opens every blob, with
     nothing for the admin to manage. Used only as the first-key fallback (path A):
@@ -91,9 +92,8 @@ def host_salt(password: str) -> bytes:
 def encrypt_blob(plaintext: str, fernet_key: bytes, salt: bytes) -> str:
     """Inverse of decrypt_blob → 'adkfk1$<b64url-salt>$<fernet-token>'.
 
-    cryptography's Fernet.encrypt() produces the same 0x80│ts│iv│ct│hmac frame
-    the hand-rolled JS Fernet in hash.html emits, so blobs round-trip across both
-    implementations. Salt is stored unpadded, token padded — matching hash.html."""
+    Salt is stored unpadded, token padded — matching the retired hash.html
+    browser tool, whose blobs must keep round-tripping."""
     from cryptography.fernet import Fernet
     token = Fernet(fernet_key).encrypt(plaintext.encode('utf-8')).decode('ascii')
     salt_b64 = base64.urlsafe_b64encode(salt).decode('ascii').rstrip('=')

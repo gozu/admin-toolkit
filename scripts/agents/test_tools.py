@@ -98,7 +98,7 @@ def main():
     out = (plan or {}).get("output") or {}
     token = out.get("confirm_token")
     print("\nPASSWORD-param decryption check:",
-          "PASS (confirm_token minted from red_actions_password)" if token
+          "PASS (confirm_token minted from master_password)" if token
           else f"no token — output error: {json.dumps(out.get('error'))[:300]}")
     run_tool(handles["execute-admin-action"], "execute refusal (kill-switch off)",
              {"action": "k8s-exec-config-tune",

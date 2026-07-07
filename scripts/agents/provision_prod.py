@@ -106,16 +106,13 @@ def apply_plugin_settings(plugin, args, env_name):
     cfg = raw.setdefault('config', {})
     cfg['backend_url'] = args.backend_url
     cfg['default_llm_id'] = args.llm_id
-    if args.red_password:
-        cfg['red_actions_password'] = args.red_password
-    if args.keys_password:
-        cfg['host_keys_password'] = args.keys_password
+    if args.master_password:
+        cfg['master_password'] = args.master_password
     cfg.setdefault('enable_red_actions', False)  # kill switch stays OFF
     settings.save()
-    print('plugin settings saved: codeEnvName=%s backend_url=%s llm=%s red_pw=%s keys_pw=%s'
+    print('plugin settings saved: codeEnvName=%s backend_url=%s llm=%s master_pw=%s'
           % (env_name, args.backend_url, args.llm_id,
-             'set' if args.red_password else 'EMPTY (actuator locked)',
-             'set' if args.keys_password else 'empty'))
+             'set' if args.master_password else 'EMPTY (actuator locked)'))
 
 
 def ensure_project(client, key):
@@ -139,8 +136,7 @@ def main():
     ap.add_argument('--backend-url', default='',
                     help='empty = auto-discover the admin-toolkit webapp backend on the instance')
     ap.add_argument('--llm-id', default='anthropic:kaosclaude:claude-opus-4-8')
-    ap.add_argument('--red-password', default='')
-    ap.add_argument('--keys-password', default='')
+    ap.add_argument('--master-password', default='')
     ap.add_argument('--project', default='ADMINTOOLKIT')
     ap.add_argument('--no-smoke', action='store_true')
     args = ap.parse_args()

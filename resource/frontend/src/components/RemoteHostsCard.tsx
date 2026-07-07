@@ -17,9 +17,7 @@ import { fetchJson, ApiRequestError } from '../utils/api';
 import type { ColumnDef } from '../utils/dataGridTypes';
 import type { Lifecycle, DssHostStatus } from '../types';
 
-// Where the admin sets the master password (Advanced Actions secret) when the
-// host-key encryption gate isn't configured yet.
-const SECRET_PAGE_URL = '/plugins/admin-toolkit/resource/hash.html';
+// Where the admin sets the master password when it isn't configured yet.
 const PLUGIN_SETTINGS_URL = '/plugins/admin-toolkit/settings/';
 
 const EPOCH = '1970-01-01T00:00:00.000Z';
@@ -526,7 +524,7 @@ function HostEditModal({ host, onClose, onSaved }: HostEditModalProps) {
           >
             <span className="text-sm font-medium text-[var(--text-primary)]">Master password</span>
             <p className="text-xs text-[var(--text-muted)]">
-              Enter your Advanced Actions password to encrypt this key.
+              Enter the master password to encrypt this key.
             </p>
             <input
               type="password"
@@ -562,23 +560,14 @@ function HostEditModal({ host, onClose, onSaved }: HostEditModalProps) {
               />
             </svg>
             <p className="text-[var(--text-secondary)]">
-              No Advanced Actions password is set yet. Generate one with the{' '}
-              <a
-                href={SECRET_PAGE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[var(--accent)] hover:underline"
-              >
-                secret generator
-              </a>
-              , paste it into{' '}
+              No master password is set yet. Set one in{' '}
               <a
                 href={PLUGIN_SETTINGS_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[var(--accent)] hover:underline"
               >
-                plugin settings → “Advanced Actions secret”
+                plugin settings → “Master password”
               </a>
               , then add the host.
             </p>

@@ -9,11 +9,9 @@ interface UnlockModalProps {
   onUnlocked?: () => void;
 }
 
-// hash.html is now only where the admin turns a password into the plugin's
-// Advanced Actions secret. Encrypted remote-host keys are managed server-side in
-// the webapp (Settings → Remote Hosts) — this one password unlocks both gates.
-// Served statically by DSS from the plugin's resource/ dir on the controller.
-const SECRET_PAGE_URL = '/plugins/admin-toolkit/resource/hash.html';
+// The one master password is set as a plain PASSWORD field in plugin settings;
+// it unlocks both gates (advanced actions + encrypted remote-host keys).
+const PLUGIN_SETTINGS_URL = '/plugins/admin-toolkit/settings/';
 
 /**
  * Single password prompt for both gates. One password unlocks the advanced
@@ -163,25 +161,16 @@ export function UnlockModal({ isOpen, onClose, onUnlocked }: UnlockModalProps) {
         {notice && <div className="text-sm text-[var(--neon-amber)]">{notice}</div>}
         <p className="text-xs text-[var(--text-muted)]">
           No prompt next time — the unlock is remembered on this browser (secure cookies). The
-          password is set by an administrator with the{' '}
+          master password is set by an administrator in{' '}
           <a
-            href={SECRET_PAGE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[var(--accent)] hover:underline"
-          >
-            secret generator
-          </a>{' '}
-          and pasted into{' '}
-          <a
-            href="/plugins/admin-toolkit/settings/"
+            href={PLUGIN_SETTINGS_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[var(--accent)] hover:underline"
           >
             plugin settings
           </a>
-          . It never leaves the browser.
+          .
         </p>
       </div>
     </Modal>

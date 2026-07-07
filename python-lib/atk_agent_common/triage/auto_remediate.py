@@ -74,8 +74,8 @@ def run_auto_remediation(client, settings, rows, run_id):
                 summary['skipped'].append(dict(entry, reason='enable_red_actions master '
                                                'kill-switch is OFF (would have run)'))
                 continue
-            if not settings.get('red_actions_password'):
-                summary['skipped'].append(dict(entry, reason='no Advanced Actions password '
+            if not settings.get('master_password'):
+                summary['skipped'].append(dict(entry, reason='no master password '
                                                'configured — cannot mint a confirm token'))
                 continue
             try:

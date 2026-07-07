@@ -226,26 +226,26 @@ class ToolkitClient:
 
     # ── unlocks ──────────────────────────────────────────────────────────────
     def _unlock_red(self):
-        password = self.settings.get('red_actions_password') or ''
+        password = self.settings.get('master_password') or ''
         if not password:
-            raise RedLocked('This action needs the Advanced Actions unlock, and no password is '
-                            'configured in the plugin settings.')
+            raise RedLocked('This action needs the Advanced Actions unlock, and no master password '
+                            'is configured in the plugin settings.')
         resp = self._do('POST', '/api/auth/red/unlock', json={'password': password}, timeout=self.timeout)
         if resp.status_code == 200:
             self._red_unlocked = True
             return
         code, body = self._error_body(resp)
         if code == 'not-configured':
-            raise RedLocked('The Admin Toolkit has no Advanced Actions secret configured, so red '
+            raise RedLocked('The Admin Toolkit has no master password configured, so red '
                             'actions are impossible on this backend.',
-                            remediation='An admin must set the secret in the Admin Toolkit plugin settings.')
-        raise RedLocked('The configured Advanced Actions password was rejected (%s).'
+                            remediation='An admin must set the master password in the Admin Toolkit plugin settings.')
+        raise RedLocked('The configured master password was rejected (%s).'
                         % ((body or {}).get('message') or 'HTTP %s' % resp.status_code))
 
     def _unlock_keys(self):
-        password = self.settings.get('host_keys_password') or ''
+        password = self.settings.get('master_password') or ''
         if not password:
-            raise RemoteKeysLocked('This host\'s API key is encrypted and no host-keys password is '
+            raise RemoteKeysLocked('This host\'s API key is encrypted and no master password is '
                                    'configured in the plugin settings.')
         resp = self._do('POST', '/api/hosts/keys/unlock', json={'password': password}, timeout=self.timeout)
         if resp.status_code == 200:
@@ -255,5 +255,5 @@ class ToolkitClient:
         if code == 'not-configured':
             raise RemoteKeysLocked('The backend reports no encrypted host keys — the 409 likely '
                                    'came from a stale preset; retry or check the host preset.')
-        raise RemoteKeysLocked('The configured host-keys password was rejected (%s).'
+        raise RemoteKeysLocked('The configured master password was rejected by the host-keys gate (%s).'
                                % ((body or {}).get('message') or 'HTTP %s' % resp.status_code))

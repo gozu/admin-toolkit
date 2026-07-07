@@ -30,7 +30,7 @@ class PlanAdminActionTool(BaseAgentTool):
                     "targets": {
                         "type": "array",
                         "items": {"type": "object"},
-                        "description": "Several targets for ONE batched plan (batchable actions only, max 20). Pass either target or targets."
+                        "description": "Several targets for ONE batched plan (batchable actions only). Pass either target or targets."
                     },
                     "params": {"type": "object", "description": "Optional action-specific extras."}
                 },

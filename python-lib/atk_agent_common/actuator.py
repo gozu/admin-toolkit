@@ -49,7 +49,6 @@ TARGET_SHAPES = actions_registry.TARGET_SHAPES
 
 # Actions accepting targets[] batching: one plan, one token, N targets.
 BATCHABLE_ACTIONS = actions_registry.BATCHABLE
-MAX_BATCH_TARGETS = 20
 
 _LOCAL_ONLY_ACTIONS = ('k8s-exec-config-tune', 'log-cleanup', 'docker-prune',
                        'k8s-apply-fix', 'settings-set') + actions_registry.LOCAL_ONLY_EXTRA
@@ -775,9 +774,6 @@ def _normalize_targets(target, targets):
             raise ToolkitError('targets must be a list of target dicts.')
         if target is not None and target != {}:
             raise ToolkitError('Pass either target or targets, not both.')
-        if len(clean) > MAX_BATCH_TARGETS:
-            raise ToolkitError('targets is capped at %d entries per plan — split the batch.'
-                               % MAX_BATCH_TARGETS)
         return clean
     if target is None:
         raise ToolkitError('A target (or targets[]) is required.')

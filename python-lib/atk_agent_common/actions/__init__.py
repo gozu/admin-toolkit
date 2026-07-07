@@ -57,6 +57,6 @@ BATCHABLE = LEGACY_BATCHABLE | frozenset(
 
 TARGET_SHAPES = '; '.join(_LEGACY_SHAPES + tuple(spec['shape'] for spec in SPECS))
 
-BATCH_NOTE = ('Batchable actions (%s) accept targets: [dict, ...] (max 20) — several '
+BATCH_NOTE = ('Batchable actions (%s) accept targets: [dict, ...] — several '
               'objects, same action, ONE plan and ONE confirm token.'
               % ', '.join(sorted(BATCHABLE)))

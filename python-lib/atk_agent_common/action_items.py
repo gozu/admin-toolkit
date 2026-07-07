@@ -15,7 +15,6 @@ from . import actions as actions_registry
 from . import actuator
 
 MAX_ITEMS = 10
-MAX_TARGETS_PER_ITEM = 20
 _RISKS = ('red', 'amber', 'green')
 
 # Single source: generated from the actions registry (legacy + domains).
@@ -77,9 +76,9 @@ def _clip(value, limit):
 
 
 def _normalize_item_targets(raw, action, notes):
-    """One list of target dicts from an item's target/targets pair. Caps at
-    MAX_TARGETS_PER_ITEM; multi-target on a non-batchable action keeps only
-    the first target (noted, never silently)."""
+    """One list of target dicts from an item's target/targets pair.
+    Multi-target on a non-batchable action keeps only the first target
+    (noted, never silently)."""
     targets = []
     raw_targets = raw.get('targets')
     if isinstance(raw_targets, list):
@@ -88,9 +87,6 @@ def _normalize_item_targets(raw, action, notes):
             notes.append('non-dict entries in targets were dropped')
     if not targets and isinstance(raw.get('target'), dict):
         targets = [raw['target']]
-    if len(targets) > MAX_TARGETS_PER_ITEM:
-        notes.append('targets capped at %d (had %d)' % (MAX_TARGETS_PER_ITEM, len(targets)))
-        targets = targets[:MAX_TARGETS_PER_ITEM]
     if action and len(targets) > 1 and action not in actuator.BATCHABLE_ACTIONS:
         notes.append('action %r is not batchable — kept the first target only '
                      '(batchable: %s)' % (action, ', '.join(sorted(actuator.BATCHABLE_ACTIONS))))

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.655] - 2026-07-06
+
+### Added
+- **Agent Tuning subpage** (AGENTS → Tuning): edit every agent prompt — the three specialist system prompts plus the severity and action-safety rubrics — with the built-in defaults as the baseline. Every save appends one row to a managed Dataiku dataset `agent_prompt_versions` in the toolkit's project (one **column per prompt type**, one **row per save**, with `saved_at`/`author`/`note` metadata; a cell equal to the default is stored empty). The newest row is the active version; "Load" pulls any older version into the editors and saving it again restores it — history is immutable. New routes: `GET /api/agents/tuning` (state), `POST /api/agents/tuning/save` (advanced-gated), `GET /api/agents/tuning/prompts` (the agents' runtime read). Placeholders (`{severity_rubric}`, `{allowed_actions}`, …) are documented per editor and substituted at turn time, so overrides compose with live rubrics/catalogs.
+- Agents fetch tuned prompts at turn start via `atk_agent_common/prompt_overrides.py` (60s kernel cache, hard fallback to built-ins on any failure) — prompt changes apply within ~1 minute, no restart. Default templates extracted to `atk_agent_common/prompts.py` (single source for agents, backend and the tuning UI).
+
+### Changed
+- **The Agents page now presents ONE agent** ("Admin Toolkit Agent"): the specialist picker is gone; the three provisioned agents keep running behind the curtain. Prompt-library prompts route by their group (Health & Triage / Scoping & Architecture / Admin Actions → the matching specialist), free-form messages continue the visible thread (fresh chats start on the triage generalist), and action-item/restore handoffs still route to the actuator internally. Specialist names no longer surface anywhere ("Plan N selected actions" replaces "Send N to Ops Actuator").
+- Prompt library reorganized into the two headline groups (Triage, Scoping) plus Admin Actions, each with its megaprompt hero; the empty state now shows ~7 sample prompts per group plus a browse-all count instead of 3 shortcuts.
+- Chat history is always reachable: the History drawer lists server-persisted conversations when chat storage is enabled and falls back to the browser-cached ones when it is not (reload + resume works either way); rows no longer leak per-specialist agent names.
+
 ## [0.4.648] - 2026-07-06
 
 ### Added

@@ -266,18 +266,22 @@ test.describe('Agents v2 (mocked backend)', () => {
     // AGENTS nav sits right after OVERVIEW.
     await page.locator('aside button').filter({ hasText: /^Agents$/ }).first().click();
 
-    // Agent picker present; switch to Health Triage.
-    const triageBtn = page.getByRole('button', { name: 'Health Triage', exact: true });
-    await expect(triageBtn).toBeVisible({ timeout: 15_000 });
-    await triageBtn.click();
+    // Single-agent presentation: one identity, no specialist picker.
+    await expect(page.getByText('Admin Toolkit Agent')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'Health Triage', exact: true })).toHaveCount(0);
 
     // Prompt library opens from the composer.
     await page.getByRole('button', { name: /Prompts/ }).click();
     await expect(page.getByText('Prompt library')).toBeVisible();
+    // Both headline groups render with their megaprompts (the titles also
+    // appear on the empty-state hero cards behind the drawer → .first()).
+    await expect(page.getByText('Health & Triage').first()).toBeVisible();
+    await expect(page.getByText('Scoping & Architecture').first()).toBeVisible();
     await expect(page.getByText('Full fleet audit').first()).toBeVisible();
+    await expect(page.getByText('Full scoping dossier').first()).toBeVisible();
     await page.keyboard.press('Escape');
 
-    // Send a message → checklist card arrives.
+    // Free-form message routes to the triage generalist → checklist card.
     const composer = page.getByPlaceholder(/Message the agent/);
     await composer.fill('Sweep the fleet.');
     await composer.press('Enter');
@@ -293,10 +297,11 @@ test.describe('Agents v2 (mocked backend)', () => {
     await checkboxes.nth(0).check();
     await checkboxes.nth(1).check();
 
-    // Handoff: switches to the actuator and produces two plan cards. The
-    // bubble shows the display variant (machine refs hidden since 0.4.647).
-    await page.getByRole('button', { name: /Send 2 to Ops Actuator/ }).click();
-    await expect(page.getByText(/Action-item handoff — 2 item/)).toBeVisible({ timeout: 15_000 });
+    // Handoff: internally routes to the actuator specialist and produces two
+    // plan cards. The bubble shows the display variant (machine refs hidden
+    // since 0.4.647; specialist names never surface in the single-agent UI).
+    await page.getByRole('button', { name: /Plan 2 selected actions/ }).click();
+    await expect(page.getByText(/Plan the 2 action item/)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('db-analyze', { exact: true }).first()).toBeVisible();
     await expect(page.locator('text=ai-00000001').first()).toBeVisible();
 
@@ -331,9 +336,7 @@ test.describe('Agents v2 (mocked backend)', () => {
     await page.waitForSelector('aside', { timeout: 60_000 });
     await page.locator('aside button').filter({ hasText: /^Agents$/ }).first().click();
 
-    const triageBtn = page.getByRole('button', { name: 'Health Triage', exact: true });
-    await expect(triageBtn).toBeVisible({ timeout: 15_000 });
-    await triageBtn.click();
+    await expect(page.getByText('Admin Toolkit Agent')).toBeVisible({ timeout: 15_000 });
     const composer = page.getByPlaceholder(/Message the agent/);
     await composer.fill('Sweep the fleet.');
     await composer.press('Enter');
@@ -376,9 +379,7 @@ test.describe('Agents chat persistence (mocked backend)', () => {
     });
 
     // Send a message; on settle the turn lands on the server store.
-    const triageBtn = page.getByRole('button', { name: 'Health Triage', exact: true });
-    await expect(triageBtn).toBeVisible({ timeout: 15_000 });
-    await triageBtn.click();
+    await expect(page.getByText('Admin Toolkit Agent')).toBeVisible({ timeout: 15_000 });
     const composer = page.getByPlaceholder(/Message the agent/);
     await composer.fill('Sweep the fleet.');
     const turnRequest = page.waitForRequest(
@@ -433,9 +434,7 @@ test.describe('Agents chat persistence (mocked backend)', () => {
     await server.register();
     await enterAgentsPage(page);
 
-    const triageBtn = page.getByRole('button', { name: 'Health Triage', exact: true });
-    await expect(triageBtn).toBeVisible({ timeout: 15_000 });
-    await triageBtn.click();
+    await expect(page.getByText('Admin Toolkit Agent')).toBeVisible({ timeout: 15_000 });
     const composer = page.getByPlaceholder(/Message the agent/);
     await composer.fill('Quick check please.');
     await composer.press('Enter');
@@ -448,5 +447,89 @@ test.describe('Agents chat persistence (mocked backend)', () => {
     await page.getByRole('button', { name: 'Delete conversation' }).click();
     await expect(row).toHaveCount(0);
     expect(server.conversations.size).toBe(0);
+  });
+});
+
+test.describe('Agent Tuning (mocked backend)', () => {
+  test.setTimeout(90_000);
+
+  test('edit a prompt → save appends a version, restore loads it back', async ({ page }) => {
+    await mockAgentsBackend(page);
+    const TUNING_STATE = {
+      available: true,
+      datasetName: 'agent_prompt_versions',
+      project: 'TOOLKIT',
+      connection: 'filesystem_managed',
+      promptTypes: [
+        {
+          key: 'triage_system_prompt', label: 'Health Triage — system prompt',
+          description: 'Persona of the triage specialist.',
+          placeholders: ['{severity_rubric}'],
+          default: 'DEFAULT TRIAGE PROMPT {severity_rubric}', override: null,
+        },
+        {
+          key: 'severity_rubric', label: 'Severity rubric',
+          description: 'Shared severity calibration.', placeholders: [],
+          default: 'DEFAULT RUBRIC', override: null,
+        },
+      ],
+      versions: [] as unknown[],
+    };
+    const saves: { note: string; values: Record<string, string> }[] = [];
+    await page.route('**/api/agents/tuning', (route: Route) =>
+      route.fulfill({ json: TUNING_STATE }),
+    );
+    await page.route('**/api/agents/tuning/save', (route: Route) => {
+      const body = JSON.parse(route.request().postData() || '{}') as {
+        note: string;
+        values: Record<string, string>;
+      };
+      saves.push(body);
+      route.fulfill({
+        json: {
+          ...TUNING_STATE,
+          promptTypes: TUNING_STATE.promptTypes.map((pt) =>
+            pt.key === 'severity_rubric' ? { ...pt, override: body.values.severity_rubric } : pt,
+          ),
+          versions: [
+            {
+              savedAt: '2026-07-06T10:00:00Z', author: 'alex', note: body.note,
+              customized: ['severity_rubric'],
+              values: { triage_system_prompt: '', severity_rubric: body.values.severity_rubric },
+            },
+          ],
+        },
+      });
+    });
+    await enterAgentsPage(page);
+    await page.locator('aside button').filter({ hasText: /^Tuning$/ }).first().click();
+
+    await expect(page.getByText('Version history')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/no saved versions/)).toBeVisible();
+
+    // Expand the rubric card and customize it.
+    await page.getByRole('button', { name: /Severity rubric/ }).click();
+    const editor = page.locator('textarea');
+    await expect(editor).toHaveValue('DEFAULT RUBRIC');
+    await editor.fill('CUSTOM RUBRIC v2');
+    await expect(page.getByText(/Unsaved changes: 1 prompt/)).toBeVisible();
+
+    // Save with a note → new active version appears.
+    await page.getByPlaceholder(/version note/).fill('tighter rubric');
+    await page.getByRole('button', { name: 'Save new version' }).click();
+    await expect(page.getByText(/Version saved/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('active', { exact: true })).toBeVisible();
+    await expect(page.getByText(/customized: severity_rubric/)).toBeVisible();
+    expect(saves[0].note).toBe('tighter rubric');
+    expect(saves[0].values.severity_rubric).toBe('CUSTOM RUBRIC v2');
+    // Cells equal to the default are posted verbatim; the backend stores them
+    // as empty ("default") — here the triage prompt was untouched.
+    expect(saves[0].values.triage_system_prompt).toBe('DEFAULT TRIAGE PROMPT {severity_rubric}');
+
+    // Load restores a version's values into the editors, replacing edits.
+    await editor.fill('SCRATCH EDIT');
+    await expect(page.getByText(/Unsaved changes: 1 prompt/)).toBeVisible();
+    await page.getByRole('button', { name: 'Load', exact: true }).click();
+    await expect(editor).toHaveValue('CUSTOM RUBRIC v2');
   });
 });

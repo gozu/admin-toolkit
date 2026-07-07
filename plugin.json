@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.659",
+    "version": "0.4.660",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -22,6 +22,33 @@
             "type": "PASSWORD",
             "mandatory": false,
             "defaultValue": ""
+        },
+        {
+            "name": "red_actions_secret",
+            "label": "Legacy Advanced Actions secret (hidden)",
+            "description": "Pre-0.4.659 hashed secret, kept declared (hidden) so DSS does not prune it on plugin update before it can be migrated into master_password.",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": "",
+            "visibilityCondition": "false"
+        },
+        {
+            "name": "red_actions_password",
+            "label": "Legacy Advanced Actions password (hidden)",
+            "description": "Pre-0.4.659 plaintext password, kept declared (hidden) so DSS does not prune it on plugin update before it can be migrated into master_password.",
+            "type": "PASSWORD",
+            "mandatory": false,
+            "defaultValue": "",
+            "visibilityCondition": "false"
+        },
+        {
+            "name": "host_keys_password",
+            "label": "Legacy remote host keys password (hidden)",
+            "description": "Pre-0.4.659 plaintext password, kept declared (hidden) so DSS does not prune it on plugin update before it can be migrated into master_password.",
+            "type": "PASSWORD",
+            "mandatory": false,
+            "defaultValue": "",
+            "visibilityCondition": "false"
         },
         {
             "name": "sep_dbhealth",

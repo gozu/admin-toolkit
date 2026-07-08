@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.681] - 2026-07-07
+
+### Fixed
+- **`cluster-detach` is now batchable** — a full fleet audit routinely surfaces a whole `k8s_health` list of DNS-dead ("no such host") stale cluster attachments (H1 against tam-global found ~20 on one host, 3 on another). The agent correctly proposed them as one `targets[]` item, but `cluster-detach` was missing `batchable=True`, so `propose_action_items` kept only the first target and the remaining ~19 were relegated to prose — an action-coverage gap where one checklist item silently covered 1 of 20. `cluster-detach` is backup-first and its planner/executor are independent per target (identical to the already-batchable `connection-delete`/`project-delete`), so one plan/token now covers every stale attachment. Regression test in `test_action_items_targets.py`.
+
 ## [0.4.680] - 2026-07-07
 
 ### Added

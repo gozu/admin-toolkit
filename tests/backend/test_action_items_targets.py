@@ -47,6 +47,20 @@ def test_non_batchable_multi_target_keeps_first():
     assert 'not batchable' in out['validation']
 
 
+def test_cluster_detach_is_batchable():
+    """A fleet audit finds a whole k8s_health list of DNS-dead stale
+    attachments — cluster-detach must carry them all in ONE item (regression:
+    it silently kept only the first, forcing the rest into prose)."""
+    from atk_agent_common import actuator
+    assert 'cluster-detach' in actuator.BATCHABLE_ACTIONS
+    targets = [{'clusterId': 'dead%d' % i} for i in range(9)]
+    out = _one([], action='cluster-detach', targets=targets)
+    assert out['actionable'] is True
+    assert out['targetCount'] == 9
+    assert out['targets'] == targets
+    assert out['validation'] is None
+
+
 def test_action_without_any_target_advisory():
     out = _one([], action='code-env-delete')
     assert out['actionable'] is False

@@ -4,7 +4,10 @@ cluster-detach removes the DSS attachment ONLY (`DSSCluster.delete()`) — the
 cloud-side cluster is untouched. Its natural prey is the stale attachment
 whose endpoint no longer resolves (k8s_health reachability errorClass 'dns').
 The definition JSON is backed up first, so a wrongly-detached cluster can be
-re-attached from the backup.
+re-attached from the backup. Stale attachments accumulate in fleets (a whole
+k8s_health list of DNS-dead 'no such host' clusters), so cluster-detach is
+batchable — one backup-first plan/token covers every target, like
+connection-delete/project-delete.
 """
 
 from ..errors import ToolkitError
@@ -150,7 +153,7 @@ def _exec_cluster_pods_cleanup(client, host, target):
 SPECS = [
     _base.spec('cluster-detach',
                'cluster-detach {clusterId}', 'red',
-               _plan_cluster_detach, _exec_cluster_detach),
+               _plan_cluster_detach, _exec_cluster_detach, batchable=True),
     _base.spec('cluster-stop',
                'cluster-stop {clusterId, terminate?} (managed clusters only; '
                'terminate=true destroys cloud resources — irreversible)', 'red',

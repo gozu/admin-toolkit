@@ -38,13 +38,30 @@ def test_large_target_list_uncapped():
 
 
 def test_non_batchable_multi_target_keeps_first():
-    targets = [{'configName': 'a', 'changes': {'memLimitMB': 1}},
-               {'configName': 'b', 'changes': {'memLimitMB': 1}}]
-    out = _one([], action='k8s-exec-config-tune', targets=targets)
+    # code-env-consolidate is genuinely single-target (each item is a distinct
+    # source->target migration), so multi-target collapses to the first.
+    targets = [{'sourceEnvName': 'py36', 'targetEnvName': 'py311'},
+               {'sourceEnvName': 'py37', 'targetEnvName': 'py311'}]
+    out = _one([], action='code-env-consolidate', targets=targets)
     assert out['actionable'] is True
     assert out['targetCount'] == 1
     assert out['targets'] == targets[:1]
     assert 'not batchable' in out['validation']
+
+
+def test_k8s_exec_config_tune_is_batchable():
+    """A host routinely has several oversized containerized exec configs; the
+    agent batches them in one item (regression: it kept only the first, so
+    the second config was silently dropped from the checklist)."""
+    from atk_agent_common import actuator
+    assert 'k8s-exec-config-tune' in actuator.BATCHABLE_ACTIONS
+    targets = [{'configName': 'eks-default', 'changes': {'memRequestMB': 2048, 'memLimitMB': 4096}},
+               {'configName': 'eks-gpu', 'changes': {'memRequestMB': 4096, 'memLimitMB': 8192}}]
+    out = _one([], action='k8s-exec-config-tune', targets=targets)
+    assert out['actionable'] is True
+    assert out['targetCount'] == 2
+    assert out['targets'] == targets  # per-target changes preserved
+    assert out['validation'] is None
 
 
 def test_cluster_detach_is_batchable():

@@ -49,8 +49,14 @@ _LEGACY_SHAPES = (
 
 # Legacy actions that accept targets[] batching (their planners already build
 # one canonical per target; the batch layer in actuator.py does the rest).
+# k8s-exec-config-tune right-sizes containerized exec configs — an instance
+# routinely has several oversized configs, so the agent batches them; its
+# planner/executor are per-target-independent (each carries its own
+# configName+changes, no cross-target drift-token binding), so batching is
+# safe (settings-set precedent).
 LEGACY_BATCHABLE = frozenset({'code-env-delete', 'settings-set', 'db-vacuum',
-                              'db-analyze', 'plugin-deploy', 'project-delete'})
+                              'db-analyze', 'plugin-deploy', 'project-delete',
+                              'k8s-exec-config-tune'})
 
 BATCHABLE = LEGACY_BATCHABLE | frozenset(
     spec['action'] for spec in SPECS if spec.get('batchable'))

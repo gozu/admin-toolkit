@@ -94,7 +94,12 @@ REMEDIATIONS = [
     ('python-lifecycle-*', [
         _spec('code-env-consolidate', 'medium', 'Repoint usages of deprecated-Python envs onto '
               'a supported target env (dry-run usage table shown at approval), optionally '
-              'retiring the source afterwards.'),
+              'retiring the source afterwards. code-env-consolidate REQUIRES a concrete '
+              'targetEnvName — propose it as an ACTIONABLE item only when a suitable supported '
+              'target env actually exists in the inventory to name (never a guessed name, never '
+              'an unused/empty env). If no clear target env is available, keep this ADVISORY: '
+              'name the migration work and let the admin pick the target — do NOT emit a '
+              'consolidate action with a missing or invented targetEnvName.'),
         _spec('code-env-delete', 'medium', 'UNREFERENCED deprecated envs skip consolidation: '
               'backup-first delete, several envs as ONE batched item (targets[]).'),
     ]),

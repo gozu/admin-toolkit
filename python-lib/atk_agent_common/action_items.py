@@ -47,6 +47,12 @@ anything else stays advisory (title/why/evidence only, no action).
 - risk: 'red' for anything destructive or settings-mutating (deletions, config/settings \
 changes — all require backup-first / prior-value recording downstream), 'amber' for \
 locking/maintenance operations, 'green' for safe low-impact work. Never soften a risk color.
+- Do NOT add a separate backup/export item before a destructive delete. project-delete, \
+code-env-delete, connection-delete and cluster-detach ALL back up to block storage \
+automatically at plan time (the plan shows the destination) — a standalone project-export \
+"export before deleting" item is redundant and wastes an item slot. Propose the delete itself \
+(honest red risk); the backup is built in. (project-export stands alone only to archive \
+projects you are KEEPING, or a migration bundle — never as a pre-delete safety copy.)
 - Every item needs concrete `evidence` entries citing tool + host + the numbers that justify it.
 The items render as a checklist; the USER decides what is handed to the ops-actuator for \
 planning and approval. Never plan, never execute, never promise execution yourself.""".format(

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.682] - 2026-07-07
+
+### Fixed
+- **No more redundant pre-delete "backup" items**: the sensor agents (triage/scoping) were proposing a separate `project-export` "export before deleting" item alongside a `project-delete` on the same projects (seen in H2 + H3 against tam-global), because they receive the `action_items` addendum but not the actuator's action-safety rubric — so they didn't know `project-delete`/`code-env-delete`/`connection-delete`/`cluster-detach` already back up to block storage at plan time. Added an explicit addendum rule: never add a standalone backup/export item before a destructive delete (the backup is built into the delete plan); `project-export` stands alone only to archive projects being kept or a migration bundle. Removes wasted checklist slots and stops misrepresenting the safety model.
+
 ## [0.4.681] - 2026-07-07
 
 ### Fixed

@@ -104,3 +104,12 @@ def test_description_mentions_batching():
     assert 'ONE item with' in action_items.PROMPT_ADDENDUM
     assert 'never items suppressed' not in action_items.PROMPT_ADDENDUM
     assert 'do not hedge' in action_items.PROMPT_ADDENDUM
+
+
+def test_addendum_warns_against_redundant_predelete_backup():
+    # Sensor agents were proposing a separate project-export "backup-first" item
+    # before project-delete, not knowing the delete already backs up at plan time.
+    addendum = action_items.PROMPT_ADDENDUM
+    assert 'back up to block storage' in addendum
+    assert 'redundant' in addendum
+    assert 'project-export' in addendum

@@ -77,11 +77,13 @@ def test_batch_token_verifies_against_combined_canonical():
 
 
 def test_non_batchable_refused():
+    # code-env-consolidate is genuinely single-target (distinct source->target
+    # migrations); the batch gate refuses multi-target before any planning.
     client = FakeClient()
     with pytest.raises(ToolkitError, match='does not accept batched targets'):
-        actuator.plan_admin_action(client, action='k8s-exec-config-tune',
-                                   targets=[{'configName': 'a', 'changes': {'memLimitMB': 1}},
-                                            {'configName': 'b', 'changes': {'memLimitMB': 1}}])
+        actuator.plan_admin_action(client, action='code-env-consolidate',
+                                   targets=[{'sourceEnvName': 'a', 'targetEnvName': 'z'},
+                                            {'sourceEnvName': 'b', 'targetEnvName': 'z'}])
 
 
 def test_large_batch_uncapped():

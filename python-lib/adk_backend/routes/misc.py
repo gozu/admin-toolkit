@@ -23,10 +23,14 @@ ARCHIVE_FOLDER_NAME = 'admin-toolkit-archive'
 
 
 def _archive_folder_connection() -> str:
-    """The configured archive connection from LOCAL plugin settings ('' if unset)."""
+    """The configured archive connection from LOCAL plugin settings ('' if unset).
+
+    Unified `toolkit_storage_connection` wins; legacy per-feature key is the
+    fallback (new-key-first, same pattern as the DB connections)."""
     raw = _local_toolkit_client().get_plugin('admin-toolkit').get_settings().get_raw()
     config = raw.get('config', {}) if isinstance(raw, dict) else {}
-    return (config.get('archive_folder_connection') or '').strip()
+    return (config.get('toolkit_storage_connection')
+            or config.get('archive_folder_connection') or '').strip()
 
 
 def _resolve_archive_folder(project, connection: str, create: bool = True):

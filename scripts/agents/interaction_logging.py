@@ -69,7 +69,7 @@ def main():
     if not connection:
         try:
             cfg = client.get_plugin('admin-toolkit').get_settings().get_raw().get('config', {})
-            connection = cfg.get('triage_connection') or ''
+            connection = cfg.get('toolkit_db_connection') or cfg.get('triage_connection') or ''
         except Exception:
             connection = ''
     connection = connection or 'filesystem_managed'

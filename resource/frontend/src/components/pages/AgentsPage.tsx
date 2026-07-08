@@ -14,6 +14,7 @@ import {
   type CatalogGroup,
 } from '../../utils/agentPromptCatalog';
 import { hostBaseUrl } from '../../utils/agentLinks';
+import { dssUrls } from '../../utils/codeEnvUsageLinks';
 import { getActiveHostId } from '../../state/hostStore';
 import { ChatHistoryDrawer } from '../agents/ChatHistoryDrawer';
 import {
@@ -107,6 +108,18 @@ export function AgentsPage() {
 
   const actuator = useMemo(() => findByRole(agents, 'actuator'), [agents]);
   const triage = useMemo(() => findByRole(agents, 'triage'), [agents]);
+
+  // Deep link to the conversation agent's DSS config screen — powers the
+  // gate-hint callout when an execute is refused for allow_red_actions=false.
+  const agentConfigUrl = useMemo(() => {
+    const gateAgent = agents.find((a) => a.id === conversation?.agentId) || actuator;
+    if (!gateAgent) return undefined;
+    return dssUrls.agentConfig(
+      gateAgent.projectKey ?? 'ADMINTOOLKIT',
+      gateAgent.id,
+      gateAgent.activeVersion ?? 'v1',
+    );
+  }, [agents, conversation, actuator]);
 
   // Chat persistence config + trace-explorer status, once per host — the
   // session epoch (host switch / in-app Refresh) resets `persistence.loaded`,
@@ -453,6 +466,7 @@ export function AgentsPage() {
                       now={now}
                       streaming={streaming}
                       actuatorAvailable={Boolean(actuator)}
+                      agentConfigUrl={agentConfigUrl}
                       onPlanDecision={onPlanDecision}
                       onShowAudit={setFocusAuditId}
                       onSubmitActionItems={onSubmitActionItems}

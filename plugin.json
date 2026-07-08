@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.686",
+    "version": "0.4.687",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -51,6 +51,30 @@
             "visibilityCondition": "false"
         },
         {
+            "name": "sep_toolkit_stores",
+            "label": "Toolkit Data Stores",
+            "description": "Two connections the toolkit uses to store its own data. One database serves the agents audit trail, the daily-triage store, and (if Remote SQL chat is on) chat history. One storage connection holds archive/export folders and UI tables saved as datasets. Per-feature overrides still exist (hidden) for existing installs, but new setups only need these two.",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "toolkit_db_connection",
+            "label": "Toolkit database (PostgreSQL)",
+            "description": "One PostgreSQL connection for the toolkit's own tables: agents audit trail (agents.agent_actions), daily-triage store, and Remote SQL chat history. Overrides the per-feature database connections when set. Select (None) to fall back to those per-feature connections.",
+            "type": "SELECT",
+            "getChoicesFromPython": true,
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
+            "name": "toolkit_storage_connection",
+            "label": "Toolkit storage (managed folders)",
+            "description": "One folder-capable connection for the toolkit's artifacts: the auto-created 'admin-toolkit-archive' folder (cleaner backups + export zips) and UI tables saved as managed datasets. Overrides the per-feature storage connections when set. Select (None) to fall back to those.",
+            "type": "SELECT",
+            "getChoicesFromPython": true,
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
             "name": "sep_dbhealth",
             "label": "DB Health",
             "type": "SEPARATOR"
@@ -72,33 +96,24 @@
             "defaultValue": ""
         },
         {
-            "name": "sep_dataset_export",
-            "label": "Save Tables as Datasets",
-            "type": "SEPARATOR"
-        },
-        {
             "name": "dataset_export_connection",
-            "label": "Target Connection",
-            "description": "Connection used to store UI tables saved as managed datasets (into the Admin Toolkit webapp's own project). Select (None) to disable the toolbar button.",
+            "label": "Save Tables as Datasets \u2014 connection (legacy override, hidden)",
+            "description": "Superseded by 'Toolkit storage' above. Kept declared (hidden) so DSS does not prune an existing value on plugin update; still used when Toolkit storage is unset.",
             "type": "SELECT",
             "getChoicesFromPython": true,
             "mandatory": false,
-            "defaultValue": ""
-        },
-        {
-            "name": "sep_archive",
-            "label": "Archive Storage",
-            "description": "Where the toolkit stores backup artifacts: deleted code envs and deleted projects (cleaner backups), and 'Export all' zips.",
-            "type": "SEPARATOR"
+            "defaultValue": "",
+            "visibilityCondition": "false"
         },
         {
             "name": "archive_folder_connection",
-            "label": "Archive Folders Connection",
-            "description": "Connection on which the toolkit auto-creates its 'admin-toolkit-archive' managed folder (default destination for cleaner backups and export zips). Select (None) to keep picking existing folders manually.",
+            "label": "Archive Folders \u2014 connection (legacy override, hidden)",
+            "description": "Superseded by 'Toolkit storage' above. Kept declared (hidden) so DSS does not prune an existing value on plugin update; still used when Toolkit storage is unset.",
             "type": "SELECT",
             "getChoicesFromPython": true,
             "mandatory": false,
-            "defaultValue": ""
+            "defaultValue": "",
+            "visibilityCondition": "false"
         },
         {
             "name": "sep_outreach",
@@ -114,24 +129,19 @@
             "defaultValue": ""
         },
         {
-            "name": "sep_agents_audit",
-            "label": "Agents Audit Database",
-            "description": "PostgreSQL connection holding the agents audit trail (agents.agent_actions), written by the agents plugin and shown in the Agents audit timeline.",
-            "type": "SEPARATOR"
-        },
-        {
             "name": "agents_audit_postgres_connection",
-            "label": "Agents Audit PostgreSQL Connection",
-            "description": "PostgreSQL connection (on this hub) where the agents plugin records its audit trail. Select (None) if the agents plugin is not in use.",
+            "label": "Agents Audit \u2014 connection (legacy override, hidden)",
+            "description": "Superseded by 'Toolkit database' above. Kept declared (hidden) so DSS does not prune an existing value on plugin update; still used when Toolkit database is unset.",
             "type": "SELECT",
             "getChoicesFromPython": true,
             "mandatory": false,
-            "defaultValue": ""
+            "defaultValue": "",
+            "visibilityCondition": "false"
         },
         {
             "name": "sep_chat_persistence",
             "label": "Agents \u2014 Chat persistence",
-            "description": "Optionally persist webapp agent conversations server-side (per user, per fleet host). Off = browser-only, as before. Built-in = SQLite in the webapp's workload folder. Remote SQL = a PostgreSQL or SQL Server DSS connection. Storage changes apply on the next webapp backend restart.",
+            "description": "Optionally persist webapp agent conversations server-side (per user, per fleet host). Off = browser-only, as before. Built-in = SQLite in the webapp's workload folder. Remote SQL = stored in the 'Toolkit database' connection above. Storage changes apply on the next webapp backend restart.",
             "type": "SEPARATOR"
         },
         {
@@ -157,13 +167,13 @@
         },
         {
             "name": "chat_db_connection",
-            "label": "Chat SQL connection",
-            "description": "PostgreSQL or SQL Server connection where conversations are stored. The webapp backend reads the connection details, so it needs details-readability on this connection.",
+            "label": "Chat SQL connection (legacy override, hidden)",
+            "description": "Superseded by 'Toolkit database' above (Remote SQL chat now stores in the toolkit database). Kept declared (hidden) so DSS does not prune an existing value; still used when Toolkit database is unset.",
             "type": "SELECT",
             "getChoicesFromPython": true,
             "mandatory": false,
             "defaultValue": "",
-            "visibilityCondition": "model.chat_storage == 'REMOTE'"
+            "visibilityCondition": "false"
         },
         {
             "name": "chat_tables_prefix",
@@ -252,12 +262,13 @@
         },
         {
             "name": "triage_connection",
-            "label": "Triage PostgreSQL connection",
-            "description": "Postgres connection where daily triage results and the agent-action audit trail persist (same connection as the toolkit's Agents Audit setting). (None) disables the triage loop.",
+            "label": "Triage PostgreSQL connection (legacy override, hidden)",
+            "description": "Superseded by 'Toolkit database' above (the daily-triage store lives there). Kept declared (hidden) so DSS does not prune an existing value; still used when Toolkit database is unset. (None) + no Toolkit database disables the triage loop.",
             "type": "SELECT",
             "getChoicesFromPython": true,
             "mandatory": false,
-            "defaultValue": ""
+            "defaultValue": "",
+            "visibilityCondition": "false"
         },
         {
             "name": "triage_score_threshold",
@@ -330,7 +341,8 @@
         {
             "name": "sep_outreach_thresholds",
             "label": "Advanced Options",
-            "type": "SEPARATOR"
+            "type": "SEPARATOR",
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_inactive_project_days",
@@ -338,7 +350,8 @@
             "description": "Projects inactive longer than this are flagged.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 180
+            "defaultValue": 180,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_code_env_count_unhealthy",
@@ -346,7 +359,8 @@
             "description": "Projects with more code envs than this are flagged.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 1
+            "defaultValue": 1,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_code_studio_count_unhealthy",
@@ -354,7 +368,8 @@
             "description": "Projects with more code studios than this are flagged.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 7
+            "defaultValue": 7,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_empty_project_kb",
@@ -362,7 +377,8 @@
             "description": "Projects larger than this (in KB) are not considered empty.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 1024
+            "defaultValue": 1024,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_orphan_notebook_min",
@@ -370,7 +386,8 @@
             "description": "Minimum notebook count in a project before orphan check triggers.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 5
+            "defaultValue": 5,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_large_flow_objects",
@@ -378,7 +395,8 @@
             "description": "Projects with more flow objects than this are flagged as large flows.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 100
+            "defaultValue": 100,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_overshared_project_permissions",
@@ -386,7 +404,8 @@
             "description": "Projects with more permission entries than this are flagged as overshared.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 10
+            "defaultValue": 10,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_high_freq_scenario_minutes",
@@ -394,7 +413,8 @@
             "description": "Scenarios running more often than this (minutes) are flagged.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 30
+            "defaultValue": 30,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_disabled_features_cutoff",
@@ -402,12 +422,14 @@
             "description": "More disabled features than this triggers a warning.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 5
+            "defaultValue": 5,
+            "visibilityCondition": "false"
         },
         {
             "name": "sep_health_scoring",
             "label": "Health & Scoring",
-            "type": "SEPARATOR"
+            "type": "SEPARATOR",
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_open_files_minimum",
@@ -415,7 +437,8 @@
             "description": "Minimum open files limit before flagging.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 65535
+            "defaultValue": 65535,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_java_heap_minimum_mb",
@@ -423,7 +446,8 @@
             "description": "Minimum Java heap per component (MB) before flagging.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 2048
+            "defaultValue": 2048,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_python_critical_below",
@@ -431,7 +455,8 @@
             "description": "Python versions below this are flagged critical.",
             "type": "STRING",
             "mandatory": false,
-            "defaultValue": "3.8"
+            "defaultValue": "3.8",
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_python_warning_below",
@@ -439,7 +464,8 @@
             "description": "Python versions below this are flagged warning.",
             "type": "STRING",
             "mandatory": false,
-            "defaultValue": "3.9"
+            "defaultValue": "3.9",
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_spark_version_minimum",
@@ -447,7 +473,8 @@
             "description": "Spark major version below this is flagged.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 3
+            "defaultValue": 3,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_project_count_warning",
@@ -455,7 +482,8 @@
             "description": "More projects than this triggers a warning.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 500
+            "defaultValue": 500,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_filesystem_warning_pct",
@@ -463,7 +491,8 @@
             "description": "Filesystem usage above this triggers a warning.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 70
+            "defaultValue": 70,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_filesystem_critical_pct",
@@ -471,7 +500,8 @@
             "description": "Filesystem usage above this triggers a critical alert.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 90
+            "defaultValue": 90,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_health_warning_below",
@@ -479,7 +509,8 @@
             "description": "Overall health score below this triggers a warning.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 80
+            "defaultValue": 80,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_health_critical_below",
@@ -487,7 +518,8 @@
             "description": "Overall health score below this is critical.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 50
+            "defaultValue": 50,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_health_critical_cap_score",
@@ -495,7 +527,8 @@
             "description": "Score the overall health is clamped to when a critical cap rule fires (H2 runtime DB, DIP_HOME on NFS, missing cgroups with impersonation, data mount full).",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 49
+            "defaultValue": 49,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_data_mount_critical_pct",
@@ -503,7 +536,8 @@
             "description": "DIP_HOME data mount usage at/above this percentage fires the data-mount critical cap rule.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 75
+            "defaultValue": 75,
+            "visibilityCondition": "false"
         },
         {
             "name": "thresh_deprecated_python_prefixes",
@@ -511,12 +545,14 @@
             "description": "Comma-separated version prefixes to flag (e.g. 2.,3.6,3.7).",
             "type": "STRING",
             "mandatory": false,
-            "defaultValue": "2.,3.6,3.7"
+            "defaultValue": "2.,3.6,3.7",
+            "visibilityCondition": "false"
         },
         {
             "name": "sep_health_scoring_weights",
             "label": "Health Scoring Weights",
-            "type": "SEPARATOR"
+            "type": "SEPARATOR",
+            "visibilityCondition": "false"
         },
         {
             "name": "weight_code_envs",
@@ -524,7 +560,8 @@
             "description": "Weight for code environments category.",
             "type": "DOUBLE",
             "mandatory": false,
-            "defaultValue": 0.15
+            "defaultValue": 0.15,
+            "visibilityCondition": "false"
         },
         {
             "name": "weight_project_footprint",
@@ -532,7 +569,8 @@
             "description": "Weight for project footprint category.",
             "type": "DOUBLE",
             "mandatory": false,
-            "defaultValue": 0.15
+            "defaultValue": 0.15,
+            "visibilityCondition": "false"
         },
         {
             "name": "weight_system_capacity",
@@ -540,7 +578,8 @@
             "description": "Weight for system capacity category.",
             "type": "DOUBLE",
             "mandatory": false,
-            "defaultValue": 0.3
+            "defaultValue": 0.3,
+            "visibilityCondition": "false"
         },
         {
             "name": "weight_security_isolation",
@@ -548,7 +587,8 @@
             "description": "Weight for security isolation category (0 by default \u2014 its issues still surface; cgroups penalties live in runtime config).",
             "type": "DOUBLE",
             "mandatory": false,
-            "defaultValue": 0
+            "defaultValue": 0,
+            "visibilityCondition": "false"
         },
         {
             "name": "weight_version_currency",
@@ -556,7 +596,8 @@
             "description": "Weight for version currency category.",
             "type": "DOUBLE",
             "mandatory": false,
-            "defaultValue": 0.1
+            "defaultValue": 0.1,
+            "visibilityCondition": "false"
         },
         {
             "name": "weight_runtime_config",
@@ -564,12 +605,14 @@
             "description": "Weight for runtime config category.",
             "type": "DOUBLE",
             "mandatory": false,
-            "defaultValue": 0.3
+            "defaultValue": 0.3,
+            "visibilityCondition": "false"
         },
         {
             "name": "sep_log_analysis",
             "label": "Log Analysis",
-            "type": "SEPARATOR"
+            "type": "SEPARATOR",
+            "visibilityCondition": "false"
         },
         {
             "name": "log_lines_before",
@@ -577,7 +620,8 @@
             "description": "Context lines to show before each error.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 10
+            "defaultValue": 10,
+            "visibilityCondition": "false"
         },
         {
             "name": "log_lines_after",
@@ -585,7 +629,8 @@
             "description": "Context lines to show after each error.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 100
+            "defaultValue": 100,
+            "visibilityCondition": "false"
         },
         {
             "name": "log_grouping_window_sec",
@@ -593,7 +638,8 @@
             "description": "Errors within this window (seconds) are grouped.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 5
+            "defaultValue": 5,
+            "visibilityCondition": "false"
         },
         {
             "name": "log_max_errors",
@@ -601,7 +647,8 @@
             "description": "Maximum unique error signatures to display.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 5
+            "defaultValue": 5,
+            "visibilityCondition": "false"
         },
         {
             "name": "log_ai_system_prompt",
@@ -609,12 +656,14 @@
             "description": "System prompt for AI log analysis.",
             "type": "TEXTAREA",
             "mandatory": false,
-            "defaultValue": "You are an expert Dataiku DSS administrator and backend engineer analyzing error logs from a DSS instance's backend.log file.\n\nIMPORTANT RULES:\n- Only analyze lines with log4j level WARN, ERROR, FATAL, or SEVERE. Completely ignore INFO, DEBUG, and TRACE lines.\n- For severity, use the EXACT log4j level from the log line (e.g. [WARN], [ERROR], [FATAL]). Do NOT invent your own severity like \"Critical\" or \"Informational\" \u2014 only use what the log says.\n- Do NOT mention things that are working correctly or look normal. Do NOT speculate about potential issues not evidenced in the log data.\n- If there are no WARN/ERROR/FATAL/SEVERE entries, simply state that no issues were found.\n\nBefore answering, think step-by-step through each error carefully. For each error pattern:\n- Reason through what component, subsystem, or configuration could cause it.\n- Search the web for the specific error message, Java exception, or stack trace to find known issues, Dataiku Knowledge Base articles, community posts, or release notes.\n- Cross-reference with official Dataiku documentation (doc.dataiku.com) for configuration guidance, known limitations, and recommended fixes.\n- Only after researching, provide your diagnosis and remediation.\n\nYour task:\n1. Identify the root cause of each distinct error or warning pattern.\n2. Tag each issue with its log4j level exactly as it appears in the log (e.g. ERROR, WARN, FATAL).\n3. Provide specific, actionable remediation steps, including links to relevant documentation or KB articles when available.\n4. Group related errors sharing a root cause.\n5. Highlight data loss risk, security issues, or service outage indicators.\n6. Do not write anything about INFO level logs, only WARN and above.\n\nFormat: markdown with headings per issue (include the log4j level in the heading, e.g. \"## [ERROR] FileNotFoundException in saved model lookup\"), bullet points for remediation. Start with a 2-3 sentence Executive Summary."
+            "defaultValue": "You are an expert Dataiku DSS administrator and backend engineer analyzing error logs from a DSS instance's backend.log file.\n\nIMPORTANT RULES:\n- Only analyze lines with log4j level WARN, ERROR, FATAL, or SEVERE. Completely ignore INFO, DEBUG, and TRACE lines.\n- For severity, use the EXACT log4j level from the log line (e.g. [WARN], [ERROR], [FATAL]). Do NOT invent your own severity like \"Critical\" or \"Informational\" \u2014 only use what the log says.\n- Do NOT mention things that are working correctly or look normal. Do NOT speculate about potential issues not evidenced in the log data.\n- If there are no WARN/ERROR/FATAL/SEVERE entries, simply state that no issues were found.\n\nBefore answering, think step-by-step through each error carefully. For each error pattern:\n- Reason through what component, subsystem, or configuration could cause it.\n- Search the web for the specific error message, Java exception, or stack trace to find known issues, Dataiku Knowledge Base articles, community posts, or release notes.\n- Cross-reference with official Dataiku documentation (doc.dataiku.com) for configuration guidance, known limitations, and recommended fixes.\n- Only after researching, provide your diagnosis and remediation.\n\nYour task:\n1. Identify the root cause of each distinct error or warning pattern.\n2. Tag each issue with its log4j level exactly as it appears in the log (e.g. ERROR, WARN, FATAL).\n3. Provide specific, actionable remediation steps, including links to relevant documentation or KB articles when available.\n4. Group related errors sharing a root cause.\n5. Highlight data loss risk, security issues, or service outage indicators.\n6. Do not write anything about INFO level logs, only WARN and above.\n\nFormat: markdown with headings per issue (include the log4j level in the heading, e.g. \"## [ERROR] FileNotFoundException in saved model lookup\"), bullet points for remediation. Start with a 2-3 sentence Executive Summary.",
+            "visibilityCondition": "false"
         },
         {
             "name": "sep_scan_display",
             "label": "Scan & Display",
-            "type": "SEPARATOR"
+            "type": "SEPARATOR",
+            "visibilityCondition": "false"
         },
         {
             "name": "scan_large_file_threshold_gb",
@@ -622,7 +671,8 @@
             "description": "Files larger than this (GB) are flagged during dir scans.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 100
+            "defaultValue": 100,
+            "visibilityCondition": "false"
         },
         {
             "name": "scan_dir_tree_default_depth",
@@ -630,7 +680,8 @@
             "description": "Default directory tree scan depth.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 3
+            "defaultValue": 3,
+            "visibilityCondition": "false"
         },
         {
             "name": "scan_file_viewer_max_lines",
@@ -638,7 +689,8 @@
             "description": "Maximum lines shown in file viewer.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 10000
+            "defaultValue": 10000,
+            "visibilityCondition": "false"
         },
         {
             "name": "scan_syntax_highlight_max_kb",
@@ -646,12 +698,14 @@
             "description": "Max file size (KB) for syntax highlighting.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 500
+            "defaultValue": 500,
+            "visibilityCondition": "false"
         },
         {
             "name": "sep_performance",
             "label": "Performance",
-            "type": "SEPARATOR"
+            "type": "SEPARATOR",
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_parallel_workers_default",
@@ -659,7 +713,8 @@
             "description": "Default thread pool size for parallel API calls.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 16
+            "defaultValue": 16,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_parallel_workers_max",
@@ -667,7 +722,8 @@
             "description": "Maximum worker threads allowed.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 32
+            "defaultValue": 32,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_code_env_detail_workers",
@@ -675,7 +731,8 @@
             "description": "Workers for fetching code env details.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 16
+            "defaultValue": 16,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_prewarm_on_start",
@@ -683,7 +740,8 @@
             "description": "After a backend (re)start, load the heavy endpoints in the background so the first page load hits warm caches.",
             "type": "BOOLEAN",
             "mandatory": false,
-            "defaultValue": true
+            "defaultValue": true,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_code_env_timeout_ms",
@@ -691,7 +749,8 @@
             "description": "Backend timeout for code env analysis.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 600000
+            "defaultValue": 600000,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_project_footprint_timeout_ms",
@@ -699,7 +758,8 @@
             "description": "Backend timeout for project footprint scan.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 600000
+            "defaultValue": 600000,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_cache_ttl_overview",
@@ -707,7 +767,8 @@
             "description": "Cache TTL for overview endpoint.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 600
+            "defaultValue": 600,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_cache_ttl_projects",
@@ -715,7 +776,8 @@
             "description": "Cache TTL for projects endpoint.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 600
+            "defaultValue": 600,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_cache_ttl_code_envs",
@@ -723,7 +785,8 @@
             "description": "Cache TTL for code envs endpoint.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 600
+            "defaultValue": 600,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_codenvclean_thread_max",
@@ -731,7 +794,8 @@
             "description": "Maximum threads for code env cleanup tool.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 20
+            "defaultValue": 20,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_cache_ttl_connections",
@@ -739,7 +803,8 @@
             "description": "Cache TTL for connections endpoint.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 600
+            "defaultValue": 600,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_cache_ttl_users",
@@ -747,7 +812,8 @@
             "description": "Cache TTL for users endpoint.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 600
+            "defaultValue": 600,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_cache_ttl_license",
@@ -755,7 +821,8 @@
             "description": "Cache TTL for license endpoint.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 600
+            "defaultValue": 600,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_cache_ttl_usage_full",
@@ -763,7 +830,8 @@
             "description": "Cache TTL for code env usage endpoint.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 600
+            "defaultValue": 600,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_cache_ttl_outreach",
@@ -771,7 +839,8 @@
             "description": "Cache TTL for outreach data endpoint.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 600
+            "defaultValue": 600,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_cache_ttl_inactive",
@@ -779,7 +848,8 @@
             "description": "Cache TTL for inactive projects endpoint.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 600
+            "defaultValue": 600,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_cache_ttl_plugins",
@@ -787,7 +857,8 @@
             "description": "Cache TTL for plugins endpoint.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 600
+            "defaultValue": 600,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_cache_ttl_log_errors",
@@ -795,7 +866,8 @@
             "description": "Cache TTL for log errors endpoint.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 600
+            "defaultValue": 600,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_cache_ttl_dir_tree",
@@ -803,7 +875,8 @@
             "description": "Cache TTL for directory tree endpoint.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 600
+            "defaultValue": 600,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_fe_timeout_code_envs",
@@ -811,7 +884,8 @@
             "description": "Frontend timeout for code envs fetch (ms).",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 620000
+            "defaultValue": 620000,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_fe_timeout_project_footprint",
@@ -819,7 +893,8 @@
             "description": "Frontend timeout for project footprint (ms).",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 620000
+            "defaultValue": 620000,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_fe_timeout_projects",
@@ -827,7 +902,8 @@
             "description": "Frontend timeout for projects list (ms).",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 45000
+            "defaultValue": 45000,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_fe_timeout_logs",
@@ -835,7 +911,8 @@
             "description": "Frontend timeout for log errors (ms).",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 30000
+            "defaultValue": 30000,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_fe_timeout_llm_analysis",
@@ -843,7 +920,8 @@
             "description": "Timeout for AI log analysis (ms).",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 120000
+            "defaultValue": 120000,
+            "visibilityCondition": "false"
         },
         {
             "name": "perf_sqlite_connect_timeout",
@@ -851,7 +929,8 @@
             "description": "Timeout for SQLite connections (sec).",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 30
+            "defaultValue": 30,
+            "visibilityCondition": "false"
         },
         {
             "name": "finding_whitelist",

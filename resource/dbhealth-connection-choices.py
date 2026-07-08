@@ -2,6 +2,10 @@
 every SELECT param with getChoicesFromPython, passing the requested parameter
 name in `payload`, so we branch on it:
 
+- toolkit_db_connection -> PostgreSQL connections only (unified store for
+  agents audit + daily triage + Remote SQL chat).
+- toolkit_storage_connection -> managed-folder-capable connections (unified
+  store for archive folders + saved-dataset target).
 - dataset_export_connection -> connections that can host a managed dataset
   (filesystem / cloud-object-store / SQL types), for "Save Tables as Datasets".
 - archive_folder_connection -> connections that can host a managed folder,
@@ -99,7 +103,24 @@ def do(payload, config, plugin_config, inputs):
             )
             return {"choices": [{"value": "", "label": "(None — set per agent)"}]}
 
-    if param_name == "dataset_export_connection":
+    if param_name == "toolkit_db_connection":
+        # Unified toolkit database: agents audit + daily triage (Postgres-only
+        # SQL) and Remote SQL chat. PostgreSQL keeps all three consumers valid.
+        choices = [{"value": "", "label": "(None — use per-feature connections)"}]
+        type_filter = lambda t, info=None: t == "PostgreSQL"  # noqa: E731
+        log_tag = "toolkit-db"
+    elif param_name == "toolkit_storage_connection":
+        # Unified toolkit storage: archive folder + saved-dataset target. Must
+        # host managed folders (stricter than datasets), so same filter as
+        # archive_folder_connection (folder-capable + allowManagedFolders).
+        choices = [{"value": "", "label": "(None — use per-feature connections)"}]
+        allow = _MANAGED_FOLDER_CONN_TYPES
+
+        def type_filter(t, info=None):
+            return t in allow and (info or {}).get("allowManagedFolders", True)
+
+        log_tag = "toolkit-storage"
+    elif param_name == "dataset_export_connection":
         choices = [{"value": "", "label": "(None — Save as Datasets disabled)"}]
         allow = _MANAGED_DATASET_CONN_TYPES
         type_filter = lambda t, info=None: t in allow  # noqa: E731

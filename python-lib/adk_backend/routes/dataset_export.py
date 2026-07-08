@@ -51,10 +51,14 @@ def _dedupe_dss_names(names: List[str]) -> List[str]:
 
 
 def _dataset_export_connection() -> str:
-    """The configured target connection from LOCAL plugin settings ('' if unset)."""
+    """The configured target connection from LOCAL plugin settings ('' if unset).
+
+    Unified `toolkit_storage_connection` wins; legacy per-feature key is the
+    fallback (new-key-first)."""
     raw = _local_toolkit_client().get_plugin('admin-toolkit').get_settings().get_raw()
     config = raw.get('config', {}) if isinstance(raw, dict) else {}
-    return (config.get('dataset_export_connection') or '').strip()
+    return (config.get('toolkit_storage_connection')
+            or config.get('dataset_export_connection') or '').strip()
 
 
 @bp.route('/api/tools/dataset-export/config')

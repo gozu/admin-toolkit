@@ -593,6 +593,31 @@ for (const offender of scanForRawTables('src/components')) {
   fail(`${offender} renders a raw <table> — flat row/column tables must use <DataGrid> (src/components/common/DataGrid.tsx).`);
 }
 
+// Plugin-settings surface guard: the DSS plugin settings form is the least
+// ergonomic config surface (no validation, flat form). Keep it to bootstrap
+// essentials — tuning knobs (thresh_/weight_/perf_/scan_/log_) belong in the
+// webapp Settings page (persisted via /api/settings/update) and stay hidden
+// with `visibilityCondition: "false"`. If you must add a visible param, hide a
+// tuning knob or bump this cap deliberately.
+const VISIBLE_PLUGIN_PARAM_CAP = 26;
+try {
+  const pluginJson = JSON.parse(
+    fs.readFileSync(path.join(root, '..', '..', 'plugin.json'), 'utf8'),
+  );
+  const visible = (pluginJson.params || []).filter(
+    (p) => p.type !== 'SEPARATOR' && p.visibilityCondition !== 'false',
+  );
+  if (visible.length > VISIBLE_PLUGIN_PARAM_CAP) {
+    fail(
+      `plugin.json exposes ${visible.length} visible params (cap ${VISIBLE_PLUGIN_PARAM_CAP}). ` +
+        `Hide tuning knobs with "visibilityCondition": "false" or raise the cap deliberately. ` +
+        `Newly visible: ${visible.map((p) => p.name).slice(-6).join(', ')}`,
+    );
+  }
+} catch (err) {
+  fail(`could not read/parse plugin.json for the settings-surface guard: ${err.message}`);
+}
+
 if (process.exitCode) {
   process.exit();
 }

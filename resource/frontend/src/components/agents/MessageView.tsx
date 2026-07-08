@@ -132,6 +132,34 @@ function TraceAction({
   );
 }
 
+/** Inline callout for a safety-gate refusal an admin can clear in DSS. Today
+ *  the only case is `agent-execution-disabled` (per-agent `allow_red_actions`
+ *  is off), with a deep link straight to the agent's config screen. */
+function GateHint({ code, agentConfigUrl }: { code: string; agentConfigUrl?: string }) {
+  if (code !== 'agent-execution-disabled') return null;
+  return (
+    <div className="my-1.5 rounded-lg border border-[var(--neon-yellow)]/40 bg-[var(--neon-yellow)]/5 px-3 py-2 text-xs text-[var(--text-secondary)]">
+      <div className="font-semibold text-[var(--text-primary)]">Agentic actions are disabled for this agent</div>
+      <p className="mt-0.5 leading-relaxed">
+        This agent can plan but not execute until an admin enables{' '}
+        <span className="font-medium text-[var(--text-primary)]">Allow agentic actions</span> on the agent
+        itself (it&apos;s a per-agent setting, separate from the plugin kill-switch). After enabling it,
+        recycle the agent kernel so it re-reads the config.
+      </p>
+      {agentConfigUrl && (
+        <a
+          href={agentConfigUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1.5 inline-flex items-center gap-1 font-medium text-[var(--accent)] hover:underline"
+        >
+          Open agent settings ↗
+        </a>
+      )}
+    </div>
+  );
+}
+
 export function MessageView({
   message,
   conversationId,
@@ -139,6 +167,7 @@ export function MessageView({
   now,
   streaming,
   actuatorAvailable,
+  agentConfigUrl,
   onPlanDecision,
   onShowAudit,
   onSubmitActionItems,
@@ -149,6 +178,8 @@ export function MessageView({
   now: number;
   streaming: boolean;
   actuatorAvailable: boolean;
+  /** Deep link to the conversation agent's DSS config (for gate-hint callouts). */
+  agentConfigUrl?: string;
   onPlanDecision: (plan: PlanCardData, decision: 'approved' | 'rejected') => void;
   onShowAudit: (auditId: number) => void;
   onSubmitActionItems: (batchId: string, items: ActionItemData[]) => void;
@@ -174,6 +205,9 @@ export function MessageView({
         }
         if (segment.type === 'activity') {
           return <ActivityChips key={i} items={segment.items} />;
+        }
+        if (segment.type === 'gate_hint') {
+          return <GateHint key={i} code={segment.code} agentConfigUrl={agentConfigUrl} />;
         }
         if (segment.type === 'plan') {
           return (

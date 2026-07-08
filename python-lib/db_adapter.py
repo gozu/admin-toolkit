@@ -47,9 +47,11 @@ class AgentsAuditConfig:
 def load_agents_audit_config(client=None) -> AgentsAuditConfig:
     """Read the agents-audit database connection from plugin settings.
 
-    Falls back to the legacy `story_postgres_connection` key, then to the
-    agents layer's `triage_connection` — the two are documented as the same
-    connection, and all three now live in this plugin's own config.
+    The unified `toolkit_db_connection` wins when set (single connection for all
+    of the toolkit's own SQL data); otherwise falls back to the per-feature
+    `agents_audit_postgres_connection`, then the legacy `story_postgres_connection`
+    / `triage_connection` keys (all documented as the same connection). New-key-
+    first mirrors the `master_password` migration pattern in config.py.
     """
     try:
         if client is None:
@@ -57,7 +59,8 @@ def load_agents_audit_config(client=None) -> AgentsAuditConfig:
             client = dataiku.api_client()
         raw = client.get_plugin('admin-toolkit').get_settings().get_raw()
         config = raw.get('config', {}) if isinstance(raw, dict) else {}
-        conn = (config.get('agents_audit_postgres_connection')
+        conn = (config.get('toolkit_db_connection')
+                or config.get('agents_audit_postgres_connection')
                 or config.get('story_postgres_connection')
                 or config.get('triage_connection') or '').strip() or None
         return AgentsAuditConfig(connection_name=conn)
@@ -94,7 +97,9 @@ def load_chat_persistence_config(client=None) -> ChatPersistenceConfig:
         mode = str(config.get('chat_storage') or 'OFF').strip().upper()
         if mode not in ('OFF', 'LOCAL', 'REMOTE'):
             mode = 'OFF'
-        conn = (config.get('chat_db_connection') or '').strip() or None
+        # Unified toolkit database wins; legacy per-feature key is the fallback.
+        conn = (config.get('toolkit_db_connection')
+                or config.get('chat_db_connection') or '').strip() or None
         prefix = (config.get('chat_tables_prefix') or '').strip() or 'atk_chat_'
         return ChatPersistenceConfig(mode=mode, connection_name=conn,
                                      tables_prefix=prefix)

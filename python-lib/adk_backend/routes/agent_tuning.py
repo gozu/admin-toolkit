@@ -44,7 +44,9 @@ def _plugin_config() -> dict:
 def _connection() -> str:
     """Target connection: the Save-Tables-as-Datasets connection when the
     admin configured one, else DSS's built-in filesystem_managed."""
-    configured = (_plugin_config().get('dataset_export_connection') or '').strip()
+    cfg = _plugin_config()
+    configured = (cfg.get('toolkit_storage_connection')
+                  or cfg.get('dataset_export_connection') or '').strip()
     return configured or 'filesystem_managed'
 
 

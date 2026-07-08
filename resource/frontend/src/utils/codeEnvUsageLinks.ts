@@ -60,6 +60,11 @@ export const dssUrls = {
   dataset: (pk: string, name: string) => `${getDssBaseUrl()}/projects/${enc(pk)}/datasets/${enc(name)}/explore/`,
   // Saved-model parent state is abstract — `/versions/` is the canonical leaf.
   savedModel: (pk: string, id: string) => `${getDssBaseUrl()}/projects/${enc(pk)}/savedmodels/${enc(id)}/versions/`,
+  // Plugin-agent config editor: the saved-model version id is
+  // `S-<projectKey>-<smId>-<version>` (verified live). Opens the version's
+  // params screen where per-agent flags like `allow_red_actions` live.
+  agentConfig: (pk: string, id: string, version: string) =>
+    `${getDssBaseUrl()}/projects/${enc(pk)}/savedmodels/${enc(id)}/agent/S-${enc(pk)}-${enc(id)}-${enc(version)}`,
   // In-project API service ("lambda") parent state is abstract — `/endpoints/` is the canonical leaf.
   apiService: (pk: string, id: string) => `${getDssBaseUrl()}/projects/${enc(pk)}/api-designer/${enc(id)}/endpoints/`,
   // No per-bundle route exists; the design-bundles list takes `?bundleId=...` to focus one.

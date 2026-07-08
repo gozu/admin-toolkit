@@ -16,6 +16,10 @@ import { subscribeSessionEpoch } from './sessionCache';
 export interface AgentInfo {
   id: string;
   name: string;
+  /** Saved-model active version id (e.g. 'v1') — feeds the DSS config deep link. */
+  activeVersion?: string;
+  /** Project holding the agent saved model (ADMINTOOLKIT) — deep-link segment. */
+  projectKey?: string;
 }
 
 export interface ActivityItem {
@@ -86,7 +90,11 @@ export type Segment =
   | { type: 'activity'; items: ActivityItem[] }
   | { type: 'plan'; plan: PlanCardData }
   | { type: 'execution'; execution: ExecutionCardData }
-  | { type: 'action_items'; batch: ActionItemsCardData };
+  | { type: 'action_items'; batch: ActionItemsCardData }
+  /** A safety-gate refusal that an admin can clear in DSS — rendered as an
+   *  inline callout with a deep link to the relevant config. `code` is the
+   *  structured error code from the tool result (e.g. agent-execution-disabled). */
+  | { type: 'gate_hint'; code: string };
 
 export interface ChatMessage {
   /** Client-minted uuid — the server upserts persisted messages by this id. */
@@ -342,13 +350,13 @@ function applyAgentEvent(segments: Segment[], kind: string, data: Record<string,
       segments.push({ type: 'activity', items: [item] });
     }
   } else if (kind === 'tool_result') {
+    const err = data.error as { message?: string; code?: string } | null | undefined;
     for (let i = segments.length - 1; i >= 0; i--) {
       const seg = segments[i];
       if (seg.type !== 'activity') continue;
       const idx = seg.items.findIndex((it) => it.running && it.name === data.name);
       if (idx === -1) continue;
       const items = seg.items.slice();
-      const err = data.error as { message?: string } | null | undefined;
       items[idx] = {
         ...items[idx],
         running: false,
@@ -358,6 +366,14 @@ function applyAgentEvent(segments: Segment[], kind: string, data: Record<string,
       };
       segments[i] = { type: 'activity', items };
       break;
+    }
+    // Admin-clearable safety-gate refusals get an inline callout with a deep
+    // link to the config (dedup so retries don't stack callouts).
+    if (err?.code === 'agent-execution-disabled') {
+      const last = segments[segments.length - 1];
+      if (!(last && last.type === 'gate_hint' && last.code === err.code)) {
+        segments.push({ type: 'gate_hint', code: err.code });
+      }
     }
   } else if (kind === 'plan') {
     const expiresIn = Number(data.expiresInSeconds) || 900;

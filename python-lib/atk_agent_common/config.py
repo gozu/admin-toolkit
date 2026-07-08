@@ -25,8 +25,14 @@ def resolve(plugin_config=None):
     def pick(key, default=''):
         return _env(key.upper(), cfg.get(key) or default)
 
+    # Unified data-store connections (win over the per-feature keys below, which
+    # stay for existing installs). new-key-first mirrors master_password.
+    _toolkit_db = pick('toolkit_db_connection')
+    _toolkit_storage = pick('toolkit_storage_connection')
     settings = {
         'backend_url': (pick('backend_url') or '').rstrip('/'),
+        'toolkit_db_connection': _toolkit_db,
+        'toolkit_storage_connection': _toolkit_storage,
         # One password unlocks red endpoints AND opens encrypted host keys.
         # Legacy keys cover a pre-0.4.659 config DSS hasn't pruned yet.
         'master_password': (pick('master_password') or cfg.get('red_actions_password')
@@ -37,11 +43,11 @@ def resolve(plugin_config=None):
         'heavy_timeout_s': int(pick('heavy_timeout_s', cfg.get('heavy_timeout_s') or 420)),
         'default_llm_id': pick('default_llm_id'),
         'enable_red_actions': str(pick('enable_red_actions', cfg.get('enable_red_actions', False))).lower() in ('true', '1', 'yes'),
-        'triage_connection': pick('triage_connection'),
-        # Audit-DB fallback chain inputs (audit.resolve_connection): the
-        # dedicated param and the legacy Story key must survive this whitelist
-        # or kernels can never resolve them.
-        'agents_audit_postgres_connection': pick('agents_audit_postgres_connection'),
+        'triage_connection': _toolkit_db or pick('triage_connection'),
+        # Audit-DB fallback chain inputs (audit.resolve_connection): the unified
+        # toolkit DB wins, then the dedicated param and the legacy Story key —
+        # all must survive this whitelist or kernels can never resolve them.
+        'agents_audit_postgres_connection': _toolkit_db or pick('agents_audit_postgres_connection'),
         'story_postgres_connection': pick('story_postgres_connection'),
         'triage_score_threshold': int(pick('triage_score_threshold', cfg.get('triage_score_threshold') or 75)),
         'triage_mail_channel': pick('triage_mail_channel'),

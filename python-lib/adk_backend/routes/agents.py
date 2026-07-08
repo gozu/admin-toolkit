@@ -89,8 +89,14 @@ def _agent_rows(client: Any) -> List[Dict[str, Any]]:
     for item in project.list_agents() or []:
         raw = item if isinstance(item, dict) else getattr(item, 'raw', {}) or {}
         if raw.get('id'):
+            # activeVersion + projectKey let the frontend deep-link to this
+            # agent's DSS config screen (e.g. to flip `allow_red_actions` after
+            # an agent-execution-disabled refusal): the saved-model version id
+            # is `S-<projectKey>-<id>-<activeVersion>`.
             rows.append({'id': raw.get('id'), 'name': raw.get('name') or raw.get('id'),
-                         'type': raw.get('savedModelType') or raw.get('type')})
+                         'type': raw.get('savedModelType') or raw.get('type'),
+                         'activeVersion': raw.get('activeVersion') or 'v1',
+                         'projectKey': raw.get('projectKey') or AGENTS_PROJECT_KEY})
     return rows
 
 

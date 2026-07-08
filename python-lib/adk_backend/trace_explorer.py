@@ -101,11 +101,13 @@ def _plugin_installed(client):
 
 
 def _logging_connection(client):
-    """Connection for the logging dataset: the plugin's triage_connection,
-    falling back to filesystem_managed (same rule as scripts/agents)."""
+    """Connection for the logging dataset: the unified toolkit database (else
+    the legacy triage_connection), falling back to filesystem_managed (same
+    rule as scripts/agents)."""
     try:
         cfg = client.get_plugin('admin-toolkit').get_settings().get_raw().get('config', {})
-        conn = (cfg.get('triage_connection') or '').strip()
+        conn = (cfg.get('toolkit_db_connection')
+                or cfg.get('triage_connection') or '').strip()
     except Exception:
         conn = ''
     return conn or 'filesystem_managed'

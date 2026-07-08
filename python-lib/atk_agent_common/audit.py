@@ -15,11 +15,14 @@ logger = logging.getLogger('atk-agents')
 
 def resolve_connection(settings):
     """Audit-DB connection from plugin settings — the same fallback chain as
-    db_adapter.load_agents_audit_config (the backend's read side): the
-    dedicated audit param first, then the legacy Story key, then the triage
-    connection. Passing only triage_connection silently skips auditing on
-    instances that configured the dedicated param (live-acceptance catch)."""
-    return ((settings.get('agents_audit_postgres_connection')
+    db_adapter.load_agents_audit_config (the backend's read side): the unified
+    toolkit DB first, then the dedicated audit param, the legacy Story key, and
+    the triage connection. Passing only triage_connection silently skips
+    auditing on instances that configured the dedicated param (live-acceptance
+    catch). config.resolve already folds toolkit_db_connection into the audit/
+    triage keys; reading it here too keeps a raw settings dict resolvable."""
+    return ((settings.get('toolkit_db_connection')
+             or settings.get('agents_audit_postgres_connection')
              or settings.get('story_postgres_connection')
              or settings.get('triage_connection') or '').strip() or None)
 

@@ -368,6 +368,7 @@ def api_users():
                     'email': u.get('email'),
                     'enabled': u.get('enabled'),
                     'userProfile': u.get('userProfile'),
+                    'groups': u.get('groups') or [],
                 }
                 for u in users
             ],

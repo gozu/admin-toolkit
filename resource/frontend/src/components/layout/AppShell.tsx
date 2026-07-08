@@ -14,6 +14,7 @@ import { useRedState, toggleShowRed, hydrateRedStatus } from '../../state/redUnl
 import { datasetExportConfigStore } from '../../state/datasetExportConfigStore';
 import { feedbackFromPageStore } from '../../state/feedbackFromPage';
 import { subscribeSessionEpoch } from '../../state/sessionCache';
+import { unlockAdoption, useAdoptionVisible } from '../../state/adoptionUnlockStore';
 
 const COLLAPSE_BREAKPOINT = 1280;
 const SIDEBAR_COLLAPSED = 56;
@@ -49,6 +50,8 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
   const { configuredConnection, loaded: datasetExportLoaded } = datasetExportConfigStore.use();
   const datasetExportEnabled = datasetExportLoaded && !!configuredConnection;
   const reducedMotion = useReducedMotion();
+  const adoptionVisible = useAdoptionVisible();
+  const eggBufRef = useRef('');
 
   // Scroll-to-top: rAF-throttled scrollTop tracking on <main>
   const mainRef = useRef<HTMLElement | null>(null);
@@ -95,6 +98,24 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
     window.addEventListener('admin-toolkit:page-entered', onPageEntered);
     return () => window.removeEventListener('admin-toolkit:page-entered', onPageEntered);
   }, [activePage]);
+
+  // On-demand Users deep-dive: type the keyword outside any input to opt in.
+  useEffect(() => {
+    if (adoptionVisible) return;
+    const handler = (e: KeyboardEvent) => {
+      const el = document.activeElement as HTMLElement | null;
+      const tag = el?.tagName.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || el?.isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
+      eggBufRef.current = (eggBufRef.current + e.key.toLowerCase()).slice(-8);
+      if (eggBufRef.current.endsWith('adoption')) {
+        unlockAdoption();
+        setActivePage('adoption');
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [adoptionVisible, setActivePage]);
 
   // Reconcile the unlock UI with the HttpOnly cookie once on boot.
   useEffect(() => {

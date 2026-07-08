@@ -150,6 +150,7 @@ export interface User {
   email?: string;
   enabled?: boolean;
   userProfile?: string;
+  groups?: string[];
 }
 
 // User stats

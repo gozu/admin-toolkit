@@ -164,6 +164,7 @@ def _handle_remote_keys_locked(_exc: RemoteKeysLocked):
 # CacheLoaderTimeout and MacroProjectMissing) apply to blueprint views too.
 # ─────────────────────────────────────────────────────────────────────────
 from adk_backend.routes.admin_actions import bp as admin_actions_bp
+from adk_backend.routes.adoption import bp as adoption_bp
 from adk_backend.routes.agent_tuning import bp as agent_tuning_bp
 from adk_backend.routes.agents import bp as agents_bp
 from adk_backend.routes.algorithm_review import bp as algorithm_review_bp
@@ -197,6 +198,7 @@ from adk_backend.routes.projects import bp as projects_bp
 from adk_backend.routes.settings import bp as settings_bp
 
 app.register_blueprint(admin_actions_bp)
+app.register_blueprint(adoption_bp)
 app.register_blueprint(agent_tuning_bp)
 app.register_blueprint(agents_bp)
 app.register_blueprint(algorithm_review_bp)

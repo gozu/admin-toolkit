@@ -7,6 +7,7 @@ interface UsersData {
     email?: string;
     enabled?: boolean;
     userProfile?: string;
+    groups?: string[];
   }>;
   groups?: Array<unknown>;
 }
@@ -52,6 +53,7 @@ export class UsersParser extends BaseJSONParser<UsersResult> {
       email: u.email,
       enabled: u.enabled,
       userProfile: u.userProfile,
+      groups: u.groups || [],
     }));
 
     return { userStats, users };

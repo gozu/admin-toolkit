@@ -8,6 +8,7 @@ import {
 } from '../pages/SettingsPage';
 import { useToggleFlag } from '../../hooks/useToggleFlag';
 import { DEPRECATED_PAGES, EXPERIMENTAL_PAGES } from '../../utils/moduleRegistry';
+import { useAdoptionVisible } from '../../state/adoptionUnlockStore';
 
 function HiddenFeatureNotice({ kind }: { kind: 'experimental' | 'deprecated' }) {
   const title =
@@ -37,6 +38,7 @@ import { ProjectsPage } from '../pages/ProjectsPage';
 import { ProjectComputePage } from '../pages/ProjectComputePage';
 import { ProjectCostPage } from '../pages/ProjectCostPage';
 import { UsersPage } from '../pages/UsersPage';
+import { AdoptionPage } from '../pages/AdoptionPage';
 import { CodeEnvsInsightsPage } from '../pages/CodeEnvsPage';
 import { CodeEnvsComparisonPage } from '../pages/CodeEnvsComparisonPage';
 import { ConnectionsInventoryPage } from '../pages/ConnectionsInventoryPage';
@@ -107,7 +109,7 @@ const crossfadeTransition = {
   ease: [0.16, 1, 0.3, 1] as [number, number, number, number],
 };
 
-function renderPage(activePage: PageId): React.ReactNode {
+function renderPage(activePage: PageId, adoptionVisible: boolean): React.ReactNode {
   switch (activePage) {
     case 'mission-control':
       return <MissionControlPage />;
@@ -127,6 +129,8 @@ function renderPage(activePage: PageId): React.ReactNode {
       return <ProjectCostPage />;
     case 'users':
       return <UsersPage />;
+    case 'adoption':
+      return adoptionVisible ? <AdoptionPage /> : <SummaryPage />;
     case 'code-envs':
       return <CodeEnvsInsightsPage />;
     case 'code-envs-cleaner':
@@ -190,6 +194,7 @@ export function PageRouter() {
     SHOW_DEPRECATED_STORAGE_KEY,
     'deprecated-flag-changed',
   );
+  const adoptionVisible = useAdoptionVisible();
 
   useEffect(() => {
     if (prevPageRef.current !== activePage) {
@@ -224,7 +229,7 @@ export function PageRouter() {
         }}
       >
         <Suspense fallback={<LoadingSpinner />}>
-          {hiddenKind ? <HiddenFeatureNotice kind={hiddenKind} /> : renderPage(activePage)}
+          {hiddenKind ? <HiddenFeatureNotice kind={hiddenKind} /> : renderPage(activePage, adoptionVisible)}
         </Suspense>
       </motion.div>
     </AnimatePresence>

@@ -16,6 +16,7 @@ import { useCollapsible } from '../../hooks/useCollapsible';
 import { MODULE_BY_ID, MODULE_NAV_SECTIONS } from '../../utils/moduleRegistry';
 import { getActiveHost } from '../../state/hostStore';
 import { useRedVisible } from '../../state/redUnlockStore';
+import { useAdoptionVisible } from '../../state/adoptionUnlockStore';
 import { ExternalLinkIcon } from '../ExternalLinkIcon';
 
 /* ------------------------------------------------------------------ */
@@ -99,6 +100,12 @@ const icons: Record<string, ReactNode> = {
       <circle cx="9" cy="7" r="4" />
       <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
       <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  ),
+  adoption: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+      <polyline points="16 7 22 7 22 13" />
     </svg>
   ),
   'code-envs': (
@@ -732,6 +739,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
     'deprecated-flag-changed',
   );
   const redVisible = useRedVisible();
+  const adoptionVisible = useAdoptionVisible();
   const reduced = useReducedMotion();
 
   // Icon activation pulse: a one-shot WAAPI animation fired from the
@@ -804,6 +812,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
     .map((section) => ({
       ...section,
       items: section.items.filter((id) => {
+        if (id === 'adoption' && !adoptionVisible) return false;
         const m = MODULE_BY_ID[id];
         if (m.experimental && !showExperimental) return false;
         if (m.deprecated && !showDeprecated) return false;

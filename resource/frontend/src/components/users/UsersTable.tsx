@@ -94,6 +94,17 @@ export function UsersTable({
         render: ({ user }) => user.email || '—',
         sortValue: ({ user }) => user.email || '',
       },
+      {
+        id: 'groups',
+        label: 'Groups',
+        defaultSortDir: 'asc',
+        cellClassName: 'text-[var(--text-muted)] truncate max-w-[260px]',
+        render: ({ user }) => {
+          const g = (user.groups || []).join(', ');
+          return <span title={g}>{g || '—'}</span>;
+        },
+        sortValue: ({ user }) => (user.groups || []).join(', '),
+      },
     ];
 
     for (const uc of USER_COLUMNS) {

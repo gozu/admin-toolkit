@@ -701,7 +701,7 @@ function SidebarSection({ section, idx, collapsed, renderItem }: SidebarSectionP
           {section.experimental && (
             <span
               title="Experimental — under active development; behavior may change."
-              className="ml-1 px-1 py-px text-[8px] font-mono font-semibold normal-case tracking-wide rounded border bg-[var(--bg-glass)] text-[var(--text-tertiary)] border-[var(--border-default)]"
+              className="ml-1 px-1 py-px text-[8px] font-mono font-semibold normal-case tracking-wide rounded border bg-[var(--accent)] text-white border-[var(--accent)]"
             >
               exp
             </span>

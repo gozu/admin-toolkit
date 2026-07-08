@@ -977,24 +977,31 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
     >
       {/* Host picker + collapse toggle */}
       <div className={`flex items-center px-4 ${collapsed ? 'flex-col gap-1.5 px-2 py-3' : 'sidebar-topstrip justify-between h-[45px]'}`}>
-        <button
-          type="button"
-          onClick={() => {
-            hideRailTip();
-            onBackToHosts?.();
-          }}
-          onMouseEnter={collapsed ? (e) => showRailTipDelayed(e, 'Back to host picker') : undefined}
-          onMouseLeave={collapsed ? hideRailTip : undefined}
-          title={collapsed ? undefined : 'Back to host picker'}
-          aria-label="Back"
-          className={`flex items-center gap-2 rounded-md px-2 py-1 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors ${collapsed ? 'justify-center' : ''}`}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5" />
-            <path d="m12 19-7-7 7-7" />
-          </svg>
-          {!collapsed && <span className="text-sm font-medium">Hosts</span>}
-        </button>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <button
+            type="button"
+            onClick={() => {
+              hideRailTip();
+              onBackToHosts?.();
+            }}
+            onMouseEnter={collapsed ? (e) => showRailTipDelayed(e, 'Back to host picker') : undefined}
+            onMouseLeave={collapsed ? hideRailTip : undefined}
+            title={collapsed ? undefined : 'Back to host picker'}
+            aria-label="Back"
+            className={`flex items-center gap-2 rounded-md px-2 py-1 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors ${collapsed ? 'justify-center' : ''}`}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5" />
+              <path d="m12 19-7-7 7-7" />
+            </svg>
+            {!collapsed && <span className="text-sm font-medium">Hosts</span>}
+          </button>
+          {!collapsed && (
+            <span className="text-[10px] font-mono text-[var(--text-tertiary)] select-none">
+              v{__APP_VERSION__}
+            </span>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => {

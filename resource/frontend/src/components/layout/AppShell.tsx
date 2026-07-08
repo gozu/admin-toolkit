@@ -195,9 +195,6 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
           >
             Beta
           </span>
-          <span className="text-[10px] font-mono text-[var(--text-tertiary)] select-none">
-            v{__APP_VERSION__}
-          </span>
           <button
             type="button"
             onClick={() => (authed ? toggleShowRed() : setShowUnlock(true))}

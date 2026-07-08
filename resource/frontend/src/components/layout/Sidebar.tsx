@@ -645,6 +645,7 @@ function RailTooltip({ tip }: { tip: RailTipState | null }) {
 interface NavSection {
   title: string;
   items: PageId[];
+  experimental?: boolean;
 }
 
 const NAV_SECTIONS: readonly NavSection[] = MODULE_NAV_SECTIONS;
@@ -697,6 +698,14 @@ function SidebarSection({ section, idx, collapsed, renderItem }: SidebarSectionP
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </motion.svg>
           <span>{section.title}</span>
+          {section.experimental && (
+            <span
+              title="Experimental — under active development; behavior may change."
+              className="ml-1 px-1 py-px text-[8px] font-mono font-semibold normal-case tracking-wide rounded border bg-[var(--bg-glass)] text-[var(--text-tertiary)] border-[var(--border-default)]"
+            >
+              exp
+            </span>
+          )}
         </button>
       )}
       <div className="collapse-content" data-state={collapsed || isOpen ? 'open' : 'closed'}>

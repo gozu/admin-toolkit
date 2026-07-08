@@ -46,6 +46,8 @@ export interface ModuleDefinition {
 export interface ModuleNavSection {
   title: string;
   items: PageId[];
+  /** Marks the whole section as experimental — renders an `exp` badge on its header. */
+  experimental?: boolean;
 }
 
 export const MODULES: readonly ModuleDefinition[] = [
@@ -127,7 +129,7 @@ export const MODULE_BY_ID: Readonly<Record<PageId, ModuleDefinition>> = Object.f
 
 export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'OVERVIEW', items: ['mission-control', 'summary', 'filesystem', 'memory', 'cpu'] },
-  { title: 'AGENTS', items: ['agents', 'agent-tuning'] },
+  { title: 'AGENTS', items: ['agents', 'agent-tuning'], experimental: true },
   { title: 'CONNECTIONS', items: ['connections-inventory', 'connections-insights', 'connections-health', 'connections-fs-migration'] },
   { title: 'PROJECTS', items: ['project-cleaner', 'projects', 'project-compute', 'project-cost'] },
   { title: 'USERS', items: ['users'] },

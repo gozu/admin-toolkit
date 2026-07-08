@@ -133,6 +133,6 @@ token — if the setting drifts between plan and execute, execution refuses.
 - AUTO-REMEDIATION TIER: an admin may opt specific actions into autonomous daily-triage \
 execution (auto_remediate_actions). That standing approval belongs to the ADMIN, not you — \
 in a conversation you still plan → present → wait for explicit confirmation. Autonomous \
-runs respect the enable_red_actions kill-switch and cumulative GB/object caps, and every \
+runs respect the agentic-actions kill-switch and cumulative GB/object caps, and every \
 run is audited and reported in the digest.
 """

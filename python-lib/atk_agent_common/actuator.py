@@ -878,7 +878,7 @@ def execute_admin_action(client, host='local', action=None, target=None,
                           'message': 'action must be one of: %s' % ', '.join(ACTIONS)}}
     if not settings.get('enable_red_actions'):
         return {'error': {'code': 'red-actions-disabled',
-                          'message': 'The enable_red_actions master switch is OFF in the plugin settings.',
+                          'message': 'The agentic-actions master switch is OFF in the plugin settings.',
                           'remediation': 'An administrator must turn it on; agents cannot.'}}
     if not confirm_flag:
         return {'error': {'code': 'not-confirmed',

@@ -38,7 +38,9 @@ Usage:
   python scripts/populate_dummy_instance.py            # reads .dss-url/.dss-api-key or $DSS_URL/$DSS_API_KEY
   python scripts/populate_dummy_instance.py --scale 0.1 --dry-run
   python scripts/populate_dummy_instance.py --only groups,users,projects
-  python scripts/populate_dummy_instance.py --purge
+  python scripts/populate_dummy_instance.py --purge --dry-run  # preview the teardown
+  python scripts/populate_dummy_instance.py --purge            # delete ONLY prefixed objects (asks first)
+  python scripts/populate_dummy_instance.py --delete --yes     # same, no confirmation prompt
 """
 from __future__ import annotations
 import argparse, concurrent.futures as cf, math, os, sys, threading, time
@@ -481,42 +483,49 @@ class Populator:
         self.summary["code_envs"] = len(self._existing_code_envs())
 
     # ---- teardown --------------------------------------------------------- #
-    def purge(self):
-        log(f"[purge] deleting everything prefixed '{self.p}' …")
-        # projects (also removes their datasets / folders / saved models)
-        projs = self._existing_projects()
-        log(f"  projects: {len(projs)}")
-        if not self.dry:
-            run_pool(sorted(projs),
-                     lambda k: self.c.get_project(k).delete(clear_managed_datasets=True),
-                     self.workers, "del-projects")
-        # code envs
-        envs = self._existing_code_envs()
-        log(f"  code envs: {len(envs)}")
-        if not self.dry:
-            def del_env(name):
-                for lang in ("PYTHON", "R"):
-                    try:
-                        self.c._perform_empty("DELETE", f"/admin/code-envs/{lang}/{name}"); return
-                    except Exception:
-                        continue
-            run_pool(sorted(envs), del_env, min(self.workers, 4), "del-code-envs")
-        # connections
-        conns = self._existing_connections()
-        log(f"  connections: {len(conns)}")
-        if not self.dry:
-            run_pool(sorted(conns), lambda n: self.c.get_connection(n).delete(),
-                     self.workers, "del-conns")
-        # users
-        users = self._existing_users()
-        log(f"  users: {len(users)}")
-        if not self.dry:
-            run_pool(sorted(users), lambda n: self.c.get_user(n).delete(), self.workers, "del-users")
-        # groups
-        groups = self._existing_groups()
-        log(f"  groups: {len(groups)}")
-        if not self.dry:
-            run_pool(sorted(groups), lambda n: self.c.get_group(n).delete(), self.workers, "del-groups")
+    def purge(self, confirm=True):
+        """Delete ONLY objects carrying the prefix (nothing else). Tallies and
+        shows exactly what will go first, then — unless --yes/--dry-run — asks."""
+        def del_env(name):
+            for lang in ("PYTHON", "R"):
+                try:
+                    self.c._perform_empty("DELETE", f"/admin/code-envs/{lang}/{name}"); return
+                except Exception:
+                    continue
+        # gather everything up front so the plan is auditable BEFORE any deletion.
+        # (datasets/folders/saved models live inside the dummy projects and are
+        # removed transitively when the project is deleted.)
+        plan = [
+            ("projects", sorted(self._existing_projects()),
+             lambda k: self.c.get_project(k).delete(clear_managed_datasets=True), self.workers),
+            ("code_envs", sorted(self._existing_code_envs()), del_env, min(self.workers, 4)),
+            ("connections", sorted(self._existing_connections()),
+             lambda n: self.c.get_connection(n).delete(), self.workers),
+            ("users", sorted(self._existing_users()),
+             lambda n: self.c.get_user(n).delete(), self.workers),
+            ("groups", sorted(self._existing_groups()),
+             lambda n: self.c.get_group(n).delete(), self.workers),
+        ]
+        total = sum(len(items) for _, items, _, _ in plan)
+        log(f"[purge] objects carrying prefix '{self.p}' (and nothing else):")
+        for label, items, _, _ in plan:
+            sample = ", ".join(items[:4]) + (" …" if len(items) > 4 else "")
+            log(f"  {label:12s}: {len(items):5d}   {sample}")
+        log(f"  {'TOTAL':12s}: {total:5d}")
+        if total == 0:
+            log("[purge] nothing to delete."); return
+        if self.dry:
+            log("[purge] dry-run — nothing deleted."); return
+        if confirm:
+            try:
+                ans = input(f"Delete these {total} objects prefixed '{self.p}'? [y/N] ").strip().lower()
+            except EOFError:
+                ans = ""
+            if ans not in ("y", "yes"):
+                log("[purge] aborted — nothing deleted."); return
+        for label, items, fn, workers in plan:
+            if items:
+                run_pool(items, fn, workers, "del-" + label)
         log("[purge] done.")
 
 
@@ -544,8 +553,10 @@ def main():
     ap.add_argument("--profile", help="JSON file overriding the embedded tam-global profile")
     ap.add_argument("--only", help="comma list of stages to run: " + ",".join(STAGES))
     ap.add_argument("--skip", help="comma list of stages to skip")
-    ap.add_argument("--purge", action="store_true", help="delete every object carrying the prefix, then exit")
-    ap.add_argument("--dry-run", action="store_true", help="plan only; create/delete nothing")
+    ap.add_argument("--purge", "--delete", dest="purge", action="store_true",
+                    help="delete ONLY objects carrying the prefix (nothing else), then exit")
+    ap.add_argument("--yes", "-y", action="store_true", help="skip the purge confirmation prompt")
+    ap.add_argument("--dry-run", action="store_true", help="plan only; create/delete nothing (pair with --purge to preview a teardown)")
     ap.add_argument("--insecure", action="store_true", default=True, help="skip TLS verify (default on; self-signed)")
     args = ap.parse_args()
 
@@ -575,7 +586,7 @@ def main():
     pop = Populator(client, args.prefix, prof, args.scale, args.workers, args.dry_run)
 
     if args.purge:
-        pop.purge(); return
+        pop.purge(confirm=not args.yes); return
 
     stages = STAGES
     if args.only:  stages = [s for s in STAGES if s in args.only.split(",")]

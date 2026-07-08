@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.682",
+    "version": "0.4.683",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -234,12 +234,12 @@
         },
         {
             "name": "sep_actuator",
-            "label": "Agents \u2014 Actuator (red actions)",
+            "label": "Agents \u2014 Actuator (agentic actions)",
             "type": "SEPARATOR"
         },
         {
             "name": "enable_red_actions",
-            "label": "Enable red actions",
+            "label": "Enable agentic actions",
             "description": "Master kill-switch. OFF = execute-admin-action always refuses, regardless of per-agent settings.",
             "type": "BOOLEAN",
             "mandatory": false,
@@ -284,7 +284,7 @@
         {
             "name": "sep_auto_remediate",
             "label": "Agents \u2014 Auto-remediation",
-            "description": "Actions listed below run AUTONOMOUSLY during the daily triage sweep when their finding fires \u2014 no per-run human approval. Listing an action here is the admin's standing approval for that action, within the caps; everything else stays plan \u2192 approve \u2192 execute. The enable_red_actions kill-switch still gates every run, and every run is audited (agent='triage-auto') and reported in the digest.",
+            "description": "Actions listed below run AUTONOMOUSLY during the daily triage sweep when their finding fires \u2014 no per-run human approval. Listing an action here is the admin's standing approval for that action, within the caps; everything else stays plan \u2192 approve \u2192 execute. The agentic-actions kill-switch still gates every run, and every run is audited (agent='triage-auto') and reported in the digest.",
             "type": "SEPARATOR"
         },
         {

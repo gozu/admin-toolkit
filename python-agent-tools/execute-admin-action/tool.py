@@ -13,7 +13,7 @@ class ExecuteAdminActionTool(BaseAgentTool):
                 "Execute an admin action that plan-admin-action planned AND the user explicitly "
                 "approved in this conversation. Requires the plan's confirm_token (15-min TTL, "
                 "bound to the exact action/host/target — any drift is rejected) and confirm=true. "
-                "Refuses when the plugin's enable_red_actions kill-switch is off. Every call is "
+                "Refuses when the plugin's agentic-actions kill-switch is off. Every call is "
                 "written to the agents.agent_actions audit table."),
             "inputSchema": {
                 "$id": "https://dataiku.com/agents/tools/atk/execute-admin-action/input",

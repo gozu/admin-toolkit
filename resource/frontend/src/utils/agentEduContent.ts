@@ -56,7 +56,7 @@ export const EDU: Record<string, EduEntry> = {
   'concept.kill-switch': {
     title: 'The master kill switch',
     body: [
-      'The agents plugin has an enable_red_actions master switch, OFF by default. While it is off, every execution — even a fully approved one — is refused at the last gate.',
+      'The agents plugin has an agentic-actions master switch, OFF by default. While it is off, every execution — even a fully approved one — is refused at the last gate.',
       'Only a human administrator can turn it on, in the plugin settings. Agents cannot; that is the point.',
     ],
   },

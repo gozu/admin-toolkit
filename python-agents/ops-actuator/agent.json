@@ -17,7 +17,7 @@
         },
         {
             "name": "allow_red_actions",
-            "label": "Allow red actions",
+            "label": "Allow agentic actions",
             "type": "BOOLEAN",
             "description": "Per-agent gate: OFF = this agent may plan but never execute.",
             "mandatory": false,

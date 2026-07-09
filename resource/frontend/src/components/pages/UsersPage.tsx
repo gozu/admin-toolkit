@@ -69,7 +69,7 @@ export function UsersPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Filter login or email…"
+              placeholder="Filter login, name or email…"
               className="flex-1 min-w-[200px] max-w-[360px] px-3 py-1.5 text-sm rounded-md bg-[var(--bg-glass)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--neon-cyan)]"
             />
             <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)] cursor-pointer select-none">

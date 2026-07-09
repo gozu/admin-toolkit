@@ -16,6 +16,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useDiag, DEFAULT_DSSHOME } from '../context/DiagContext';
+import { getAppVersion } from '../state/appVersionStore';
 import type { ParsedData } from '../types';
 import { fetchJson } from '../utils/api';
 import { useApiDirTree } from './useApiDirTree';
@@ -70,7 +71,7 @@ export function useApiDataLoader(enabled: boolean, reloadKey = 0) {
     const { log, nowMs, fmtMs } = ctx;
 
     const run = async () => {
-      log(`Diag Parser version v${__APP_VERSION__}`);
+      log(`Diag Parser version v${getAppVersion() || '?'}`);
       log('Starting live data load');
       log(
         ctx.basicProjectsEnabled

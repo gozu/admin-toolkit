@@ -12,6 +12,7 @@ import { useDiag } from '../../context/DiagContext';
 import { UnlockModal } from '../UnlockModal';
 import { DatasetExportModal } from '../DatasetExportModal';
 import { useRedState, toggleShowRed, hydrateRedStatus } from '../../state/redUnlockStore';
+import { useAppVersion } from '../../state/appVersionStore';
 import { datasetExportConfigStore } from '../../state/datasetExportConfigStore';
 import { feedbackFromPageStore } from '../../state/feedbackFromPage';
 import { subscribeSessionEpoch } from '../../state/sessionCache';
@@ -53,6 +54,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
   const datasetExportEnabled = datasetExportLoaded && !!configuredConnection;
   const reducedMotion = useReducedMotion();
   const adoptionVisible = useAdoptionVisible();
+  const appVersion = useAppVersion();
   const eggBufRef = useRef('');
 
   // Scroll-to-top: rAF-throttled scrollTop tracking on <main>
@@ -152,7 +154,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
           message: 'Top-bar export (diagnostic bundle download).',
           email: '',
           diagnosticsText: [
-            `Version: ${__APP_VERSION__}`,
+            `Version: ${appVersion || '?'}`,
             `Page: ${state.activePage}`,
             `Trigger: topbar-export`,
             `Time: ${new Date().toISOString()}`,
@@ -439,7 +441,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
             {showAbout && (
               <div className="topbar-menu absolute right-0 top-full mt-2 w-52 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] shadow-lg p-3 z-50">
                 <div className="text-xs font-mono text-[var(--text-secondary)] mb-1">
-                  v{__APP_VERSION__}
+                  v{appVersion || '?'}
                 </div>
                 <div className="flex items-center gap-2 text-[var(--text-tertiary)]">
                   <span className="text-[11px]">by Alex Kaos</span>

@@ -15,6 +15,7 @@ import type {
   DiagStateWithComparison,
 } from '../types';
 import { fetchRaw } from './api';
+import { getAppVersion } from '../state/appVersionStore';
 import { getActiveHost, hostStore } from '../state/hostStore';
 import { getRedState } from '../state/redUnlockStore';
 import { feedbackFromPageStore } from '../state/feedbackFromPage';
@@ -160,7 +161,7 @@ function buildEnv(now: Date): unknown {
     }
   })();
   return {
-    appVersion: __APP_VERSION__,
+    appVersion: getAppVersion(),
     userAgent: nav?.userAgent ?? '',
     platform: nav?.platform ?? '',
     language: nav?.language ?? '',
@@ -352,7 +353,7 @@ export async function buildDiagBundle(
   const manifest: BundleManifest = {
     generatedAtUtc: now.toISOString(),
     host: { id: host.id, label: host.label, url: host.url },
-    appVersion: __APP_VERSION__,
+    appVersion: getAppVersion(),
     files,
     backendFetches,
   };

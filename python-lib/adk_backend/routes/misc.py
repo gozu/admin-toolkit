@@ -1,6 +1,8 @@
 """Misc small routes — mode probe, cache clear, managed-folder + mail-channel listing."""
 import io
+import json
 import logging
+import os
 import re
 
 from flask import Blueprint, g, jsonify, request
@@ -45,9 +47,28 @@ def _resolve_archive_folder(project, connection: str, create: bool = True):
     return {'id': folder.id, 'name': ARCHIVE_FOLDER_NAME}
 
 
+_PLUGIN_VERSION = None
+
+
+def _plugin_version() -> str:
+    """Version from the plugin manifest (plugin root = python-lib/../),
+    read once. The frontend gets it from /api/mode instead of a build-time
+    constant so version-only bumps don't rewrite resource/dist/."""
+    global _PLUGIN_VERSION
+    if _PLUGIN_VERSION is None:
+        try:
+            manifest = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'plugin.json')
+            with open(manifest, 'r', encoding='utf-8') as fh:
+                _PLUGIN_VERSION = str(json.load(fh).get('version') or '')
+        except Exception:
+            _PLUGIN_VERSION = ''
+    return _PLUGIN_VERSION
+
+
 @bp.route('/api/mode')
 def api_mode():
-    return jsonify({'mode': 'live'})
+    return jsonify({'mode': 'live', 'version': _plugin_version()})
 
 
 @bp.route('/api/cache/clear', methods=['POST'])

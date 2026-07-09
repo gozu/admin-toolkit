@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { fetchRaw } from '../../utils/api';
+import { useAppVersion } from '../../state/appVersionStore';
 import { getActiveHost } from '../../state/hostStore';
 import { feedbackFromPageStore } from '../../state/feedbackFromPage';
 import { getModuleLabel } from '../../utils/moduleRegistry';
@@ -46,6 +47,7 @@ function extOf(name: string): string {
 
 export function FeedbackPage() {
   const { state: diagState } = useDiag();
+  const appVersion = useAppVersion();
   const [type, setType] = useState<FeedbackType>('bug');
   const [message, setMessage] = useState('');
   const [email, setEmail] = useState('');
@@ -92,7 +94,7 @@ export function FeedbackPage() {
   const diagnosticsText = useMemo(() => {
     const host = getActiveHost();
     const rows: Array<[string, string]> = [
-      ['Version', __APP_VERSION__],
+      ['Version', appVersion || '?'],
       ['Host', `${host.label} (${host.id})`],
       ['From page', fromPageId ? getModuleLabel(fromPageId) : 'direct'],
       ['User agent', typeof navigator !== 'undefined' ? navigator.userAgent : ''],
@@ -103,7 +105,7 @@ export function FeedbackPage() {
       ['Time', new Date().toISOString()],
     ];
     return { rows, text: rows.map(([k, v]) => `${k}: ${v}`).join('\n') };
-  }, [fromPageId]);
+  }, [fromPageId, appVersion]);
 
   const addFiles = useCallback(
     (incoming: File[]) => {

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useDiag } from '../context/DiagContext';
+import { appVersionStore } from '../state/appVersionStore';
 import type { DataSource } from '../types';
 import { fetchJson } from '../utils/api';
 
 interface ModeResponse {
   mode?: string;
+  version?: string;
 }
 
 export function useDataSource() {
@@ -19,11 +21,14 @@ export function useDataSource() {
     };
 
     const detect = async () => {
-      log(`Diag Parser version v${__APP_VERSION__}`);
       log('Starting data source detection');
       try {
         log('GET /api/mode');
         const data = await fetchJson<ModeResponse>('/api/mode');
+        if (data?.version) {
+          appVersionStore.set(String(data.version));
+          log(`Admin Toolkit plugin v${data.version}`);
+        }
         if (cancelled) return;
         if (data && data.mode === 'live') {
           log('Detected live API mode');

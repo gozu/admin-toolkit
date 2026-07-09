@@ -1,14 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-oxc'
 import tailwindcss from '@tailwindcss/vite'
-import pkg from './package.json' with { type: 'json' }
 
+// No version define: the frontend reads the plugin version at runtime from
+// /api/mode, keeping the committed dist/ bundle stable across version bumps.
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
-  },
   base: process.env.MODE === 'production'
     ? '/plugins/admin-toolkit/resource/dist/'
     : '/',

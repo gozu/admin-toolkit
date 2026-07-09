@@ -15,6 +15,7 @@ import { useToggleFlag } from '../../hooks/useToggleFlag';
 import { useCollapsible } from '../../hooks/useCollapsible';
 import { useModuleAvailability } from '../../hooks/useModuleAvailability';
 import { MODULE_BY_ID, MODULE_NAV_SECTIONS } from '../../utils/moduleRegistry';
+import { useAppVersion } from '../../state/appVersionStore';
 import { getActiveHost } from '../../state/hostStore';
 import { useRedVisible } from '../../state/redUnlockStore';
 import { useAdoptionVisible } from '../../state/adoptionUnlockStore';
@@ -747,6 +748,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
     'deprecated-flag-changed',
   );
   const redVisible = useRedVisible();
+  const appVersion = useAppVersion();
   const adoptionVisible = useAdoptionVisible();
   const hiddenPages = useModuleAvailability();
   const reduced = useReducedMotion();
@@ -1015,9 +1017,9 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
             </svg>
             {!collapsed && <span className="text-sm font-medium">Hosts</span>}
           </button>
-          {!collapsed && (
+          {!collapsed && appVersion && (
             <span className="text-[10px] font-mono text-[var(--text-tertiary)] select-none">
-              v{__APP_VERSION__}
+              v{appVersion}
             </span>
           )}
         </div>

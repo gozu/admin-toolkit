@@ -39,6 +39,8 @@ A `ModuleDefinition` may declare:
 
 The `ModuleAvailabilityPolicy` enum is **exhaustive**: `pageAvailability.ts` has no `default:` branch and ends in a `never` assertion. Adding a new policy without handling its case is a TypeScript error.
 
+Availability semantics (`useModuleAvailability`): a module is hidden **only on a settled, definitive absence signal** (no clusters registered, no registry provider, no runtime-DB connection, LLM audit settled empty, no container-exec configs). Unknown / loading / errored signals keep the module visible. Hiding applies to the nav surfaces only — Sidebar and ⌘K — never to `PageRouter`, so an open page is never yanked away and deep links keep working. The settled verdict is persisted per host (`admin-toolkit:hiddenModules:<hostId>`) so the next session's sidebar starts correct instead of popping modules out mid-startup; a settled signal always overrides the seed in both directions.
+
 ## Adding a New Module — Checklist
 
 1. Add a `PageId` literal in `types/index.ts`.

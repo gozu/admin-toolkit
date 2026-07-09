@@ -175,7 +175,7 @@ export const MemoryTile = memo(function MemoryTile({
   mem,
 }: BaseTileProps & { mem: MemoryVm | null }) {
   return (
-    <TileShell title="Memory" area="mem" target="memory" accent="system" lifecycle={lifecycle} onNavigate={onNavigate} hasData={mem != null}>
+    <TileShell title="Memory" area="mem" target="resources" accent="system" lifecycle={lifecycle} onNavigate={onNavigate} hasData={mem != null}>
       {mem ? (
         <div className="flex h-full flex-col justify-center gap-1.5">
           <BigStat
@@ -216,7 +216,7 @@ export const CpuTile = memo(function CpuTile({
   const state = useSyncExternalStore(subscribeProcessMetrics, getProcessMetrics, getProcessMetrics);
   const top = useMemo(() => selectTopCpu(state.processes), [state.processes]);
   return (
-    <TileShell title="CPU" area="cpu" target="cpu" accent="system" lifecycle={lifecycle} onNavigate={onNavigate} hasData={top.length > 0}
+    <TileShell title="CPU" area="cpu" target="resources" accent="system" lifecycle={lifecycle} onNavigate={onNavigate} hasData={top.length > 0}
       titleRight={cores ? <span className="font-mono text-[9px] text-[var(--text-tertiary)]">{cores} cores</span> : undefined}
     >
       <div className="flex h-full flex-col justify-center gap-1">

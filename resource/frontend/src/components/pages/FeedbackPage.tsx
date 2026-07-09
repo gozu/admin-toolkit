@@ -5,7 +5,7 @@ import { feedbackFromPageStore } from '../../state/feedbackFromPage';
 import { getModuleLabel } from '../../utils/moduleRegistry';
 import { formatBytes } from '../../utils/formatters';
 import { useDiag } from '../../context/DiagContext';
-import { buildDiagBundle, type BundleManifest } from '../../utils/diagBundle';
+import { buildDiagBundle, snapshotDiagState, type BundleManifest } from '../../utils/diagBundle';
 import { loadFromStorage, saveToStorage } from '../../utils/storage';
 import { SELECTED_MAIL_CHANNEL_STORAGE_KEY } from './SettingsPage';
 import { Spinner } from '../common/Spinner';
@@ -164,17 +164,7 @@ export function FeedbackPage() {
           email: email.trim(),
           diagnosticsText: diagnosticsText.text,
         },
-        state: {
-          parsedData: diagState.parsedData,
-          debugLogs: diagState.debugLogs,
-          mode: diagState.mode,
-          activePage: diagState.activePage,
-          layoutMode: diagState.layoutMode,
-          activeFilter: diagState.activeFilter,
-          focusedConnectionFilter: diagState.focusedConnectionFilter,
-          focusedUserFilter: diagState.focusedUserFilter,
-          comparison: diagState.comparison,
-        },
+        state: snapshotDiagState(diagState),
       });
 
       // No auto-download — the bundle is primarily an email attachment. The user

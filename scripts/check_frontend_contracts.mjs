@@ -618,6 +618,32 @@ try {
   fail(`could not read/parse plugin.json for the settings-surface guard: ${err.message}`);
 }
 
+// Module availability gating: every registry entry declares `availability:`
+// (the old `reachability:` placeholder is retired); the resolver keeps its
+// `never` exhaustiveness guard; both nav surfaces consume the hook. PageRouter
+// deliberately does NOT — an open page is never yanked away.
+if (/\breachability\s*:/.test(registry)) {
+  fail("moduleRegistry.ts still contains 'reachability:' — the field was renamed to 'availability:'.");
+}
+for (const m of [...registry.matchAll(/\{\s*id:\s*'([^']+)'[\s\S]*?\}\s*,/g)]) {
+  if (!pageIds.includes(m[1])) continue;
+  if (!/\bavailability\s*:\s*'/.test(m[0])) {
+    fail(`Module '${m[1]}' must declare an availability policy ('always' or a gate).`);
+  }
+}
+const pageAvailability = read('src/utils/pageAvailability.ts');
+if (!pageAvailability) {
+  fail('utils/pageAvailability.ts must exist — it holds the ModuleAvailabilityPolicy resolver.');
+} else if (!/:\s*never\s*=/.test(pageAvailability)) {
+  fail('pageAvailability.ts must keep the `never` exhaustiveness guard over ModuleAvailabilityPolicy.');
+}
+if (!sidebar.includes('useModuleAvailability')) {
+  fail('Sidebar must consume useModuleAvailability to hide inapplicable modules.');
+}
+if (!palette.includes('useModuleAvailability')) {
+  fail('CommandPalette must consume useModuleAvailability to hide inapplicable modules.');
+}
+
 if (process.exitCode) {
   process.exit();
 }

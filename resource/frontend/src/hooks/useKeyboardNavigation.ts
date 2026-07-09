@@ -13,7 +13,7 @@ interface UseKeyboardNavigationOptions {
 const PAGE_ORDER: PageId[] = [
   'summary',
   'filesystem',
-  'memory',
+  'resources',
   'connections-inventory',
   'logs',
   'plugins',
@@ -26,7 +26,7 @@ const PAGE_ORDER: PageId[] = [
 const NUMBER_KEY_MAP: Record<string, PageId> = {
   '1': 'summary',
   '2': 'filesystem',
-  '3': 'memory',
+  '3': 'resources',
   '4': 'connections-inventory',
   '5': 'logs',
   '6': 'plugins',

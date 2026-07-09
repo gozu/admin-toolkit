@@ -7,13 +7,34 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, Response, g, jsonify, request
 
+from adk_backend.caching import _cache_get
 from adk_backend.clients import MacroProjectMissing
 from adk_backend.context import _THREAD_LOCAL
 from adk_backend.macros import _k8s_insights_macro
+from adk_backend.settings import _BACKEND_SETTINGS
 from adk_backend.utils import _sse_response
 
 bp = Blueprint('k8s_insights', __name__)
 _LOGGER = logging.getLogger(__name__)
+
+
+@bp.route('/api/k8s-insights/cluster-count')
+def api_k8s_insights_cluster_count():
+    """Cheap K8s presence signal for module availability gating.
+
+    Pure DSS API (no macro, no kubeconfig probing): counts clusters registered
+    in DSS. `count: null` means "unknown" — the frontend treats unknown as
+    available and never hides a module on it.
+    """
+    client = g.client
+
+    def _count():
+        try:
+            return {'count': len(client.list_clusters() or [])}
+        except Exception:
+            return {'count': None}
+
+    return jsonify(_cache_get('k8s_cluster_count', _BACKEND_SETTINGS['cache_ttl_overview'], _count))
 
 
 # ---------- K8S Insights ---------- #

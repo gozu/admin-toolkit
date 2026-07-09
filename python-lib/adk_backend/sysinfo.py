@@ -5,6 +5,7 @@ import os
 import platform
 import re
 import subprocess
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -42,6 +43,80 @@ def _run_command(cmd: List[str]) -> Optional[str]:
         return output.decode('utf-8', errors='replace')
     except Exception:
         return None
+
+
+# ── Resource sample (/proc/stat + /proc/meminfo) ────────────────────────────
+# Local-host counterpart of python-runnables/resource-sample/runnable.py; the
+# parsers are kept in lockstep. Raw cumulative counters — the frontend diffs
+# consecutive samples to derive CPU%.
+
+def _parse_proc_stat(text: Optional[str]) -> Optional[Dict[str, int]]:
+    """First `cpu ` aggregate line → cumulative jiffies + cpu core count."""
+    cpu: Optional[Dict[str, int]] = None
+    cpu_count = 0
+    for line in (text or '').splitlines():
+        if line.startswith('cpu '):
+            fields = line.split()[1:]
+            values: List[int] = []
+            for f in fields[:8]:
+                try:
+                    values.append(int(f))
+                except ValueError:
+                    values.append(0)
+            while len(values) < 8:
+                values.append(0)
+            cpu = {
+                'user': values[0], 'nice': values[1], 'system': values[2],
+                'idle': values[3], 'iowait': values[4], 'irq': values[5],
+                'softirq': values[6], 'steal': values[7],
+            }
+        elif line.startswith('cpu'):
+            cpu_count += 1
+    if cpu is None:
+        return None
+    cpu['cpuCount'] = cpu_count
+    return cpu
+
+
+_MEMINFO_KEYS = {
+    'MemTotal': 'totalKb',
+    'MemFree': 'freeKb',
+    'MemAvailable': 'availableKb',
+    'Buffers': 'buffersKb',
+    'Cached': 'cachedKb',
+    'SwapTotal': 'swapTotalKb',
+    'SwapFree': 'swapFreeKb',
+}
+
+
+def _parse_proc_meminfo(text: Optional[str]) -> Optional[Dict[str, int]]:
+    """`Key:   12345 kB` lines → the seven sizes the live graph consumes."""
+    out: Dict[str, int] = {}
+    for line in (text or '').splitlines():
+        key, _, rest = line.partition(':')
+        mapped = _MEMINFO_KEYS.get(key.strip())
+        if not mapped:
+            continue
+        parts = rest.split()
+        if not parts:
+            continue
+        try:
+            out[mapped] = int(parts[0])
+        except ValueError:
+            continue
+    return out if 'totalKb' in out else None
+
+
+def _read_resource_sample() -> Dict[str, Any]:
+    """Instantaneous CPU/memory counter snapshot of the LOCAL host (in-process,
+    no macro run — effectively free). Same shape as the resource-sample macro."""
+    stat_text = _safe_read_text('/proc/stat')
+    meminfo_text = _safe_read_text('/proc/meminfo')
+    cpu = _parse_proc_stat(stat_text)
+    mem = _parse_proc_meminfo(meminfo_text)
+    if cpu is None or mem is None:
+        return {'ok': False, 'error': 'unparseable /proc/stat or /proc/meminfo'}
+    return {'ok': True, 'ts': time.time(), 'cpu': cpu, 'mem': mem}
 
 
 def _format_size_kb(value: int) -> str:

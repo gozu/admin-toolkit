@@ -1,0 +1,16 @@
+{
+    "meta": {
+        "label": "Resource sample",
+        "description": "Instantaneous CPU/memory counter snapshot from /proc/stat + /proc/meminfo. Read-only and very cheap; polled by the Resources page live graph. Runs as the dataiku service account.",
+        "icon": "icon-tasks",
+        "macroRoles": [
+            {
+                "type": "PROJECT_MACROS"
+            }
+        ]
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": []
+}

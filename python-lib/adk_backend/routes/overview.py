@@ -8,8 +8,12 @@ import time
 from flask import Blueprint, g, jsonify, request
 
 from adk_backend.caching import _cache_get
-from adk_backend.clients import _safe_request_host_id
-from adk_backend.macros import _host_metrics_macro, _process_metrics_macro
+from adk_backend.clients import MacroProjectMissing, _safe_request_host_id
+from adk_backend.macros import (
+    _host_metrics_macro,
+    _process_metrics_macro,
+    _resource_sample_macro,
+)
 from adk_backend.settings import _BACKEND_SETTINGS
 from adk_backend.sysinfo import (
     _dip_home,
@@ -23,6 +27,7 @@ from adk_backend.sysinfo import (
     _parse_memory_info,
     _parse_supervisord_restart,
     _parse_system_limits,
+    _read_resource_sample,
     _run_command,
     _safe_read_json,
     _safe_read_text,
@@ -187,6 +192,27 @@ def api_process_metrics():
         lambda: _process_metrics_macro(g.client),
     )
     return jsonify(data)
+
+
+@bp.route('/api/host/resource-sample')
+def api_resource_sample():
+    """Instantaneous CPU/memory counter snapshot for the Resources live graph.
+
+    NEVER cached — every call must be a fresh counter read (the frontend diffs
+    consecutive samples to derive CPU%, so a cached repeat would flatline it).
+    Local host reads /proc in-process (effectively free); remote hosts go
+    through the resource-sample macro. MacroProjectMissing propagates to the
+    409 flow; any other remote failure (e.g. an older toolkit without the
+    macro) degrades to {ok:false} so the page just hides the live graph.
+    """
+    if _safe_request_host_id() == 'local':
+        return jsonify(_read_resource_sample())
+    try:
+        return jsonify(_resource_sample_macro(g.client))
+    except MacroProjectMissing:
+        raise
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f"{type(e).__name__}: {e}"})
 
 
 @bp.route('/api/java-memory')

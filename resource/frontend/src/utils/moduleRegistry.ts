@@ -16,10 +16,19 @@ export interface LifecycleSource {
   fields: readonly [LifecycleFieldName, ...LifecycleFieldName[]];
 }
 
-// Reachability — is the page navigable? Today all pages are always navigable;
-// the placeholder exists so the registry contract-check can distinguish
-// reachability from lifecycle without inventing the dimension later.
-export type ReachabilityPolicy = 'always';
+// Availability — is the module applicable on this host at all? 'always' is
+// unconditional; every other policy names a definitive absence signal that
+// hides the module from the nav surfaces (Sidebar, ⌘K) — never from
+// PageRouter, so an open page is never yanked away. Resolution semantics live
+// in utils/pageAvailability.ts: hide ONLY on settled, definitive absence;
+// unknown / loading / error keeps the module visible.
+export type ModuleAvailabilityPolicy =
+  | 'always'
+  | 'clusters'            // no K8s clusters registered in DSS
+  | 'container-exec'      // no containerized-execution configs & both defaults local
+  | 'container-registry'  // no Docker registry provider detected
+  | 'llm'                 // LLM audit settled empty (no LLM connections/usage)
+  | 'runtime-db';         // no Postgres runtime-DB connection configured
 
 export interface ModuleDefinition {
   id: PageId;
@@ -29,7 +38,7 @@ export interface ModuleDefinition {
   section: string;
   navSection: string;
   keywords: string[];
-  reachability: ReachabilityPolicy;
+  availability: ModuleAvailabilityPolicy;
   lifecycle: LifecycleSource;
   // Action pages (manual advanced tools) carry no sidebar load glyph and are
   // excluded from the global "Analysis complete" aggregate: their lifecycle
@@ -52,7 +61,7 @@ export interface ModuleNavSection {
 
 export const MODULES: readonly ModuleDefinition[] = [
   // OVERVIEW
-  { id: 'mission-control', label: 'Mission Control', section: 'Overview', navSection: 'OVERVIEW', keywords: ['mission', 'control', 'wall', 'noc', 'dashboard', 'all'], reachability: 'always', lifecycle: { fields: [
+  { id: 'mission-control', label: 'Mission Control', section: 'Overview', navSection: 'OVERVIEW', keywords: ['mission', 'control', 'wall', 'noc', 'dashboard', 'all'], availability: 'always', lifecycle: { fields: [
     'summaryLoading',
     'filesystemLoading',
     'memoryLoading',
@@ -60,30 +69,29 @@ export const MODULES: readonly ModuleDefinition[] = [
     'projectFootprintLoading',
     'usersLoading',
   ] } },
-  { id: 'summary', label: 'Summary', section: 'Overview', navSection: 'OVERVIEW', keywords: ['health', 'score', 'overview', 'dashboard'], reachability: 'always', lifecycle: { fields: ['summaryLoading'] } },
-  { id: 'filesystem', label: 'Filesystem', section: 'Overview', navSection: 'OVERVIEW', keywords: ['disk', 'storage', 'mount', 'partition'], reachability: 'always', lifecycle: { fields: ['filesystemLoading'] } },
-  { id: 'memory', label: 'Memory', section: 'Overview', navSection: 'OVERVIEW', keywords: ['ram', 'swap', 'memory', 'usage', 'pid', 'process'], reachability: 'always', lifecycle: { fields: ['memoryLoading'] } },
-  { id: 'cpu', label: 'CPU', section: 'Overview', navSection: 'OVERVIEW', keywords: ['cpu', 'process', 'pid', 'load', 'usage'], reachability: 'always', lifecycle: { fields: ['cpuLoading'] } },
+  { id: 'summary', label: 'Summary', section: 'Overview', navSection: 'OVERVIEW', keywords: ['health', 'score', 'overview', 'dashboard'], availability: 'always', lifecycle: { fields: ['summaryLoading'] } },
+  { id: 'filesystem', label: 'Filesystem', section: 'Overview', navSection: 'OVERVIEW', keywords: ['disk', 'storage', 'mount', 'partition'], availability: 'always', lifecycle: { fields: ['filesystemLoading'] } },
+  { id: 'resources', label: 'Resources', section: 'Overview', navSection: 'OVERVIEW', keywords: ['ram', 'swap', 'memory', 'cpu', 'usage', 'pid', 'process', 'load', 'live', 'resources'], availability: 'always', lifecycle: { fields: ['memoryLoading', 'cpuLoading'] } },
 
   // CONNECTIONS
-  { id: 'connections-inventory', label: 'Inventory', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['database', 'connector', 'type', 'inventory'], trends: true, reachability: 'always', lifecycle: { fields: ['connectionsInventoryLoading'] } },
-  { id: 'connections-insights', label: 'Insights', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['connection', 'insights', 'matrix', 'audit', 'usage', 'consumption', 'health', 'projects'], reachability: 'always', lifecycle: { fields: [
+  { id: 'connections-inventory', label: 'Inventory', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['database', 'connector', 'type', 'inventory'], trends: true, availability: 'always', lifecycle: { fields: ['connectionsInventoryLoading'] } },
+  { id: 'connections-insights', label: 'Insights', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['connection', 'insights', 'matrix', 'audit', 'usage', 'consumption', 'health', 'projects'], availability: 'always', lifecycle: { fields: [
     'connectionsInventoryLoading',
     'connectionUsageLoading',
     'connectionsHealthLoading',
     'connectionsAuditLoading',
   ] } },
-  { id: 'connections-health', label: 'Health', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['connection', 'test', 'health', 'diagnostic'], reachability: 'always', lifecycle: { fields: ['connectionsHealthLoading'] } },
-  { id: 'connections-fs-migration', label: 'FS Migration', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['filesystem', 'migration', 'local', 'fs', 'outreach', 'owner'], tool: true, reachability: 'always', lifecycle: { fields: ['connectionUsageLoading'] } },
+  { id: 'connections-health', label: 'Health', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['connection', 'test', 'health', 'diagnostic'], availability: 'always', lifecycle: { fields: ['connectionsHealthLoading'] } },
+  { id: 'connections-fs-migration', label: 'FS Migration', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['filesystem', 'migration', 'local', 'fs', 'outreach', 'owner'], tool: true, availability: 'always', lifecycle: { fields: ['connectionUsageLoading'] } },
 
   // PROJECTS
-  { id: 'project-cleaner', label: 'Project Cleaner', navLabel: 'Cleaner', section: 'Projects', navSection: 'PROJECTS', keywords: ['clean', 'delete', 'inactive', 'project'], tool: true, reachability: 'always', lifecycle: { fields: ['projectCleanerLoading'] } },
-  { id: 'projects', label: 'Projects', navLabel: 'Insights', section: 'Projects', navSection: 'PROJECTS', keywords: ['project', 'footprint', 'permissions'], trends: true, reachability: 'always', lifecycle: { fields: ['projectFootprintLoading'] } },
-  { id: 'project-compute', label: 'Compute', section: 'Projects', navSection: 'PROJECTS', keywords: ['compute', 'project', 'usage', 'workload'], reachability: 'always', lifecycle: { fields: ['projectComputeLoading'] } },
-  { id: 'project-cost', label: 'Cost / CRU', navLabel: 'Cost', section: 'Projects', navSection: 'PROJECTS', keywords: ['cost', 'cru', 'compute', 'resource', 'usage', 'memory', 'cpu', 'llm', 'audit'], streamEndpoint: '/api/cru/stream', reachability: 'always', lifecycle: { fields: ['projectCostLoading'] } },
+  { id: 'project-cleaner', label: 'Project Cleaner', navLabel: 'Cleaner', section: 'Projects', navSection: 'PROJECTS', keywords: ['clean', 'delete', 'inactive', 'project'], tool: true, availability: 'always', lifecycle: { fields: ['projectCleanerLoading'] } },
+  { id: 'projects', label: 'Projects', navLabel: 'Insights', section: 'Projects', navSection: 'PROJECTS', keywords: ['project', 'footprint', 'permissions'], trends: true, availability: 'always', lifecycle: { fields: ['projectFootprintLoading'] } },
+  { id: 'project-compute', label: 'Compute', section: 'Projects', navSection: 'PROJECTS', keywords: ['compute', 'project', 'usage', 'workload'], availability: 'always', lifecycle: { fields: ['projectComputeLoading'] } },
+  { id: 'project-cost', label: 'Cost / CRU', navLabel: 'Cost', section: 'Projects', navSection: 'PROJECTS', keywords: ['cost', 'cru', 'compute', 'resource', 'usage', 'memory', 'cpu', 'llm', 'audit'], streamEndpoint: '/api/cru/stream', availability: 'always', lifecycle: { fields: ['projectCostLoading'] } },
 
   // USERS
-  { id: 'users', label: 'Users', section: 'Users', navSection: 'USERS', keywords: ['user', 'owner', 'login', 'email', 'accountability', 'ownership'], reachability: 'always', lifecycle: { fields: [
+  { id: 'users', label: 'Users', section: 'Users', navSection: 'USERS', keywords: ['user', 'owner', 'login', 'email', 'accountability', 'ownership'], availability: 'always', lifecycle: { fields: [
     'usersLoading',
     'projectFootprintLoading',
     'codeEnvsLoading',
@@ -92,36 +100,36 @@ export const MODULES: readonly ModuleDefinition[] = [
   // On-demand deep dive (loads on mount, like k8s-insights): noLoadGlyph keeps
   // adoptionLoading out of SHARED_LOADING_FIELDS so the global "Analysis
   // complete" aggregate never waits on a page the user may not visit.
-  { id: 'adoption', label: 'Adoption', section: 'Users', navSection: 'USERS', keywords: ['adoption', 'engagement', 'usage', 'logins', 'active', 'trend', 'cohort', 'retention', 'builders', 'people', 'commits', 'growth'], reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['adoptionLoading'] } },
+  { id: 'adoption', label: 'Adoption', section: 'Users', navSection: 'USERS', keywords: ['adoption', 'engagement', 'usage', 'logins', 'active', 'trend', 'cohort', 'retention', 'builders', 'people', 'commits', 'growth'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['adoptionLoading'] } },
 
   // PLUGINS
-  { id: 'plugins-installed', label: 'Installed', section: 'Plugins', navSection: 'PLUGINS', keywords: ['plugin', 'installed', 'list', 'version', 'projects', 'usage'], reachability: 'always', lifecycle: { fields: ['pluginsLoading'] } },
-  { id: 'plugins', label: 'Plugin Sync', section: 'Plugins', navSection: 'PLUGINS', keywords: ['plugin', 'sync', 'compare', 'version'], trends: true, tool: true, reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['pluginSyncLoading'] } },
+  { id: 'plugins-installed', label: 'Installed', section: 'Plugins', navSection: 'PLUGINS', keywords: ['plugin', 'installed', 'list', 'version', 'projects', 'usage'], availability: 'always', lifecycle: { fields: ['pluginsLoading'] } },
+  { id: 'plugins', label: 'Plugin Sync', section: 'Plugins', navSection: 'PLUGINS', keywords: ['plugin', 'sync', 'compare', 'version'], trends: true, tool: true, availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['pluginSyncLoading'] } },
 
   // CODE ENVS
-  { id: 'code-envs', label: 'Cleaner', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['python', 'environment', 'package', 'clean', 'delete', 'unused', 'replace', 'migration'], tool: true, reachability: 'always', lifecycle: { fields: ['codeEnvsLoading', 'codeEnvSizesLoading', 'codeEnvCleanerLoading', 'codeEnvReplacementLoading'] } },
-  { id: 'code-envs-cleaner', label: 'Insights', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['python', 'environment', 'package', 'clean', 'unused', 'review', 'read-only'], reachability: 'always', lifecycle: { fields: ['codeEnvsLoading', 'codeEnvSizesLoading'] } },
-  { id: 'code-envs-comparison', label: 'Comparison', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['compare', 'duplicate', 'version', 'mismatch'], reachability: 'always', lifecycle: { fields: ['codeEnvsComparisonLoading'] } },
+  { id: 'code-envs', label: 'Cleaner', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['python', 'environment', 'package', 'clean', 'delete', 'unused', 'replace', 'migration'], tool: true, availability: 'always', lifecycle: { fields: ['codeEnvsLoading', 'codeEnvSizesLoading', 'codeEnvCleanerLoading', 'codeEnvReplacementLoading'] } },
+  { id: 'code-envs-cleaner', label: 'Insights', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['python', 'environment', 'package', 'clean', 'unused', 'review', 'read-only'], availability: 'always', lifecycle: { fields: ['codeEnvsLoading', 'codeEnvSizesLoading'] } },
+  { id: 'code-envs-comparison', label: 'Comparison', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['compare', 'duplicate', 'version', 'mismatch'], availability: 'always', lifecycle: { fields: ['codeEnvsComparisonLoading'] } },
 
   // AI COMPUTE
-  { id: 'container-execs', label: 'Container Execs', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['container', 'execution', 'kubernetes', 'k8s', 'compute', 'gpu', 'project', 'recipe', 'webapp'], trends: true, streamEndpoint: '/api/container-execs/stream', tool: true, reachability: 'always', lifecycle: { fields: ['containerExecsLoading'] } },
-  { id: 'image-cleaner', label: 'Docker Images', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['ecr', 'acr', 'gar', 'docker', 'image', 'container', 'cleanup', 'aws', 'azure', 'gcp', 'registry'], tool: true, reachability: 'always', lifecycle: { fields: ['imageCleanerLoading'] } },
-  { id: 'cs-template-replacement', label: 'Replace CS Template', navLabel: 'CS Templates', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['code', 'studio', 'template', 'replace', 'migrate', 'cs'], tool: true, reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['csTemplateReplacementLoading'] } },
-  { id: 'llm-audit', label: 'Model Audit', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['llm', 'model', 'audit', 'pricing'], reachability: 'always', lifecycle: { fields: ['llmAuditLoading'] } },
-  { id: 'k8s-insights', label: 'K8s Insights', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['kubernetes', 'k8s', 'eks', 'cluster', 'gpu', 'cost', 'bin pack', 'autoscaler', 'nodes', 'pods', 'daemonset', 'findings', 'rules'], streamEndpoint: '/api/k8s-insights/stream', reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['k8sInsightsLoading'] } },
+  { id: 'container-execs', label: 'Container Execs', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['container', 'execution', 'kubernetes', 'k8s', 'compute', 'gpu', 'project', 'recipe', 'webapp'], trends: true, streamEndpoint: '/api/container-execs/stream', tool: true, availability: 'container-exec', lifecycle: { fields: ['containerExecsLoading'] } },
+  { id: 'image-cleaner', label: 'Docker Images', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['ecr', 'acr', 'gar', 'docker', 'image', 'container', 'cleanup', 'aws', 'azure', 'gcp', 'registry'], tool: true, availability: 'container-registry', lifecycle: { fields: ['imageCleanerLoading'] } },
+  { id: 'cs-template-replacement', label: 'Replace CS Template', navLabel: 'CS Templates', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['code', 'studio', 'template', 'replace', 'migrate', 'cs'], tool: true, availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['csTemplateReplacementLoading'] } },
+  { id: 'llm-audit', label: 'Model Audit', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['llm', 'model', 'audit', 'pricing'], availability: 'llm', lifecycle: { fields: ['llmAuditLoading'] } },
+  { id: 'k8s-insights', label: 'K8s Insights', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['kubernetes', 'k8s', 'eks', 'cluster', 'gpu', 'cost', 'bin pack', 'autoscaler', 'nodes', 'pods', 'daemonset', 'findings', 'rules'], streamEndpoint: '/api/k8s-insights/stream', availability: 'clusters', noLoadGlyph: true, lifecycle: { fields: ['k8sInsightsLoading'] } },
 
   // AGENTS — conversational ops surface over the agents plugin (LLM Mesh
   // proxy). Loads per conversation, never through the startup ritual.
-  { id: 'agents', label: 'Agents', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'chat', 'ops', 'actuator', 'triage', 'plan', 'approve', 'autonomous', 'ai'], reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
-  { id: 'agent-tuning', label: 'Agent Tuning', navLabel: 'Tuning', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'tuning', 'prompt', 'system', 'rubric', 'version', 'customize', 'override'], reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
+  { id: 'agents', label: 'Agents', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'chat', 'ops', 'actuator', 'triage', 'plan', 'approve', 'autonomous', 'ai'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
+  { id: 'agent-tuning', label: 'Agent Tuning', navLabel: 'Tuning', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'tuning', 'prompt', 'system', 'rubric', 'version', 'customize', 'override'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
 
   // MISC
-  { id: 'settings', label: 'Settings', section: 'Misc', navSection: 'MISC', keywords: ['settings', 'mail', 'channel', 'email', 'config', 'preferences'], reachability: 'always', lifecycle: { fields: ['settingsLoading'] } },
-  { id: 'logs', label: 'Errors', section: 'Misc', navSection: 'MISC', keywords: ['log', 'error', 'exception', 'stack'], badge: 'logs', reachability: 'always', lifecycle: { fields: ['logsLoading'] } },
-  { id: 'sanity-check', label: 'Sanity Check', section: 'Misc', navSection: 'MISC', keywords: ['sanity', 'check', 'diagnostics', 'api'], reachability: 'always', lifecycle: { fields: ['sanityCheckLoading'] } },
-  { id: 'db-health', label: 'DB Health', section: 'Misc', navSection: 'MISC', keywords: ['postgres', 'database', 'vacuum', 'tables', 'runtimedb', 'bloat'], trends: true, tool: true, reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['dbHealthLoading'] } },
-  { id: 'report', label: 'Report', section: 'Misc', navSection: 'MISC', keywords: ['report', 'export', 'download'], tool: true, reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['reportLoading'] } },
-  { id: 'feedback', label: 'Feedback', section: 'Misc', navSection: 'MISC', keywords: ['feedback', 'bug', 'idea', 'report', 'suggestion'], reachability: 'always', noLoadGlyph: true, lifecycle: { fields: ['feedbackLoading'] } },
+  { id: 'settings', label: 'Settings', section: 'Misc', navSection: 'MISC', keywords: ['settings', 'mail', 'channel', 'email', 'config', 'preferences'], availability: 'always', lifecycle: { fields: ['settingsLoading'] } },
+  { id: 'logs', label: 'Errors', section: 'Misc', navSection: 'MISC', keywords: ['log', 'error', 'exception', 'stack'], badge: 'logs', availability: 'always', lifecycle: { fields: ['logsLoading'] } },
+  { id: 'sanity-check', label: 'Sanity Check', section: 'Misc', navSection: 'MISC', keywords: ['sanity', 'check', 'diagnostics', 'api'], availability: 'always', lifecycle: { fields: ['sanityCheckLoading'] } },
+  { id: 'db-health', label: 'DB Health', section: 'Misc', navSection: 'MISC', keywords: ['postgres', 'database', 'vacuum', 'tables', 'runtimedb', 'bloat'], trends: true, tool: true, availability: 'runtime-db', noLoadGlyph: true, lifecycle: { fields: ['dbHealthLoading'] } },
+  { id: 'report', label: 'Report', section: 'Misc', navSection: 'MISC', keywords: ['report', 'export', 'download'], tool: true, availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['reportLoading'] } },
+  { id: 'feedback', label: 'Feedback', section: 'Misc', navSection: 'MISC', keywords: ['feedback', 'bug', 'idea', 'report', 'suggestion'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['feedbackLoading'] } },
 ] as const;
 
 export const MODULE_BY_ID: Readonly<Record<PageId, ModuleDefinition>> = Object.freeze(
@@ -132,7 +140,7 @@ export const MODULE_BY_ID: Readonly<Record<PageId, ModuleDefinition>> = Object.f
 );
 
 export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
-  { title: 'OVERVIEW', items: ['mission-control', 'summary', 'filesystem', 'memory', 'cpu'] },
+  { title: 'OVERVIEW', items: ['mission-control', 'summary', 'filesystem', 'resources'] },
   { title: 'AGENTS', items: ['agents', 'agent-tuning'], experimental: true },
   { title: 'CONNECTIONS', items: ['connections-inventory', 'connections-insights', 'connections-health', 'connections-fs-migration'] },
   { title: 'PROJECTS', items: ['project-cleaner', 'projects', 'project-compute', 'project-cost'] },

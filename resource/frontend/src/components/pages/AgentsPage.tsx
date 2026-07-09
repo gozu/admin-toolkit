@@ -21,7 +21,7 @@ import {
   abortAgentTurn,
   agentsChatStore,
   approvePlans,
-  clearConversation,
+  clearAllConversations,
   deriveTitle,
   ensureChatBootstrapped,
   provisionTraceExplorer,
@@ -104,6 +104,15 @@ export function AgentsPage() {
   const activeConvId = selectedId ? chatState.activeConvIdByAgent[selectedId] : undefined;
   const conversation = activeConvId ? chatState.conversations[activeConvId] : undefined;
   const messages = useMemo(() => conversation?.messages ?? [], [conversation]);
+  // Any agent (visible or hidden role) with an active non-empty conversation —
+  // "New conversation" resets the whole session, so it shows whenever any exists.
+  const hasAnyChat = useMemo(
+    () =>
+      Object.values(chatState.activeConvIdByAgent).some(
+        (convId) => (chatState.conversations[convId]?.messages.length ?? 0) > 0,
+      ),
+    [chatState.activeConvIdByAgent, chatState.conversations],
+  );
   const streaming = conversation?.streaming ?? false;
 
   const actuator = useMemo(() => findByRole(agents, 'actuator'), [agents]);
@@ -335,9 +344,9 @@ export function AgentsPage() {
           >
             History
           </button>
-          {messages.length > 0 && (
+          {hasAnyChat && (
             <button
-              onClick={() => selectedId && clearConversation(selectedId)}
+              onClick={() => clearAllConversations()}
               className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-tertiary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors"
             >
               New conversation

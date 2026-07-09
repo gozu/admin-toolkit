@@ -29,9 +29,9 @@ interface UserRow {
  * that user's PIDs, and the header "Expand all" toggle shows every PID.
  * `variant` only changes the title and the default sort column. Data comes
  * from the shared processMetrics store (one `/api/host/process-metrics`
- * fetch shared by the Memory and CPU pages).
+ * fetch). `resources` is the merged Memory+CPU page (default sort CPU desc).
  */
-export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' }) {
+export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' | 'resources' }) {
   const scan = useSyncExternalStore(subscribeProcessMetrics, getProcessMetrics, getProcessMetrics);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 
@@ -54,7 +54,7 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' }) {
   }, [scan.processes]);
 
   const processesByUser = useMemo(() => {
-    const metric = variant === 'cpu' ? 'cpuPercent' : 'rssKb';
+    const metric = variant === 'memory' ? 'rssKb' : 'cpuPercent';
     const map = new Map<string, ProcessMetric[]>();
     for (const p of scan.processes) {
       const list = map.get(p.user) || [];
@@ -157,13 +157,16 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' }) {
     return null;
   }, [scan.status, scan.startedAt, scan.finishedAt, scan.error]);
 
-  const title = variant === 'cpu' ? 'CPU usage' : 'Memory usage';
+  const title =
+    variant === 'cpu' ? 'CPU usage' : variant === 'memory' ? 'Memory usage' : 'Process usage';
 
   const headerExtra = (
     <div className="flex items-center justify-between gap-3 border-b border-[var(--border-glass)] px-4 py-2 text-xs text-[var(--text-muted)]">
       <span>
         {scan.truncated && scan.totalProcesses
-          ? `Showing top ${scan.processes.length} of ${scan.totalProcesses} processes by ${variant === 'cpu' ? 'CPU' : 'memory'}.`
+          ? `Showing top ${scan.processes.length} of ${scan.totalProcesses} processes by ${
+              variant === 'cpu' ? 'CPU' : variant === 'memory' ? 'memory' : 'CPU and memory'
+            }.`
           : 'Live snapshot from the host process table (ps), grouped by user.'}
       </span>
       <span className="flex items-center gap-2">
@@ -185,7 +188,13 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' }) {
 
   return (
     <DataGrid<UserRow, ProcessMetric>
-      id={variant === 'cpu' ? 'cpu-usage-table' : 'memory-usage-table'}
+      id={
+        variant === 'cpu'
+          ? 'cpu-usage-table'
+          : variant === 'memory'
+            ? 'memory-usage-table'
+            : 'resources-usage-table'
+      }
       title={title}
       rows={userRows}
       columns={columns}
@@ -222,7 +231,7 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' }) {
         `${p.memPercent.toFixed(1)}%`,
         formatKb(p.rssKb),
       ]}
-      defaultSortColumnId={variant === 'cpu' ? 'cpu' : 'rss'}
+      defaultSortColumnId={variant === 'memory' ? 'rss' : 'cpu'}
       defaultSortDir="desc"
       lifecycle={gridLifecycle}
       headerExtra={headerExtra}

@@ -1,35 +1,50 @@
+import { useEffect } from 'react';
 import { useDiag } from '../../context/DiagContext';
-import { FilesystemChart, MemoryChart, MemoryAnalysisCard } from '../index';
+import { MemoryChart, MemoryAnalysisCard } from '../index';
+import { CpuChart } from '../CpuChart';
+import { ProcessUsageTable } from '../ProcessUsageTable';
+import { LiveResourceChart } from '../resources/LiveResourceChart';
+import { startProcessMetricsScan } from '../../state/processMetrics';
+import {
+  resourceSamplesStore,
+  startResourcePolling,
+  stopResourcePolling,
+} from '../../state/resourceSamples';
 
+/** Merged Memory + CPU page. In API mode it additionally runs the live
+ * resource poller (5s local / 15s remote) that feeds the utilization strip
+ * and periodically re-runs the heavier `ps` + host-summary refresh. Zip mode
+ * keeps the static doughnuts/table exactly as before — no polling. */
 export function ResourcesPage() {
-  const { state } = useDiag();
+  const { state, setParsedData } = useDiag();
   const { parsedData } = state;
+  const isApi = state.dataSource === 'api';
+  const { status: pollStatus } = resourceSamplesStore.use();
 
-  const hasFilesystem = parsedData.filesystemInfo && parsedData.filesystemInfo.length > 0;
+  useEffect(() => {
+    if (!isApi) return;
+    startProcessMetricsScan();
+    startResourcePolling(setParsedData);
+    return () => stopResourcePolling();
+  }, [isApi, setParsedData]);
+
   const hasMemory = parsedData.memoryInfo && Object.keys(parsedData.memoryInfo).length > 0;
 
   return (
-    <div className="w-full py-4">
-      <div className="space-y-6">
-        {hasFilesystem && (
-          <div className="w-full">
-            <FilesystemChart />
-          </div>
-        )}
-
-        {hasMemory && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <MemoryChart />
-            <MemoryAnalysisCard />
-          </div>
-        )}
-
-        {!hasFilesystem && !hasMemory && (
+    <div className="page-fill gap-6">
+      {isApi && pollStatus !== 'unsupported' && <LiveResourceChart />}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <CpuChart />
+        {hasMemory ? (
+          <MemoryChart />
+        ) : (
           <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-8 text-center">
-            <p className="text-[var(--text-secondary)]">No resource data available.</p>
+            <p className="text-[var(--text-secondary)]">No memory data available.</p>
           </div>
         )}
       </div>
+      {hasMemory && <MemoryAnalysisCard />}
+      <ProcessUsageTable variant="resources" />
     </div>
   );
 }

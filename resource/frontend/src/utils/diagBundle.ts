@@ -12,9 +12,9 @@ import type {
   PageId,
   LayoutMode,
   ComparisonState,
+  DiagStateWithComparison,
 } from '../types';
 import { fetchRaw } from './api';
-import { serializeParsedData } from './exportData';
 import { getActiveHost, hostStore } from '../state/hostStore';
 import { getRedState } from '../state/redUnlockStore';
 import { feedbackFromPageStore } from '../state/feedbackFromPage';
@@ -68,6 +68,41 @@ export interface DiagBundleStateSnapshot {
 export interface DiagBundleInput {
   report: DiagBundleReport;
   state: DiagBundleStateSnapshot;
+}
+
+const SKIP_KEYS = new Set(['dirTree', 'dataReady']);
+
+/**
+ * Serialize every non-empty ParsedData field to a `{ name, json }` pair,
+ * applying the shared skip/`*Loading`/empty-value rules. Single source of
+ * truth for "what client data is serialized" into `client/parsed-data/`.
+ */
+export function serializeParsedData(parsedData: ParsedData): { name: string; json: string }[] {
+  const out: { name: string; json: string }[] = [];
+  for (const [key, value] of Object.entries(parsedData)) {
+    if (SKIP_KEYS.has(key)) continue;
+    if (key.endsWith('Loading')) continue;
+    if (value == null) continue;
+    if (typeof value === 'object' && Object.keys(value).length === 0) continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    out.push({ name: `${key}.json`, json: JSON.stringify(value, null, 2) });
+  }
+  return out;
+}
+
+/** Project the app's full DiagContext state down to the bundle's snapshot. */
+export function snapshotDiagState(s: DiagStateWithComparison): DiagBundleStateSnapshot {
+  return {
+    parsedData: s.parsedData,
+    debugLogs: s.debugLogs,
+    mode: s.mode,
+    activePage: s.activePage,
+    layoutMode: s.layoutMode,
+    activeFilter: s.activeFilter,
+    focusedConnectionFilter: s.focusedConnectionFilter,
+    focusedUserFilter: s.focusedUserFilter,
+    comparison: s.comparison,
+  };
 }
 
 // Cheap, read-only backend endpoints → flat entry name under backend/.

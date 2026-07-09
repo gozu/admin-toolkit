@@ -9,6 +9,7 @@ import {
   loadReleaseDate,
 } from '../state/imageCleanerStore';
 import { managedFoldersScan } from '../state/managedFoldersStore';
+import { loadClusterCount } from '../state/clusterAvailabilityStore';
 import { prefetchInactiveProjects } from '../state/inactiveProjectsCache';
 import { startProcessMetricsScan } from '../state/processMetrics';
 import { projectCostScan } from '../state/projectCostScan';
@@ -255,6 +256,7 @@ export function useDelayedPageWarmup(enabled: boolean, parsedData: ParsedData): 
       () => dbHealthConnectionsStore.load(),
       () => csTemplateScan.load(),
       () => managedFoldersScan.load(),
+      () => loadClusterCount(),
       () => startProcessMetricsScan(),
       warmImageCleaner,
       warmProjectCleaner,

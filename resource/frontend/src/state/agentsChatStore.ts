@@ -862,18 +862,16 @@ export function abortAgentTurn(agentId: string): void {
   abortControllers.get(agentId)?.abort();
 }
 
-/** Start a fresh conversation for the agent. The previous one stays
- * server-side when persistence is enabled (reopen it from the history
- * drawer); locally it is dropped either way. */
-export function clearConversation(agentId: string): void {
-  abortAgentTurn(agentId);
-  const state = agentsChatStore.get();
-  const activeId = state.activeConvIdByAgent[agentId];
-  const conversations = { ...state.conversations };
-  if (activeId) delete conversations[activeId];
-  const activeConvIdByAgent = { ...state.activeConvIdByAgent };
-  delete activeConvIdByAgent[agentId];
-  agentsChatStore.patch({ conversations, activeConvIdByAgent });
+/** Start a fresh chat session: drop the active conversation of EVERY agent,
+ * not just the visible one. Sample prompts route by hidden role (triage /
+ * scoping / actuator), so clearing only the selected agent leaves the other
+ * roles' conversations "active" — the next routed prompt would silently
+ * resume them. Previous conversations stay server-side when persistence is
+ * enabled (reopen from the history drawer); locally they are dropped. */
+export function clearAllConversations(): void {
+  for (const controller of abortControllers.values()) controller.abort();
+  abortControllers.clear();
+  agentsChatStore.patch({ conversations: {}, activeConvIdByAgent: {} });
 }
 
 /** Send one user message and stream the agent's reply into the store.
@@ -948,21 +946,27 @@ export async function sendAgentMessage(
       } else if (frame.event === 'error') {
         conv = { ...conv, error: String(payload.message || 'Agent stream failed') };
       }
-      putConversation(conv);
+      // A frame already yielded before an abort ("New conversation" mid-turn)
+      // must not re-insert the deleted conversation.
+      if (!controller.signal.aborted) putConversation(conv);
     }
   } catch (err) {
     const aborted = (err as Error).name === 'AbortError';
     conv = { ...conv, error: aborted ? null : String(err) };
   } finally {
     abortControllers.delete(agentId);
-    // Drop an empty trailing assistant message (abort before first token).
-    const messages = conv.messages.slice();
-    const last = messages[messages.length - 1];
-    if (last && last.role === 'assistant' && last.segments.length === 0) messages.pop();
-    const settled = { ...conv, messages, streaming: false };
-    putConversation(settled);
-    // Auto-persist the settled turn: the user message + the assistant reply
-    // (or just the user message when the reply was aborted pre-token).
-    persistWhere(settled, (msg) => turnIds.includes(msg.id));
+    // Skip the settle entirely when the conversation was deleted mid-stream
+    // ("New conversation") — putConversation would resurrect it otherwise.
+    if (agentsChatStore.get().conversations[conv.id]) {
+      // Drop an empty trailing assistant message (abort before first token).
+      const messages = conv.messages.slice();
+      const last = messages[messages.length - 1];
+      if (last && last.role === 'assistant' && last.segments.length === 0) messages.pop();
+      const settled = { ...conv, messages, streaming: false };
+      putConversation(settled);
+      // Auto-persist the settled turn: the user message + the assistant reply
+      // (or just the user message when the reply was aborted pre-token).
+      persistWhere(settled, (msg) => turnIds.includes(msg.id));
+    }
   }
 }

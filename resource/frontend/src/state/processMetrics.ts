@@ -86,7 +86,19 @@ async function runLoad(fresh = false) {
   const controller = new AbortController();
   _controller = controller;
 
-  store.set({ ...INITIAL_STATE, status: 'loading', startedAt: new Date().toISOString() });
+  // Keep the previous snapshot on screen while `ps` re-runs — refreshes
+  // (manual button or the Resources page's periodic tier) must not blank the
+  // table/doughnuts; DataGrid shows a compact progress row alongside the rows.
+  const prev = store.get();
+  store.set({
+    ...INITIAL_STATE,
+    processes: prev.processes,
+    totalProcesses: prev.totalProcesses,
+    truncated: prev.truncated,
+    dipHome: prev.dipHome,
+    status: 'loading',
+    startedAt: new Date().toISOString(),
+  });
 
   try {
     // `?fresh=1` bypasses the backend's process-metrics cache so an explicit

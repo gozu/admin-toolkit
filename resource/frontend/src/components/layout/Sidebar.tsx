@@ -13,6 +13,7 @@ import {
 } from '../pages/SettingsPage';
 import { useToggleFlag } from '../../hooks/useToggleFlag';
 import { useCollapsible } from '../../hooks/useCollapsible';
+import { useModuleAvailability } from '../../hooks/useModuleAvailability';
 import { MODULE_BY_ID, MODULE_NAV_SECTIONS } from '../../utils/moduleRegistry';
 import { getActiveHost } from '../../state/hostStore';
 import { useRedVisible } from '../../state/redUnlockStore';
@@ -740,6 +741,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
   );
   const redVisible = useRedVisible();
   const adoptionVisible = useAdoptionVisible();
+  const hiddenPages = useModuleAvailability();
   const reduced = useReducedMotion();
 
   // Icon activation pulse: a one-shot WAAPI animation fired from the
@@ -813,6 +815,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
       ...section,
       items: section.items.filter((id) => {
         if (id === 'adoption' && !adoptionVisible) return false;
+        if (hiddenPages.has(id)) return false;
         const m = MODULE_BY_ID[id];
         if (m.experimental && !showExperimental) return false;
         if (m.deprecated && !showDeprecated) return false;

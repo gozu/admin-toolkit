@@ -32,8 +32,7 @@ function HiddenFeatureNotice({ kind }: { kind: 'experimental' | 'deprecated' }) 
 import { MissionControlPage } from '../pages/MissionControlPage';
 import { SummaryPage } from '../pages/SummaryPage';
 import { FilesystemPage } from '../pages/FilesystemPage';
-import { MemoryPage } from '../pages/MemoryPage';
-import { CpuUsagePage } from '../pages/CpuUsagePage';
+import { ResourcesPage } from '../pages/ResourcesPage';
 import { ProjectsPage } from '../pages/ProjectsPage';
 import { ProjectComputePage } from '../pages/ProjectComputePage';
 import { ProjectCostPage } from '../pages/ProjectCostPage';
@@ -117,10 +116,8 @@ function renderPage(activePage: PageId, adoptionVisible: boolean): React.ReactNo
       return <SummaryPage />;
     case 'filesystem':
       return <FilesystemPage />;
-    case 'memory':
-      return <MemoryPage />;
-    case 'cpu':
-      return <CpuUsagePage />;
+    case 'resources':
+      return <ResourcesPage />;
     case 'projects':
       return <ProjectsPage />;
     case 'project-compute':

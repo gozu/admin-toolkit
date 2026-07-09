@@ -5,6 +5,7 @@ import type { PageId } from '../types';
 import { COMMAND_PALETTE_MODULES, EXPERIMENTAL_PAGES } from '../utils/moduleRegistry';
 import { SHOW_EXPERIMENTAL_STORAGE_KEY } from './pages/SettingsPage';
 import { useToggleFlag } from '../hooks/useToggleFlag';
+import { useModuleAvailability } from '../hooks/useModuleAvailability';
 import { useAdoptionVisible } from '../state/adoptionUnlockStore';
 
 const IS_MAC =
@@ -88,14 +89,16 @@ function CommandPaletteContent({ onClose }: { onClose: () => void }) {
     'experimental-flag-changed',
   );
   const adoptionVisible = useAdoptionVisible();
+  const hiddenPages = useModuleAvailability();
   const visibleDefs = useMemo(
     () =>
       PAGE_DEFS.filter(
         (d) =>
           (showExperimental || !EXPERIMENTAL_PAGES.has(d.id)) &&
-          (adoptionVisible || d.id !== 'adoption'),
+          (adoptionVisible || d.id !== 'adoption') &&
+          !hiddenPages.has(d.id),
       ),
-    [showExperimental, adoptionVisible],
+    [showExperimental, adoptionVisible, hiddenPages],
   );
 
   // Snapshot recents once per palette open (content remounts each time)

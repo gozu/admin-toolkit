@@ -8,6 +8,7 @@ from adk_backend.clients import _resolve_macro_project
 # python-runnables/host-metrics/ and python-runnables/dbhealth-query/.
 _HOST_METRICS_MACRO_ID = 'pyrunnable_admin-toolkit_host-metrics'
 _PROCESS_METRICS_MACRO_ID = 'pyrunnable_admin-toolkit_process-metrics'
+_RESOURCE_SAMPLE_MACRO_ID = 'pyrunnable_admin-toolkit_resource-sample'
 _DBHEALTH_MACRO_ID = 'pyrunnable_admin-toolkit_dbhealth-query'
 _IMAGE_CLEANER_MACRO_ID = 'pyrunnable_admin-toolkit_image-cleaner'
 _K8S_INSIGHTS_MACRO_ID = 'pyrunnable_admin-toolkit_k8s-insights'
@@ -44,6 +45,24 @@ def _process_metrics_macro(client: Any) -> Dict[str, Any]:
     """
     project = _resolve_macro_project(client)
     macro = project.get_macro(_PROCESS_METRICS_MACRO_ID)
+    run_id = macro.run(params={}, wait=True)
+    result = macro.get_result(run_id, as_type='json')
+    if not isinstance(result, dict):
+        return {'ok': False, 'error': f'macro returned non-dict: {type(result).__name__}'}
+    return result
+
+
+def _resource_sample_macro(client: Any) -> Dict[str, Any]:
+    """Invoke resource-sample macro on the active host. Returns the raw JSON
+    result dict (see python-runnables/resource-sample/runnable.py for shape:
+    {ok, ts, cpu:{user,...,steal,cpuCount}, mem:{totalKb,...,swapFreeKb}} with
+    RAW cumulative counters — the frontend diffs consecutive samples).
+
+    Raises MacroProjectMissing if ADMINTOOLKIT doesn't exist on the host —
+    the @errorhandler converts that to a 409 the frontend can react to.
+    """
+    project = _resolve_macro_project(client)
+    macro = project.get_macro(_RESOURCE_SAMPLE_MACRO_ID)
     run_id = macro.run(params={}, wait=True)
     result = macro.get_result(run_id, as_type='json')
     if not isinstance(result, dict):

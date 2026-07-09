@@ -219,8 +219,10 @@ export function MissionControlPage() {
           lastRestartTime={lastRestartTime}
         />
         <FilesystemTile lifecycle={lc('filesystem')} onNavigate={setActivePage} mounts={mounts} treemap={treemap} />
-        <MemoryTile lifecycle={lc('memory')} onNavigate={setActivePage} mem={mem} />
-        <CpuTile lifecycle={lc('cpu')} onNavigate={setActivePage} cores={cpuCores} />
+        {/* Memory + CPU merged into the Resources page; the tiles keep their
+            own per-field lifecycles rather than the page's composite one. */}
+        <MemoryTile lifecycle={parsedData.memoryLoading ?? QUEUED} onNavigate={setActivePage} mem={mem} />
+        <CpuTile lifecycle={parsedData.cpuLoading ?? QUEUED} onNavigate={setActivePage} cores={cpuCores} />
         <ConnInventoryTile lifecycle={lc('connections-inventory')} onNavigate={setActivePage} vm={connTypesVm} onTypeClick={handleTypeClick} />
         <ConnHealthTile lifecycle={lc('connections-health')} onNavigate={setActivePage} vm={connHealthVm} />
         {/* The standalone Usage page merged into Insights; the tile keeps its

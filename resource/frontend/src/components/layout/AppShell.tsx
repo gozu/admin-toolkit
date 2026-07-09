@@ -6,7 +6,8 @@ import { Breadcrumb } from './Breadcrumb';
 import { useTheme } from '../../hooks/useTheme';
 import dkulogo from '../../assets/dkulogo.png';
 import { exportAllTablesToZip } from '../../utils/exportTables';
-import { exportDataToZip } from '../../utils/exportData';
+import { buildDiagBundle, snapshotDiagState } from '../../utils/diagBundle';
+import { storeExportInArchive } from '../../utils/archiveStore';
 import { useDiag } from '../../context/DiagContext';
 import { UnlockModal } from '../UnlockModal';
 import { DatasetExportModal } from '../DatasetExportModal';
@@ -47,6 +48,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
   const { authed, showRed } = useRedState();
   const [showUnlock, setShowUnlock] = useState(false);
   const [showDatasetExport, setShowDatasetExport] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const { configuredConnection, loaded: datasetExportLoaded } = datasetExportConfigStore.use();
   const datasetExportEnabled = datasetExportLoaded && !!configuredConnection;
   const reducedMotion = useReducedMotion();
@@ -134,6 +136,38 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
       await onRefreshCache();
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  // Top-bar export = the full diagnostic bundle (client state + parsed data +
+  // backend dumps). Backend fetches are best-effort, so this also works in
+  // zip-import mode. A copy is stored in the server-side archive as before.
+  const handleExportBundle = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const { blob, filename } = await buildDiagBundle({
+        report: {
+          type: 'export',
+          message: 'Top-bar export (diagnostic bundle download).',
+          email: '',
+          diagnosticsText: [
+            `Version: ${__APP_VERSION__}`,
+            `Page: ${state.activePage}`,
+            `Trigger: topbar-export`,
+            `Time: ${new Date().toISOString()}`,
+          ].join('\n'),
+        },
+        state: snapshotDiagState(state),
+      });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      void storeExportInArchive(blob, filename);
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -295,15 +329,15 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
             </svg>
           </button>
 
-          {/* Export all data as JSON zip */}
+          {/* Export = full diagnostic bundle (zip) */}
           <button
             type="button"
-            onClick={() => exportDataToZip(parsedData)}
-            disabled={!parsedData.dataReady}
-            title="Export all data as JSON (zip)"
+            onClick={() => void handleExportBundle()}
+            disabled={!parsedData.dataReady || exporting}
+            title="Download diagnostic bundle (zip — all data + state)"
             className={`${toolbarButtonClass} ${!parsedData.dataReady ? 'opacity-30 cursor-not-allowed' : ''}`}
           >
-            <svg className={toolbarIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+            <svg className={`${toolbarIconClass} ${exporting ? 'animate-pulse' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 8v13H3V8" />
               <path d="M1 3h22v5H1z" />
               <path d="M10 12h4" />

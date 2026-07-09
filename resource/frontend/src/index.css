@@ -256,10 +256,10 @@
   --bg-hover:     #f2f2f2;   /* DSS row/control hover = light grey */
   --bg-active:    #e7f3ff;   /* DSS blue-lighten-5 selection tint */
 
-  /* Text — DSS grey ramp (#333 / #666 / #888) */
-  --text-primary:   #333333;   /* --grey-lighten-1 */
-  --text-secondary: #666666;   /* --grey-lighten-3 */
-  --text-tertiary:  #888888;
+  /* Text — pure black primary with darker grey ramp for maximum legibility */
+  --text-primary:   #000000;
+  --text-secondary: #444444;
+  --text-tertiary:  #666666;
 
   /* Borders — DSS control hairlines (#DDD), hover one step darker (#CCC) */
   --border-default: #dddddd;   /* --grey-lighten-6 — input/table/card border */
@@ -370,9 +370,9 @@
 /* Restore the light palette on the header's dropdown menu so it stays legible. */
 [data-theme="light"] .app-topbar .topbar-menu {
   --bg-surface:     #ffffff;
-  --text-primary:   #333333;
-  --text-secondary: #666666;
-  --text-tertiary:  #888888;
+  --text-primary:   #000000;
+  --text-secondary: #444444;
+  --text-tertiary:  #666666;
   --bg-hover:       #f2f2f2;
   --border-default: #dddddd;
   background-image: none;

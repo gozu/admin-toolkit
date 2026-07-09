@@ -1,8 +1,6 @@
 """Misc small routes — mode probe, cache clear, managed-folder + mail-channel listing."""
 import io
-import json
 import logging
-import os
 import re
 
 from flask import Blueprint, g, jsonify, request
@@ -47,22 +45,24 @@ def _resolve_archive_folder(project, connection: str, create: bool = True):
     return {'id': folder.id, 'name': ARCHIVE_FOLDER_NAME}
 
 
-_PLUGIN_VERSION = None
+_PLUGIN_VERSION = ''
 
 
 def _plugin_version() -> str:
-    """Version from the plugin manifest (plugin root = python-lib/../),
-    read once. The frontend gets it from /api/mode instead of a build-time
-    constant so version-only bumps don't rewrite resource/dist/."""
+    """Installed admin-toolkit version via the local DSS API, cached once
+    resolved. Read at runtime (not a disk path: DSS runs this code from a
+    webappruns/ snapshot with no plugin.json alongside) so the frontend gets
+    it from /api/mode instead of a build-time constant — version-only bumps
+    then don't rewrite resource/dist/."""
     global _PLUGIN_VERSION
-    if _PLUGIN_VERSION is None:
+    if not _PLUGIN_VERSION:
         try:
-            manifest = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'plugin.json')
-            with open(manifest, 'r', encoding='utf-8') as fh:
-                _PLUGIN_VERSION = str(json.load(fh).get('version') or '')
+            for plug in _local_toolkit_client().list_plugins() or []:
+                if isinstance(plug, dict) and plug.get('id') == 'admin-toolkit':
+                    _PLUGIN_VERSION = str(plug.get('version') or '')
+                    break
         except Exception:
-            _PLUGIN_VERSION = ''
+            pass
     return _PLUGIN_VERSION
 
 

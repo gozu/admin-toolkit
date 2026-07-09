@@ -90,7 +90,6 @@ export function UsersTable({
         id: 'displayName',
         label: 'Name',
         defaultSortDir: 'asc',
-        sticky: { left: 180 },
         cellClassName: 'truncate max-w-[200px]',
         render: ({ user }) => {
           const name = user.displayName || '';

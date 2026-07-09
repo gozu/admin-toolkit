@@ -458,7 +458,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         initial={{ y: -14, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.45, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
-        className="relative pointer-events-none hidden lg:flex items-center justify-center"
+        className="app-topbar-overlay relative pointer-events-none hidden lg:flex items-center justify-center"
         style={{ gridColumn: '1 / -1', gridRow: '1' }}
       >
         <button

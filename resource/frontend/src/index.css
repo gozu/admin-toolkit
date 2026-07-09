@@ -367,6 +367,13 @@
   background-image: linear-gradient(to bottom, #222, #111);
 }
 
+/* The viewport-centered wordmark overlay sits OUTSIDE .app-topbar (it spans the
+   sidebar column too) but visually lives on the dark bar — keep its text light. */
+[data-theme="light"] .app-topbar-overlay {
+  --text-primary:   #f4f4f5;
+  --bg-hover:       rgba(255, 255, 255, 0.08);
+}
+
 /* Restore the light palette on the header's dropdown menu so it stays legible. */
 [data-theme="light"] .app-topbar .topbar-menu {
   --bg-surface:     #ffffff;

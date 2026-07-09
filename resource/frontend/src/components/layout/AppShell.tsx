@@ -280,7 +280,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
             </span>
             <span
               title="Advanced Actions are in Beta — features may change."
-              className="px-1 py-0.5 text-[9px] font-mono font-semibold uppercase tracking-wide rounded border bg-[var(--accent)] text-white border-[var(--accent)] select-none"
+              className="inline-flex items-center h-3.5 px-1 text-[8px] leading-none font-mono font-semibold uppercase tracking-wide rounded border bg-[var(--accent)] text-white border-[var(--accent)] select-none"
             >
               Beta
             </span>

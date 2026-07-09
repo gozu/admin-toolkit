@@ -270,6 +270,32 @@ def _llm_audit_scan_project(client: Any, project_key: str) -> List[Dict[str, Any
     return out
 
 
+def _fetch_pricing_lookup(add_event: Any) -> Tuple[Dict[str, Any], Optional[str], Optional[str]]:
+    """Fetch the LiteLLM pricing catalog; degrade to an empty lookup on failure.
+
+    Returns (lookup, fetched_at_iso, pricing_error). Air-gapped or
+    TLS-intercepted instances cannot reach the pricing URL — the audit must
+    still list models (verdicts fall back to 'unknown'), never 500.
+    """
+    pricing_timeout = int(_BACKEND_SETTINGS.get('llm_audit_pricing_timeout_sec', 30))
+    pricing_ttl = int(_BACKEND_SETTINGS.get('cache_ttl_llm_pricing', 21600))
+
+    def _pricing_loader() -> Dict[str, Any]:
+        lookup = llm_audit.build_lookup(timeout=pricing_timeout)
+        fetched_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        return {'lookup': lookup, 'fetchedAt': fetched_at}
+
+    try:
+        pricing_blob = _cache_get('llm_audit_pricing', pricing_ttl, _pricing_loader)
+    except llm_audit.PricingFetchError as exc:
+        add_event('pricing_fetch_failed',
+                  f'pricing fetch failed — continuing without pricing: {exc}', 'warn')
+        return {}, None, str(exc)
+    lookup = pricing_blob['lookup']
+    add_event('pricing_ready', f'pricing lookup has {len(lookup)} entries')
+    return lookup, pricing_blob.get('fetchedAt'), None
+
+
 @bp.route('/api/llm-audit')
 def api_llm_audit():
     if not _llm_audit_available:
@@ -307,23 +333,7 @@ def api_llm_audit():
             # Phase 1: pricing catalog (cached separately so multiple runs share it).
             set_summary(2, 'pricing')
             add_event('pricing_fetch', 'fetching LiteLLM pricing catalog')
-            pricing_timeout = int(_BACKEND_SETTINGS.get('llm_audit_pricing_timeout_sec', 30))
-            pricing_ttl = int(_BACKEND_SETTINGS.get('cache_ttl_llm_pricing', 21600))
-            pricing_fetched_at: List[Optional[str]] = [None]
-
-            def _pricing_loader() -> Dict[str, Any]:
-                lookup = llm_audit.build_lookup(timeout=pricing_timeout)
-                pricing_fetched_at[0] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-                return {'lookup': lookup, 'fetchedAt': pricing_fetched_at[0]}
-
-            try:
-                pricing_blob = _cache_get('llm_audit_pricing', pricing_ttl, _pricing_loader)
-            except llm_audit.PricingFetchError as exc:
-                add_event('pricing_fetch_failed', f'pricing fetch failed: {exc}', 'error')
-                raise
-            lookup = pricing_blob['lookup']
-            pricing_fetched_at_iso = pricing_blob.get('fetchedAt')
-            add_event('pricing_ready', f'pricing lookup has {len(lookup)} entries')
+            lookup, pricing_fetched_at_iso, pricing_error = _fetch_pricing_lookup(add_event)
 
             # Phase 2: instance connections (for CustomLLM unwrap).
             set_summary(8, 'connections')
@@ -491,6 +501,8 @@ def api_llm_audit():
 
             summary = llm_audit.summarize_rows(classified_rows)
             summary['pricingFetchedAt'] = pricing_fetched_at_iso
+            if pricing_error:
+                summary['pricingError'] = pricing_error
             summary['totalElapsedMs'] = round((time.time() - started) * 1000.0, 2)
 
             # Surface per-project scan failures collected during phases 4/4b.
@@ -528,6 +540,7 @@ def api_llm_audit():
                 'rows': classified_rows,
                 'summary': summary,
                 'pricingFetchedAt': pricing_fetched_at_iso,
+                'pricingError': pricing_error,
                 'events': events,
             }
         except Exception as exc:

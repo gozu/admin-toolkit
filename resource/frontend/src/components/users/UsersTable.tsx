@@ -36,6 +36,7 @@ export function UsersTable({
       pool = pool.filter(
         (u) =>
           u.login.toLowerCase().includes(needle) ||
+          (u.displayName || '').toLowerCase().includes(needle) ||
           (u.email || '').toLowerCase().includes(needle),
       );
     }
@@ -86,10 +87,23 @@ export function UsersTable({
         sortValue: ({ user }) => user.login,
       },
       {
+        id: 'displayName',
+        label: 'Name',
+        defaultSortDir: 'asc',
+        sticky: { left: 180 },
+        cellClassName: 'truncate max-w-[200px]',
+        render: ({ user }) => {
+          const name = user.displayName || '';
+          // LDAP/SSO-less users often have displayName === login — show a dash
+          // instead of repeating the column to the left.
+          return name && name !== user.login ? <span title={name}>{name}</span> : '—';
+        },
+        sortValue: ({ user }) => user.displayName || '',
+      },
+      {
         id: 'email',
         label: 'Email',
         defaultSortDir: 'asc',
-        sticky: { left: 180 },
         cellClassName: 'text-[var(--text-muted)] truncate max-w-[260px]',
         render: ({ user }) => user.email || '—',
         sortValue: ({ user }) => user.email || '',

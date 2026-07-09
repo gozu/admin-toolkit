@@ -365,6 +365,7 @@ def api_users():
             'users': [
                 {
                     'login': u.get('login') or '',
+                    'displayName': u.get('displayName'),
                     'email': u.get('email'),
                     'enabled': u.get('enabled'),
                     'userProfile': u.get('userProfile'),

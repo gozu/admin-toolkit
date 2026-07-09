@@ -459,6 +459,7 @@ export function LlmAuditTable() {
         counts={counts}
         distinct={distinctModels}
         pricingFetchedAt={audit?.pricingFetchedAt}
+        pricingError={audit?.pricingError}
         loading={isLoading}
       />
 
@@ -499,6 +500,22 @@ export function LlmAuditTable() {
           </div>
         </div>
 
+        {audit?.pricingError && (
+          <div className="px-4 py-3 border-b border-[var(--border-glass)]">
+            <div
+              className="px-2.5 py-1 rounded bg-[var(--status-warning-bg)]
+                         border border-[var(--status-warning-border)] text-sm"
+            >
+              <span className="text-[var(--neon-amber)] font-medium">
+                Pricing catalog unreachable — models are listed without pricing or obsolescence
+                verdicts.
+              </span>{' '}
+              <span className="text-[var(--text-tertiary)] font-mono text-xs break-all">
+                {audit.pricingError}
+              </span>
+            </div>
+          </div>
+        )}
         {(audit?.failedProjectCount ?? 0) > 0 && (
           <div className="px-4 py-3 border-b border-[var(--border-glass)]">
             <ScanIncompleteNotice
@@ -632,12 +649,14 @@ function SummaryCard({
   counts,
   distinct,
   pricingFetchedAt,
+  pricingError,
   loading,
 }: {
   total: number;
   counts: Record<DisplayStatus, number>;
   distinct: { ripoff: number; obsolete: number };
   pricingFetchedAt: string | null | undefined;
+  pricingError?: string | null;
   loading: boolean;
 }) {
   const tiles: Array<{ label: string; value: number; sub?: string; color: string }> = [
@@ -677,8 +696,9 @@ function SummaryCard({
         <div>
           <h3 className="text-base font-semibold text-[var(--text-primary)]">LLM Model Audit</h3>
           <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
-            Cross-instance scan against the LiteLLM pricing catalog. Pricing fetched{' '}
-            {formatRelative(pricingFetchedAt)}.
+            {pricingError
+              ? 'Cross-instance scan. Pricing catalog unreachable — verdicts unavailable.'
+              : `Cross-instance scan against the LiteLLM pricing catalog. Pricing fetched ${formatRelative(pricingFetchedAt)}.`}
           </p>
         </div>
         {loading && (

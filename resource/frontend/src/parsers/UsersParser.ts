@@ -4,6 +4,7 @@ import type { User, UserStats } from '../types';
 interface UsersData {
   users?: Array<{
     login?: string;
+    displayName?: string | null;
     email?: string;
     enabled?: boolean;
     userProfile?: string;
@@ -50,6 +51,7 @@ export class UsersParser extends BaseJSONParser<UsersResult> {
 
     const users: User[] = (data.users || []).map((u) => ({
       login: u.login || '',
+      displayName: u.displayName,
       email: u.email,
       enabled: u.enabled,
       userProfile: u.userProfile,

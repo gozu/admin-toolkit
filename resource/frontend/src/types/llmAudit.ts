@@ -40,6 +40,9 @@ export interface LlmAuditSummary {
   countsByStatus: Record<LlmAuditStatus, number>;
   distinctModelsByStatus: { obsolete: number; ripoff: number };
   pricingFetchedAt?: string | null;
+  /** Set when the LiteLLM pricing catalog could not be fetched (air-gapped /
+   * TLS-intercepted instance) — rows still list, verdicts degrade to unknown. */
+  pricingError?: string | null;
   totalElapsedMs?: number;
 }
 
@@ -47,6 +50,7 @@ export interface LlmAuditResponse {
   rows: LlmAuditRow[];
   summary: LlmAuditSummary;
   pricingFetchedAt?: string | null;
+  pricingError?: string | null;
   events?: Array<{
     tMs: number;
     level: string;

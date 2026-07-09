@@ -147,6 +147,8 @@ export interface ProjectFootprintSummary {
 // User types
 export interface User {
   login: string;
+  /** Real name from the DSS user record (LDAP/SSO-synced when configured). */
+  displayName?: string | null;
   email?: string;
   enabled?: boolean;
   userProfile?: string;

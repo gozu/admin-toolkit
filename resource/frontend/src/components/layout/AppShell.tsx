@@ -220,10 +220,9 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.45, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
         className="app-topbar relative flex items-center justify-between px-5 py-1 border-b border-[var(--border-default)] bg-[var(--bg-surface)]">
-        <Breadcrumb />
+        <div className="flex items-center gap-3 min-w-0">
+          <Breadcrumb />
 
-        {/* Center branding */}
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden lg:flex items-center gap-2">
           {/* Advanced Actions — switch (Beta). Locked → opens the unlock modal;
               unlocked → toggles visibility of the red/agentic surfaces. */}
           <button
@@ -286,6 +285,10 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
               Beta
             </span>
           </button>
+        </div>
+
+        {/* Center branding — dead center, the wordmark alone */}
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden lg:flex items-center">
           <button
             type="button"
             onClick={onBackToHosts}

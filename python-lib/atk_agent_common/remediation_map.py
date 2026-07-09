@@ -56,9 +56,16 @@ REMEDIATIONS = [
 
     # ── connections ──────────────────────────────────────────────────────────
     ('cap-connection-broken', [
-        _spec('connection-update', 'high', 'Repair the broken definition field (e.g. a blank '
-              'host: path=params.host) — drift-guarded, secret paths blocked, prior value '
-              'restorable from history.'),
+        _spec('connection-update', 'high', 'Repair a broken definition field — but '
+              'connection-update REQUIRES {name, path, newValue}, and the newValue must be a '
+              'concrete known-good value the evidence supplies (the finding, settings history, '
+              'or the admin named it). Never guess or invent one. A BLANK required field '
+              '(blank host/database/JDBC URL) usually means a never-configured junk '
+              'connection, not drift: keep that ADVISORY and recommend connection-delete '
+              'after a usage review instead of a repair. Dead endpoints and expired '
+              'credentials are not definition repairs either — ADVISORY (infra/creds work). '
+              'When a real newValue exists the action is drift-guarded, secret paths '
+              'blocked, prior value restorable from history.'),
         _spec('connection-test', 'low', 'Verify the repair immediately: the test result '
               'reports connectionOK true/false.'),
     ]),

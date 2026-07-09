@@ -135,6 +135,19 @@ def propose_action_items(client, items):
             notes.append('action %r proposed without any target dict — downgraded to advisory'
                          % action)
             action = None
+        if action and targets:
+            # Same presence semantics as the planners (require_str /
+            # `'newValue' not in target`): an item the actuator could never
+            # plan must not reach the checklist as actionable.
+            required = actions_registry.REQUIRED_TARGET_KEYS.get(action) or frozenset()
+            missing = sorted({key for t in targets for key in required if key not in t})
+            if missing:
+                notes.append('action %r target(s) missing required key(s) %s — downgraded to '
+                             'advisory. Emit this action only when the evidence supplies a '
+                             'concrete value for every required key; never guess one.'
+                             % (action, ', '.join(missing)))
+                action = None
+                targets = []
         evidence = raw.get('evidence')
         evidence = [_clip(e, 300) for e in evidence if str(e or '').strip()] \
             if isinstance(evidence, list) else []

@@ -31,17 +31,20 @@ LOCAL_ONLY_EXTRA = tuple(spec['action'] for spec in SPECS if spec.get('local_onl
 RISKS = {spec['action']: spec['risk'] for spec in SPECS}
 
 # Target shapes of the legacy dozen (planners in actuator.py). Kept here so
-# the generated prose covers the WHOLE catalog.
+# the generated prose covers the WHOLE catalog. A key is marked `?` exactly
+# when its planner defaults it — REQUIRED_TARGET_KEYS is parsed from these
+# strings, so an overstated key would downgrade plannable proposals.
 _LEGACY_SHAPES = (
     'project-delete {projectKey}',
-    'code-env-delete {name, lang}',
+    'code-env-delete {name, lang?}',
     'db-vacuum/db-analyze {connection, table}',
-    'image-delete {provider, cutoff, images}',
+    'image-delete {images, cutoff, provider?}',
     'plugin-deploy {pluginId, targetHostId}',
     'k8s-exec-config-tune {configName, changes:{memRequestMB|memLimitMB|cpuRequest|cpuLimit}}',
     'log-cleanup {roots?, minAgeDays?, maxDeleteGB?}',
-    'docker-prune {mode: builder|image, keepStorageGB?, filterUntilHours?}',
-    'k8s-apply-fix {clusterId, commands[], manifestYaml?, execConfigPatch?, verifyRule?}',
+    'docker-prune {mode?: builder|image, keepStorageGB?, filterUntilHours?}',
+    'k8s-apply-fix {clusterId, commands[]?, manifestYaml?, execConfigPatch?, verifyRule?} '
+    '(at least one of commands/execConfigPatch)',
     'code-env-consolidate {sourceEnvName, targetEnvName, language?, projectKeys?, '
     'usageTypes?, retireSource?}',
     'settings-set {path, newValue}',
@@ -62,6 +65,58 @@ BATCHABLE = LEGACY_BATCHABLE | frozenset(
     spec['action'] for spec in SPECS if spec.get('batchable'))
 
 TARGET_SHAPES = '; '.join(_LEGACY_SHAPES + tuple(spec['shape'] for spec in SPECS))
+
+
+def _required_keys(shape):
+    """Required target keys parsed from one shape string: the first balanced
+    {...} block, top-level comma-split; a key is optional iff its token (the
+    part before any ':'/'['/'{') ends with '?'."""
+    start = shape.find('{')
+    if start < 0:
+        return frozenset()
+    depth, end = 0, -1
+    for i in range(start, len(shape)):
+        if shape[i] == '{':
+            depth += 1
+        elif shape[i] == '}':
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    if end < 0:
+        return frozenset()
+    tokens, token, depth = [], '', 0
+    for ch in shape[start + 1:end]:
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+        if ch == ',' and depth == 0:
+            tokens.append(token)
+            token = ''
+        else:
+            token += ch
+    tokens.append(token)
+    required = set()
+    for tok in tokens:
+        head = tok.strip().split(':')[0].strip()  # 'mode?', 'commands[]?', 'changes'
+        optional = head.endswith('?')
+        key = head.rstrip('?').split('[')[0].strip()
+        if key and not optional:
+            required.add(key)
+    return frozenset(required)
+
+
+# {action: frozenset(required target keys)} for the WHOLE catalog — parsed
+# from the same shape strings the tool descriptions quote, so the
+# propose-time shape check (action_items) can never drift from the prose.
+REQUIRED_TARGET_KEYS = {}
+for _shape in _LEGACY_SHAPES:
+    for _action in _shape.split(' {', 1)[0].split('/'):
+        REQUIRED_TARGET_KEYS[_action.strip()] = _required_keys(_shape)
+for _spec_row in SPECS:
+    REQUIRED_TARGET_KEYS[_spec_row['action']] = _required_keys(_spec_row['shape'])
+del _shape, _action, _spec_row
 
 BATCH_NOTE = ('Batchable actions (%s) accept targets: [dict, ...] — several '
               'objects, same action, ONE plan and ONE confirm token.'

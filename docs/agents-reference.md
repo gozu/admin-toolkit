@@ -621,14 +621,14 @@ plan, ONE confirm token, per-target execution results (continue-on-error,
 | Action | Target | Pattern / notes |
 |---|---|---|
 | `project-delete` ⨯N | `{projectKey}` | B-api; zip backup enforced |
-| `code-env-delete` ⨯N | `{name, lang}` | B-api; backup enforced; breaks-projects warning |
+| `code-env-delete` ⨯N | `{name, lang?}` | B-api; backup enforced; breaks-projects warning |
 | `db-vacuum` / `db-analyze` ⨯N | `{connection, table}` | B-api; lock note |
-| `image-delete` | `{provider, cutoff, images}` | B-api; plan carries the backend dryRun |
+| `image-delete` | `{images, cutoff, provider?}` | B-api; plan carries the backend dryRun |
 | `plugin-deploy` ⨯N | `{pluginId, targetHostId}` | B-api (hub → fleet host) |
 | `k8s-exec-config-tune` | `{configName, changes}` | A (LOCAL-ONLY); >75%-cut OOM warnings |
 | `log-cleanup` | `{roots?, minAgeDays?, maxDeleteGB?}` | B-macro (LOCAL-ONLY); rotated logs only |
-| `docker-prune` | `{mode, keepStorageGB?, filterUntilHours?}` | B-macro (LOCAL-ONLY); fixed argv |
-| `k8s-apply-fix` | `{clusterId, commands[], …}` | B-macro (LOCAL-ONLY); kubectl policy |
+| `docker-prune` | `{mode?, keepStorageGB?, filterUntilHours?}` | B-macro (LOCAL-ONLY); fixed argv |
+| `k8s-apply-fix` | `{clusterId, commands[]?, …}` | B-macro (LOCAL-ONLY); kubectl policy |
 | `code-env-consolidate` | `{sourceEnvName, targetEnvName, …}` | B-api; dry-run usage table |
 | `settings-set` ⨯N | `{path, newValue}` | A (LOCAL-ONLY); blacklist + drift guard + history |
 | `connection-test` ⨯N | `{name}` | B-api, green; read-only probe |

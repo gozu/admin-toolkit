@@ -106,6 +106,51 @@ def test_description_mentions_batching():
     assert 'do not hedge' in action_items.PROMPT_ADDENDUM
 
 
+def test_underspecified_connection_update_downgraded_to_advisory():
+    # Fleet-audit regression: the agent proposed connection-update "repairs"
+    # for blank-host junk connections with no newValue to write. An item whose
+    # target lacks a required key can never plan — it must fall to advisory
+    # with a note that teaches the model what was missing.
+    out = _one([], action='connection-update',
+               target={'name': 'sharedsnowflake', 'path': 'params.host'})
+    assert out['actionable'] is False
+    assert out['action'] is None
+    assert out['targets'] is None and out['targetCount'] == 0
+    assert 'newValue' in out['validation']
+    assert 'advisory' in out['validation']
+
+
+def test_fully_specified_connection_update_stays_actionable():
+    out = _one([], action='connection-update',
+               target={'name': 'snow1', 'path': 'params.host',
+                       'newValue': 'db.example.com'})
+    assert out['actionable'] is True
+    assert out['validation'] is None
+
+
+def test_batch_with_one_underspecified_target_downgraded():
+    out = _one([], action='settings-set',
+               targets=[{'path': 'a.enabled', 'newValue': True},
+                        {'path': 'b.enabled'}])
+    assert out['actionable'] is False
+    assert 'newValue' in out['validation']
+
+
+def test_explicit_none_satisfies_presence_like_the_planner():
+    # settings-set/variables-set planners check key PRESENCE ('newValue' not
+    # in target), so an explicit null is a plannable value, not an omission.
+    out = _one([], action='settings-set',
+               target={'path': 'a.enabled', 'newValue': None})
+    assert out['actionable'] is True
+    assert out['validation'] is None
+
+
+def test_optional_only_action_needs_no_keys():
+    out = _one([], action='job-logs-cleanup', target={'minAgeDays': 7})
+    assert out['actionable'] is True
+    assert out['validation'] is None
+
+
 def test_addendum_warns_against_redundant_predelete_backup():
     # Sensor agents were proposing a separate project-export "backup-first" item
     # before project-delete, not knowing the delete already backs up at plan time.

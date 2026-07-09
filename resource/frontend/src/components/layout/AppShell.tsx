@@ -201,7 +201,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         className="row-span-2 overflow-hidden"
         animate={{ width: collapsed ? SIDEBAR_COLLAPSED : 'auto' }}
         transition={{ type: 'spring', stiffness: 400, damping: 35 }}
-        style={{ minWidth: collapsed ? SIDEBAR_COLLAPSED : undefined }}
+        style={{ minWidth: collapsed ? SIDEBAR_COLLAPSED : undefined, gridColumn: '1', gridRow: '1 / 3' }}
       >
         {/* One-time entrance: the shell builds itself — sidebar glides in… */}
         <motion.div
@@ -219,6 +219,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         initial={{ y: -14, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.45, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
+        style={{ gridColumn: '2', gridRow: '1' }}
         className="app-topbar relative flex items-center justify-between px-5 py-1 border-b border-[var(--border-default)] bg-[var(--bg-surface)]">
         <div className="flex items-center gap-3 min-w-0">
           <Breadcrumb />
@@ -486,6 +487,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
       <main
         ref={mainRef}
         onScroll={handleMainScroll}
+        style={{ gridColumn: '2', gridRow: '2' }}
         className="overflow-y-auto bg-[var(--bg-app)] flex flex-col relative"
       >
         {children}

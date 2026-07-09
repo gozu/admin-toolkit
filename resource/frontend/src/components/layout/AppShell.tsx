@@ -34,7 +34,7 @@ interface AppShellProps {
 }
 
 const toolbarButtonClass = 'flex items-center justify-center w-10 h-9 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors';
-const toolbarIconClass = 'w-8 h-8';
+const toolbarIconClass = 'w-6 h-6';
 
 export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(
@@ -224,6 +224,68 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
 
         {/* Center branding */}
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden lg:flex items-center gap-2">
+          {/* Advanced Actions — switch (Beta). Locked → opens the unlock modal;
+              unlocked → toggles visibility of the red/agentic surfaces. */}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={authed && showRed}
+            onClick={() => (authed ? toggleShowRed() : setShowUnlock(true))}
+            title={
+              !authed
+                ? 'Unlock advanced actions'
+                : showRed
+                  ? 'Hide advanced actions (stays unlocked on this browser)'
+                  : 'Show advanced actions'
+            }
+            className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-lg hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            <span
+              aria-hidden
+              className={`relative inline-block h-3.5 w-[26px] rounded-full border transition-colors ${
+                authed && showRed
+                  ? 'bg-[var(--neon-red)]/80 border-[var(--neon-red)]'
+                  : 'bg-[var(--bg-hover)] border-[var(--border-default)]'
+              }`}
+            >
+              <span
+                className={`absolute top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full transition-all ${
+                  authed && showRed
+                    ? 'left-[13px] bg-white'
+                    : 'left-[2px] bg-[var(--text-tertiary)]'
+                }`}
+              />
+            </span>
+            {!authed && (
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-[var(--text-tertiary)]"
+              >
+                <rect x="3" y="11" width="18" height="11" rx="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            )}
+            <span
+              className={`text-[10px] font-mono font-medium ${
+                authed && showRed ? 'text-[var(--neon-red)]' : 'text-[var(--text-tertiary)]'
+              }`}
+            >
+              Advanced Actions
+            </span>
+            <span
+              title="Advanced Actions are in Beta — features may change."
+              className="px-1 py-0.5 text-[9px] font-mono font-semibold uppercase tracking-wide rounded border bg-[var(--accent)] text-white border-[var(--accent)] select-none"
+            >
+              Beta
+            </span>
+          </button>
           <button
             type="button"
             onClick={onBackToHosts}
@@ -243,41 +305,6 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
               className="text-base font-bold text-[#2AB1AC] tracking-tight -ml-1.5"            >
               TOOLKIT
             </span>
-          </button>
-          <span
-            title="This toolkit is in Beta — features may change."
-            className="px-1 py-0.5 text-[9px] font-mono font-semibold uppercase tracking-wide rounded border bg-[var(--accent)] text-white border-[var(--accent)] cursor-default select-none"
-          >
-            Beta
-          </span>
-          <button
-            type="button"
-            onClick={() => (authed ? toggleShowRed() : setShowUnlock(true))}
-            title={
-              !authed
-                ? 'Unlock advanced actions'
-                : showRed
-                  ? 'Hide advanced actions (stays unlocked on this browser)'
-                  : 'Show advanced actions'
-            }
-            aria-pressed={authed && showRed}
-            className={`flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono font-medium rounded border transition-colors ${
-              authed && showRed
-                ? 'bg-[var(--neon-red)]/20 text-[var(--neon-red)] border-[var(--neon-red)]/50 hover:bg-[var(--neon-red)]/30'
-                : authed
-                  ? 'text-[var(--neon-red)]/70 border-[var(--neon-red)]/30 hover:bg-[var(--neon-red)]/10'
-                  : 'text-[var(--text-tertiary)] border-[var(--border-default)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
-            }`}
-          >
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2" />
-              {authed ? (
-                <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-              ) : (
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              )}
-            </svg>
-            Advanced Actions
           </button>
         </div>
 
@@ -338,9 +365,10 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
             className={`${toolbarButtonClass} ${!parsedData.dataReady ? 'opacity-30 cursor-not-allowed' : ''}`}
           >
             <svg className={`${toolbarIconClass} ${exporting ? 'animate-pulse' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 8v13H3V8" />
-              <path d="M1 3h22v5H1z" />
-              <path d="M10 12h4" />
+              <line x1="16.5" y1="9.4" x2="7.5" y2="4.21" />
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+              <line x1="12" y1="22.08" x2="12" y2="12" />
             </svg>
           </button>
 
@@ -352,9 +380,12 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
             className={toolbarButtonClass}
           >
             <svg className={toolbarIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
+              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+              <polyline points="14 2 14 8 20 8" />
+              <path d="M8 13h2" />
+              <path d="M14 13h2" />
+              <path d="M8 17h2" />
+              <path d="M14 17h2" />
             </svg>
           </button>
 
@@ -371,9 +402,11 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
             className={`${toolbarButtonClass} ${!datasetExportEnabled ? 'opacity-30 cursor-not-allowed' : ''}`}
           >
             <svg className={toolbarIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <ellipse cx="12" cy="5" rx="8" ry="3" />
-              <path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
-              <path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" />
+              <ellipse cx="11" cy="5" rx="7" ry="2.6" />
+              <path d="M4 5v12c0 1.4 3.1 2.6 7 2.6.7 0 1.37-.05 2-.14" />
+              <path d="M18 5v6" />
+              <line x1="19" y1="14.5" x2="19" y2="20.5" />
+              <line x1="16" y1="17.5" x2="22" y2="17.5" />
             </svg>
           </button>
 

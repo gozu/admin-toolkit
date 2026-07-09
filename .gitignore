@@ -112,6 +112,7 @@ test.sh
 dss_webapp_restart_*
 
 # Ad-hoc debug/test scripts (not in tests/ directory)
+resource/frontend/.tmp-*.mjs
 compare_code_envs.py
 find_unused_code_envs.py
 find_unused_packages.py

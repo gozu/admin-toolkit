@@ -282,23 +282,6 @@ if (!useApiDataLoader.includes('parseSseStream')) {
   }
 }
 
-// Trends contract: every module with trends:true should have a key `id-with-_` in trends_registry.py
-let trendsPy;
-try {
-  trendsPy = read('../../python-lib/trends_registry.py');
-} catch {
-  trendsPy = '';
-}
-if (trendsPy) {
-  const trendsModules = [...registry.matchAll(/\{[^{}]*\bid:\s*'([^']+)'[^{}]*\btrends:\s*true[^{}]*\}/g)].map((m) => m[1]);
-  for (const id of trendsModules) {
-    const key = id.replace(/-/g, '_');
-    if (!new RegExp(`TrendSnapshotTable\\(\\s*'${key}'`).test(trendsPy)) {
-      fail(`Module '${id}' declares trends:true but no TrendSnapshotTable('${key}', ...) exists.`);
-    }
-  }
-}
-
 // Multi-instance contract: every frontend HTTP call must go through utils/api.ts
 function scanForDirectFetch(dir, results = []) {
   if (!fs.existsSync(path.join(root, dir))) return results;

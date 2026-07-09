@@ -44,7 +44,6 @@ export interface ModuleDefinition {
   // excluded from the global "Analysis complete" aggregate: their lifecycle
   // field exists only to drive in-page UI, never a startup ritual.
   noLoadGlyph?: true;
-  trends?: true;
   streamEndpoint?: string;
   experimental?: boolean;
   deprecated?: boolean;
@@ -74,7 +73,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   { id: 'resources', label: 'Resources', section: 'Overview', navSection: 'OVERVIEW', keywords: ['ram', 'swap', 'memory', 'cpu', 'usage', 'pid', 'process', 'load', 'live', 'resources'], availability: 'always', lifecycle: { fields: ['memoryLoading', 'cpuLoading'] } },
 
   // CONNECTIONS
-  { id: 'connections-inventory', label: 'Inventory', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['database', 'connector', 'type', 'inventory'], trends: true, availability: 'always', lifecycle: { fields: ['connectionsInventoryLoading'] } },
+  { id: 'connections-inventory', label: 'Inventory', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['database', 'connector', 'type', 'inventory'], availability: 'always', lifecycle: { fields: ['connectionsInventoryLoading'] } },
   { id: 'connections-insights', label: 'Insights', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['connection', 'insights', 'matrix', 'audit', 'usage', 'consumption', 'health', 'projects'], availability: 'always', lifecycle: { fields: [
     'connectionsInventoryLoading',
     'connectionUsageLoading',
@@ -86,7 +85,7 @@ export const MODULES: readonly ModuleDefinition[] = [
 
   // PROJECTS
   { id: 'project-cleaner', label: 'Project Cleaner', navLabel: 'Cleaner', section: 'Projects', navSection: 'PROJECTS', keywords: ['clean', 'delete', 'inactive', 'project'], tool: true, availability: 'always', lifecycle: { fields: ['projectCleanerLoading'] } },
-  { id: 'projects', label: 'Projects', navLabel: 'Insights', section: 'Projects', navSection: 'PROJECTS', keywords: ['project', 'footprint', 'permissions'], trends: true, availability: 'always', lifecycle: { fields: ['projectFootprintLoading'] } },
+  { id: 'projects', label: 'Projects', navLabel: 'Insights', section: 'Projects', navSection: 'PROJECTS', keywords: ['project', 'footprint', 'permissions'], availability: 'always', lifecycle: { fields: ['projectFootprintLoading'] } },
   { id: 'project-compute', label: 'Compute', section: 'Projects', navSection: 'PROJECTS', keywords: ['compute', 'project', 'usage', 'workload'], availability: 'always', lifecycle: { fields: ['projectComputeLoading'] } },
   { id: 'project-cost', label: 'Cost / CRU', navLabel: 'Cost', section: 'Projects', navSection: 'PROJECTS', keywords: ['cost', 'cru', 'compute', 'resource', 'usage', 'memory', 'cpu', 'llm', 'audit'], streamEndpoint: '/api/cru/stream', availability: 'always', lifecycle: { fields: ['projectCostLoading'] } },
 
@@ -104,7 +103,7 @@ export const MODULES: readonly ModuleDefinition[] = [
 
   // PLUGINS
   { id: 'plugins-installed', label: 'Installed', section: 'Plugins', navSection: 'PLUGINS', keywords: ['plugin', 'installed', 'list', 'version', 'projects', 'usage'], availability: 'always', lifecycle: { fields: ['pluginsLoading'] } },
-  { id: 'plugins', label: 'Plugin Sync', section: 'Plugins', navSection: 'PLUGINS', keywords: ['plugin', 'sync', 'compare', 'version'], trends: true, tool: true, availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['pluginSyncLoading'] } },
+  { id: 'plugins', label: 'Plugin Sync', section: 'Plugins', navSection: 'PLUGINS', keywords: ['plugin', 'sync', 'compare', 'version'], tool: true, availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['pluginSyncLoading'] } },
 
   // CODE ENVS
   { id: 'code-envs', label: 'Cleaner', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['python', 'environment', 'package', 'clean', 'delete', 'unused', 'replace', 'migration'], tool: true, availability: 'always', lifecycle: { fields: ['codeEnvsLoading', 'codeEnvSizesLoading', 'codeEnvCleanerLoading', 'codeEnvReplacementLoading'] } },
@@ -112,7 +111,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   { id: 'code-envs-comparison', label: 'Comparison', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['compare', 'duplicate', 'version', 'mismatch'], availability: 'always', lifecycle: { fields: ['codeEnvsComparisonLoading'] } },
 
   // AI COMPUTE
-  { id: 'container-execs', label: 'Container Execs', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['container', 'execution', 'kubernetes', 'k8s', 'compute', 'gpu', 'project', 'recipe', 'webapp'], trends: true, streamEndpoint: '/api/container-execs/stream', tool: true, availability: 'container-exec', lifecycle: { fields: ['containerExecsLoading'] } },
+  { id: 'container-execs', label: 'Container Execs', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['container', 'execution', 'kubernetes', 'k8s', 'compute', 'gpu', 'project', 'recipe', 'webapp'], streamEndpoint: '/api/container-execs/stream', tool: true, availability: 'container-exec', lifecycle: { fields: ['containerExecsLoading'] } },
   { id: 'image-cleaner', label: 'Docker Images', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['ecr', 'acr', 'gar', 'docker', 'image', 'container', 'cleanup', 'aws', 'azure', 'gcp', 'registry'], tool: true, availability: 'container-registry', lifecycle: { fields: ['imageCleanerLoading'] } },
   { id: 'cs-template-replacement', label: 'Replace CS Template', navLabel: 'CS Templates', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['code', 'studio', 'template', 'replace', 'migrate', 'cs'], tool: true, availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['csTemplateReplacementLoading'] } },
   { id: 'llm-audit', label: 'Model Audit', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['llm', 'model', 'audit', 'pricing'], availability: 'llm', lifecycle: { fields: ['llmAuditLoading'] } },
@@ -127,7 +126,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   { id: 'settings', label: 'Settings', section: 'Misc', navSection: 'MISC', keywords: ['settings', 'mail', 'channel', 'email', 'config', 'preferences'], availability: 'always', lifecycle: { fields: ['settingsLoading'] } },
   { id: 'logs', label: 'Errors', section: 'Misc', navSection: 'MISC', keywords: ['log', 'error', 'exception', 'stack'], badge: 'logs', availability: 'always', lifecycle: { fields: ['logsLoading'] } },
   { id: 'sanity-check', label: 'Sanity Check', section: 'Misc', navSection: 'MISC', keywords: ['sanity', 'check', 'diagnostics', 'api'], availability: 'always', lifecycle: { fields: ['sanityCheckLoading'] } },
-  { id: 'db-health', label: 'DB Health', section: 'Misc', navSection: 'MISC', keywords: ['postgres', 'database', 'vacuum', 'tables', 'runtimedb', 'bloat'], trends: true, tool: true, availability: 'runtime-db', noLoadGlyph: true, lifecycle: { fields: ['dbHealthLoading'] } },
+  { id: 'db-health', label: 'DB Health', section: 'Misc', navSection: 'MISC', keywords: ['postgres', 'database', 'vacuum', 'tables', 'runtimedb', 'bloat'], tool: true, availability: 'runtime-db', noLoadGlyph: true, lifecycle: { fields: ['dbHealthLoading'] } },
   { id: 'report', label: 'Report', section: 'Misc', navSection: 'MISC', keywords: ['report', 'export', 'download'], tool: true, availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['reportLoading'] } },
   { id: 'feedback', label: 'Feedback', section: 'Misc', navSection: 'MISC', keywords: ['feedback', 'bug', 'idea', 'report', 'suggestion'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['feedbackLoading'] } },
 ] as const;

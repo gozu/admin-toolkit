@@ -23,18 +23,17 @@ Sidebar nav rows do **not** encode load state via label color or opacity. Every 
 | `ready`, just transitioned from non-ready | `✓` in `var(--success)`, fades out over 2.5s             |
 | `ready`, steady state                | *(no glyph)*                                                 |
 
-"Active fetch" is `module.loadingField`'s `active` flag, falling back to `parsedData.analysisLoading.active`. Transition detection uses a `useRef` of previous availability per page; the check glyph is suppressed on first paint and on remount so navigating back to a cached page does not flash a spurious `✓`.
+"Active fetch" is the `active` flag of the module's lifecycle fields (`lifecycle.fields`), falling back to `parsedData.analysisLoading.active`. Transition detection uses a `useRef` of previous availability per page; the check glyph is suppressed on first paint and on remount so navigating back to a cached page does not flash a spurious `✓`.
 
 This sidebar scheme is **scoped to the sidebar**. The `ProgressIndicator` grey/yellow/white/red tone contract above is unchanged everywhere else (progress bars, scan dots, lifecycle indicators).
 
 ## Module Contract
 
-Every page is registered in `resource/frontend/src/utils/moduleRegistry.ts`. The registry is the single source of truth for nav placement, command-palette entries, experimental flags, availability policy, lifecycle participation, trends participation, and the streaming endpoint name.
+Every page is registered in `resource/frontend/src/utils/moduleRegistry.ts`. The registry is the single source of truth for nav placement, command-palette entries, experimental flags, availability policy, lifecycle participation, and the streaming endpoint name.
 
-A `ModuleDefinition` may declare:
+A `ModuleDefinition` declares:
 
-- `loadingField?: keyof ParsedData & '${string}Loading'` — the typed pointer to a `LoadingProgressState` field on `ParsedData`. The string template plus `keyof ParsedData` constraint means a typo is a compile error. Modules that opt in this way **automatically participate** in the global `analysisLoading` aggregator: the global indicator stays active until every module with a `loadingField` reaches `progressPct: 100` and `active: false`.
-- `trends?: true` — convention: snapshot key equals the module id with `-` replaced by `_`. The Python contract test (`scripts/check_trends_contract.py`) enforces that a matching `TrendSnapshotTable(...)` exists in `python-lib/trends_registry.py`.
+- `lifecycle: { fields: [...] }` — the typed pointers to `LoadingProgressState` fields on `ParsedData` (each `keyof ParsedData & '${string}Loading'`, so a typo is a compile error). `SHARED_LOADING_FIELDS` is derived from these entries automatically, and modules listed there **automatically participate** in the global `analysisLoading` aggregator: the global indicator stays active until every shared field reaches `progressPct: 100` and `active: false`. (`loadingField` survives only as the option name on `createModuleScanStore`, which registers that single field with the loading-state mirror.)
 - `streamEndpoint?: string` — the SSE endpoint, used by the scan-store factory and referenced by contract checks.
 
 The `ModuleAvailabilityPolicy` enum is **exhaustive**: `pageAvailability.ts` has no `default:` branch and ends in a `never` assertion. Adding a new policy without handling its case is a TypeScript error.
@@ -45,10 +44,9 @@ Availability semantics (`useModuleAvailability`): a module is hidden **only on a
 
 1. Add a `PageId` literal in `types/index.ts`.
 2. Add a `ModuleDefinition` entry to `MODULES` in `moduleRegistry.ts` and place its id under the right nav section.
-3. If it opts into the global lifecycle, add a `LoadingProgressState` field to `ParsedData` and reference it as `loadingField`.
-4. If it persists history, set `trends: true` and add the corresponding `TrendSnapshotTable` to `trends_registry.py`.
-5. If its availability needs a new policy, add it to `ModuleAvailabilityPolicy` *and* the `switch` in `pageAvailability.ts` (the `never` exhaustiveness will tell you).
-6. Run `node scripts/check_frontend_contracts.mjs` and `python3 scripts/check_trends_contract.py` — both must pass.
+3. If it opts into the global lifecycle, add a `LoadingProgressState` field to `ParsedData` and declare it in the entry's `lifecycle: { fields: [...] }`.
+4. If its availability needs a new policy, add it to `ModuleAvailabilityPolicy` *and* the `switch` in `pageAvailability.ts` (the `never` exhaustiveness will tell you).
+5. Run `node scripts/check_frontend_contracts.mjs` — must pass.
 
 ## Streaming + State
 
@@ -59,10 +57,6 @@ Module-scoped singleton stores must be built on `state/createSyncStore.ts` (or, 
 - A clean `get / set / patch / subscribe / use` surface.
 - Optional `sessionScoped: true` so the global Refresh button (which bumps the session epoch) automatically clears the store. Streaming scan stores get this for free via the factory; do not rely on stale state surviving a refresh.
 - For scan stores: a singleton inflight promise so navigating away and back reattaches instead of restarting, automatic registration with the loading-state mirror so the module participates in the global aggregator without component-level wiring.
-
-## Trends Contract
-
-Modules that should snapshot to the history database declare `trends: true`. A matching `TrendSnapshotTable(<id-with-underscores>, ...)` must exist in `python-lib/trends_registry.py`. Orphan tables (populated by the bulk tracking-ingest endpoint rather than a per-page scan) are tolerated as warnings — do not add new orphans without a clear reason.
 
 ## Rendering Performance
 
@@ -94,8 +88,7 @@ Health factor toggles are defined exactly once in `useHealthScore.ts` as `HEALTH
 The toolkit scans either the DSS it is installed on (`'local'`) or any remote DSS configured as a `remote-dss-host` plugin preset. Routing is invisible to module code:
 
 - **All frontend HTTP calls** must go through `utils/api.ts` (`fetchJson` / `fetchText` / `fetchSse`). These inject the `X-DSS-Host-Id` header from `hostStore.getActiveHostId()` on every request. The frontend contract checker fails the build if a new `fetch(` call lands outside `utils/api.ts`.
-- **All backend request handlers** read `g.client` (set by `@before_request → _resolve_client`). Background threads, loaders that may run outside a request context, and helpers shared with non-request callers use `_active_dss_client()` (falls back to the local thread-pooled client). The `threading.Thread` target for tracking-ingest uses `_thread_client()` explicitly — it always reports against local.
+- **All backend request handlers** read `g.client` (set by `@before_request → _resolve_client`). Background threads, loaders that may run outside a request context, and helpers shared with non-request callers use `_active_dss_client()` (falls back to the local thread-pooled client).
 - **Operations that need filesystem/shell access on the target host** must NOT call `subprocess.run`, read `/proc`, or touch `<DIP_HOME>` directly from the webapp. Instead, add a `python-runnables/<name>/` macro and invoke it via `_resolve_macro_project(g.client).get_macro(...).run(params, wait=True)`. The macro runs as the `dataiku` service account on whichever host the active client points at, and that's the only code path that works for both local and remote.
 - **The `ADMINTOOLKIT` project key is the canonical macro-invocation home**. On first macro use against a remote that doesn't have it, the backend responds with `409 {error: 'macro-project-missing', projectKey: 'ADMINTOOLKIT', defaultName: 'Admin Toolkit'}`. The frontend `HostSelector` listens for this event and opens a confirm-create modal that calls `POST /api/hosts/macro-project`.
 - **SSE generators that touch `g.client` must run inside a request context.** Every `return Response(generate(), …)` is wrapped with `stream_with_context(generate())`. Adding a new SSE endpoint? Wrap it.
-- **Tracking history is per-host.** Every `runs` row stores `dss_host_id` (default `'local'`). Trends queries can filter by host preset name in addition to the natural `instance_id` of the scanned DSS.

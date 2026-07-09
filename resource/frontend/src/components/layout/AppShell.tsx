@@ -287,30 +287,6 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
           </button>
         </div>
 
-        {/* Center branding — dead center, the wordmark alone */}
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden lg:flex items-center">
-          <button
-            type="button"
-            onClick={onBackToHosts}
-            title="Back to host picker"
-            className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-[var(--bg-hover)] transition-colors"
-          >
-            <img
-              src={dkulogo}
-              alt="Dataiku"
-              className="h-5 w-5"
-            />
-            <span
-              className="text-base font-bold text-[var(--text-primary)] tracking-tight"            >
-              ADMIN
-            </span>
-            <span
-              className="text-base font-bold text-[#2AB1AC] tracking-tight -ml-1.5"            >
-              TOOLKIT
-            </span>
-          </button>
-        </div>
-
         <div className="flex items-center gap-2">
           {/* Search — opens the command palette (handled in App.tsx). Icon-only
               to stay compact; the ⌘K shortcut is revealed inside the palette. */}
@@ -405,11 +381,9 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
             className={`${toolbarButtonClass} ${!datasetExportEnabled ? 'opacity-30 cursor-not-allowed' : ''}`}
           >
             <svg className={toolbarIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-              <ellipse cx="11" cy="5" rx="7" ry="2.6" />
-              <path d="M4 5v12c0 1.4 3.1 2.6 7 2.6.7 0 1.37-.05 2-.14" />
-              <path d="M18 5v6" />
-              <line x1="19" y1="14.5" x2="19" y2="20.5" />
-              <line x1="16" y1="17.5" x2="22" y2="17.5" />
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+              <polyline points="17 21 17 13 7 13 7 21" />
+              <polyline points="7 3 7 8 15 8" />
             </svg>
           </button>
 
@@ -474,6 +448,39 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
           </div>
         </div>
       </motion.header>
+
+      {/* Center branding — dead center of the whole page. Overlays the header
+          row across BOTH grid columns (sidebar included) so 50% here is 50% of
+          the viewport, not of the header cell. Click-through everywhere except
+          the wordmark button itself. */}
+      <motion.div
+        initial={{ y: -14, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.45, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
+        className="relative pointer-events-none hidden lg:flex items-center justify-center"
+        style={{ gridColumn: '1 / -1', gridRow: '1' }}
+      >
+        <button
+          type="button"
+          onClick={onBackToHosts}
+          title="Back to host picker"
+          className="pointer-events-auto flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-[var(--bg-hover)] transition-colors"
+        >
+          <img
+            src={dkulogo}
+            alt="Dataiku"
+            className="h-5 w-5"
+          />
+          <span
+            className="text-base font-bold text-[var(--text-primary)] tracking-tight"          >
+            ADMIN
+          </span>
+          <span
+            className="text-base font-bold text-[#2AB1AC] tracking-tight -ml-1.5"          >
+            TOOLKIT
+          </span>
+        </button>
+      </motion.div>
 
       {/* Main content area — scrollable */}
       <main

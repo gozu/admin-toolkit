@@ -80,6 +80,11 @@ const icons: Record<string, ReactNode> = {
       <circle cx="6" cy="18" r="1" />
     </svg>
   ),
+  resources: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </svg>
+  ),
   memory: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
       <rect x="5" y="4" width="14" height="16" rx="1" />

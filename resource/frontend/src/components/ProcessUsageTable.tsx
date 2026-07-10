@@ -6,6 +6,7 @@ import {
   startProcessMetricsScan,
   subscribeProcessMetrics,
 } from '../state/processMetrics';
+import { resourceSamplesStore } from '../state/resourceSamples';
 import type { ColumnDef } from '../utils/dataGridTypes';
 import { formatKb } from '../utils/formatters';
 import { aggregateByUser, displayCommand, displayUser, webappRefFromCommand } from '../utils/processUsage';
@@ -21,6 +22,26 @@ interface UserRow {
   rssKb: number;
 }
 
+/** ps-style Σ cpuPercent (% of one core) → cores occupied, e.g. 815.6 → "8.2". */
+function formatCores(cpuPercent: number): string {
+  return (cpuPercent / 100).toFixed(1);
+}
+
+/** Σ cpuPercent normalized by core count → share of the whole host, so 16
+ * fully-busy cores out of 16 reads 100%. Em dash until the first stream
+ * sample delivers the core count. */
+function formatHostCpuPct(cpuPercent: number, cpuCount: number | null): string {
+  if (!cpuCount || cpuCount <= 0) return '—';
+  return `${(cpuPercent / cpuCount).toFixed(1)}%`;
+}
+
+/** Core count from the latest resource-stream sample (primitive snapshot, so
+ * the table only re-renders when the value actually changes). */
+function getStreamCpuCount(): number | null {
+  const samples = resourceSamplesStore.get().samples;
+  return samples.length > 0 ? samples[samples.length - 1].cpu.cpuCount : null;
+}
+
 /**
  * Merged "usage by user" table with expandable per-PID child rows. Replaces
  * the ProcessUsageByUser bar card + ProcessMetricsTable pair: top-level rows
@@ -32,6 +53,11 @@ interface UserRow {
  */
 export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' | 'resources' }) {
   const scan = useSyncExternalStore(subscribeProcessMetrics, getProcessMetrics, getProcessMetrics);
+  const cpuCount = useSyncExternalStore(
+    resourceSamplesStore.subscribe,
+    getStreamCpuCount,
+    getStreamCpuCount,
+  );
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
@@ -112,11 +138,19 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' | 're
         sortValue: (r) => r.count,
       },
       {
+        id: 'cores',
+        label: 'Cores',
+        align: 'right',
+        mono: true,
+        render: (r) => formatCores(r.cpuPercent),
+        sortValue: (r) => r.cpuPercent,
+      },
+      {
         id: 'cpu',
         label: 'CPU %',
         align: 'right',
         mono: true,
-        render: (r) => `${r.cpuPercent.toFixed(1)}%`,
+        render: (r) => formatHostCpuPct(r.cpuPercent, cpuCount),
         sortValue: (r) => r.cpuPercent,
       },
       {
@@ -136,7 +170,7 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' | 're
         sortValue: (r) => r.rssKb,
       },
     ],
-    [expanded],
+    [expanded, cpuCount],
   );
 
   const gridLifecycle = useMemo<Lifecycle | null>(() => {
@@ -225,7 +259,8 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' | 're
             )}
           </span>
         ))(displayCommand(p.command, scan.dipHome), webappRefFromCommand(p.command)),
-        `${p.cpuPercent.toFixed(1)}%`,
+        formatCores(p.cpuPercent),
+        formatHostCpuPct(p.cpuPercent, cpuCount),
         `${p.memPercent.toFixed(1)}%`,
         formatKb(p.rssKb),
       ]}

@@ -579,7 +579,9 @@ function PulseCard({ pulse, nowMs }: { pulse: AdoptionPulseData; nowMs: number }
               human events per hour ·{' '}
               {pulse.exhaustedFiles
                 ? `the rotated audit files reach back only ${windowLabel.replace('last ', '')} — that's the whole retained trail`
-                : `covered the requested ${pulse.windowHours ?? 72}h window`}{' '}
+                : coverage != null && coverage >= (pulse.windowHours ?? 72) - 1
+                  ? `covered the requested ${pulse.windowHours ?? 72}h window`
+                  : `scan stopped at ${windowLabel.replace('last ', '')} — audit volume cap reached`}{' '}
               · {pulse.filesRead ?? 0} {pulse.filesRead === 1 ? 'file' : 'files'} read
             </div>
           </div>

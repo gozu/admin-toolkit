@@ -2,12 +2,8 @@ import { fetchJson } from '../utils/api';
 import { createSyncStore } from './createSyncStore';
 import { getActiveHostId } from './hostStore';
 import { subscribeSessionEpoch } from './sessionCache';
-import { getProcessMetrics, restartProcessMetricsScan } from './processMetrics';
-import {
-  getHostSummary,
-  refreshHostSummary,
-  type HostSummaryData,
-} from './hostSummary';
+import { restartProcessMetricsScan } from './processMetrics';
+import { refreshHostSummary, type HostSummaryData } from './hostSummary';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Live resource sampling for the Resources page. Polls the uncached
@@ -62,17 +58,19 @@ export interface ResourceSamplesState {
   error: string | null;
 }
 
-// 120 one-second intervals + the seed sample = 2 min of history.
+// 120 intervals + the seed sample = 10 min of history locally, 30 min remote.
 export const MAX_SAMPLE_SLOTS = 121;
-const REFRESH_INTERVAL_MS = 1_000;
-const LOCAL_SUMMARY_INTERVAL_MS = 30_000;
-const REMOTE_SUMMARY_INTERVAL_MS = 60_000;
+const LOCAL_INTERVAL_MS = 5_000;
+const REMOTE_INTERVAL_MS = 15_000;
+// Heavy tier (full `ps` + host summary) at a slower multiple of the light tick.
+const LOCAL_HEAVY_MS = 30_000;
+const REMOTE_HEAVY_MS = 60_000;
 const MAX_CONSECUTIVE_FAILURES = 2;
 
 const INITIAL_STATE: ResourceSamplesState = {
   status: 'idle',
   samples: [],
-  intervalMs: REFRESH_INTERVAL_MS,
+  intervalMs: LOCAL_INTERVAL_MS,
   error: null,
 };
 
@@ -86,10 +84,9 @@ let _active = false;
 let _chain = 0;
 let _timer: ReturnType<typeof setTimeout> | null = null;
 let _failures = 0;
-let _intervalMs = REFRESH_INTERVAL_MS;
-let _summaryIntervalMs = LOCAL_SUMMARY_INTERVAL_MS;
-let _lastProcessRefreshAt = 0;
-let _lastSummaryRefreshAt = 0;
+let _intervalMs = LOCAL_INTERVAL_MS;
+let _heavyMs = LOCAL_HEAVY_MS;
+let _lastHeavyAt = 0;
 let _applyHostSummary: ((data: HostSummaryData) => void) | null = null;
 let _visibilityHooked = false;
 
@@ -144,15 +141,10 @@ async function tick(chainId: number): Promise<void> {
     }
   }
   const now = Date.now();
-  if (now - _lastProcessRefreshAt >= REFRESH_INTERVAL_MS) {
-    _lastProcessRefreshAt = now;
-    if (getProcessMetrics().status !== 'loading') restartProcessMetricsScan();
-  }
-  if (now - _lastSummaryRefreshAt >= _summaryIntervalMs) {
-    _lastSummaryRefreshAt = now;
-    if (_applyHostSummary && getHostSummary().status !== 'loading') {
-      void refreshHostSummary(_applyHostSummary);
-    }
+  if (now - _lastHeavyAt >= _heavyMs) {
+    _lastHeavyAt = now;
+    restartProcessMetricsScan();
+    if (_applyHostSummary) void refreshHostSummary(_applyHostSummary);
   }
   if (!_active || chainId !== _chain || document.hidden) return;
   _timer = setTimeout(() => void tick(chainId), _intervalMs);
@@ -168,13 +160,10 @@ export function startResourcePolling(applyHostSummary: (data: HostSummaryData) =
   _failures = 0;
   // Don't fire the heavy tier on mount — the page already starts the process
   // scan itself and the host summary is fresh from startup.
-  _lastProcessRefreshAt = Date.now();
-  _lastSummaryRefreshAt = Date.now();
-  // Keep both the graph sample and process table on the same cadence for
-  // local and remote hosts.
-  _intervalMs = REFRESH_INTERVAL_MS;
-  _summaryIntervalMs =
-    getActiveHostId() === 'local' ? LOCAL_SUMMARY_INTERVAL_MS : REMOTE_SUMMARY_INTERVAL_MS;
+  _lastHeavyAt = Date.now();
+  const remote = getActiveHostId() !== 'local';
+  _intervalMs = remote ? REMOTE_INTERVAL_MS : LOCAL_INTERVAL_MS;
+  _heavyMs = remote ? REMOTE_HEAVY_MS : LOCAL_HEAVY_MS;
   resourceSamplesStore.patch({ status: 'polling', intervalMs: _intervalMs, error: null });
   if (!_visibilityHooked) {
     _visibilityHooked = true;

@@ -12,8 +12,8 @@ import {
 } from '../../state/resourceSamples';
 
 /** Merged Memory + CPU page. In API mode it additionally runs the live
- * resource poller every second to feed the utilization strip and re-run the
- * `ps` refresh used by the table. Host summaries retain a slower tier. Zip mode
+ * resource poller (5s local / 15s remote) that feeds the utilization strip
+ * and periodically re-runs the heavier `ps` + host-summary refresh. Zip mode
  * keeps the static doughnuts/table exactly as before — no polling. */
 export function ResourcesPage() {
   const { state, setParsedData } = useDiag();

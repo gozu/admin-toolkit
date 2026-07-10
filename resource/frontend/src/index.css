@@ -500,6 +500,40 @@
 }
 
 /* =============================================================================
+   DSS Dark (hidden): dark palette + light mode's DSS structural DNA.
+   Colors inherit :root untouched; only shape/type/elevation change.
+   ============================================================================= */
+
+[data-theme="dss-dark"] {
+  --font-display: 'SourceSansPro', system-ui, -apple-system, sans-serif;
+  --font-heading: 'SourceSansPro', system-ui, -apple-system, sans-serif;
+  --radius-sm:  2px;
+  --radius-md:  2px;
+  --radius-lg:  3px;
+  --radius-xl:  3px;
+  --radius-2xl: 4px;
+  /* Flat: light's hairline shadows are invisible on near-black — go to none.
+     Keep dark's --shadow-lg so modals/popovers still separate from the page. */
+  --shadow-sm: none;
+  --shadow-md: none;
+}
+
+[data-theme="dss-dark"] .app-topbar {
+  background-image: linear-gradient(to bottom, #222, #111);
+}
+
+[data-theme="dss-dark"] .app-sidebar .sidebar-topstrip {
+  background-color: #222;
+  background-image: linear-gradient(to bottom, #222, #111);
+}
+
+[data-theme="dss-dark"] .btn-primary,
+[data-theme="dss-dark"] .btn-primary:hover,
+[data-theme="dss-dark"] .btn-primary:active {
+  box-shadow: none;
+}
+
+/* =============================================================================
    Base Styles
    ============================================================================= */
 

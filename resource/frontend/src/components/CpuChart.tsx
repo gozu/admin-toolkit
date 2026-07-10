@@ -78,7 +78,8 @@ export function CpuChart() {
       id: 'cpuCenterText',
       afterDraw(chart) {
         const { ctx, width, height } = chart;
-        const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+        const themeAttr = document.documentElement.getAttribute('data-theme');
+        const isDark = themeAttr !== 'light';
 
         ctx.save();
         ctx.textAlign = 'center';
@@ -90,7 +91,8 @@ export function CpuChart() {
         // Main value
         ctx.font = 'bold 18px "JetBrains Mono", monospace';
         ctx.fillStyle = isDark ? '#ffffff' : '#1a1a2e';
-        if (isDark) {
+        if (themeAttr === 'dark') {
+          // Glow is regular dark's personality only — dss-dark stays flat.
           ctx.shadowColor = 'rgba(0, 168, 157, 0.4)';
           ctx.shadowBlur = 8;
         }

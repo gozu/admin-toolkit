@@ -43,7 +43,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
   );
   const [showAbout, setShowAbout] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const { theme, toggle: toggleTheme } = useTheme();
+  const { theme, toggle: toggleTheme, toggleDssDark } = useTheme();
   const { state, setActivePage } = useDiag();
   const { parsedData } = state;
   const { authed, showRed } = useRedState();
@@ -56,6 +56,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
   const adoptionVisible = useAdoptionVisible();
   const appVersion = useAppVersion();
   const eggBufRef = useRef('');
+  const darkEggBufRef = useRef('');
 
   // Scroll-to-top: rAF-throttled scrollTop tracking on <main>
   const mainRef = useRef<HTMLElement | null>(null);
@@ -120,6 +121,26 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [adoptionVisible, setActivePage]);
+
+  // Hidden "DSS dark" theme flavor: type the keyword outside any input to flip
+  // between the two dark flavors. Unlike the adoption egg this never detaches —
+  // the same word toggles back. Buffer lives in a ref so it survives the
+  // re-subscription when toggleDssDark changes with the theme.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const el = document.activeElement as HTMLElement | null;
+      const tag = el?.tagName.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || el?.isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
+      darkEggBufRef.current = (darkEggBufRef.current + e.key.toLowerCase()).slice(-7);
+      if (darkEggBufRef.current === 'newdark') {
+        darkEggBufRef.current = '';
+        toggleDssDark();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [toggleDssDark]);
 
   // Reconcile the unlock UI with the HttpOnly cookie once on boot.
   useEffect(() => {
@@ -394,10 +415,10 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
           <button
             type="button"
             onClick={(e) => toggleTheme(e)}
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={theme !== 'light' ? 'Switch to light mode' : 'Switch to dark mode'}
             className={toolbarButtonClass}
           >
-            {theme === 'dark' ? (
+            {theme !== 'light' ? (
               <svg className={toolbarIconClass} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="5" />
                 <line x1="12" y1="1" x2="12" y2="3" />

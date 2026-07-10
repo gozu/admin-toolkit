@@ -45,8 +45,11 @@ const SPARK_MONTHS = 12;
 // TTFB is hidden below this many measured users — "0d median, 2 users" is
 // noise dressed as a stat.
 const MIN_TTFB_USERS = 5;
-// Recently-active window for the summary band + idle-seat detection.
+// Recently-active window for idle-seat detection.
 const ACTIVE_DAYS = 90;
+// Momentum compares mean active builders over this many complete months vs
+// the same span before.
+const MOMENTUM_MONTHS = 12;
 
 /** Thin section header: groups related cards under one title + one caveat
  * instead of stamping every card. */
@@ -511,7 +514,6 @@ function PulseCard({ pulse, nowMs }: { pulse: AdoptionPulseData; nowMs: number }
         <div className="grid grid-cols-1 gap-x-6 gap-y-3 px-4 py-4 lg:grid-cols-[220px_minmax(0,1fr)]">
           <div className="flex flex-col gap-3">
             <div className="flex items-baseline gap-4">
-              <BigStat value={pulse.humansActive ?? 0} label="People active" />
               <BigStat value={totalEvents.toLocaleString()} label="Human events" />
             </div>
             <div className="space-y-0.5">
@@ -791,19 +793,15 @@ export function AdoptionPage() {
   })();
 
   // Momentum (customer's "is usage increasing?"): mean active builders over the
-  // last 3 complete months vs the 3 before.
+  // last 12 complete months vs the 12 before.
   let momentumPct: number | null = null;
-  if (gitTrendComplete.length >= 6) {
+  if (gitTrendComplete.length >= MOMENTUM_MONTHS * 2) {
     const mean = (pts: AdoptionMonthPoint[]) =>
       pts.reduce((s, p) => s + p.activeBuilders, 0) / pts.length;
-    const recent = mean(gitTrendComplete.slice(-3));
-    const prior = mean(gitTrendComplete.slice(-6, -3));
+    const recent = mean(gitTrendComplete.slice(-MOMENTUM_MONTHS));
+    const prior = mean(gitTrendComplete.slice(-MOMENTUM_MONTHS * 2, -MOMENTUM_MONTHS));
     momentumPct = prior > 0 ? ((recent - prior) / prior) * 100 : null;
   }
-
-  const activeBuilders90d = builders.filter(
-    (b) => b.lastCommitMs != null && nowMs - b.lastCommitMs <= ACTIVE_DAYS * DAY_MS,
-  ).length;
 
   // ── inventory-fed derivations (all null-safe) ─────────────────────────────
   const inventoryView = buildInventoryView(invState.data, recency);
@@ -1128,7 +1126,7 @@ export function AdoptionPage() {
             </div>
           )}
           <div
-            className={`grid grid-cols-2 gap-4 px-4 py-4 sm:grid-cols-4 ${inventoryView ? 'lg:grid-cols-8' : 'lg:grid-cols-5'}`}
+            className={`grid grid-cols-2 gap-4 px-4 py-4 sm:grid-cols-4 ${inventoryView ? 'lg:grid-cols-7' : 'lg:grid-cols-4'}`}
           >
             <BigStat
               value={totals ? `${totals.activeProjectCount}/${totals.projectCount}` : '—'}
@@ -1139,18 +1137,16 @@ export function AdoptionPage() {
               }
             />
             <BigStat value={totals ? totals.builderCount : '—'} label="Builders (all time)" />
-            <BigStat
-              value={data ? activeBuilders90d : '—'}
-              label={`Active builders (${ACTIVE_DAYS}d)`}
-            />
-            <div title="Mean active builders over the last 3 complete months vs the 3 before — the in-progress month is excluded.">
+            <div
+              title={`Mean active builders over the last ${MOMENTUM_MONTHS} complete months vs the ${MOMENTUM_MONTHS} before — the in-progress month is excluded.`}
+            >
               <BigStat
                 value={
                   momentumPct == null
                     ? '—'
                     : `${momentumPct >= 0 ? '+' : ''}${momentumPct.toFixed(0)}%`
                 }
-                label="3-month momentum"
+                label={`${MOMENTUM_MONTHS}-month momentum`}
                 tone={
                   momentumPct == null
                     ? undefined
@@ -1334,7 +1330,7 @@ export function AdoptionPage() {
               {topGroups.length === 0 ? (
                 <div className="text-xs text-[var(--text-muted)]">No group activity yet.</div>
               ) : (
-                <div className="max-h-[22rem] space-y-2 overflow-y-auto">
+                <div className="space-y-2">
                   {topGroups.map((g) => {
                     const sparkCols: ColPoint[] = sparkAxis.map((month) => ({
                       key: month,
@@ -1395,7 +1391,7 @@ export function AdoptionPage() {
                 Top builders — by family
               </h4>
             </div>
-            <div className="max-h-[24rem] overflow-y-auto px-4 py-3">
+            <div className="px-4 py-3">
               {!inventoryView ? (
                 <div className="text-xs text-[var(--text-muted)]">
                   Waiting for the config inventory…

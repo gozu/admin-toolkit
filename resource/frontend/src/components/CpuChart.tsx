@@ -177,8 +177,9 @@ export function CpuChart() {
           </tbody>
         </table>
         <p className="mt-2 text-[10px] leading-snug text-[var(--text-muted)]">
-          `ps` reports %CPU as a lifetime average per process, so this is a coarse
-          snapshot rather than an instantaneous load reading.
+          On the local host per-process %CPU streams from /proc once per second
+          (a true per-interval reading). Remote hosts use `ps`, which reports a
+          lifetime average per process — a coarser snapshot.
         </p>
       </div>
     </motion.div>

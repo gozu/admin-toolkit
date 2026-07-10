@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { DataGrid } from './common/DataGrid';
-import { RefreshControl } from './common/RefreshControl';
+import { LiveRefreshToggle } from './common/LiveRefreshToggle';
 import {
   getProcessMetrics,
-  restartProcessMetricsScan,
   startProcessMetricsScan,
   subscribeProcessMetrics,
 } from '../state/processMetrics';
@@ -141,6 +140,9 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' | 're
   );
 
   const gridLifecycle = useMemo<Lifecycle | null>(() => {
+    // Once rows exist, refreshes land in place — no progress row, so the
+    // table never shifts vertically on the periodic re-scan tiers.
+    if (scan.processes.length > 0) return null;
     const startedAt = scan.startedAt ?? '1970-01-01T00:00:00.000Z';
     if (scan.status === 'loading') {
       return { phase: 'running', startedAt, progressPct: 0, message: 'Reading process table', updatedAt: startedAt };
@@ -155,7 +157,7 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' | 're
       };
     }
     return null;
-  }, [scan.status, scan.startedAt, scan.finishedAt, scan.error]);
+  }, [scan.status, scan.startedAt, scan.finishedAt, scan.error, scan.processes.length]);
 
   const title =
     variant === 'cpu' ? 'CPU usage' : variant === 'memory' ? 'Memory usage' : 'Process usage';
@@ -167,7 +169,7 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' | 're
           ? `Showing top ${scan.processes.length} of ${scan.totalProcesses} processes by ${
               variant === 'cpu' ? 'CPU' : variant === 'memory' ? 'memory' : 'CPU and memory'
             }.`
-          : 'Live snapshot from the host process table (ps), grouped by user.'}
+          : 'Live snapshot of the host process table, grouped by user.'}
       </span>
       <span className="flex items-center gap-2">
         <button
@@ -177,11 +179,7 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' | 're
         >
           {allExpanded ? 'Collapse all' : 'Expand all'}
         </button>
-        <RefreshControl
-          busy={scan.status === 'loading'}
-          fetchedAt={scan.status === 'done' ? scan.finishedAt : null}
-          onRefresh={restartProcessMetricsScan}
-        />
+        <LiveRefreshToggle />
       </span>
     </div>
   );

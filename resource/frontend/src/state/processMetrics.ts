@@ -144,3 +144,35 @@ export function restartProcessMetricsScan(): void {
   _controller = null;
   void runLoad(true);
 }
+
+/** One `processes` frame from /api/host/resource-stream (local host). */
+export interface StreamedProcessSnapshot {
+  ok?: boolean;
+  processes?: ProcessMetric[];
+  totalProcesses?: number;
+  truncated?: boolean;
+  dipHome?: string;
+}
+
+/** Patch a streamed snapshot into the store WITHOUT the loading round-trip —
+ * status never leaves 'done', so the table updates in place instead of
+ * mounting/unmounting a progress row every second. Supersedes any in-flight
+ * macro run (its stale result must not land after fresher streamed data). */
+export function applyStreamedProcessSnapshot(payload: StreamedProcessSnapshot): void {
+  if (!payload || payload.ok === false || !Array.isArray(payload.processes)) return;
+  _controller?.abort();
+  _controller = null;
+  const prev = store.get();
+  const now = new Date().toISOString();
+  store.set({
+    ...prev,
+    status: 'done',
+    error: null,
+    processes: payload.processes,
+    totalProcesses: payload.totalProcesses ?? payload.processes.length,
+    truncated: Boolean(payload.truncated),
+    dipHome: payload.dipHome ?? prev.dipHome,
+    startedAt: prev.startedAt ?? now,
+    finishedAt: now,
+  });
+}

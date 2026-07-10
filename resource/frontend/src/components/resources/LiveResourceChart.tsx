@@ -32,7 +32,7 @@ function fmtClock(ts: number): string {
 }
 
 export function LiveResourceChart() {
-  const { status, samples, intervalMs } = resourceSamplesStore.use();
+  const { status, samples, intervalMs, mode } = resourceSamplesStore.use();
   const points = useMemo(() => computeResourceSeries(samples), [samples]);
   const n = points.length;
   const last = n > 0 ? points[n - 1] : null;
@@ -89,11 +89,21 @@ export function LiveResourceChart() {
         <span className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
           <span
             aria-hidden
-            className={`h-1.5 w-1.5 rounded-full ${status === 'paused' ? 'bg-[var(--neon-amber)]' : 'animate-pulse bg-[var(--neon-green)]'}`}
+            className={`h-1.5 w-1.5 rounded-full ${
+              status === 'paused'
+                ? 'bg-[var(--neon-amber)]'
+                : status === 'idle'
+                  ? 'bg-[var(--text-muted)]'
+                  : 'animate-pulse bg-[var(--neon-green)]'
+            }`}
           />
           {status === 'paused'
             ? 'paused — tab in background'
-            : `sampling every ${Math.round(intervalMs / 1000)}s · ${windowMinutes} min window`}
+            : status === 'idle'
+              ? 'stopped'
+              : mode === 'stream'
+                ? `streaming · ${Math.round(intervalMs / 1000)}s · ${windowMinutes} min window`
+                : `sampling every ${Math.round(intervalMs / 1000)}s · ${windowMinutes} min window`}
         </span>
       </div>
 

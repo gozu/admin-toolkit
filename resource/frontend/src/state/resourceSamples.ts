@@ -1,16 +1,28 @@
-import { fetchJson } from '../utils/api';
+import { fetchJson, fetchSse } from '../utils/api';
 import { createSyncStore } from './createSyncStore';
 import { getActiveHostId } from './hostStore';
 import { subscribeSessionEpoch } from './sessionCache';
-import { restartProcessMetricsScan } from './processMetrics';
-import { refreshHostSummary, type HostSummaryData } from './hostSummary';
+import {
+  applyStreamedProcessSnapshot,
+  restartProcessMetricsScan,
+  type StreamedProcessSnapshot,
+} from './processMetrics';
+import { refreshHostSummary } from './hostSummary';
+import { formatMemory } from '../utils/formatters';
+import type { MemoryInfo, ParsedData } from '../types';
 
 // ─────────────────────────────────────────────────────────────────────────
-// Live resource sampling for the Resources page. Polls the uncached
-// /api/host/resource-sample endpoint on a setTimeout chain (no overlap),
-// keeps a ring buffer of raw cumulative /proc counters, and derives CPU%/
-// MEM% by diffing consecutive samples. A slower "heavy tier" re-runs the
-// full `ps` scan + host summary so the doughnuts/table stay current too.
+// Live resource sampling for the Resources page.
+//
+// LOCAL host: one long-lived SSE connection to /api/host/resource-stream.
+// The server samples /proc every second and pushes `sample` (raw cumulative
+// counters — diffed client-side into CPU%/MEM%, same as the polled path) and
+// `processes` (per-PID snapshot from /proc tick deltas) frames. No macro
+// runs, no per-second HTTP churn.
+//
+// REMOTE host: the pre-stream polling architecture — a setTimeout chain on
+// /api/host/resource-sample (15s) plus a slower "heavy tier" (60s) that
+// re-runs the full `ps` macro + host summary.
 // ─────────────────────────────────────────────────────────────────────────
 
 export interface ResourceCpuCounters {
@@ -55,22 +67,27 @@ export interface ResourceSamplesState {
   status: ResourcePollStatus;
   samples: ResourceSample[];
   intervalMs: number;
+  /** How samples arrive: pushed over SSE (local) or polled (remote). */
+  mode: 'stream' | 'poll';
   error: string | null;
 }
 
-// 120 intervals + the seed sample = 2 min of history.
+// 120 intervals + the seed sample = 2 min of history at the 1s stream cadence.
 export const MAX_SAMPLE_SLOTS = 121;
-const LOCAL_INTERVAL_MS = 1_000;
-const REMOTE_INTERVAL_MS = 1_000;
-// Heavy tier (full `ps` + host summary) on the same 1s cadence as the light tick.
-const LOCAL_HEAVY_MS = 1_000;
-const REMOTE_HEAVY_MS = 1_000;
+// The server-side stream tick (display only — the server drives the cadence).
+const LOCAL_STREAM_MS = 1_000;
+const REMOTE_INTERVAL_MS = 15_000;
+// Heavy tier (full `ps` macro + host summary), remote hosts only.
+const REMOTE_HEAVY_MS = 60_000;
 const MAX_CONSECUTIVE_FAILURES = 2;
+const MAX_STREAM_RETRIES = 2;
+const STREAM_RETRY_DELAY_MS = 2_000;
 
 const INITIAL_STATE: ResourceSamplesState = {
   status: 'idle',
   samples: [],
-  intervalMs: LOCAL_INTERVAL_MS,
+  intervalMs: LOCAL_STREAM_MS,
+  mode: 'stream',
   error: null,
 };
 
@@ -79,15 +96,16 @@ export const resourceSamplesStore = createSyncStore<ResourceSamplesState>(INITIA
 });
 
 let _active = false;
-// Chain token: every (re)start/resume bumps it so a stale in-flight tick from
-// a previous chain can never double-schedule.
+// Chain token: every (re)start/resume bumps it so a stale in-flight tick or a
+// dying stream consumer from a previous chain can never double-schedule.
 let _chain = 0;
 let _timer: ReturnType<typeof setTimeout> | null = null;
 let _failures = 0;
-let _intervalMs = LOCAL_INTERVAL_MS;
-let _heavyMs = LOCAL_HEAVY_MS;
+let _streamRetries = 0;
+let _isLocal = true;
 let _lastHeavyAt = 0;
-let _applyHostSummary: ((data: HostSummaryData) => void) | null = null;
+let _streamAbort: AbortController | null = null;
+let _applyParsedData: ((data: Partial<ParsedData>) => void) | null = null;
 let _visibilityHooked = false;
 
 function clearTimer(): void {
@@ -97,19 +115,114 @@ function clearTimer(): void {
   }
 }
 
+function abortStream(): void {
+  _streamAbort?.abort();
+  _streamAbort = null;
+}
+
+/** Launch the transport that matches the active host. */
+function launch(chainId: number): void {
+  if (_isLocal) void runStream(chainId);
+  else void tick(chainId);
+}
+
 function handleVisibility(): void {
   if (!_active) return;
   if (document.hidden) {
     _chain += 1;
     clearTimer();
+    abortStream();
     if (resourceSamplesStore.get().status === 'polling') {
       resourceSamplesStore.patch({ status: 'paused' });
     }
   } else if (resourceSamplesStore.get().status === 'paused') {
     resourceSamplesStore.patch({ status: 'polling' });
-    void tick(++_chain);
+    launch(++_chain);
   }
 }
+
+function appendSample(data: ResourceSampleResponse): void {
+  if (!data.cpu || !data.mem) return;
+  const prev = resourceSamplesStore.get();
+  const samples = [
+    ...prev.samples,
+    { ts: data.ts || Date.now() / 1000, cpu: data.cpu, mem: data.mem },
+  ].slice(-MAX_SAMPLE_SLOTS);
+  resourceSamplesStore.patch({ samples, status: 'polling', error: null });
+}
+
+/** Streamed meminfo counters → the `free -m`-shaped strings the Memory
+ * doughnut/summary render, so they go live without re-running host commands.
+ * Key set and semantics match sysinfo._parse_memory_info (used = total −
+ * free − buff/cache). */
+function memoryInfoFromSample(mem: ResourceMemCounters): MemoryInfo {
+  const fmt = (kb: number) => formatMemory(Math.max(0, Math.round(kb / 1024)));
+  const buffCacheKb = mem.buffersKb + mem.cachedKb;
+  const info: MemoryInfo = {
+    total: fmt(mem.totalKb),
+    used: fmt(mem.totalKb - mem.freeKb - buffCacheKb),
+    free: fmt(mem.freeKb),
+    available: fmt(mem.availableKb),
+    'buff/cache': fmt(buffCacheKb),
+  };
+  if (mem.swapTotalKb > 0) {
+    info['Swap total'] = fmt(mem.swapTotalKb);
+    info['Swap used'] = fmt(mem.swapTotalKb - mem.swapFreeKb);
+    info['Swap free'] = fmt(mem.swapFreeKb);
+  } else {
+    info['Swap'] = 'Not configured';
+  }
+  return info;
+}
+
+function giveUp(err: unknown): void {
+  // Stale backend without the stream endpoint, or a host that can't serve
+  // /proc — give up quietly; the page hides the live chart.
+  resourceSamplesStore.patch({
+    status: 'unsupported',
+    error: err instanceof Error ? err.message : String(err),
+  });
+  stopResourcePolling();
+}
+
+// ── Local transport: one SSE connection ─────────────────────────────────
+
+async function runStream(chainId: number): Promise<void> {
+  const controller = new AbortController();
+  _streamAbort = controller;
+  try {
+    for await (const frame of fetchSse('/api/host/resource-stream', {
+      signal: controller.signal,
+    })) {
+      if (!_active || chainId !== _chain) return;
+      if (frame.event === 'sample') {
+        const data = frame.payload as ResourceSampleResponse;
+        if (!data.ok) throw new Error(data.error || 'resource sample unavailable');
+        _streamRetries = 0;
+        appendSample(data);
+        if (data.mem && _applyParsedData) {
+          _applyParsedData({ memoryInfo: memoryInfoFromSample(data.mem) });
+        }
+      } else if (frame.event === 'processes') {
+        applyStreamedProcessSnapshot(frame.payload as StreamedProcessSnapshot);
+      }
+    }
+    // Server closed a live stream (backend restart, proxy timeout) — retry.
+    throw new Error('resource stream closed');
+  } catch (err) {
+    if (!_active || chainId !== _chain || controller.signal.aborted) return;
+    _streamRetries += 1;
+    if (_streamRetries > MAX_STREAM_RETRIES) {
+      giveUp(err);
+      return;
+    }
+    _timer = setTimeout(() => void runStream(chainId), STREAM_RETRY_DELAY_MS);
+  } finally {
+    if (_streamAbort === controller) _streamAbort = null;
+  }
+}
+
+// ── Remote transport: setTimeout poll chain + heavy tier ────────────────
 
 async function tick(chainId: number): Promise<void> {
   if (!_active || chainId !== _chain || document.hidden) return;
@@ -120,56 +233,49 @@ async function tick(chainId: number): Promise<void> {
       throw new Error(data.error || 'resource sample unavailable');
     }
     _failures = 0;
-    const prev = resourceSamplesStore.get();
-    const samples = [
-      ...prev.samples,
-      { ts: data.ts || Date.now() / 1000, cpu: data.cpu, mem: data.mem },
-    ].slice(-MAX_SAMPLE_SLOTS);
-    resourceSamplesStore.patch({ samples, status: 'polling', error: null });
+    appendSample(data);
   } catch (err) {
     if (!_active || chainId !== _chain) return;
     _failures += 1;
     if (_failures >= MAX_CONSECUTIVE_FAILURES) {
-      // Older remote toolkit without the macro, or a host that can't serve
-      // /proc — give up quietly; the page hides the live chart.
-      resourceSamplesStore.patch({
-        status: 'unsupported',
-        error: err instanceof Error ? err.message : String(err),
-      });
-      stopResourcePolling();
+      giveUp(err);
       return;
     }
   }
   const now = Date.now();
-  if (now - _lastHeavyAt >= _heavyMs) {
+  if (now - _lastHeavyAt >= REMOTE_HEAVY_MS) {
     _lastHeavyAt = now;
     restartProcessMetricsScan();
-    if (_applyHostSummary) void refreshHostSummary(_applyHostSummary);
+    if (_applyParsedData) void refreshHostSummary(_applyParsedData);
   }
   if (!_active || chainId !== _chain || document.hidden) return;
-  _timer = setTimeout(() => void tick(chainId), _intervalMs);
+  _timer = setTimeout(() => void tick(chainId), REMOTE_INTERVAL_MS);
 }
 
-/** Start (or re-start) polling for the active host. Idempotent while active.
- * Existing same-session samples are kept so navigating away and back doesn't
- * lose the history window. */
-export function startResourcePolling(applyHostSummary: (data: HostSummaryData) => void): void {
-  _applyHostSummary = applyHostSummary;
+/** Start (or re-start) live sampling for the active host. Idempotent while
+ * active. Existing same-session samples are kept so navigating away and back
+ * doesn't lose the history window. */
+export function startResourcePolling(applyParsedData: (data: Partial<ParsedData>) => void): void {
+  _applyParsedData = applyParsedData;
   if (_active) return;
   _active = true;
   _failures = 0;
-  // Don't fire the heavy tier on mount — the page already starts the process
-  // scan itself and the host summary is fresh from startup.
+  _streamRetries = 0;
+  // Don't fire the remote heavy tier on mount — the page already starts the
+  // process scan itself and the host summary is fresh from startup.
   _lastHeavyAt = Date.now();
-  const remote = getActiveHostId() !== 'local';
-  _intervalMs = remote ? REMOTE_INTERVAL_MS : LOCAL_INTERVAL_MS;
-  _heavyMs = remote ? REMOTE_HEAVY_MS : LOCAL_HEAVY_MS;
-  resourceSamplesStore.patch({ status: 'polling', intervalMs: _intervalMs, error: null });
+  _isLocal = getActiveHostId() === 'local';
+  resourceSamplesStore.patch({
+    status: 'polling',
+    intervalMs: _isLocal ? LOCAL_STREAM_MS : REMOTE_INTERVAL_MS,
+    mode: _isLocal ? 'stream' : 'poll',
+    error: null,
+  });
   if (!_visibilityHooked) {
     _visibilityHooked = true;
     document.addEventListener('visibilitychange', handleVisibility);
   }
-  void tick(++_chain);
+  launch(++_chain);
 }
 
 export function stopResourcePolling(): void {
@@ -177,6 +283,7 @@ export function stopResourcePolling(): void {
   _active = false;
   _chain += 1;
   clearTimer();
+  abortStream();
   const status = resourceSamplesStore.get().status;
   if (status === 'polling' || status === 'paused') {
     resourceSamplesStore.patch({ status: 'idle' });
@@ -184,7 +291,7 @@ export function stopResourcePolling(): void {
 }
 
 // Host switch / cache refresh resets the store (sessionScoped); make sure the
-// controller's timer chain dies with it.
+// controller's timer chain and stream connection die with it.
 subscribeSessionEpoch(() => stopResourcePolling());
 
 export interface ResourcePoint {

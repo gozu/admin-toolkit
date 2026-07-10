@@ -189,7 +189,13 @@ def api_adoption():
 
 @bp.route('/api/adoption/inventory')
 def api_adoption_inventory():
-    """Config-tree object inventory (macro): full history of surviving objects."""
+    """Config-tree object inventory (macro): full history of surviving objects.
+
+    Cache entries are scoped per active host: _cache_get routes every key
+    through caching._cache_key, which prefixes the request's X-DSS-Host-Id
+    (set on _THREAD_LOCAL by @before_request) — a remote host's inventory is
+    never served for the local one, matching /api/adoption and /api/cru.
+    """
     client = g.client
 
     def loader():
@@ -202,7 +208,11 @@ def api_adoption_inventory():
 
 @bp.route('/api/adoption/events')
 def api_adoption_events():
-    """Audit-log msgType event mix (macro): the captured audit window only."""
+    """Audit-log msgType event mix (macro): the captured audit window only.
+
+    Host-scoped cache: see api_adoption_inventory — _cache_key prefixes the
+    active host id, so entries never cross hosts.
+    """
     client = g.client
 
     def loader():

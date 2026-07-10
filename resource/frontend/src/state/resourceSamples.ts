@@ -58,13 +58,13 @@ export interface ResourceSamplesState {
   error: string | null;
 }
 
-// 120 intervals + the seed sample = 10 min of history locally, 30 min remote.
+// 120 intervals + the seed sample = 2 min of history.
 export const MAX_SAMPLE_SLOTS = 121;
-const LOCAL_INTERVAL_MS = 5_000;
-const REMOTE_INTERVAL_MS = 15_000;
-// Heavy tier (full `ps` + host summary) at a slower multiple of the light tick.
-const LOCAL_HEAVY_MS = 30_000;
-const REMOTE_HEAVY_MS = 60_000;
+const LOCAL_INTERVAL_MS = 1_000;
+const REMOTE_INTERVAL_MS = 1_000;
+// Heavy tier (full `ps` + host summary) on the same 1s cadence as the light tick.
+const LOCAL_HEAVY_MS = 1_000;
+const REMOTE_HEAVY_MS = 1_000;
 const MAX_CONSECUTIVE_FAILURES = 2;
 
 const INITIAL_STATE: ResourceSamplesState = {

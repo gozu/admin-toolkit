@@ -8,7 +8,7 @@ import {
 // Live CPU/MEM utilization strip — pure SVG (modeled on the Mission Control
 // Sparkline), NOT Chart.js: the shared chartConfig keys its 650ms draw-in
 // sweep by the labels signature, so a Chart.js line would replay its entrance
-// animation on every 5s tick. Fixed 0–100% y-scale (no rescale jump); data
+// animation on every tick. Fixed 0–100% y-scale (no rescale jump); data
 // enters at the right edge and slides left through a fixed 120-slot window.
 // Series colors come from the validated --viz-cat slots (fixed order); both
 // series are direct-labeled in the right gutter, so identity is never

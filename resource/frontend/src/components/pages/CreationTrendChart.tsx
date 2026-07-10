@@ -12,7 +12,11 @@ import {
   type TooltipItem,
 } from 'chart.js';
 import { BASE_TOOLTIP_STYLE, baseLegendLabels } from '../../utils/chartConfig';
-import { TREND_GROUPS, type InventoryTrendPoint } from '../../utils/inventoryData';
+import {
+  TREND_GROUPS,
+  TREND_GROUP_COLORS,
+  type InventoryTrendPoint,
+} from '../../utils/inventoryData';
 
 // Stacked monthly "objects created" bars by family group, modeled on
 // AdoptionTrendChart. This is the long persistent spine (config-tree
@@ -35,14 +39,10 @@ function cssVar(name: string, fallback: string): string {
   return value || fallback;
 }
 
-const GROUP_COLOR_VARS = [
-  '--viz-cat-1',
-  '--viz-cat-2',
-  '--viz-cat-3',
-  '--viz-cat-4',
-  '--viz-cat-5',
-  '--viz-cat-6',
-];
+function resolveVar(value: string, fallback: string): string {
+  const name = value.startsWith('var(') ? value.slice(4, -1) : value;
+  return cssVar(name, fallback);
+}
 
 export function CreationTrendChart({
   points,
@@ -63,7 +63,7 @@ export function CreationTrendChart({
         type: 'bar' as const,
         label: group.label,
         data: points.map((p) => p.groups[gi] ?? 0),
-        backgroundColor: cssVar(GROUP_COLOR_VARS[gi % GROUP_COLOR_VARS.length], '#888'),
+        backgroundColor: resolveVar(TREND_GROUP_COLORS[gi], '#888'),
         borderWidth: 0,
         borderRadius: 1,
         barPercentage: 0.9,
@@ -110,6 +110,13 @@ export function CreationTrendChart({
         ctx.save();
         ctx.fillStyle = isDark ? 'rgba(153, 123, 224, 0.10)' : 'rgba(153, 123, 224, 0.12)';
         ctx.fillRect(left, top, right - left, bottom - top);
+        // On-chart label so the shading is self-explanatory (was tooltip-only).
+        if (right - left > 70) {
+          ctx.fillStyle = isDark ? 'rgba(178, 152, 235, 0.75)' : 'rgba(110, 84, 180, 0.75)';
+          ctx.font = "9px 'JetBrains Mono', monospace";
+          ctx.textAlign = 'right';
+          ctx.fillText('audit window', right - 6, top + 11);
+        }
         ctx.restore();
       },
     }),

@@ -111,6 +111,28 @@ export const TREND_GROUPS: TrendGroupDef[] = [
   },
 ];
 
+// THE family-group palette — one fixed color per TREND_GROUPS slot, used
+// identically everywhere a family group appears (trend chart, composition,
+// grid segment bars, persona mixes). "Other" is deliberately grey: red stays
+// reserved for warning states, and the catch-all bucket should recede.
+export const TREND_GROUP_COLORS = [
+  'var(--viz-cat-1)', // Datasets — blue
+  'var(--viz-cat-2)', // Visual recipes — aqua
+  'var(--viz-cat-3)', // Code & ML recipes — yellow
+  'var(--viz-cat-4)', // Dashboards & insights — green
+  'var(--viz-cat-5)', // Webapps & GenAI — violet
+  'var(--text-tertiary)', // Other — grey (recedes; red = warnings only)
+];
+
+const FAMILY_GROUP_INDEX = new Map<ObjectFamily, number>();
+TREND_GROUPS.forEach((g, gi) => g.families.forEach((f) => FAMILY_GROUP_INDEX.set(f, gi)));
+
+/** TREND_GROUPS slot a family belongs to — colors resolve through this so a
+ * family is never colored by sort rank. */
+export function familyGroupIndex(family: ObjectFamily): number {
+  return FAMILY_GROUP_INDEX.get(family) ?? TREND_GROUPS.length - 1;
+}
+
 export interface InventoryCompositionRow {
   family: ObjectFamily;
   label: string;
@@ -212,6 +234,7 @@ export interface InventoryProjectViewRow {
   lastEditMs: number | null;
   lastEditor: string | null;
   stalePct: number; // % of dated objects last edited > 12 months ago
+  datedObjects: number; // stalePct denominator — mute the % when this is tiny
   maturityScore: number; // 0–6, see MATURITY_DIMENSIONS
   /** notebooks per recipe — per PROJECT only (.ipynb carries no creator). */
   notebookRecipeRatio: number | null;
@@ -264,13 +287,22 @@ export function asObjectInventory(data: AdoptionInventoryData | null): ObjectInv
   };
 }
 
-function monthKeyUTC(ms: number): string {
+export function monthKeyUTC(ms: number): string {
   const d = new Date(ms);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
+/** Drop trailing in-progress-month points: a 10-day July plotted next to full
+ * months always reads as a collapse. Keyed by month — never `slice(0, -1)`,
+ * which throws away a COMPLETE month whenever the current one has no data. */
+export function completeMonthsOnly<T extends { month: string }>(points: T[], nowMs: number): T[] {
+  if (!Number.isFinite(nowMs) || nowMs <= 0) return points;
+  const currentKey = monthKeyUTC(nowMs);
+  return points.filter((p) => p.month < currentKey);
+}
+
 /** Zero-filled 'YYYY-MM' axis between the first and last observed months. */
-function fillMonthRange(monthKeys: string[]): string[] {
+export function fillMonthRange(monthKeys: string[]): string[] {
   if (monthKeys.length === 0) return [];
   const sorted = [...monthKeys].sort();
   const first = sorted[0];
@@ -473,6 +505,7 @@ function collapseProjects(inventory: ObjectInventory, refMonth: string): Stalene
       lastEditMs: p.lastHumanEditMs,
       lastEditor: p.lastEditor,
       stalePct: dated > 0 ? (stale / dated) * 100 : 0,
+      datedObjects: dated,
       maturityScore,
       notebookRecipeRatio: recipes > 0 ? notebooks / recipes : null,
       groups: TREND_GROUPS.map((g) => sumFamilies(p.byFamily, g.families)),

@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useDiag } from '../../context/DiagContext';
 import { adoptionScan } from '../../state/adoptionScan';
 import { adoptionInventoryScan } from '../../state/adoptionInventoryScan';
@@ -6,9 +7,14 @@ import { adoptionEventsScan } from '../../state/adoptionEventsScan';
 import { resolveLifecycleFromFields } from '../../utils/pageLifecycle';
 import {
   buildInventoryView,
+  completeMonthsOnly,
+  familyGroupIndex,
+  fillMonthRange,
+  monthKeyUTC,
   sumFamilies,
   MATURITY_DIMENSIONS,
   TREND_GROUPS,
+  TREND_GROUP_COLORS,
   type InventoryPersonaRow,
   type InventoryProjectViewRow,
   type InventoryView,
@@ -21,26 +27,35 @@ import {
 } from '../../utils/auditEventBuckets';
 import { DataGrid } from '../common/DataGrid';
 import { ProgressIndicator } from '../common/ProgressIndicator';
-import { BigStat, BarRow, SegmentBar, UsageBar } from './missionControl/microViz';
-import { CATEGORICAL_COLORS } from './missionControl/tokens';
+import { BigStat, SegmentBar, UsageBar } from './missionControl/microViz';
+import { TILE_VARIANTS } from './missionControl/tokens';
 import { AdoptionTrendChart } from './AdoptionTrendChart';
 import { CreationTrendChart } from './CreationTrendChart';
 import type { ColumnDef } from '../../utils/dataGridTypes';
 import type { AdoptionMonthPoint, AdoptionProjectRow } from '../../types';
+import './adoption.css';
 
 const EMPTY: never[] = [];
 
-// Window-honesty pills — three provenances on this page, each stamped:
-// - Persistent (git history / user snapshot): spans the full history.
+// The stale-% column needs a real denominator before it may scream red — a
+// 6-object toy project at "100% stale" is noise, not signal.
+const MIN_STALE_SAMPLE = 10;
+// Creation-trend chart shows the recent era; the full span is summarized in a
+// footnote (a multi-year zero desert would crush the informative months).
+const CREATION_CHART_MONTHS = 48;
+
+// Window-honesty pills — three provenances on this page, each stamped once per
+// card (or once per section for the health grid):
+// - Full history (git history / user snapshot): spans the persistent record.
 // - Config (inventory macro): full history but only SURVIVING objects.
 // - Audit (events macro): whatever window the rotated audit files still cover.
 function PersistentPill() {
   return (
     <span
       className="badge badge-info font-mono text-[10px] uppercase tracking-[0.1em]"
-      title="Spans each project's full git history — not a short audit window."
+      title="Spans the full persistent history (git logs / user snapshot) — not a short audit window."
     >
-      Persistent · full history
+      Full history
     </span>
   );
 }
@@ -55,7 +70,7 @@ function ConfigHistoryPill() {
       className="badge badge-info font-mono text-[10px] uppercase tracking-[0.1em]"
       title="Mined from config-tree object metadata: full history, but only objects that still exist today — deleted work is invisible (survivorship bias)."
     >
-      Config · full history of surviving objects
+      Config · surviving objects
     </span>
   );
 }
@@ -71,12 +86,222 @@ function AuditWindowPill({ coverageDays }: { coverageDays: number | null }) {
   );
 }
 
+/** Thin section header: groups related cards under one title + one provenance
+ * pill instead of stamping every card. */
+function SectionHeader({
+  title,
+  caption,
+  right,
+}: {
+  title: string;
+  caption?: string;
+  right?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-[var(--border-glass)] pb-2">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+        <h3 className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[var(--text-secondary)]">
+          {title}
+        </h3>
+        {caption && <span className="text-[10px] text-[var(--text-tertiary)]">{caption}</span>}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+/** The one family-group legend — same fixed colors everywhere a family mix
+ * appears (trend chart, composition, grid bars, persona bars). */
+function FamilyGroupLegend({ className = '' }: { className?: string }) {
+  return (
+    <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 ${className}`}>
+      {TREND_GROUPS.map((g, gi) => (
+        <span
+          key={g.key}
+          className="inline-flex items-center gap-1 whitespace-nowrap text-[9px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]"
+        >
+          <span
+            className="h-1.5 w-1.5 flex-shrink-0 rounded-[2px]"
+            style={{ background: TREND_GROUP_COLORS[gi] }}
+          />
+          {g.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Share label that never rounds a real count down to "0%". */
+function pctLabel(value: number, total: number): string {
+  if (value <= 0 || total <= 0) return '0%';
+  const pct = (value / total) * 100;
+  return pct < 1 ? '<1%' : `${Math.round(pct)}%`;
+}
+
+interface MixItem {
+  key: string;
+  label: string;
+  color: string;
+  value: number;
+  /** Hover tooltip for the legend row. */
+  hint?: string;
+}
+
+/** 100%-stacked bar + its legend, hover-linked: pointing at a legend row
+ * spotlights that segment (and vice versa). One encoding + one visible
+ * legend — never a second redundant bar list. */
+function LinkedMix({
+  items,
+  height = 6,
+  pctTotal,
+}: {
+  items: MixItem[];
+  height?: number;
+  /** Share denominator override (defaults to the sum of the items). */
+  pctTotal?: number;
+}) {
+  const [hot, setHot] = useState<string | null>(null);
+  const total = items.reduce((s, it) => s + it.value, 0);
+  const denom = pctTotal ?? total;
+  return (
+    <div>
+      <div
+        className="flex w-full gap-[2px] overflow-hidden rounded-full bg-[var(--bg-elevated)]"
+        style={{ height }}
+        onMouseLeave={() => setHot(null)}
+      >
+        {items
+          .filter((it) => it.value > 0)
+          .map((it) => (
+            <div
+              key={it.key}
+              title={`${it.label} · ${it.value.toLocaleString()} (${pctLabel(it.value, denom)})`}
+              onMouseEnter={() => setHot(it.key)}
+              className={`adk-seg rounded-[1px] ${
+                hot === null ? '' : hot === it.key ? 'adk-seg-hot' : 'adk-seg-dim'
+              }`}
+              style={{ flexGrow: it.value, flexBasis: 0, background: it.color }}
+            />
+          ))}
+      </div>
+      <div className="mt-3 space-y-0.5">
+        {items.map((it) => (
+          <div
+            key={it.key}
+            title={it.hint}
+            onMouseEnter={() => setHot(it.key)}
+            onMouseLeave={() => setHot(null)}
+            className={`adk-legend-row -mx-1 flex items-center gap-2 px-1 py-0.5 ${
+              hot !== null && hot !== it.key ? 'adk-legend-row-dim' : ''
+            }`}
+          >
+            <span
+              className="adk-dot h-2 w-2 flex-shrink-0 rounded-[2px]"
+              style={{ background: it.color }}
+            />
+            <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
+              {it.label}
+            </span>
+            <span className="w-10 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]">
+              {pctLabel(it.value, denom)}
+            </span>
+            <span className="w-16 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
+              {it.value.toLocaleString()}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface ColPoint {
+  key: string;
+  value: number;
+  title: string;
+  /** Optional per-column x label (e.g. maturity scores). */
+  label?: string;
+  /** Dimmed column (no measurable value). */
+  muted?: boolean;
+}
+
+/** CSS mini column chart (2D, canvas-free): bars grow in on mount with a
+ * slight stagger, brighten on hover, value revealed above the hovered bar. */
+function MiniColumns({
+  points,
+  color = 'var(--accent)',
+  height = 96,
+  axisLeft,
+  axisRight,
+  valueSuffix = '',
+}: {
+  points: ColPoint[];
+  color?: string;
+  height?: number;
+  axisLeft?: string;
+  axisRight?: string;
+  valueSuffix?: string;
+}) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  if (points.length === 0) return null;
+  const max = Math.max(1, ...points.map((p) => p.value));
+  const hasLabels = points.some((p) => p.label);
+  return (
+    <div>
+      <div className="flex items-end gap-[3px]" style={{ height }}>
+        {points.map((p, i) => (
+          <div
+            key={p.key}
+            title={p.title}
+            className="adk-colwrap flex h-full min-w-0 flex-1 flex-col justify-end"
+          >
+            <span className="adk-colval pb-0.5 text-center font-mono text-[9px] leading-none text-[var(--text-secondary)]">
+              {p.muted ? '—' : `${p.value.toLocaleString()}${valueSuffix}`}
+            </span>
+            <span
+              className="adk-col w-full rounded-t-[2px]"
+              style={{
+                height: ready ? `${p.value <= 0 ? 2 : Math.max(5, (p.value / max) * 100)}%` : '0%',
+                background: color,
+                opacity: p.muted || p.value <= 0 ? 0.18 : 0.85,
+                transitionDelay: `${i * 14}ms`,
+              }}
+            />
+          </div>
+        ))}
+      </div>
+      {hasLabels && (
+        <div className="mt-1 flex gap-[3px]">
+          {points.map((p) => (
+            <span
+              key={p.key}
+              className="min-w-0 flex-1 truncate text-center font-mono text-[8px] leading-none text-[var(--text-tertiary)]"
+            >
+              {p.label ?? ''}
+            </span>
+          ))}
+        </div>
+      )}
+      {(axisLeft || axisRight) && (
+        <div className="mt-1 flex items-center justify-between font-mono text-[8px] leading-none text-[var(--text-tertiary)]">
+          <span>{axisLeft}</span>
+          <span>{axisRight}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Persona chip for a Top-Builders row, when the inventory knows this login
  * as a creator. */
 function BuilderPersonaChip({ persona }: { persona: InventoryPersonaRow }) {
   return (
     <span
-      className="rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-1 py-px font-mono text-[9px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]"
+      className="adk-chip rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-1 py-px font-mono text-[9px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]"
       title={`${persona.created.toLocaleString()} surviving objects created · ${persona.shareSummary}`}
     >
       {persona.persona ?? `${persona.created} obj`}
@@ -84,14 +309,14 @@ function BuilderPersonaChip({ persona }: { persona: InventoryPersonaRow }) {
   );
 }
 
-const catColor = (i: number) =>
-  i < CATEGORICAL_COLORS.length ? CATEGORICAL_COLORS[i] : 'var(--text-tertiary)';
-
+// Audit bucket palette — deliberately NOT the family-group palette (neon vars
+// instead of --viz-cat) so "explore" can never be misread as "Datasets".
+// Always accompanied by a visible dot legend.
 const BUCKET_COLORS: Record<AuditEventBucket, string> = {
   build: 'var(--neon-green)',
-  run: catColor(0),
-  explore: catColor(1),
-  consume: catColor(2),
+  run: 'var(--neon-purple)',
+  explore: 'var(--neon-cyan)',
+  consume: 'var(--neon-amber)',
   other: 'var(--text-tertiary)',
 };
 
@@ -100,20 +325,31 @@ const BUCKET_COLORS: Record<AuditEventBucket, string> = {
 function BuilderBucketChip({ buckets }: { buckets: Record<string, number> }) {
   const total = Object.values(buckets).reduce((s, v) => s + v, 0);
   if (total === 0) return null;
-  const pct = (k: AuditEventBucket) => Math.round(((buckets[k] ?? 0) / total) * 100);
   return (
     <span
-      className="rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-1 py-px font-mono text-[9px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]"
-      title={AUDIT_EVENT_BUCKETS.map((k) => `${k} ${pct(k)}%`).join(' · ')}
+      className="adk-chip rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-1 py-px font-mono text-[9px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]"
+      title={AUDIT_EVENT_BUCKETS.map(
+        (k) => `${AUDIT_EVENT_BUCKET_LABELS[k]}: ${pctLabel(buckets[k] ?? 0, total)}`,
+      ).join(' · ')}
     >
-      {pct('build')}% build · {pct('consume')}% consume
+      {pctLabel(buckets.build ?? 0, total)} build · {pctLabel(buckets.consume ?? 0, total)} consume
     </span>
   );
 }
 
+// Sequential ramp for edit intensity (same hue, rising weight — it's an
+// ordered scale, not categories).
+const EDIT_RAMP = [
+  'var(--text-tertiary)',
+  'color-mix(in srgb, var(--accent) 45%, var(--bg-elevated))',
+  'color-mix(in srgb, var(--accent) 75%, var(--bg-elevated))',
+  'var(--accent)',
+];
+
 /** Derived health cards: edit intensity, staleness, bus factor, maturity,
  * seat types, dormant creators — all view-time collapses of the inventory
- * macro's accumulator, every one stamped with the survivorship caveat. */
+ * macro's accumulator. The survivorship caveat is stamped once on the section
+ * header. */
 function InventoryHealthCards({
   view,
   nowMs,
@@ -126,73 +362,62 @@ function InventoryHealthCards({
   const { staleness, busFactor, maturityHistogram, seatTypes, dormantCreators, editIntensity } =
     view;
 
-  const editRows = [
-    { label: 'Saved once', value: editIntensity.editBuckets.v1, color: 'var(--text-tertiary)' },
-    { label: '2–5 saves', value: editIntensity.editBuckets.v2to5, color: catColor(0) },
-    { label: '6–20 saves', value: editIntensity.editBuckets.v6to20, color: catColor(1) },
-    { label: '21+ saves', value: editIntensity.editBuckets.v21plus, color: catColor(2) },
+  const editItems: MixItem[] = [
+    { key: 'v1', label: 'Saved once', value: editIntensity.editBuckets.v1, color: EDIT_RAMP[0] },
+    { key: 'v2', label: '2–5 saves', value: editIntensity.editBuckets.v2to5, color: EDIT_RAMP[1] },
+    { key: 'v6', label: '6–20 saves', value: editIntensity.editBuckets.v6to20, color: EDIT_RAMP[2] },
+    { key: 'v21', label: '21+ saves', value: editIntensity.editBuckets.v21plus, color: EDIT_RAMP[3] },
   ];
-  const editMax = Math.max(1, ...editRows.map((r) => r.value));
 
-  const staleSegments = [
-    { label: 'Fresh (≤3 mo)', value: staleness.freshCount, color: 'var(--neon-green)' },
-    { label: 'Aging (3–12 mo)', value: staleness.agingCount, color: 'var(--neon-yellow)' },
-    { label: 'Stale (>12 mo)', value: staleness.staleCount, color: 'var(--neon-red)' },
-    { label: 'Undated', value: staleness.unknownCount, color: 'var(--text-tertiary)' },
+  const staleItems: MixItem[] = [
+    { key: 'fresh', label: 'Fresh (≤3 mo)', value: staleness.freshCount, color: 'var(--neon-green)' },
+    { key: 'aging', label: 'Aging (3–12 mo)', value: staleness.agingCount, color: 'var(--neon-amber)' },
+    { key: 'stale', label: 'Stale (>12 mo)', value: staleness.staleCount, color: 'var(--neon-red)' },
+    { key: 'undated', label: 'Undated', value: staleness.unknownCount, color: 'var(--text-tertiary)' },
   ];
-  const staleMax = Math.max(1, ...staleSegments.map((s) => s.value));
 
-  const busRows = [
-    { label: 'Single creator', value: busFactor.singleCreator, color: 'var(--neon-red)' },
-    { label: '2–3 creators', value: busFactor.twoToThree, color: 'var(--neon-yellow)' },
-    { label: '4+ creators', value: busFactor.fourPlus, color: 'var(--neon-green)' },
+  const busItems: MixItem[] = [
+    {
+      key: 'single',
+      label: 'Single creator',
+      value: busFactor.singleCreator,
+      color: 'var(--neon-red)',
+      hint: 'All context leaves with one person.',
+    },
+    { key: 'few', label: '2–3 creators', value: busFactor.twoToThree, color: 'var(--neon-amber)' },
+    { key: 'many', label: '4+ creators', value: busFactor.fourPlus, color: 'var(--neon-green)' },
   ];
-  const busMax = Math.max(1, ...busRows.map((r) => r.value));
   const singleSharePct =
     busFactor.measuredProjects > 0
       ? Math.round((busFactor.singleCreator / busFactor.measuredProjects) * 100)
       : null;
 
-  const maturityMax = Math.max(1, ...maturityHistogram);
-  const maturityTop = MATURITY_DIMENSIONS.length;
-  const seatMax = Math.max(1, ...seatTypes.map((s) => Math.max(s.users, s.creators)));
+  const maturityPoints: ColPoint[] = maturityHistogram.map((count, score) => ({
+    key: `s${score}`,
+    value: count,
+    label: `${score}`,
+    title: `Maturity ${score}/${MATURITY_DIMENSIONS.length} · ${count.toLocaleString()} ${count === 1 ? 'project' : 'projects'}`,
+  }));
+
+  const seatMax = Math.max(1, ...seatTypes.map((s) => s.users));
   const topDormant = dormantCreators.slice(0, 8);
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       {/* Edit intensity */}
       <div className="chart-container">
-        <div className="chart-header flex items-center justify-between gap-3">
+        <div className="chart-header">
           <h4 title="How often surviving objects were re-saved after creation (versionTag save counts). Objects without a version tag are not measured.">
             Edit intensity
           </h4>
-          <ConfigHistoryPill />
         </div>
         <div className="px-4 py-3">
           {editIntensity.versionedObjects === 0 ? (
             <div className="text-xs text-[var(--text-muted)]">No version tags found.</div>
           ) : (
             <>
-              <SegmentBar
-                height={6}
-                segments={editRows.map((r) => ({
-                  value: r.value,
-                  color: r.color,
-                  title: `${r.label} · ${r.value.toLocaleString()}`,
-                }))}
-              />
-              <div className="mt-3 space-y-1">
-                {editRows.map((r) => (
-                  <BarRow
-                    key={r.label}
-                    label={r.label}
-                    value={r.value.toLocaleString()}
-                    pct={(r.value / editMax) * 100}
-                    tone="info"
-                  />
-                ))}
-              </div>
-              <div className="pt-1.5 text-[10px] text-[var(--text-tertiary)]">
+              <LinkedMix items={editItems} />
+              <div className="pt-2 text-[10px] text-[var(--text-tertiary)]">
                 {editIntensity.savedOnce.toLocaleString()} objects never re-saved after creation ·{' '}
                 {editIntensity.versionedObjects.toLocaleString()} versioned objects measured
               </div>
@@ -203,32 +428,13 @@ function InventoryHealthCards({
 
       {/* Staleness / zombies */}
       <div className="chart-container">
-        <div className="chart-header flex items-center justify-between gap-3">
+        <div className="chart-header">
           <h4 title="Age of each object's last config edit, measured against the newest edit anywhere in the config tree (never the wall clock). Zombie = a project whose newest config edit is over 12 months old.">
             Content staleness
           </h4>
-          <ConfigHistoryPill />
         </div>
         <div className="px-4 py-3">
-          <SegmentBar
-            height={6}
-            segments={staleSegments.map((s) => ({
-              value: s.value,
-              color: s.color,
-              title: `${s.label} · ${s.value.toLocaleString()}`,
-            }))}
-          />
-          <div className="mt-3 space-y-1">
-            {staleSegments.map((s) => (
-              <BarRow
-                key={s.label}
-                label={s.label}
-                value={s.value.toLocaleString()}
-                pct={(s.value / staleMax) * 100}
-                tone="info"
-              />
-            ))}
-          </div>
+          <LinkedMix items={staleItems} />
           <div className="mt-3 flex items-baseline gap-3">
             <BigStat
               value={staleness.zombieProjects}
@@ -245,11 +451,10 @@ function InventoryHealthCards({
 
       {/* Bus factor */}
       <div className="chart-container">
-        <div className="chart-header flex items-center justify-between gap-3">
+        <div className="chart-header">
           <h4 title="Knowledge concentration: how many distinct creators each project's surviving objects have. Single-creator projects lose all context if that person leaves.">
             Bus factor
           </h4>
-          <ConfigHistoryPill />
         </div>
         <div className="px-4 py-3">
           {busFactor.measuredProjects === 0 ? (
@@ -260,72 +465,41 @@ function InventoryHealthCards({
                 <BigStat
                   value={singleSharePct == null ? '—' : `${singleSharePct}%`}
                   label="Single-creator projects"
-                  tone={
-                    singleSharePct == null ? undefined : singleSharePct >= 50 ? 'warn' : 'ok'
-                  }
+                  tone={singleSharePct == null ? undefined : singleSharePct >= 50 ? 'warn' : 'ok'}
                 />
                 <span className="text-[10px] text-[var(--text-tertiary)]">
                   of {busFactor.measuredProjects} projects with tagged objects
                 </span>
               </div>
-              <SegmentBar
-                height={6}
-                segments={busRows.map((r) => ({
-                  value: r.value,
-                  color: r.color,
-                  title: `${r.label} · ${r.value.toLocaleString()} projects`,
-                }))}
-              />
-              <div className="mt-3 space-y-1">
-                {busRows.map((r) => (
-                  <BarRow
-                    key={r.label}
-                    label={r.label}
-                    value={r.value.toLocaleString()}
-                    pct={(r.value / busMax) * 100}
-                    tone="info"
-                  />
-                ))}
-              </div>
+              <LinkedMix items={busItems} />
             </>
           )}
         </div>
       </div>
 
-      {/* Maturity distribution */}
+      {/* Maturity distribution — a real histogram */}
       <div className="chart-container">
-        <div className="chart-header flex items-center justify-between gap-3">
+        <div className="chart-header">
           <h4
             title={`One point per practice present in a project's surviving objects: ${MATURITY_DIMENSIONS.map((d) => d.label).join(' · ')}.`}
           >
-            Project maturity (0–{maturityTop})
+            Project maturity (0–{MATURITY_DIMENSIONS.length})
           </h4>
-          <ConfigHistoryPill />
         </div>
-        <div className="space-y-1 px-4 py-3">
-          {maturityHistogram.map((count, score) => (
-            <BarRow
-              key={score}
-              label={
-                <span title={score === 0 ? 'No practice dimension present' : undefined}>
-                  score {score}
-                </span>
-              }
-              value={`${count.toLocaleString()} proj`}
-              pct={(count / maturityMax) * 100}
-              tone="info"
-            />
-          ))}
+        <div className="px-4 py-3">
+          <MiniColumns points={maturityPoints} height={110} />
+          <div className="pt-2 text-[10px] text-[var(--text-tertiary)]">
+            projects by practice score — hover a bar for the count
+          </div>
         </div>
       </div>
 
       {/* Seat types × creators */}
       <div className="chart-container">
-        <div className="chart-header flex items-center justify-between gap-3">
-          <h4 title="Seat profiles from the user snapshot crossed with config-history creators. 'unknown profile' groups creators whose account no longer exists.">
+        <div className="chart-header">
+          <h4 title="Seat profiles from the user snapshot crossed with config-history creators. Bar = share of that profile's accounts that ever created a surviving object.">
             Seat types — who actually builds
           </h4>
-          <ConfigHistoryPill />
         </div>
         <div className="max-h-72 space-y-1.5 overflow-y-auto px-4 py-3">
           {seatTypes.length === 0 && (
@@ -334,27 +508,33 @@ function InventoryHealthCards({
           {seatTypes.map((s) => {
             const pct = s.users > 0 ? (s.creators / s.users) * 100 : null;
             return (
-              <div key={s.profile} className="flex items-center gap-2">
-                <span
-                  className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]"
-                  title={
-                    s.users > 0
-                      ? `${s.creators} of ${s.users} ${s.profile} accounts created at least one surviving object`
-                      : `${s.creators} creators are not in the current user snapshot (likely deleted accounts)`
-                  }
-                >
+              <div
+                key={s.profile}
+                className="adk-hover-row -mx-1 flex items-center gap-2 px-1 py-0.5"
+                title={
+                  s.users > 0
+                    ? `${s.creators} of ${s.users} ${s.profile} accounts created at least one surviving object`
+                    : `${s.creators} creators are not in the current user snapshot (likely deleted accounts)`
+                }
+              >
+                <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
                   {s.profile}
                   <span className="ml-1.5 text-[10px] text-[var(--text-tertiary)]">
                     {s.creators} {s.creators === 1 ? 'creator' : 'creators'}
-                    {s.users > 0 ? ` / ${s.users} users` : ''}
+                    {s.users > 0 ? ` / ${s.users} ${s.users === 1 ? 'user' : 'users'}` : ''}
                   </span>
                 </span>
-                <span className="h-1 w-14 flex-shrink-0 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+                {pct != null && (
                   <span
-                    className="block h-full rounded-full bg-[var(--accent)]"
-                    style={{ width: `${(Math.max(s.users, s.creators) / seatMax) * 100}%` }}
-                  />
-                </span>
+                    className="h-1 flex-shrink-0 overflow-hidden rounded-full bg-[var(--bg-elevated)]"
+                    style={{ width: `${Math.max(14, (s.users / seatMax) * 56)}px` }}
+                  >
+                    <span
+                      className="block h-full rounded-full bg-[var(--accent)] transition-[width] duration-500"
+                      style={{ width: `${Math.min(100, pct)}%` }}
+                    />
+                  </span>
+                )}
                 <span className="w-12 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
                   {pct == null ? '—' : `${Math.round(pct)}%`}
                 </span>
@@ -366,13 +546,12 @@ function InventoryHealthCards({
 
       {/* Dormant creators */}
       <div className="chart-container">
-        <div className="chart-header flex items-center justify-between gap-3">
+        <div className="chart-header">
           <h4
             title={`Creators with surviving objects but no session in the last ${view.dormantThresholdDays} days (measured against the newest session in the snapshot) — knowledge that may be walking out the door.`}
           >
             Dormant creators
           </h4>
-          <ConfigHistoryPill />
         </div>
         <div className="px-4 py-3">
           {!hasSessionData ? (
@@ -386,7 +565,10 @@ function InventoryHealthCards({
           ) : (
             <div className="space-y-1">
               {topDormant.map((d) => (
-                <div key={d.login} className="flex items-center gap-2 text-[11px]">
+                <div
+                  key={d.login}
+                  className="adk-hover-row -mx-1 flex items-center gap-2 px-1 py-0.5 text-[11px]"
+                >
                   <span className="min-w-0 flex-1 truncate font-mono text-[var(--text-secondary)]">
                     {d.login}
                     {!d.inUserSnapshot && (
@@ -421,7 +603,13 @@ function InventoryHealthCards({
 
 /** Per-project config-history drill-down: creator counts + family mix. Used
  * inside the expanded project row. */
-function InventoryCreatorsSection({ inv, invNowMs }: { inv: InventoryProjectViewRow; invNowMs: number }) {
+function InventoryCreatorsSection({
+  inv,
+  invNowMs,
+}: {
+  inv: InventoryProjectViewRow;
+  invNowMs: number;
+}) {
   const creators = Object.entries(inv.creators).sort((a, b) => b[1] - a[1]);
   const shown = creators.slice(0, 40);
   return (
@@ -440,16 +628,17 @@ function InventoryCreatorsSection({ inv, invNowMs }: { inv: InventoryProjectView
             : ''}
         </span>
       </div>
-      <div className="mb-2 max-w-md">
+      <div className="mb-1.5 max-w-md">
         <SegmentBar
           height={4}
           segments={TREND_GROUPS.map((g, gi) => ({
             value: inv.groups[gi],
-            color: catColor(gi),
+            color: TREND_GROUP_COLORS[gi],
             title: `${g.label} · ${inv.groups[gi].toLocaleString()}`,
           }))}
         />
       </div>
+      <FamilyGroupLegend className="mb-2" />
       <div className="flex flex-wrap gap-1.5">
         {creators.length === 0 && (
           <span className="text-xs text-[var(--text-muted)]">
@@ -459,7 +648,7 @@ function InventoryCreatorsSection({ inv, invNowMs }: { inv: InventoryProjectView
         {shown.map(([login, count]) => (
           <span
             key={login}
-            className="rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]"
+            className="adk-chip rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]"
             title={`${count.toLocaleString()} surviving objects created by ${login} in this project`}
           >
             {login} <span className="text-[var(--text-tertiary)]">×{count.toLocaleString()}</span>
@@ -475,26 +664,34 @@ function InventoryCreatorsSection({ inv, invNowMs }: { inv: InventoryProjectView
   );
 }
 
-const MONTH_INITIALS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+// Heat cells share the commit-bar hue from AdoptionTrendChart — same series,
+// same color, different lens (the old blue-vs-violet split read as two datasets).
+const HEAT_RGB = '153, 123, 224';
 
 /** GitHub-style calendar of monthly activity intensity: one row per year, one
- * cell per month. Same data as the trend line, different lens — the grid makes
- * seasonal rhythm and dormant stretches readable at a glance. */
+ * cell per month. Same data as the trend chart, different lens — the grid makes
+ * seasonal rhythm and dormant stretches readable at a glance. The current
+ * in-progress month renders dashed (the charts exclude it entirely). */
 function ActivityHeatGrid({
   points,
   unitWord = 'commits',
   peopleWord = 'builders',
+  currentMonthKey,
 }: {
   points: AdoptionMonthPoint[];
-  /** Tooltip nouns — the inventory reuse maps objects/creators onto the same
-   * shape (never "active users": MAU is owned by another tool). */
+  /** Tooltip nouns — never "active users": MAU is owned by another tool. */
   unitWord?: string;
   peopleWord?: string;
+  /** 'YYYY-MM' of the wall-clock month — rendered as partial, not as data. */
+  currentMonthKey?: string;
 }) {
   if (points.length < 2) return null;
-  const maxCommits = Math.max(1, ...points.map((p) => p.commits));
+  const complete = points.filter((p) => p.month !== currentMonthKey);
+  const maxCommits = Math.max(1, ...complete.map((p) => p.commits));
   const byMonth = new Map(points.map((p) => [p.month, p]));
   const years = [...new Set(points.map((p) => Number(p.month.slice(0, 4))))].sort();
+  const hasPartial = currentMonthKey != null && byMonth.has(currentMonthKey);
   return (
     <div className="border-t border-[var(--border-glass)] px-4 pb-3 pt-2.5">
       <div
@@ -502,9 +699,9 @@ function ActivityHeatGrid({
         style={{ gridTemplateColumns: 'auto repeat(12, minmax(0, 1fr))' }}
       >
         <span />
-        {MONTH_INITIALS.map((m, i) => (
+        {MONTH_ABBR.map((m) => (
           <span
-            key={i}
+            key={m}
             className="text-center font-mono text-[8px] leading-none text-[var(--text-tertiary)]"
           >
             {m}
@@ -515,28 +712,44 @@ function ActivityHeatGrid({
             <span className="pr-2 text-right font-mono text-[9px] leading-none text-[var(--text-tertiary)]">
               {y}
             </span>
-            {MONTH_INITIALS.map((_, i) => {
+            {MONTH_ABBR.map((_, i) => {
               const key = `${y}-${String(i + 1).padStart(2, '0')}`;
               const p = byMonth.get(key);
               if (!p) {
                 // outside the tracked span — visually absent, not "zero"
                 return <span key={key} className="h-3 rounded-[2px]" />;
               }
-              const alpha = p.commits === 0 ? 0 : 0.14 + 0.86 * Math.sqrt(p.commits / maxCommits);
+              const isPartial = key === currentMonthKey;
+              const alpha =
+                p.commits === 0 ? 0 : 0.14 + 0.86 * Math.sqrt(Math.min(1, p.commits / maxCommits));
               return (
                 <span
                   key={key}
-                  title={`${key} · ${p.commits.toLocaleString()} ${unitWord} · ${p.activeBuilders} ${peopleWord}`}
-                  className="h-3 rounded-[2px]"
+                  title={`${key} · ${p.commits.toLocaleString()} ${unitWord} · ${p.activeBuilders} ${peopleWord}${isPartial ? ' · month in progress' : ''}`}
+                  className="adk-heatcell h-3 rounded-[2px]"
                   style={{
                     background:
-                      p.commits === 0 ? 'var(--bg-elevated)' : `rgba(109, 163, 224, ${alpha})`,
+                      p.commits === 0
+                        ? 'var(--bg-elevated)'
+                        : `rgba(${HEAT_RGB}, ${isPartial ? alpha * 0.5 : alpha})`,
+                    outline: isPartial ? `1px dashed rgba(${HEAT_RGB}, 0.8)` : undefined,
+                    outlineOffset: isPartial ? -1 : undefined,
                   }}
                 />
               );
             })}
           </Fragment>
         ))}
+      </div>
+      <div className="mt-2 flex items-center justify-between font-mono text-[8px] leading-none text-[var(--text-tertiary)]">
+        <span className="inline-flex items-center gap-1">
+          less
+          {[0.14, 0.35, 0.58, 0.8, 1].map((a) => (
+            <span key={a} className="h-2 w-2 rounded-[2px]" style={{ background: `rgba(${HEAT_RGB}, ${a})` }} />
+          ))}
+          more
+        </span>
+        {hasPartial && <span>dashed = current month, still in progress</span>}
       </div>
     </div>
   );
@@ -546,6 +759,12 @@ function fmtDate(ms: number | null | undefined): string {
   if (ms == null) return '—';
   const d = new Date(ms);
   return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : '—';
+}
+
+function monthLabel(ym: string): string {
+  const [y, m] = ym.split('-');
+  const idx = Number.parseInt(m ?? '', 10) - 1;
+  return `${MONTH_ABBR[idx] ?? m ?? ''} '${(y ?? '').slice(2)}`;
 }
 
 function relDays(
@@ -590,7 +809,7 @@ function ProjectAuthorsPanel({
         {authors.map((a) => (
           <span
             key={a}
-            className="rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]"
+            className="adk-chip rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]"
           >
             {a}
           </span>
@@ -611,6 +830,7 @@ export function AdoptionPage() {
   const invState = adoptionInventoryScan.use();
   const evState = adoptionEventsScan.use();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const reduced = useReducedMotion();
 
   useEffect(() => {
     if (!scanStarted) void adoptionScan.load();
@@ -637,37 +857,57 @@ export function AdoptionPage() {
   const cohorts = data?.cohorts ?? EMPTY;
   const repeat = data?.repeatBuilders;
   const recency = data?.builderRecency ?? EMPTY;
-  const nowMs = data?.generatedAtMs ?? 0;
+  const nowMs = data?.generatedAtMs ?? Date.now();
   const projects = data?.projectRows ?? EMPTY;
   const groups = data?.groups ?? EMPTY;
   const builders = data?.builderStats ?? EMPTY;
   const peopleMax = Math.max(1, ...projects.map((p) => p.authorCount));
-  const cohortMax = Math.max(1, ...cohorts.map((c) => c.newUsers));
   const expandedRowKeys = new Set(selectedKey ? [selectedKey] : []);
   const topRecency = [...recency]
     .filter((r) => r.lastSessionActivity != null)
     .sort((a, b) => (b.lastSessionActivity ?? 0) - (a.lastSessionActivity ?? 0))
     .slice(0, 10);
 
+  // Partial-period honesty: every chart on this page plots COMPLETE months
+  // only — 10 days of July next to full months always reads as a collapse.
+  // The current month is visible in exactly one place, the heat grid, where
+  // it renders dashed and labeled "in progress".
+  const currentMonthKey = monthKeyUTC(nowMs);
+  const gitTrendComplete = completeMonthsOnly(trend, nowMs);
+
   // Momentum (customer's "is usage increasing?"): mean active builders over the
-  // last 3 COMPLETE months vs the 3 before — the current month is partial and
-  // would always read as a dip, so it is excluded.
-  const completeTrend = trend.slice(0, -1);
+  // last 3 complete months vs the 3 before.
   let momentumPct: number | null = null;
-  if (completeTrend.length >= 6) {
+  if (gitTrendComplete.length >= 6) {
     const mean = (pts: AdoptionMonthPoint[]) =>
       pts.reduce((s, p) => s + p.activeBuilders, 0) / pts.length;
-    const recent = mean(completeTrend.slice(-3));
-    const prior = mean(completeTrend.slice(-6, -3));
+    const recent = mean(gitTrendComplete.slice(-3));
+    const prior = mean(gitTrendComplete.slice(-6, -3));
     momentumPct = prior > 0 ? ((recent - prior) / prior) * 100 : null;
   }
 
-  const topGroups = groups.slice(0, 8);
+  const activeGroups = groups.filter((g) => g.commits > 0);
+  const topGroups = activeGroups.slice(0, 8);
   const groupCommitsMax = Math.max(1, ...topGroups.map((g) => g.commits));
-  const groupColor = (i: number) =>
-    i < CATEGORICAL_COLORS.length ? CATEGORICAL_COLORS[i] : 'var(--text-tertiary)';
+  const quietGroups = groups.length - activeGroups.length;
   const topBuilders = builders.slice(0, 12);
   const builderCommitsMax = Math.max(1, ...topBuilders.map((b) => b.commits));
+
+  // Onboarding cohorts — complete months, zero-filled, last 24; the running
+  // month is a footnote, never a bar.
+  const cohortByMonth = new Map(cohorts.map((c) => [c.month, c.newUsers]));
+  const cohortMonths = fillMonthRange(
+    cohorts.filter((c) => c.month < currentMonthKey).map((c) => c.month),
+  ).slice(-24);
+  const cohortPoints: ColPoint[] = cohortMonths.map((month) => {
+    const n = cohortByMonth.get(month) ?? 0;
+    return {
+      key: month,
+      value: n,
+      title: `${monthLabel(month)} · ${n} new ${n === 1 ? 'account' : 'accounts'}`,
+    };
+  });
+  const cohortsThisMonth = cohortByMonth.get(currentMonthKey) ?? 0;
 
   // ── inventory-fed derivations (all null-safe) ─────────────────────────────
   // Config-tree object inventory (full history of surviving objects) — absent
@@ -675,16 +915,55 @@ export function AdoptionPage() {
   const inventoryView = buildInventoryView(invState.data, recency);
   const composition = inventoryView?.composition ?? EMPTY;
   const topComposition = composition.slice(0, 8);
-  const compositionMax = Math.max(1, ...topComposition.map((c) => c.count));
+  const restComposition = composition.slice(topComposition.length);
+  const compositionItems: MixItem[] = [
+    ...topComposition.map((c) => ({
+      key: c.family,
+      label: c.label,
+      color: TREND_GROUP_COLORS[familyGroupIndex(c.family)],
+      value: c.count,
+      hint:
+        c.topSubtypes.length > 0
+          ? `Tagged ${c.tagged.toLocaleString()} of ${c.count.toLocaleString()} · top types: ${c.topSubtypes.map((s) => `${s.subtype} (${s.count.toLocaleString()})`).join(', ')}`
+          : `Tagged ${c.tagged.toLocaleString()} of ${c.count.toLocaleString()}`,
+    })),
+    ...(restComposition.length > 0
+      ? [
+          {
+            key: '__rest',
+            label: `${restComposition.length} smaller ${restComposition.length === 1 ? 'family' : 'families'}`,
+            color: 'var(--bg-elevated)',
+            value: restComposition.reduce((s, c) => s + c.count, 0),
+            hint: restComposition
+              .map((c) => `${c.label} (${c.count.toLocaleString()})`)
+              .join(', '),
+          },
+        ]
+      : []),
+  ];
+
+  const invGeneratedMs = invState.data?.generatedAtMs ?? nowMs;
+  const invTrendComplete = completeMonthsOnly(inventoryView?.trendPoints ?? EMPTY, invGeneratedMs);
+  const invTrendShown = invTrendComplete.slice(-CREATION_CHART_MONTHS);
+  const invTrendHiddenMonths = invTrendComplete.length - invTrendShown.length;
+
   const ttfb = inventoryView?.ttfb;
-  const ttfbCohorts = (ttfb?.cohorts ?? EMPTY).slice(-12);
-  const ttfbMaxDays = Math.max(1, ...ttfbCohorts.map((c) => c.medianDays ?? 0));
+  const ttfbCohorts = (ttfb?.cohorts ?? EMPTY)
+    .filter((c) => c.month < currentMonthKey)
+    .slice(-12);
+  const ttfbPoints: ColPoint[] = ttfbCohorts.map((c) => ({
+    key: c.month,
+    value: c.medianDays ?? 0,
+    muted: c.medianDays == null,
+    title: `${monthLabel(c.month)} cohort · ${c.builders}/${c.cohortUsers} built something that survives · median ${c.medianDays == null ? 'not measurable' : `${c.medianDays}d to first build`}`,
+  }));
+
   const familyMixSegments = (persona: InventoryPersonaRow) =>
     TREND_GROUPS.map((group, gi) => {
       const value = sumFamilies(persona.byFamily, group.families);
       return {
         value,
-        color: catColor(gi),
+        color: TREND_GROUP_COLORS[gi],
         title: `${group.label} · ${value.toLocaleString()}`,
       };
     });
@@ -695,6 +974,7 @@ export function AdoptionPage() {
   for (const row of inventoryView?.projectRows ?? []) invProjectByKey.set(row.projectKey, row);
   const invNowMs = inventoryView?.inventory.lastEditMs ?? nowMs;
   const hasSessionData = recency.some((r) => r.lastSessionActivity != null);
+  const anyPersonaShown = topBuilders.some((b) => inventoryView?.personas[b.login]);
 
   // ── audit event mix (msgType buckets, UI-vs-API split, hot list) ──────────
   const events = evState.data && evState.data.ok !== false ? evState.data : null;
@@ -726,6 +1006,14 @@ export function AdoptionPage() {
       auditMix = { buckets, classified, fromUi, viaApi: authTotal - fromUi, authTotal, hot };
     }
   }
+  const bucketItems: MixItem[] = auditMix
+    ? AUDIT_EVENT_BUCKETS.map((b) => ({
+        key: b,
+        label: AUDIT_EVENT_BUCKET_LABELS[b],
+        color: BUCKET_COLORS[b],
+        value: auditMix.buckets[b] ?? 0,
+      }))
+    : EMPTY;
   const hotMax = Math.max(1, ...(auditMix?.hot ?? []).map(([, n]) => n));
   // Audit-window shading for the creation trend — units differ, series are
   // never merged; the band only shows how little of the long spine the audit
@@ -842,7 +1130,7 @@ export function AdoptionPage() {
                       height={4}
                       segments={TREND_GROUPS.map((g, gi) => ({
                         value: inv.groups[gi],
-                        color: catColor(gi),
+                        color: TREND_GROUP_COLORS[gi],
                         title: `${g.label} · ${inv.groups[gi].toLocaleString()}`,
                       }))}
                     />
@@ -903,12 +1191,22 @@ export function AdoptionPage() {
             mono: true,
             render: (row) => {
               const inv = invProjectByKey.get(row.projectKey);
-              if (!inv) return <span className="text-[var(--text-muted)]">—</span>;
+              if (!inv || inv.datedObjects === 0)
+                return <span className="text-[var(--text-muted)]">—</span>;
               const pct = Math.round(inv.stalePct);
+              // Tiny denominators stay muted: 5 objects at "100% stale" is
+              // noise, not a red flag.
+              const tooSmall = inv.datedObjects < MIN_STALE_SAMPLE;
               return (
                 <span
-                  className={pct >= 50 ? 'text-[var(--neon-red)]' : 'text-[var(--text-secondary)]'}
-                  title="Share of dated objects whose last config edit is over 12 months old."
+                  className={
+                    !tooSmall && pct >= 50
+                      ? 'text-[var(--neon-red)]'
+                      : tooSmall
+                        ? 'text-[var(--text-tertiary)]'
+                        : 'text-[var(--text-secondary)]'
+                  }
+                  title={`Share of dated objects whose last config edit is over 12 months old (${inv.datedObjects.toLocaleString()} dated objects${tooSmall ? ' — too few to flag' : ''}).`}
                 >
                   {pct}%
                 </span>
@@ -920,11 +1218,19 @@ export function AdoptionPage() {
       : []),
   ];
 
+  // Entrance: each block fades up as it mounts (macro-fed blocks stream in
+  // when their data lands). Static variants — no re-run on data updates.
+  const blockProps = {
+    variants: TILE_VARIANTS,
+    initial: reduced ? false : ('hidden' as const),
+    animate: 'show' as const,
+  };
+
   return (
     <div className="page-fill">
       <div className="flex flex-col gap-6 flex-1 min-h-0">
         {/* Summary band */}
-        <div className="chart-container">
+        <motion.div {...blockProps} className="chart-container">
           <div className="chart-header flex items-center justify-between gap-3">
             <h4>Adoption &amp; Engagement</h4>
             <div className="flex items-center gap-2">
@@ -973,17 +1279,25 @@ export function AdoptionPage() {
               label="Avg people / project"
             />
             <BigStat value={totals ? totals.commitCount.toLocaleString() : '—'} label="Commits" />
-            <BigStat
-              value={
-                momentumPct == null
-                  ? '—'
-                  : `${momentumPct >= 0 ? '+' : ''}${momentumPct.toFixed(0)}%`
-              }
-              label="Momentum (3m vs prior 3m)"
-              tone={
-                momentumPct == null ? undefined : momentumPct >= 2 ? 'ok' : momentumPct <= -2 ? 'warn' : undefined
-              }
-            />
+            <div title="Mean active builders over the last 3 complete months vs the 3 before — the in-progress month is excluded.">
+              <BigStat
+                value={
+                  momentumPct == null
+                    ? '—'
+                    : `${momentumPct >= 0 ? '+' : ''}${momentumPct.toFixed(0)}%`
+                }
+                label="3-month momentum"
+                tone={
+                  momentumPct == null
+                    ? undefined
+                    : momentumPct >= 2
+                      ? 'ok'
+                      : momentumPct <= -2
+                        ? 'warn'
+                        : undefined
+                }
+              />
+            </div>
             <BigStat
               value={repeat ? repeat.repeat : '—'}
               sub={repeat ? `/${repeat.total}` : undefined}
@@ -999,221 +1313,166 @@ export function AdoptionPage() {
               </>
             )}
           </div>
-        </div>
+        </motion.div>
 
-        {/* Flagship: multi-month adoption trend */}
-        <div className="chart-container">
+        {/* Flagship: multi-month adoption trend (complete months only; the
+            running month lives in the heat grid, dashed). */}
+        <motion.div {...blockProps} className="chart-container">
           <div className="chart-header flex items-center justify-between gap-3">
-            <h4 title="Distinct people committing per month + commit volume, back to each project's oldest commit.">
+            <h4 title="Distinct people committing per month + commit volume, back to each project's oldest commit. Complete months only — the in-progress month appears dashed in the calendar below.">
               Adoption trend — active builders &amp; commit volume
             </h4>
             <PersistentPill />
           </div>
-          <AdoptionTrendChart points={trend} />
-          <ActivityHeatGrid points={trend} />
-        </div>
-
-        {/* What humans actually do in the audit window — msgType buckets,
-            UI-vs-API split, and the raw hot list. Heuristic classification;
-            automation actors are excluded server-side. */}
-        {auditMix && (
-          <div className="chart-container">
-            <div className="chart-header flex items-center justify-between gap-3">
-              <h4 title="Human audit events classified by msgType: build = config writes (saves/creates), run = jobs & scenarios, explore = reads & lists, consume = dashboards, business apps, exports. Heuristic buckets — hover the hot list for raw event types.">
-                What's hot this window — human event mix
-              </h4>
-              <AuditWindowPill coverageDays={coverageDays} />
-            </div>
-            <div className="grid grid-cols-1 gap-x-8 gap-y-4 px-4 py-3 lg:grid-cols-2">
-              <div>
-                <SegmentBar
-                  height={6}
-                  segments={AUDIT_EVENT_BUCKETS.map((b) => ({
-                    value: auditMix.buckets[b] ?? 0,
-                    color: BUCKET_COLORS[b],
-                    title: `${AUDIT_EVENT_BUCKET_LABELS[b]} · ${(auditMix.buckets[b] ?? 0).toLocaleString()}`,
-                  }))}
-                />
-                <div className="mt-3 space-y-1">
-                  {AUDIT_EVENT_BUCKETS.map((b) => {
-                    const value = auditMix.buckets[b] ?? 0;
-                    return (
-                      <div key={b} className="flex items-center gap-2">
-                        <span
-                          className="h-2 w-2 flex-shrink-0 rounded-[2px]"
-                          style={{ background: BUCKET_COLORS[b] }}
-                        />
-                        <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
-                          {AUDIT_EVENT_BUCKET_LABELS[b]}
-                        </span>
-                        <span className="w-10 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]">
-                          {Math.round((value / auditMix.classified) * 100)}%
-                        </span>
-                        <span className="w-16 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
-                          {value.toLocaleString()}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                {auditMix.authTotal > 0 && (
-                  <>
-                    <div className="mt-4 mb-1 flex items-center justify-between text-[11px] text-[var(--text-secondary)]">
-                      <span>
-                        <span className="font-mono text-[var(--neon-green)]">
-                          {Math.round((auditMix.fromUi / auditMix.authTotal) * 100)}%
-                        </span>{' '}
-                        via UI
-                      </span>
-                      <span className="text-[10px] text-[var(--text-tertiary)]">
-                        {auditMix.viaApi.toLocaleString()} events via API keys (human-attributed)
-                      </span>
-                    </div>
-                    <SegmentBar
-                      height={6}
-                      segments={[
-                        {
-                          value: auditMix.fromUi,
-                          color: 'var(--neon-green)',
-                          title: `${auditMix.fromUi.toLocaleString()} events from the UI (USER_FROM_UI)`,
-                        },
-                        {
-                          value: auditMix.viaApi,
-                          color: 'var(--text-tertiary)',
-                          title: `${auditMix.viaApi.toLocaleString()} events via API keys attributed to a human`,
-                        },
-                      ]}
-                    />
-                  </>
-                )}
-              </div>
-              <div className="space-y-1">
-                <div className="mb-2 text-[10px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
-                  Top event types (human)
-                </div>
-                {auditMix.hot.map(([msgType, count]) => (
-                  <BarRow
-                    key={msgType}
-                    label={
-                      <span className="inline-flex items-center gap-1.5">
-                        <span
-                          className="h-2 w-2 flex-shrink-0 rounded-[2px]"
-                          style={{ background: BUCKET_COLORS[classifyMsgType(msgType)] }}
-                        />
-                        <span className="font-mono" title={AUDIT_EVENT_BUCKET_LABELS[classifyMsgType(msgType)]}>
-                          {msgType}
-                        </span>
-                      </span>
-                    }
-                    value={count.toLocaleString()}
-                    pct={(count / hotMax) * 100}
-                    tone="info"
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+          <AdoptionTrendChart points={gitTrendComplete} />
+          <ActivityHeatGrid points={trend} currentMonthKey={currentMonthKey} />
+        </motion.div>
 
         {/* Long spine: monthly object creation mined from config-tree tags.
             Units differ from the git trend (objects created vs commits) so
             the two are never merged — the audit window is only shaded as a
             band for scale. */}
-        {inventoryView && (
-          <div className="chart-container">
+        {inventoryView && invTrendShown.length > 0 && (
+          <motion.div {...blockProps} className="chart-container">
             <div className="chart-header flex items-center justify-between gap-3">
               <h4
-                title={`Objects created per month across the full (surviving) config history — ${inventoryView.taggedObjects.toLocaleString()} of ${inventoryView.objectsBuilt.toLocaleString()} objects carry creation tags.${auditWindow ? ' The shaded band marks the much shorter audit-log window.' : ''}`}
+                title={`Objects created per month across the surviving config history — ${inventoryView.taggedObjects.toLocaleString()} of ${inventoryView.objectsBuilt.toLocaleString()} objects carry creation tags. Complete months only.${auditWindow ? ' The shaded band marks the much shorter audit-log window.' : ''}`}
               >
                 Monthly creation trend — what got built, by family
               </h4>
               <ConfigHistoryPill />
             </div>
-            <CreationTrendChart points={inventoryView.trendPoints} auditWindow={auditWindow} />
-            <ActivityHeatGrid
-              points={inventoryView.heatPoints}
-              unitWord="objects created"
-              peopleWord="creators that month"
-            />
-          </div>
-        )}
-
-        {/* Composition: what kinds of objects this instance builds */}
-        {inventoryView && (
-          <div className="chart-container">
-            <div className="chart-header flex items-center justify-between gap-3">
-              <h4 title="Every surviving config-tree object, grouped by family. Tag coverage varies: scenarios and notebooks carry no creation tags, so they count here but not in the creation trend.">
-                What gets built here
-              </h4>
-              <ConfigHistoryPill />
-            </div>
-            <div className="px-4 py-3">
-              <SegmentBar
-                height={6}
-                segments={topComposition.map((c, i) => ({
-                  value: c.count,
-                  color: catColor(i),
-                  title: `${c.label} · ${c.count.toLocaleString()}`,
-                }))}
-              />
-              <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2">
-                {topComposition.map((c, i) => (
-                  <div key={c.family} className="flex items-center gap-2">
-                    <span
-                      className="h-2 w-2 flex-shrink-0 rounded-[2px]"
-                      style={{ background: catColor(i) }}
-                    />
-                    <span
-                      className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]"
-                      title={
-                        c.topSubtypes.length > 0
-                          ? `Tagged ${c.tagged.toLocaleString()} of ${c.count.toLocaleString()} · top types: ${c.topSubtypes.map((s) => `${s.subtype} (${s.count.toLocaleString()})`).join(', ')}`
-                          : `Tagged ${c.tagged.toLocaleString()} of ${c.count.toLocaleString()}`
-                      }
-                    >
-                      {c.label}
-                    </span>
-                    <span className="h-1 w-14 flex-shrink-0 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
-                      <span
-                        className="block h-full rounded-full"
-                        style={{
-                          width: `${(c.count / compositionMax) * 100}%`,
-                          background: catColor(i),
-                        }}
-                      />
-                    </span>
-                    <span className="w-16 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
-                      {c.count.toLocaleString()}
-                    </span>
-                  </div>
-                ))}
+            <CreationTrendChart points={invTrendShown} auditWindow={auditWindow} />
+            {invTrendHiddenMonths > 0 && (
+              <div className="border-t border-[var(--border-glass)] px-4 py-2 text-[10px] text-[var(--text-tertiary)]">
+                Showing the last {invTrendShown.length} complete months — {invTrendHiddenMonths}{' '}
+                earlier {invTrendHiddenMonths === 1 ? 'month' : 'months'} (since{' '}
+                {monthLabel(invTrendComplete[0].month)}) omitted; all-time composition below covers
+                them.
               </div>
-              {composition.length > topComposition.length && (
-                <div className="pt-1.5 text-[10px] text-[var(--text-tertiary)]">
-                  +{composition.length - topComposition.length} more{' '}
-                  {composition.length - topComposition.length === 1 ? 'family' : 'families'} ·{' '}
-                  {composition
-                    .slice(topComposition.length)
-                    .map((c) => `${c.label} (${c.count.toLocaleString()})`)
-                    .join(', ')}
+            )}
+          </motion.div>
+        )}
+
+        {/* Built vs used — the config-tree composition next to the audit-window
+            event mix. */}
+        {(inventoryView || auditMix) && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {inventoryView && (
+              <motion.div {...blockProps} className="chart-container">
+                <div className="chart-header flex items-center justify-between gap-3">
+                  <h4 title="Every surviving config-tree object, grouped by family and colored by family group (same palette as the trend chart). Tag coverage varies: scenarios and notebooks carry no creation tags, so they count here but not in the creation trend.">
+                    What gets built here
+                  </h4>
+                  <ConfigHistoryPill />
                 </div>
-              )}
-            </div>
+                <div className="px-4 py-3">
+                  <LinkedMix items={compositionItems} />
+                  <FamilyGroupLegend className="mt-3 border-t border-[var(--border-glass)] pt-2" />
+                </div>
+              </motion.div>
+            )}
+            {auditMix && (
+              <motion.div {...blockProps} className="chart-container">
+                <div className="chart-header flex items-center justify-between gap-3">
+                  <h4 title="Human audit events classified by msgType: build = config writes (saves/creates), run = jobs & scenarios, explore = reads & lists, consume = dashboards, business apps, exports. Heuristic buckets — hover the hot list for raw event types. Automation actors are excluded server-side.">
+                    What's hot this window — human event mix
+                  </h4>
+                  <AuditWindowPill coverageDays={coverageDays} />
+                </div>
+                <div className="px-4 py-3">
+                  <LinkedMix items={bucketItems} />
+                  {auditMix.authTotal > 0 && (
+                    <>
+                      <div className="mt-4 mb-1 flex items-center justify-between text-[11px] text-[var(--text-secondary)]">
+                        <span>
+                          <span className="font-mono text-[var(--accent)]">
+                            {pctLabel(auditMix.fromUi, auditMix.authTotal)}
+                          </span>{' '}
+                          via UI
+                        </span>
+                        <span className="text-[10px] text-[var(--text-tertiary)]">
+                          {auditMix.viaApi.toLocaleString()} events via API keys (human-attributed)
+                        </span>
+                      </div>
+                      <SegmentBar
+                        height={6}
+                        segments={[
+                          {
+                            value: auditMix.fromUi,
+                            color: 'var(--accent)',
+                            title: `${auditMix.fromUi.toLocaleString()} events from the UI (USER_FROM_UI)`,
+                          },
+                          {
+                            value: auditMix.viaApi,
+                            color: 'var(--text-tertiary)',
+                            title: `${auditMix.viaApi.toLocaleString()} events via API keys attributed to a human`,
+                          },
+                        ]}
+                      />
+                    </>
+                  )}
+                  <div className="mt-4 mb-2 text-[10px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+                    Top event types (human) — dot = bucket
+                  </div>
+                  <div className="space-y-0.5">
+                    {auditMix.hot.map(([msgType, count]) => {
+                      const bucket = classifyMsgType(msgType);
+                      return (
+                        <div
+                          key={msgType}
+                          title={AUDIT_EVENT_BUCKET_LABELS[bucket]}
+                          className="adk-hover-row -mx-1 flex items-center gap-2 px-1 py-0.5"
+                        >
+                          <span
+                            className="h-2 w-2 flex-shrink-0 rounded-[2px]"
+                            style={{ background: BUCKET_COLORS[bucket] }}
+                          />
+                          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--text-secondary)]">
+                            {msgType}
+                          </span>
+                          <span className="h-1 w-14 flex-shrink-0 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+                            <span
+                              className="block h-full rounded-full transition-[width] duration-500"
+                              style={{
+                                width: `${(count / hotMax) * 100}%`,
+                                background: BUCKET_COLORS[bucket],
+                              }}
+                            />
+                          </span>
+                          <span className="w-16 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
+                            {count.toLocaleString()}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </motion.div>
+            )}
           </div>
         )}
 
-        {/* Config health & knowledge risk — derived analytics */}
+        {/* Config health & knowledge risk — derived analytics; the
+            survivorship caveat is stamped once here for all six cards. */}
         {inventoryView && (
-          <InventoryHealthCards
-            view={inventoryView}
-            nowMs={invNowMs}
-            hasSessionData={hasSessionData}
-          />
+          <motion.div {...blockProps} className="flex flex-col gap-4">
+            <SectionHeader
+              title="Config health & knowledge risk"
+              caption="derived from surviving objects only — deleted work is invisible"
+              right={<ConfigHistoryPill />}
+            />
+            <InventoryHealthCards
+              view={inventoryView}
+              nowMs={invNowMs}
+              hasSessionData={hasSessionData}
+            />
+          </motion.div>
         )}
 
         {/* Who drives the activity: DSS groups + individual builders */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div className="chart-container">
+          <motion.div {...blockProps} className="chart-container">
             <div className="chart-header flex items-center justify-between gap-3">
               <h4 title="Git activity rolled up to DSS groups. A builder in several groups counts in each, so shares can overlap. Builders whose account was deleted are not attributable to a group.">
                 Most active groups
@@ -1224,59 +1483,48 @@ export function AdoptionPage() {
               {topGroups.length === 0 ? (
                 <div className="text-xs text-[var(--text-muted)]">No group activity yet.</div>
               ) : (
-                <>
-                  <SegmentBar
-                    height={6}
-                    segments={topGroups.map((g, i) => ({
-                      value: g.commits,
-                      color: groupColor(i),
-                      title: `${g.name} · ${g.commits.toLocaleString()} commits`,
-                    }))}
-                  />
-                  <div className="mt-3 max-h-64 space-y-1.5 overflow-y-auto">
-                    {topGroups.map((g, i) => (
-                      <div key={g.name} className="flex items-center gap-2">
+                <div className="max-h-64 space-y-1 overflow-y-auto">
+                  {topGroups.map((g) => (
+                    <div
+                      key={g.name}
+                      className="adk-hover-row -mx-1 flex items-center gap-2 px-1 py-0.5"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
+                        {g.name}
+                        <span className="ml-1.5 text-[10px] text-[var(--text-tertiary)]">
+                          {g.builderCount}/{g.memberCount} building · {g.projectCount}{' '}
+                          {g.projectCount === 1 ? 'project' : 'projects'} ·{' '}
+                          {relDays(g.lastCommitMs, nowMs).text}
+                        </span>
+                      </span>
+                      <span className="h-1 w-14 flex-shrink-0 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
                         <span
-                          className="h-2 w-2 flex-shrink-0 rounded-[2px]"
-                          style={{ background: groupColor(i) }}
+                          className="block h-full rounded-full bg-[var(--accent)] transition-[width] duration-500"
+                          style={{ width: `${(g.commits / groupCommitsMax) * 100}%` }}
                         />
-                        <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
-                          {g.name}
-                          <span className="ml-1.5 text-[10px] text-[var(--text-tertiary)]">
-                            {g.builderCount}/{g.memberCount} building · {g.projectCount}{' '}
-                            {g.projectCount === 1 ? 'project' : 'projects'} ·{' '}
-                            {relDays(g.lastCommitMs, nowMs).text}
-                          </span>
-                        </span>
-                        <span className="h-1 w-14 flex-shrink-0 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
-                          <span
-                            className="block h-full rounded-full"
-                            style={{
-                              width: `${(g.commits / groupCommitsMax) * 100}%`,
-                              background: groupColor(i),
-                            }}
-                          />
-                        </span>
-                        <span className="w-14 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
-                          {g.commits.toLocaleString()}
-                        </span>
-                      </div>
-                    ))}
-                    {groups.length > topGroups.length && (
-                      <div className="pt-0.5 text-[10px] text-[var(--text-tertiary)]">
-                        +{groups.length - topGroups.length} more{' '}
-                        {groups.length - topGroups.length === 1 ? 'group' : 'groups'}
-                      </div>
-                    )}
-                  </div>
-                </>
+                      </span>
+                      <span className="w-14 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
+                        {g.commits.toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                  {(activeGroups.length > topGroups.length || quietGroups > 0) && (
+                    <div className="pt-0.5 text-[10px] text-[var(--text-tertiary)]">
+                      {activeGroups.length > topGroups.length &&
+                        `+${activeGroups.length - topGroups.length} more active ${activeGroups.length - topGroups.length === 1 ? 'group' : 'groups'}`}
+                      {activeGroups.length > topGroups.length && quietGroups > 0 && ' · '}
+                      {quietGroups > 0 &&
+                        `${quietGroups} ${quietGroups === 1 ? 'group has' : 'groups have'} no git activity yet`}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-          </div>
+          </motion.div>
 
-          <div className="chart-container">
+          <motion.div {...blockProps} className="chart-container">
             <div className="chart-header flex items-center justify-between gap-3">
-              <h4 title="Individual builders ranked by human commits across all projects. Chips show the audit-window build/consume mix and the config-history persona, when known.">
+              <h4 title="Individual builders ranked by human commits across all projects. Chips show the audit-window build/consume mix and the config-history persona; the thin bar under a row is that builder's family mix (legend below).">
                 Top builders
               </h4>
               <PersistentPill />
@@ -1289,7 +1537,7 @@ export function AdoptionPage() {
                 const persona = inventoryView?.personas[b.login];
                 const builderBuckets = humans[b.login]?.buckets;
                 return (
-                  <div key={b.login}>
+                  <div key={b.login} className="adk-hover-row -mx-1 px-1 py-0.5">
                     <div className="flex items-center gap-2">
                       <span className="w-5 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]">
                         {i + 1}
@@ -1305,7 +1553,7 @@ export function AdoptionPage() {
                       {persona && <BuilderPersonaChip persona={persona} />}
                       <span className="h-1 w-14 flex-shrink-0 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
                         <span
-                          className="block h-full rounded-full bg-[var(--accent)]"
+                          className="block h-full rounded-full bg-[var(--accent)] transition-[width] duration-500"
                           style={{ width: `${(b.commits / builderCommitsMax) * 100}%` }}
                         />
                       </span>
@@ -1314,7 +1562,7 @@ export function AdoptionPage() {
                       </span>
                     </div>
                     {persona && (
-                      <div className="ml-7 mt-0.5">
+                      <div className="ml-7 mt-1">
                         <SegmentBar height={4} segments={familyMixSegments(persona)} />
                       </div>
                     )}
@@ -1327,66 +1575,54 @@ export function AdoptionPage() {
                 </div>
               )}
             </div>
-          </div>
+            {anyPersonaShown && (
+              <div className="border-t border-[var(--border-glass)] px-4 py-2">
+                <FamilyGroupLegend />
+              </div>
+            )}
+          </motion.div>
         </div>
-
-        {/* Project leaderboard — people per project (+ config history) */}
-        <DataGrid
-          title="Projects — people & activity"
-          countBadge={{ total: projects.length }}
-          lifecycle={isLoading ? lifecycle : null}
-          rows={projects}
-          columns={columns}
-          rowKey={(row) => row.projectKey}
-          defaultSortColumnId="commits"
-          defaultSortDir="desc"
-          renderExpandedRow={(row) => (
-            <ProjectAuthorsPanel
-              row={row}
-              inv={invProjectByKey.get(row.projectKey)}
-              invNowMs={invNowMs}
-            />
-          )}
-          expandedRowKeys={expandedRowKeys}
-          emptyMessage="Waiting for git history…"
-          scroll="card"
-        />
 
         {/* Cohorts + time-to-first-build + returning builders + recency */}
         <div
-          className={`grid grid-cols-1 gap-6 ${ttfbCohorts.length > 0 ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}
+          className={`grid grid-cols-1 gap-6 ${ttfbPoints.length > 0 ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}
         >
-          {/* Onboarding cohorts */}
-          <div className="chart-container">
+          {/* Onboarding cohorts — a real column chart over complete months */}
+          <motion.div {...blockProps} className="chart-container">
             <div className="chart-header flex items-center justify-between gap-3">
-              <h4 title="New user accounts created per month (from each user's creationDate).">
+              <h4 title="New user accounts created per complete month (from each user's creationDate). The running month is footnoted, never plotted.">
                 Onboarding cohorts
               </h4>
               <PersistentPill />
             </div>
-            <div className="max-h-72 space-y-1 overflow-y-auto px-4 py-3">
-              {cohorts.length === 0 && (
+            <div className="px-4 py-3">
+              {cohortPoints.length === 0 ? (
                 <div className="text-xs text-[var(--text-muted)]">No user creation dates.</div>
+              ) : (
+                <>
+                  <MiniColumns
+                    points={cohortPoints}
+                    height={96}
+                    axisLeft={monthLabel(cohortPoints[0].key)}
+                    axisRight={monthLabel(cohortPoints[cohortPoints.length - 1].key)}
+                  />
+                  <div className="pt-2 text-[10px] text-[var(--text-tertiary)]">
+                    new accounts / month, last {cohortPoints.length} complete months
+                    {cohortsThisMonth > 0 &&
+                      ` · +${cohortsThisMonth} so far in ${monthLabel(currentMonthKey)}`}
+                  </div>
+                </>
               )}
-              {[...cohorts].reverse().map((c) => (
-                <BarRow
-                  key={c.month}
-                  label={c.month}
-                  value={`${c.newUsers}`}
-                  pct={(c.newUsers / cohortMax) * 100}
-                  tone="info"
-                />
-              ))}
             </div>
-          </div>
+          </motion.div>
 
           {/* Time to first build — activation: account creation → first
               surviving created object. Cohorts predating the config history
               are excluded rather than measured dishonestly. */}
-          {ttfb && ttfbCohorts.length > 0 && (
-            <div className="chart-container">
+          {ttfb && ttfbPoints.length > 0 && (
+            <motion.div {...blockProps} className="chart-container">
               <div className="chart-header flex items-center justify-between gap-3">
-                <h4 title="Median days from account creation to a user's first surviving created object (activation). Cohorts older than the surviving config history are excluded — their first build may have been deleted since.">
+                <h4 title="Median days from account creation to a user's first surviving created object (activation), per monthly cohort. Cohorts older than the surviving config history — and the running month — are excluded.">
                   Time to first build
                 </h4>
                 <ConfigHistoryPill />
@@ -1399,39 +1635,27 @@ export function AdoptionPage() {
                   />
                   <span className="text-[10px] text-[var(--text-tertiary)]">
                     {ttfb.usersMeasured} {ttfb.usersMeasured === 1 ? 'user' : 'users'} measured
+                    {ttfb.usersMeasured < 5 ? ' — small sample' : ''}
                   </span>
                 </div>
-                <div className="max-h-56 space-y-1 overflow-y-auto">
-                  {[...ttfbCohorts].reverse().map((c) => (
-                    <BarRow
-                      key={c.month}
-                      label={
-                        <span title={`${c.builders} of ${c.cohortUsers} users in this cohort built something that survives`}>
-                          {c.month}
-                          <span className="ml-1.5 text-[10px] text-[var(--text-tertiary)]">
-                            {c.builders}/{c.cohortUsers} built
-                          </span>
-                        </span>
-                      }
-                      value={c.medianDays == null ? '—' : `${c.medianDays}d`}
-                      pct={c.medianDays == null ? 0 : (c.medianDays / ttfbMaxDays) * 100}
-                      tone="info"
-                    />
-                  ))}
+                <MiniColumns
+                  points={ttfbPoints}
+                  height={80}
+                  valueSuffix="d"
+                  axisLeft={monthLabel(ttfbPoints[0].key)}
+                  axisRight={monthLabel(ttfbPoints[ttfbPoints.length - 1].key)}
+                />
+                <div className="pt-2 text-[10px] text-[var(--text-tertiary)]">
+                  median days to first build, by signup cohort
+                  {ttfb.excludedCohorts > 0 &&
+                    ` · ${ttfb.excludedCohorts} older ${ttfb.excludedCohorts === 1 ? 'cohort' : 'cohorts'} excluded (predate surviving history)`}
                 </div>
-                {ttfb.excludedCohorts > 0 && (
-                  <div className="pt-1.5 text-[10px] text-[var(--text-tertiary)]">
-                    {ttfb.excludedCohorts} older{' '}
-                    {ttfb.excludedCohorts === 1 ? 'cohort' : 'cohorts'} excluded (predate surviving
-                    history).
-                  </div>
-                )}
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* Returning builders + recently active */}
-          <div className="chart-container">
+          <motion.div {...blockProps} className="chart-container">
             <div className="chart-header flex items-center justify-between gap-3">
               <h4 title="Builders active in multiple distinct months vs. a single month.">
                 Returning builders &amp; recency
@@ -1440,33 +1664,22 @@ export function AdoptionPage() {
             </div>
             <div className="px-4 py-3">
               {repeat && repeat.total > 0 ? (
-                <>
-                  <div className="mb-1 flex items-center justify-between text-[11px] text-[var(--text-secondary)]">
-                    <span>
-                      <span className="font-mono text-[var(--neon-green)]">{repeat.repeat}</span>{' '}
-                      returning
-                    </span>
-                    <span>
-                      <span className="font-mono text-[var(--text-tertiary)]">{repeat.single}</span>{' '}
-                      one-month · <span className="font-mono">{repeat.total}</span> total
-                    </span>
-                  </div>
-                  <SegmentBar
-                    segments={[
-                      {
-                        value: repeat.repeat,
-                        color: 'var(--neon-green)',
-                        title: `${repeat.repeat} returning`,
-                      },
-                      {
-                        value: repeat.single,
-                        color: 'var(--text-tertiary)',
-                        title: `${repeat.single} one-month`,
-                      },
-                    ]}
-                    height={6}
-                  />
-                </>
+                <LinkedMix
+                  items={[
+                    {
+                      key: 'returning',
+                      label: 'Returning (active in 2+ months)',
+                      value: repeat.repeat,
+                      color: 'var(--neon-green)',
+                    },
+                    {
+                      key: 'single',
+                      label: 'One-month builders',
+                      value: repeat.single,
+                      color: 'var(--text-tertiary)',
+                    },
+                  ]}
+                />
               ) : (
                 <div className="text-xs text-[var(--text-muted)]">No builder activity yet.</div>
               )}
@@ -1474,7 +1687,7 @@ export function AdoptionPage() {
               <div className="mt-4 mb-2 text-[10px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
                 Recently active people
               </div>
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {topRecency.length === 0 && (
                   <div className="text-xs text-[var(--text-muted)]">
                     No login activity recorded.
@@ -1483,7 +1696,7 @@ export function AdoptionPage() {
                 {topRecency.map((u) => (
                   <div
                     key={u.login}
-                    className="flex items-center justify-between gap-2 text-[11px]"
+                    className="adk-hover-row -mx-1 flex items-center justify-between gap-2 px-1 py-0.5 text-[11px]"
                   >
                     <span className="min-w-0 flex-1 truncate text-[var(--text-secondary)]">
                       {u.displayName}
@@ -1495,8 +1708,41 @@ export function AdoptionPage() {
                 ))}
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>
+
+        {/* Project leaderboard — the drill-down detail table, deliberately
+            last: analytics first, row-level detail at the bottom. */}
+        <motion.div {...blockProps} className="flex flex-col gap-3">
+          {inventoryView && (
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+              <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+                Objects column — family mix per project
+              </span>
+              <FamilyGroupLegend />
+            </div>
+          )}
+          <DataGrid
+            title="Projects — people & activity"
+            countBadge={{ total: projects.length }}
+            lifecycle={isLoading ? lifecycle : null}
+            rows={projects}
+            columns={columns}
+            rowKey={(row) => row.projectKey}
+            defaultSortColumnId="commits"
+            defaultSortDir="desc"
+            renderExpandedRow={(row) => (
+              <ProjectAuthorsPanel
+                row={row}
+                inv={invProjectByKey.get(row.projectKey)}
+                invNowMs={invNowMs}
+              />
+            )}
+            expandedRowKeys={expandedRowKeys}
+            emptyMessage="Waiting for git history…"
+            scroll="card"
+          />
+        </motion.div>
       </div>
     </div>
   );

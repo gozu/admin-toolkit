@@ -177,6 +177,8 @@ export interface ParsedData {
   projectComputeLoading?: Lifecycle;
   projectCostLoading?: Lifecycle;
   adoptionLoading?: Lifecycle;
+  adoptionInventoryLoading?: Lifecycle;
+  adoptionEventsLoading?: Lifecycle;
   usersLoading?: Lifecycle;
   pluginsLoading?: Lifecycle;
   pluginSyncLoading?: Lifecycle;

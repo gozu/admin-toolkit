@@ -1,0 +1,24 @@
+{
+    "meta": {
+        "label": "Adoption audit event mix",
+        "description": "Stream the host audit logs ($DIP_HOME/run/audit/audit.log*) and classify human events by msgType into build / run / explore / consume / other buckets (guarded-regex mining, no per-line JSON parse), plus per-human authSource split (UI vs API keys) and the top human event types. Automation identities (api:*, no:auth) are counted but never bucketed. Runs as the dataiku service account so it can read the local audit dir regardless of webapp impersonation.",
+        "icon": "icon-signal",
+        "macroRoles": [
+            {
+                "type": "PROJECT_MACROS"
+            }
+        ]
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": [
+        {
+            "name": "max_files",
+            "label": "Max rotated files to read (0 = all)",
+            "type": "INT",
+            "defaultValue": 0,
+            "mandatory": false
+        }
+    ]
+}

@@ -66,6 +66,7 @@ export interface AdoptionBuilderRecency {
   lastSuccessfulLogin: number | null;
   lastSessionActivity: number | null;
   creationDate: number | null;
+  userProfile?: string | null; // seat type, for the seat-type × creators card
 }
 
 export interface AdoptionTotals {
@@ -93,4 +94,147 @@ export interface AdoptionData {
   builderRecency?: AdoptionBuilderRecency[];
   groups?: AdoptionGroupRow[];
   builderStats?: AdoptionBuilderRow[];
+}
+
+// ── Config-tree object inventory (macro layer) ────────────────────────────────
+// Shape mirrors python-runnables/adoption-inventory/runnable.py exactly, which
+// is itself a port of the diag-parser inventory accumulator. Covers the
+// instance's full multi-year history — but only for objects that still exist
+// (survivorship bias; deleted work is invisible).
+
+export type ObjectFamily =
+  | 'dataset'
+  | 'recipe-visual'
+  | 'recipe-python'
+  | 'recipe-sql'
+  | 'recipe-r'
+  | 'recipe-ml'
+  | 'recipe-plugin'
+  | 'recipe-other'
+  | 'notebook'
+  | 'sql-notebook'
+  | 'webapp'
+  | 'dashboard'
+  | 'insight'
+  | 'saved-model'
+  | 'scenario'
+  | 'prompt-studio'
+  | 'wiki'
+  | 'zone'
+  | 'analysis'
+  | 'mes'
+  | 'other';
+
+/** Save-count histogram from versionTag.versionNumber (0 = never re-saved
+ * after creation). Buckets are inclusive: v1 ≤ 1 save, v2to5 = 2–5 saves, … */
+export interface InventoryEditBuckets {
+  v1: number;
+  v2to5: number;
+  v6to20: number;
+  v21plus: number;
+}
+
+export interface InventoryFamilyStats {
+  count: number;
+  /** Objects carrying a usable creationTag (login + timestamp). Coverage is
+   * surfaced as "tagged N of M" — older/programmatic objects may lack tags. */
+  tagged: number;
+  /** Raw object subtype counts (recipe `type`, webapp BOKEH/DASH, …). */
+  subtypes: Record<string, number>;
+  /** Sum of versionTag.versionNumber across tagged objects (save volume). */
+  versionSum: number;
+  editBuckets: InventoryEditBuckets;
+}
+
+/** One 'YYYY-MM' creation bucket. `creators` maps login → objects created that
+ * month; views derive the distinct-creator count. */
+export interface InventoryCreationMonth {
+  month: string;
+  total: number;
+  byFamily: Partial<Record<ObjectFamily, number>>;
+  creators: Record<string, number>;
+}
+
+export interface InventoryCreatorStats {
+  /** Objects whose creationTag.lastModifiedBy is this login. */
+  created: number;
+  byFamily: Partial<Record<ObjectFamily, number>>;
+  firstCreatedMs: number | null;
+  lastCreatedMs: number | null;
+  /** Latest creation or last-save timestamp attributed to this login. */
+  lastEditMs: number | null;
+  /** Objects this login last saved (versionTag) but did not create. */
+  editedNotCreated: number;
+  /** Objects whose most recent save (versionTag) was by this login. */
+  saves: number;
+}
+
+export interface InventoryProjectStats {
+  objectCount: number;
+  byFamily: Partial<Record<ObjectFamily, number>>;
+  /** login → objects created in this project. */
+  creators: Record<string, number>;
+  /** Objects whose last editor differs from their creator (both tagged). */
+  handoffCount: number;
+  /** Tagged objects never re-saved after creation (versionNumber ≤ 0). */
+  savedOnce: number;
+  versionSum: number;
+  lastHumanEditMs: number | null;
+  lastEditor: string | null;
+  /** 'YYYY-MM' → objects whose last edit falls in that month. Staleness is
+   * NOT pre-collapsed — views bucket this against `lastEditMs` at render
+   * time so thresholds stay tunable without re-scanning. */
+  lastEditMonthCounts: Record<string, number>;
+}
+
+export interface ObjectInventory {
+  families: Partial<Record<ObjectFamily, InventoryFamilyStats>>;
+  creationMonths: InventoryCreationMonth[];
+  creators: Record<string, InventoryCreatorStats>;
+  projects: Record<string, InventoryProjectStats>;
+  /** Earliest surviving creationTag timestamp (TTFB cohort floor). */
+  firstCreationMs: number | null;
+  /** Latest edit anywhere — the reference "now" for staleness collapse. */
+  lastEditMs: number | null;
+  /** Objects ingested (config JSONs + meta-only paths). */
+  scanned: number;
+  /** Objects with a usable creationTag. */
+  taggedObjects: number;
+  errors: number;
+  /** Always true from the macro (single blocking pass). */
+  complete: boolean;
+}
+
+/** /api/adoption/inventory payload: the inventory plus the macro envelope. */
+export interface AdoptionInventoryData extends Partial<ObjectInventory> {
+  ok?: boolean;
+  error?: string;
+  generatedAtMs?: number;
+  projectCount?: number;
+}
+
+// ── Audit-log msgType event mix (macro layer) ─────────────────────────────────
+// Shape mirrors python-runnables/adoption-events/runnable.py. Window-honesty:
+// spans whatever the rotated audit files still cover, never a full history.
+
+export interface AdoptionEventsHuman {
+  events: number;
+  /** build / run / explore / consume / other counts (classified server-side). */
+  buckets: Record<string, number>;
+  /** USER_FROM_UI / PERSONAL_API_KEY / CONFIGURABLE_API_KEY_* counts. */
+  authSources: Record<string, number>;
+}
+
+export interface AdoptionEventsData {
+  ok?: boolean;
+  error?: string;
+  generatedAtMs?: number;
+  firstEventMs?: number | null;
+  lastEventMs?: number | null;
+  coverageDays?: number | null;
+  humans?: Record<string, AdoptionEventsHuman>;
+  /** Top human msgTypes (desc), capped server-side. */
+  msgTypeCounts?: Record<string, number>;
+  automationIdentities?: number;
+  automationEvents?: number;
 }

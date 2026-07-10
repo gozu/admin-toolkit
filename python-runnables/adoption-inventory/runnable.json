@@ -1,0 +1,16 @@
+{
+    "meta": {
+        "label": "Adoption config inventory",
+        "description": "Walk <DIP_HOME>/config/projects/<KEY>/ object JSONs and mine creationTag/versionTag (creator login, created ms, last editor, save count) into a full-history inventory of surviving objects: per-family counts + subtypes + edit buckets, monthly creation trend, per-creator and per-project roll-ups. Metadata-only categories (notebooks, SQL notebooks, wiki articles, flow zones, visual analyses) are counted by file mtime — their bodies carry no creation tags. Runs as the dataiku service account so it can read the config tree regardless of webapp impersonation.",
+        "icon": "icon-bar-chart",
+        "macroRoles": [
+            {
+                "type": "PROJECT_MACROS"
+            }
+        ]
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": []
+}

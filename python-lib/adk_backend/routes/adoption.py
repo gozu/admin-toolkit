@@ -6,9 +6,12 @@ years), user `creationDate`, and the `list_users_activity()` snapshot. No audit
 access, no host macro — the git logs it aggregates are already fetched and cached
 by the projects catalog, so this is a cached read + a pure roll-up.
 
-The recent high-res audit layer (DAU, login events) is a separate v1.1 increment
-behind a new macro. Keeping the two layers in different endpoints is what makes
-window-honesty structural rather than a disclaimer.
+Two deeper layers live behind host macros, each with its own endpoint so
+window-honesty stays structural rather than a disclaimer:
+- /api/adoption/inventory — config-tree object inventory (full history of
+  SURVIVING objects; deleted work is invisible — survivorship bias).
+- /api/adoption/events — audit-log msgType event mix (whatever window the
+  rotated audit files still cover).
 """
 import logging
 from datetime import datetime, timezone
@@ -18,12 +21,15 @@ from flask import Blueprint, g, jsonify
 
 from adk_backend.caching import _cache_get
 from adk_backend.clients import _adoption_git_aggregate, _sdk_fetch
+from adk_backend.macros import _adoption_events_macro, _adoption_inventory_macro
 from adk_backend.settings import _BACKEND_SETTINGS, _outreach_thresholds
 
 bp = Blueprint('adoption', __name__)
 _LOGGER = logging.getLogger(__name__)
 
 _ADOPTION_CACHE_KEY = 'adoption'
+_ADOPTION_INVENTORY_CACHE_KEY = 'adoption_inventory'
+_ADOPTION_EVENTS_CACHE_KEY = 'adoption_events'
 
 
 def _creation_month(created_ms: Any) -> Optional[str]:
@@ -80,12 +86,14 @@ def _adoption_data(client: Any) -> Dict[str, Any]:
     cohort_counts: Dict[str, int] = {}
     creation_by_login: Dict[str, Any] = {}
     display_by_login: Dict[str, str] = {}
+    profile_by_login: Dict[str, str] = {}
     groups_by_login: Dict[str, List[str]] = {}
     for u in users:
         login = u.get('login') or ''
         if not login:
             continue
         display_by_login[login] = u.get('displayName') or login
+        profile_by_login[login] = u.get('userProfile') or ''
         groups_by_login[login] = [g for g in (u.get('groups') or []) if g]
         created = u.get('creationDate')
         creation_by_login[login] = created
@@ -146,6 +154,7 @@ def _adoption_data(client: Any) -> Dict[str, Any]:
             'lastSuccessfulLogin': act.get('lastSuccessfulLogin'),
             'lastSessionActivity': act.get('lastSessionActivity'),
             'creationDate': creation_by_login.get(login),
+            'userProfile': profile_by_login.get(login) or None,
         })
 
     totals = dict(agg.get('totals', {}))
@@ -175,4 +184,30 @@ def api_adoption():
 
     ttl = int(_BACKEND_SETTINGS.get('cache_ttl_projects', 600))
     data = _cache_get(_ADOPTION_CACHE_KEY, ttl, loader)
+    return jsonify(data)
+
+
+@bp.route('/api/adoption/inventory')
+def api_adoption_inventory():
+    """Config-tree object inventory (macro): full history of surviving objects."""
+    client = g.client
+
+    def loader():
+        return _adoption_inventory_macro(client)
+
+    ttl = int(_BACKEND_SETTINGS.get('cache_ttl_projects', 600))
+    data = _cache_get(_ADOPTION_INVENTORY_CACHE_KEY, ttl, loader)
+    return jsonify(data)
+
+
+@bp.route('/api/adoption/events')
+def api_adoption_events():
+    """Audit-log msgType event mix (macro): the captured audit window only."""
+    client = g.client
+
+    def loader():
+        return _adoption_events_macro(client)
+
+    ttl = int(_BACKEND_SETTINGS.get('cache_ttl_projects', 600))
+    data = _cache_get(_ADOPTION_EVENTS_CACHE_KEY, ttl, loader)
     return jsonify(data)

@@ -13,6 +13,8 @@ _DBHEALTH_MACRO_ID = 'pyrunnable_admin-toolkit_dbhealth-query'
 _IMAGE_CLEANER_MACRO_ID = 'pyrunnable_admin-toolkit_image-cleaner'
 _K8S_INSIGHTS_MACRO_ID = 'pyrunnable_admin-toolkit_k8s-insights'
 _CRU_AUDIT_MACRO_ID = 'pyrunnable_admin-toolkit_cru-audit'
+_ADOPTION_INVENTORY_MACRO_ID = 'pyrunnable_admin-toolkit_adoption-inventory'
+_ADOPTION_EVENTS_MACRO_ID = 'pyrunnable_admin-toolkit_adoption-events'
 _LOG_CLEANER_MACRO_ID = 'pyrunnable_admin-toolkit_log-cleaner'
 _DOCKER_GOVERNOR_MACRO_ID = 'pyrunnable_admin-toolkit_docker-governor'
 _K8S_APPLY_MACRO_ID = 'pyrunnable_admin-toolkit_k8s-apply'
@@ -116,6 +118,46 @@ def _cru_audit_macro(client: Any, **params: Any) -> Dict[str, Any]:
     """
     project = _resolve_macro_project(client)
     macro = project.get_macro(_CRU_AUDIT_MACRO_ID)
+    macro_params: Dict[str, Any] = {}
+    for key, value in params.items():
+        if value is not None:
+            macro_params[key] = value
+    run_id = macro.run(params=macro_params, wait=True)
+    result = macro.get_result(run_id, as_type='json')
+    if not isinstance(result, dict):
+        return {'ok': False, 'error': f'macro returned non-dict: {type(result).__name__}'}
+    return result
+
+
+def _adoption_inventory_macro(client: Any) -> Dict[str, Any]:
+    """Invoke the adoption-inventory macro on the active host. Walks the
+    config tree and returns the full-history surviving-object inventory (see
+    python-runnables/adoption-inventory/runnable.py for shape: {ok, families,
+    creationMonths, creators, projects, firstCreationMs, lastEditMs, ...}).
+
+    Raises MacroProjectMissing if ADMINTOOLKIT doesn't exist on the host —
+    the @errorhandler converts that to a 409 the frontend can react to.
+    """
+    project = _resolve_macro_project(client)
+    macro = project.get_macro(_ADOPTION_INVENTORY_MACRO_ID)
+    run_id = macro.run(params={}, wait=True)
+    result = macro.get_result(run_id, as_type='json')
+    if not isinstance(result, dict):
+        return {'ok': False, 'error': f'macro returned non-dict: {type(result).__name__}'}
+    return result
+
+
+def _adoption_events_macro(client: Any, **params: Any) -> Dict[str, Any]:
+    """Invoke the adoption-events macro on the active host. Mines the audit
+    logs for the human msgType event mix (see python-runnables/adoption-events/
+    runnable.py for shape: {ok, humans, msgTypeCounts, coverageDays, ...}).
+    The one optional param is max_files (INT, 0 = all).
+
+    Raises MacroProjectMissing if ADMINTOOLKIT doesn't exist on the host —
+    the @errorhandler converts that to a 409 the frontend can react to.
+    """
+    project = _resolve_macro_project(client)
+    macro = project.get_macro(_ADOPTION_EVENTS_MACRO_ID)
     macro_params: Dict[str, Any] = {}
     for key, value in params.items():
         if value is not None:

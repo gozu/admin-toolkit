@@ -101,7 +101,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   // On-demand deep dive (loads on mount, like k8s-insights): noLoadGlyph keeps
   // adoptionLoading out of SHARED_LOADING_FIELDS so the global "Analysis
   // complete" aggregate never waits on a page the user may not visit.
-  { id: 'adoption', label: 'Adoption', section: 'Users', navSection: 'USERS', keywords: ['adoption', 'engagement', 'usage', 'logins', 'active', 'trend', 'cohort', 'retention', 'builders', 'people', 'commits', 'growth'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['adoptionLoading'] } },
+  { id: 'adoption', label: 'Adoption', section: 'Users', navSection: 'USERS', keywords: ['adoption', 'engagement', 'usage', 'logins', 'active', 'trend', 'cohort', 'retention', 'builders', 'people', 'commits', 'growth'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['adoptionLoading', 'adoptionInventoryLoading', 'adoptionEventsLoading'] } },
 
   // PLUGINS
   { id: 'plugins-installed', label: 'Installed', section: 'Plugins', navSection: 'PLUGINS', keywords: ['plugin', 'installed', 'list', 'version', 'projects', 'usage'], availability: 'always', lifecycle: { fields: ['pluginsLoading'] } },

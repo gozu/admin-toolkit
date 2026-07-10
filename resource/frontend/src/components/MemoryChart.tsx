@@ -22,6 +22,47 @@ const CHART_COLORS = {
   buffersBorder: CHART_PALETTE.blueBorder,
 };
 
+// Center text reads its value from options.plugins.memoryCenterText —
+// react-chartjs-2 registers inline plugins only at chart CREATION, so a
+// closure over props would freeze the number at its mount-time value while
+// the arcs keep streaming. Options, unlike plugins, are updated reactively.
+const MEMORY_CENTER_PLUGIN: Plugin<'doughnut'> = {
+  id: 'memoryCenterText',
+  afterDraw(chart) {
+    const { ctx, width, height } = chart;
+    const pluginOpts = (chart.options.plugins ?? {}) as Record<string, { text?: string } | undefined>;
+    const totalMemory = pluginOpts['memoryCenterText']?.text;
+    if (!totalMemory) return;
+    const themeAttr = document.documentElement.getAttribute('data-theme');
+    const isDark = themeAttr !== 'light';
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    // Main value
+    ctx.font = 'bold 18px "JetBrains Mono", monospace';
+    ctx.fillStyle = isDark ? '#ffffff' : '#1a1a2e';
+    if (themeAttr === 'dark') {
+      // Glow is regular dark's personality only — dss-dark stays flat.
+      ctx.shadowColor = 'rgba(0, 168, 157, 0.4)';
+      ctx.shadowBlur = 8;
+    }
+    ctx.fillText(totalMemory, centerX, centerY - 8);
+
+    // Label
+    ctx.shadowBlur = 0;
+    ctx.font = '11px "JetBrains Mono", monospace';
+    ctx.fillStyle = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)';
+    ctx.fillText('Total', centerX, centerY + 12);
+
+    ctx.restore();
+  },
+};
+
 export function MemoryChart() {
   const { state } = useDiag();
   const { isVisible } = useTableFilter();
@@ -63,41 +104,6 @@ export function MemoryChart() {
     };
   }, [memoryInfo]);
 
-  const centerTextPlugin: Plugin<'doughnut'> = useMemo(() => ({
-    id: 'memoryCenterText',
-    afterDraw(chart) {
-      const { ctx, width, height } = chart;
-      const totalMemory = memoryInfo.total || formatMemory(chartData.total);
-      const themeAttr = document.documentElement.getAttribute('data-theme');
-      const isDark = themeAttr !== 'light';
-
-      ctx.save();
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-
-      const centerX = width / 2;
-      const centerY = height / 2;
-
-      // Main value
-      ctx.font = 'bold 18px "JetBrains Mono", monospace';
-      ctx.fillStyle = isDark ? '#ffffff' : '#1a1a2e';
-      if (themeAttr === 'dark') {
-        // Glow is regular dark's personality only — dss-dark stays flat.
-        ctx.shadowColor = 'rgba(0, 168, 157, 0.4)';
-        ctx.shadowBlur = 8;
-      }
-      ctx.fillText(totalMemory, centerX, centerY - 8);
-
-      // Label
-      ctx.shadowBlur = 0;
-      ctx.font = '11px "JetBrains Mono", monospace';
-      ctx.fillStyle = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)';
-      ctx.fillText('Total', centerX, centerY + 12);
-
-      ctx.restore();
-    },
-  }), [chartData.total, memoryInfo.total]);
-
   if (!isVisible('memory-chart') || Object.keys(memoryInfo).length === 0) {
     return null;
   }
@@ -121,6 +127,7 @@ export function MemoryChart() {
           },
         },
       },
+      memoryCenterText: { text: memoryInfo.total || formatMemory(chartData.total) },
     },
     hoverOffset: 8,
   };
@@ -140,7 +147,7 @@ export function MemoryChart() {
       </div>
 
       <div className="chart-body" style={{ height: '280px' }}>
-        <Doughnut data={chartData} options={options} plugins={[centerTextPlugin]} />
+        <Doughnut data={chartData} options={options} plugins={[MEMORY_CENTER_PLUGIN]} />
       </div>
 
       {/* Summary table */}

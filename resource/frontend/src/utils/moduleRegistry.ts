@@ -70,7 +70,9 @@ export const MODULES: readonly ModuleDefinition[] = [
   ] } },
   { id: 'summary', label: 'Summary', section: 'Overview', navSection: 'OVERVIEW', keywords: ['health', 'score', 'overview', 'dashboard'], availability: 'always', lifecycle: { fields: ['summaryLoading'] } },
   { id: 'filesystem', label: 'Filesystem', section: 'Overview', navSection: 'OVERVIEW', keywords: ['disk', 'storage', 'mount', 'partition'], availability: 'always', lifecycle: { fields: ['filesystemLoading'] } },
-  { id: 'resources', label: 'Resources', section: 'Overview', navSection: 'OVERVIEW', keywords: ['ram', 'swap', 'memory', 'cpu', 'usage', 'pid', 'process', 'load', 'live', 'resources'], availability: 'always', lifecycle: { fields: ['memoryLoading', 'cpuLoading'] } },
+  // Live page (SSE stream / poll chain, always ready): noLoadGlyph keeps the
+  // sidebar row glyph-free and out of the global "Analysis complete" aggregate.
+  { id: 'resources', label: 'Resources', section: 'Overview', navSection: 'OVERVIEW', keywords: ['ram', 'swap', 'memory', 'cpu', 'usage', 'pid', 'process', 'load', 'live', 'resources'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['memoryLoading', 'cpuLoading'] } },
 
   // CONNECTIONS
   { id: 'connections-inventory', label: 'Inventory', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['database', 'connector', 'type', 'inventory'], availability: 'always', lifecycle: { fields: ['connectionsInventoryLoading'] } },

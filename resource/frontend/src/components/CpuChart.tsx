@@ -18,6 +18,47 @@ const CHART_COLORS = {
   idleBorder: CHART_PALETTE.mintBorder,
 };
 
+// Center text reads its value from options.plugins.cpuCenterText —
+// react-chartjs-2 registers inline plugins only at chart CREATION, so a
+// closure over props would freeze the number at its mount-time value while
+// the arcs keep streaming. Options, unlike plugins, are updated reactively.
+const CPU_CENTER_PLUGIN: Plugin<'doughnut'> = {
+  id: 'cpuCenterText',
+  afterDraw(chart) {
+    const { ctx, width, height } = chart;
+    const pluginOpts = (chart.options.plugins ?? {}) as Record<string, { text?: string } | undefined>;
+    const text = pluginOpts['cpuCenterText']?.text;
+    if (!text) return;
+    const themeAttr = document.documentElement.getAttribute('data-theme');
+    const isDark = themeAttr !== 'light';
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    // Main value
+    ctx.font = 'bold 18px "JetBrains Mono", monospace';
+    ctx.fillStyle = isDark ? '#ffffff' : '#1a1a2e';
+    if (themeAttr === 'dark') {
+      // Glow is regular dark's personality only — dss-dark stays flat.
+      ctx.shadowColor = 'rgba(0, 168, 157, 0.4)';
+      ctx.shadowBlur = 8;
+    }
+    ctx.fillText(text, centerX, centerY - 8);
+
+    // Label
+    ctx.shadowBlur = 0;
+    ctx.font = '11px "JetBrains Mono", monospace';
+    ctx.fillStyle = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)';
+    ctx.fillText('Used', centerX, centerY + 12);
+
+    ctx.restore();
+  },
+};
+
 /** Parse logical thread count from a `cpuCores` string like
  * "4 Cores / 8 Threads" (→ 8). Falls back to the leading plain number. */
 function parseLogicalThreads(cpuCores: string | undefined): number {
@@ -73,43 +114,6 @@ export function CpuChart() {
 
   const utilizationPct = capacity > 0 ? Math.round((used / capacity) * 100) : 0;
 
-  const centerTextPlugin: Plugin<'doughnut'> = useMemo(
-    () => ({
-      id: 'cpuCenterText',
-      afterDraw(chart) {
-        const { ctx, width, height } = chart;
-        const themeAttr = document.documentElement.getAttribute('data-theme');
-        const isDark = themeAttr !== 'light';
-
-        ctx.save();
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-
-        const centerX = width / 2;
-        const centerY = height / 2;
-
-        // Main value
-        ctx.font = 'bold 18px "JetBrains Mono", monospace';
-        ctx.fillStyle = isDark ? '#ffffff' : '#1a1a2e';
-        if (themeAttr === 'dark') {
-          // Glow is regular dark's personality only — dss-dark stays flat.
-          ctx.shadowColor = 'rgba(0, 168, 157, 0.4)';
-          ctx.shadowBlur = 8;
-        }
-        ctx.fillText(`${utilizationPct}%`, centerX, centerY - 8);
-
-        // Label
-        ctx.shadowBlur = 0;
-        ctx.font = '11px "JetBrains Mono", monospace';
-        ctx.fillStyle = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)';
-        ctx.fillText('Used', centerX, centerY + 12);
-
-        ctx.restore();
-      },
-    }),
-    [utilizationPct],
-  );
-
   if (!isVisible('cpu-chart') || scan.processes.length === 0 || capacity <= 0) {
     return null;
   }
@@ -133,6 +137,7 @@ export function CpuChart() {
           },
         },
       },
+      cpuCenterText: { text: `${utilizationPct}%` },
     },
     hoverOffset: 8,
   };
@@ -151,7 +156,7 @@ export function CpuChart() {
       </div>
 
       <div className="chart-body" style={{ height: '280px' }}>
-        <Doughnut data={chartData} options={options} plugins={[centerTextPlugin]} />
+        <Doughnut data={chartData} options={options} plugins={[CPU_CENTER_PLUGIN]} />
       </div>
 
       {/* Summary table */}

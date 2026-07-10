@@ -1,11 +1,11 @@
 import { createModuleScanStore } from './createModuleScanStore';
-import type { AdoptionEventsData } from '../types';
+import type { AdoptionPulseData } from '../types';
 
-// Audit-log msgType event mix — a blocking macro pass over the rotated audit
-// files (cached server-side), single GET. Covers only whatever window the
-// audit rotations still hold; the page stamps every card fed by this with the
-// "Audit · last N days" pill, never the persistent one.
-export const adoptionEventsScan = createModuleScanStore<AdoptionEventsData, never>({
+// Recent-activity pulse — a cheap reverse tail-scan of the newest audit files
+// (macro mode=recent, ~60s server cache), single GET. Covers the last ~72h or
+// however far the rotated files actually reach; the card shows the MEASURED
+// window, never the requested one.
+export const adoptionEventsScan = createModuleScanStore<AdoptionPulseData, never>({
   loadingField: 'adoptionEventsLoading',
   fallbackEndpoint: '/api/adoption/events',
 });

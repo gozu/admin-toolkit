@@ -30,6 +30,10 @@ _LOGGER = logging.getLogger(__name__)
 _ADOPTION_CACHE_KEY = 'adoption'
 _ADOPTION_INVENTORY_CACHE_KEY = 'adoption_inventory'
 _ADOPTION_EVENTS_CACHE_KEY = 'adoption_events'
+# Recent-activity pulse: ask for 3 days back; the tail-scan stops wherever the
+# rotated files run out and reports what it actually covered.
+_PULSE_WINDOW_HOURS = 72
+_PULSE_TTL_SECONDS = 60
 
 
 def _creation_month(created_ms: Any) -> Optional[str]:
@@ -48,6 +52,32 @@ def _activity_dict(activity: Any) -> Dict[str, Any]:
     if isinstance(inner, dict):
         return inner
     return activity if isinstance(activity, dict) else {}
+
+
+def _licensing_summary(client: Any) -> Optional[Dict[str, Any]]:
+    """Licensed seat limits + validity from get_licensing_status(), or None when
+    the key can't read it. Shape verified live (akaos, DSS 14): limits live in
+    limits.licensedProfiles[profile].licensedLimit (-1 = no limit); there are NO
+    per-profile usage counts in the payload — usage joins from list_users."""
+    try:
+        lic = client.get_licensing_status() or {}
+    except Exception:
+        return None
+    base = lic.get('base') or {}
+    content = base.get('licenseContent') or {}
+    profiles = []
+    for name, row in ((lic.get('limits') or {}).get('licensedProfiles') or {}).items():
+        if not isinstance(row, dict):
+            continue
+        profiles.append({'profile': name, 'licensedLimit': row.get('licensedLimit')})
+    return {
+        'valid': bool(base.get('valid')),
+        'expired': bool(base.get('expired')),
+        'expiresOnMs': base.get('expiresOn'),
+        'licenseKind': content.get('licenseKind'),
+        'communityEdition': bool(base.get('community')),
+        'profiles': profiles,
+    }
 
 
 def _adoption_data(client: Any) -> Dict[str, Any]:
@@ -87,13 +117,17 @@ def _adoption_data(client: Any) -> Dict[str, Any]:
     creation_by_login: Dict[str, Any] = {}
     display_by_login: Dict[str, str] = {}
     profile_by_login: Dict[str, str] = {}
+    profile_counts: Dict[str, int] = {}
     groups_by_login: Dict[str, List[str]] = {}
     for u in users:
         login = u.get('login') or ''
         if not login:
             continue
         display_by_login[login] = u.get('displayName') or login
-        profile_by_login[login] = u.get('userProfile') or ''
+        profile = u.get('userProfile') or ''
+        profile_by_login[login] = profile
+        if profile:
+            profile_counts[profile] = profile_counts.get(profile, 0) + 1
         groups_by_login[login] = [g for g in (u.get('groups') or []) if g]
         created = u.get('creationDate')
         creation_by_login[login] = created
@@ -109,6 +143,7 @@ def _adoption_data(client: Any) -> Dict[str, Any]:
     # their work still counts in totals/trend, just not here.
     builder_stats: List[Dict[str, Any]] = agg.get('builderStats', [])
     builder_projects: Dict[str, Any] = agg.get('builderProjects', {})
+    builder_monthly: Dict[str, Dict[str, int]] = agg.get('builderMonthlyCommits', {})
     stats_by_login = {b['login']: b for b in builder_stats}
     group_rows: Dict[str, Dict[str, Any]] = {}
     for login, group_names in groups_by_login.items():
@@ -116,7 +151,7 @@ def _adoption_data(client: Any) -> Dict[str, Any]:
         for name in group_names:
             row = group_rows.setdefault(name, {
                 'name': name, 'memberCount': 0, 'builderCount': 0, 'commits': 0,
-                'projects': set(), 'lastCommitMs': None,
+                'projects': set(), 'lastCommitMs': None, 'monthlyCommits': {},
             })
             row['memberCount'] += 1
             if stat is None:
@@ -124,6 +159,9 @@ def _adoption_data(client: Any) -> Dict[str, Any]:
             row['builderCount'] += 1
             row['commits'] += stat['commits']
             row['projects'].update(builder_projects.get(login, ()))
+            monthly = row['monthlyCommits']
+            for month, n in builder_monthly.get(login, {}).items():
+                monthly[month] = monthly.get(month, 0) + n
             last = stat.get('lastCommitMs')
             if last is not None and (row['lastCommitMs'] is None or last > row['lastCommitMs']):
                 row['lastCommitMs'] = last
@@ -172,6 +210,10 @@ def _adoption_data(client: Any) -> Dict[str, Any]:
         'builderRecency': builder_recency,
         'groups': groups,
         'builderStats': top_builders,
+        # Licensed seat limits (None when the key can't read licensing) + the
+        # actual per-profile seat usage from the same list_users snapshot.
+        'licensing': _licensing_summary(client),
+        'profileCounts': profile_counts,
     }
 
 
@@ -208,16 +250,19 @@ def api_adoption_inventory():
 
 @bp.route('/api/adoption/events')
 def api_adoption_events():
-    """Audit-log msgType event mix (macro): the captured audit window only.
+    """Recent-activity pulse (macro, mode=recent): a cheap reverse tail-scan of
+    the newest audit files, covering the last ~72h or however far the rotated
+    files actually reach — the payload reports the MEASURED window, never the
+    requested one (20 rotations can cover under 24h on a busy instance).
 
     Host-scoped cache: see api_adoption_inventory — _cache_key prefixes the
-    active host id, so entries never cross hosts.
+    active host id, so entries never cross hosts. Short TTL: this is the one
+    fast-moving card on the page.
     """
     client = g.client
 
     def loader():
-        return _adoption_events_macro(client)
+        return _adoption_events_macro(client, mode='recent', window_hours=_PULSE_WINDOW_HOURS)
 
-    ttl = int(_BACKEND_SETTINGS.get('cache_ttl_projects', 600))
-    data = _cache_get(_ADOPTION_EVENTS_CACHE_KEY, ttl, loader)
+    data = _cache_get(_ADOPTION_EVENTS_CACHE_KEY, _PULSE_TTL_SECONDS, loader)
     return jsonify(data)

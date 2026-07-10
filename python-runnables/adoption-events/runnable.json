@@ -19,6 +19,20 @@
             "type": "INT",
             "defaultValue": 0,
             "mandatory": false
+        },
+        {
+            "name": "mode",
+            "label": "Scan mode: full (whole rotation set) or recent (reverse tail scan)",
+            "type": "STRING",
+            "defaultValue": "full",
+            "mandatory": false
+        },
+        {
+            "name": "window_hours",
+            "label": "Recent mode: how far back to look (hours)",
+            "type": "INT",
+            "defaultValue": 72,
+            "mandatory": false
         }
     ]
 }

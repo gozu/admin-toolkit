@@ -3,10 +3,8 @@ import { Chart } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   LineController,
-  BarController,
   LineElement,
   PointElement,
-  BarElement,
   LinearScale,
   CategoryScale,
   Filler,
@@ -16,22 +14,16 @@ import {
 } from 'chart.js';
 import { CHART_PALETTE } from '../../utils/chartColors';
 import { BASE_TOOLTIP_STYLE, baseLegendLabels } from '../../utils/chartConfig';
-import type { AdoptionMonthPoint } from '../../types';
 
-// First LineElement registration in the codebase (every other chart is a
-// doughnut/bar/treemap). No date adapter is bundled, so the x-axis is a plain
-// CategoryScale over 'YYYY-MM' buckets — discrete months, which also reads more
-// honestly than an interpolated time axis for a monthly count.
-// The generic <Chart> component (needed for the mixed line+bar chart) does NOT
-// auto-register controllers the way the typed <Line>/<Bar> components do —
-// both controllers must be registered explicitly or Chart.js throws
-// '"line" is not a registered controller' at mount.
+// Flagship: cumulative "only goes up" adoption lines — people who ever built,
+// projects ever touched, total commits. A partial month on a cumulative line
+// is just the last point mid-climb (never a fake decline), so the current
+// month is plotted honestly, unlike the rate charts elsewhere on the page.
+// No date adapter is bundled — plain CategoryScale over 'YYYY-MM' buckets.
 ChartJS.register(
   LineController,
-  BarController,
   LineElement,
   PointElement,
-  BarElement,
   LinearScale,
   CategoryScale,
   Filler,
@@ -39,11 +31,8 @@ ChartJS.register(
   Legend,
 );
 
-// Commit volume renders as muted violet bars BEHIND the builders line — a
-// second line (dashed mint over the blue area) was near-invisible; bars keep
-// the two series in separate visual channels (volume vs people).
-const COMMITS_BAR = 'rgba(153, 123, 224, 0.32)';
-const COMMITS_BAR_HOVER = 'rgba(153, 123, 224, 0.6)';
+const COMMITS_LINE = 'rgba(153, 123, 224, 0.9)';
+const PROJECTS_LINE = CHART_PALETTE.mintBorder;
 
 const MONTH_ABBR = [
   'Jan',
@@ -63,50 +52,62 @@ const MONTH_ABBR = [
 function monthLabel(ym: string): string {
   const [y, m] = ym.split('-');
   const idx = Number.parseInt(m ?? '', 10) - 1;
-  const abbr = MONTH_ABBR[idx] ?? m ?? '';
-  return `${abbr} '${(y ?? '').slice(2)}`;
+  return `${MONTH_ABBR[idx] ?? m ?? ''} '${(y ?? '').slice(2)}`;
 }
 
-export function AdoptionTrendChart({ points }: { points: AdoptionMonthPoint[] }) {
+export interface CumulativePoint {
+  month: string; // 'YYYY-MM'
+  builders: number; // people who had built by the end of this month
+  projects: number; // projects with any human commit by then
+  commits: number; // total human commits by then
+}
+
+export function CumulativeAdoptionChart({ points }: { points: CumulativePoint[] }) {
   const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
   const tickColor = isDark ? 'rgba(160,160,176,0.85)' : 'rgba(60,60,80,0.7)';
   const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
 
-  const chartData = useMemo(
-    () => ({
+  const chartData = useMemo(() => {
+    const lineBase = {
+      type: 'line' as const,
+      tension: 0.25,
+      borderWidth: 2,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+    };
+    return {
       labels: points.map((p) => p.month),
       datasets: [
         {
-          type: 'line' as const,
-          label: 'Active builders',
-          data: points.map((p) => p.activeBuilders),
+          ...lineBase,
+          label: 'People who ever built',
+          data: points.map((p) => p.builders),
           borderColor: CHART_PALETTE.blueBorder,
-          backgroundColor: 'rgba(109, 163, 224, 0.16)',
+          backgroundColor: 'rgba(109, 163, 224, 0.10)',
           fill: 'origin' as const,
-          tension: 0.35,
-          borderWidth: 2,
-          pointRadius: points.length > 24 ? 0 : 2,
-          pointHoverRadius: 4,
           yAxisID: 'y',
-          order: 0, // drawn last — always on top of the bars
+          order: 0,
         },
         {
-          type: 'bar' as const,
-          label: 'Commits',
+          ...lineBase,
+          label: 'Projects ever active',
+          data: points.map((p) => p.projects),
+          borderColor: PROJECTS_LINE,
+          yAxisID: 'y',
+          order: 1,
+        },
+        {
+          ...lineBase,
+          label: 'Total commits',
           data: points.map((p) => p.commits),
-          backgroundColor: COMMITS_BAR,
-          hoverBackgroundColor: COMMITS_BAR_HOVER,
-          borderWidth: 0,
-          borderRadius: 2,
-          barPercentage: 0.85,
-          categoryPercentage: 0.95,
+          borderColor: COMMITS_LINE,
+          borderDash: [5, 3],
           yAxisID: 'y1',
           order: 2,
         },
       ],
-    }),
-    [points],
-  );
+    };
+  }, [points]);
 
   const options = useMemo(
     () => ({
@@ -118,10 +119,9 @@ export function AdoptionTrendChart({ points }: { points: AdoptionMonthPoint[] })
         tooltip: {
           ...BASE_TOOLTIP_STYLE,
           callbacks: {
-            title: (items: TooltipItem<'line' | 'bar'>[]) =>
-              items.length ? monthLabel(String(items[0].label)) : '',
-            label: (ctx: TooltipItem<'line' | 'bar'>) =>
-              `${ctx.dataset.label}: ${ctx.formattedValue}`,
+            title: (items: TooltipItem<'line'>[]) =>
+              items.length ? `${monthLabel(String(items[0].label))} · running totals` : '',
+            label: (ctx: TooltipItem<'line'>) => `${ctx.dataset.label}: ${ctx.formattedValue}`,
           },
         },
       },
@@ -148,7 +148,7 @@ export function AdoptionTrendChart({ points }: { points: AdoptionMonthPoint[] })
             precision: 0,
             font: { size: 10, family: "'JetBrains Mono', monospace" },
           },
-          title: { display: true, text: 'Active builders', color: tickColor, font: { size: 10 } },
+          title: { display: true, text: 'People / projects', color: tickColor, font: { size: 10 } },
         },
         y1: {
           beginAtZero: true,

@@ -1,7 +1,6 @@
 import type {
   AdoptionBuilderRecency,
   AdoptionInventoryData,
-  AdoptionMonthPoint,
   ObjectFamily,
   ObjectInventory,
 } from '../types';
@@ -15,16 +14,9 @@ import type {
 // types and dormant creators.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const MIN_PERSONA_OBJECTS = 5;
 // Zero-fill cap: a span wider than this is clock-skew garbage — fall back to
 // the sparse month list instead of fabricating a 50-year axis.
 const FILL_MAX_SPAN_BUCKETS = 600;
-// Staleness thresholds (Tableau-style stale-content lens): fresh ≤ 3 months,
-// stale > 12 months, aging in between. Collapsed at view time vs the
-// inventory's own lastEditMs, never the wall clock.
-const FRESH_MONTHS = 3;
-const STALE_MONTHS = 12;
-const DORMANT_THRESHOLD_DAYS = 90;
 
 /** Maturity ladder (Power BI / Fabric adoption-roadmap flavored): one point
  * per practice dimension present in a project's surviving objects. */
@@ -90,7 +82,14 @@ export const TREND_GROUPS: TrendGroupDef[] = [
   {
     key: 'code',
     label: 'Code & ML recipes',
-    families: ['recipe-python', 'recipe-sql', 'recipe-r', 'recipe-ml', 'recipe-plugin', 'recipe-other'],
+    families: [
+      'recipe-python',
+      'recipe-sql',
+      'recipe-r',
+      'recipe-ml',
+      'recipe-plugin',
+      'recipe-other',
+    ],
   },
   { key: 'bi', label: 'Dashboards & insights', families: ['dashboard', 'insight'] },
   { key: 'genai', label: 'Webapps & GenAI', families: ['webapp', 'prompt-studio'] },
@@ -150,26 +149,9 @@ export interface InventoryTrendPoint {
   groups: number[];
 }
 
-export type BuilderPersona =
-  | 'SQL analyst'
-  | 'Python DS'
-  | 'Dashboard author'
-  | 'GenAI builder'
-  | 'Visual flow builder'
-  | 'Generalist';
-
-export interface InventoryPersonaRow {
-  login: string;
-  persona: BuilderPersona | null; // null below the MIN_PERSONA_OBJECTS floor
-  created: number;
-  byFamily: Partial<Record<ObjectFamily, number>>;
-  /** Human-readable share summary for the tooltip. */
-  shareSummary: string;
-}
-
 export interface InventoryTtfbCohort {
-  month: string; // account-creation cohort ('YYYY-MM')
-  cohortUsers: number; // accounts created that month (with creationDate)
+  quarter: string; // account-creation cohort ('YYYY-Qn')
+  cohortUsers: number; // accounts created that quarter (with creationDate)
   builders: number; // of those, users with at least one surviving created object
   medianDays: number | null;
 }
@@ -185,18 +167,6 @@ export interface InventoryTtfb {
 
 // ── Derived analytics (view-time collapse of the macro accumulator) ─────────
 
-/** Objects bucketed by age of their last edit vs the inventory's own "now"
- * (lastEditMs). Collapsed at view time so thresholds stay tunable. */
-export interface InventoryStaleness {
-  freshCount: number; // last edit ≤ 3 months ago
-  agingCount: number; // 3–12 months
-  staleCount: number; // > 12 months
-  unknownCount: number; // objects without any usable edit timestamp
-  /** Projects whose newest config edit is > 12 months old (zombies). */
-  zombieProjects: number;
-  measuredProjects: number;
-}
-
 /** Knowledge-concentration split: projects by distinct-creator count. */
 export interface InventoryBusFactor {
   singleCreator: number;
@@ -211,20 +181,6 @@ export interface InventorySeatTypeRow {
   creators: number; // of those, logins with ≥1 surviving created object
 }
 
-export interface InventoryDormantCreator {
-  login: string;
-  created: number;
-  lastEditMs: number | null; // last config edit attributed to this login
-  lastSessionMs: number | null; // from list_users_activity, if present
-  inUserSnapshot: boolean; // false → account likely deleted
-}
-
-export interface InventoryEditIntensity {
-  editBuckets: { v1: number; v2to5: number; v6to20: number; v21plus: number };
-  savedOnce: number;
-  versionedObjects: number; // objects with a usable versionNumber
-}
-
 export interface InventoryProjectViewRow {
   projectKey: string;
   objectCount: number;
@@ -233,14 +189,18 @@ export interface InventoryProjectViewRow {
   topCreatorShare: number; // 0–1 of created objects attributed to topCreator
   lastEditMs: number | null;
   lastEditor: string | null;
-  stalePct: number; // % of dated objects last edited > 12 months ago
-  datedObjects: number; // stalePct denominator — mute the % when this is tiny
   maturityScore: number; // 0–6, see MATURITY_DIMENSIONS
   /** notebooks per recipe — per PROJECT only (.ipynb carries no creator). */
   notebookRecipeRatio: number | null;
   /** Stacked family-group values aligned with TREND_GROUPS. */
   groups: number[];
   creators: Record<string, number>;
+}
+
+/** Top creators for one TREND_GROUPS slot (per-family builder leaderboards). */
+export interface InventoryGroupCreators {
+  key: string; // TREND_GROUPS key
+  creators: Array<{ login: string; created: number }>;
 }
 
 export interface InventoryView {
@@ -251,19 +211,11 @@ export interface InventoryView {
   complete: boolean;
   composition: InventoryCompositionRow[];
   trendPoints: InventoryTrendPoint[];
-  /** Same trend re-shaped for the existing ActivityHeatGrid (commits = objects
-   * created, activeBuilders = distinct creators that month). */
-  heatPoints: AdoptionMonthPoint[];
-  personas: Record<string, InventoryPersonaRow>;
   ttfb: InventoryTtfb;
-  staleness: InventoryStaleness;
   busFactor: InventoryBusFactor;
-  /** Histogram: index = maturity score 0–6, value = project count. */
-  maturityHistogram: number[];
   seatTypes: InventorySeatTypeRow[];
-  dormantCreators: InventoryDormantCreator[];
-  dormantThresholdDays: number;
-  editIntensity: InventoryEditIntensity;
+  /** Aligned with TREND_GROUPS — top creators per family group. */
+  topCreatorsByGroup: InventoryGroupCreators[];
   projectRows: InventoryProjectViewRow[];
 }
 
@@ -290,6 +242,48 @@ export function asObjectInventory(data: AdoptionInventoryData | null): ObjectInv
 export function monthKeyUTC(ms: number): string {
   const d = new Date(ms);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+// ── Quarter buckets ('YYYY-Qn') — onboarding runs on trimesters, not months ──
+
+export function quarterKeyUTC(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getUTCFullYear()}-Q${Math.floor(d.getUTCMonth() / 3) + 1}`;
+}
+
+/** 'YYYY-MM' → 'YYYY-Qn'. String compare stays chronological for both forms. */
+export function monthToQuarter(month: string): string {
+  const m = Number(month.slice(5, 7));
+  return `${month.slice(0, 4)}-Q${Math.floor((m - 1) / 3) + 1}`;
+}
+
+/** 'YYYY-Qn' → "Q3 '26". */
+export function quarterLabel(q: string): string {
+  return `Q${q.slice(6)} '${q.slice(2, 4)}`;
+}
+
+/** Zero-filled 'YYYY-Qn' axis between the first and last observed quarters. */
+export function fillQuarterRange(quarterKeys: string[]): string[] {
+  if (quarterKeys.length === 0) return [];
+  const sorted = [...quarterKeys].sort();
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  let y = Number(first.slice(0, 4));
+  let q = Number(first.slice(6));
+  const ly = Number(last.slice(0, 4));
+  const lq = Number(last.slice(6));
+  const span = (ly - y) * 4 + (lq - q) + 1;
+  if (span < 1 || span > FILL_MAX_SPAN_BUCKETS) return sorted;
+  const out: string[] = [];
+  while (y < ly || (y === ly && q <= lq)) {
+    out.push(`${y}-Q${q}`);
+    q++;
+    if (q > 4) {
+      y++;
+      q = 1;
+    }
+  }
+  return out;
 }
 
 /** Drop trailing in-progress-month points: a 10-day July plotted next to full
@@ -342,46 +336,23 @@ export function sumFamilies(
   return total;
 }
 
-function classifyPersona(
-  byFamily: Partial<Record<ObjectFamily, number>>,
-  created: number,
-): { persona: BuilderPersona; shareSummary: string } {
-  const share = (families: ObjectFamily[]) => sumFamilies(byFamily, families) / created;
-  const sql = share(['recipe-sql', 'sql-notebook']);
-  const py = share(['recipe-python', 'recipe-ml', 'recipe-r']);
-  const dash = share(['dashboard', 'insight']);
-  const genai = share(['prompt-studio']);
-  const visual = share(['recipe-visual', 'dataset']);
-  const pct = (v: number) => `${Math.round(v * 100)}%`;
-  const shareSummary = `SQL ${pct(sql)} · Python/ML ${pct(py)} · dashboards ${pct(dash)} · GenAI ${pct(genai)} · visual flow ${pct(visual)}`;
-
-  // First-match rules. "Automation engineer" is deferred — scenarios carry no
-  // creator tags.
-  let persona: BuilderPersona = 'Generalist';
-  if (sql >= 0.5) persona = 'SQL analyst';
-  else if (py >= 0.5) persona = 'Python DS';
-  else if (dash >= 0.5) persona = 'Dashboard author';
-  else if (genai >= 0.3) persona = 'GenAI builder';
-  else if (visual >= 0.6) persona = 'Visual flow builder';
-  return { persona, shareSummary };
-}
-
 function buildTtfb(inventory: ObjectInventory, users: AdoptionBuilderRecency[]): InventoryTtfb {
-  const floorMonth = inventory.firstCreationMs !== null ? monthKeyUTC(inventory.firstCreationMs) : null;
+  const floorQuarter =
+    inventory.firstCreationMs !== null ? quarterKeyUTC(inventory.firstCreationMs) : null;
   const cohortMap = new Map<string, { cohortUsers: number; days: number[] }>();
   let excludedCohorts = 0;
   const allDays: number[] = [];
 
   for (const user of users) {
     if (typeof user.creationDate !== 'number' || !Number.isFinite(user.creationDate)) continue;
-    const cohortMonth = monthKeyUTC(user.creationDate);
+    const cohortQuarter = quarterKeyUTC(user.creationDate);
     // Cohorts predating the surviving-object history can't be measured
     // honestly — their first build may have been deleted since.
-    if (floorMonth === null || cohortMonth < floorMonth) continue;
-    let cohort = cohortMap.get(cohortMonth);
+    if (floorQuarter === null || cohortQuarter < floorQuarter) continue;
+    let cohort = cohortMap.get(cohortQuarter);
     if (!cohort) {
       cohort = { cohortUsers: 0, days: [] };
-      cohortMap.set(cohortMonth, cohort);
+      cohortMap.set(cohortQuarter, cohort);
     }
     cohort.cohortUsers++;
     const firstCreatedMs = inventory.creators[user.login]?.firstCreatedMs;
@@ -392,12 +363,12 @@ function buildTtfb(inventory: ObjectInventory, users: AdoptionBuilderRecency[]):
     }
   }
 
-  if (floorMonth !== null) {
+  if (floorQuarter !== null) {
     const seen = new Set<string>();
     for (const user of users) {
       if (typeof user.creationDate !== 'number' || !Number.isFinite(user.creationDate)) continue;
-      const cohortMonth = monthKeyUTC(user.creationDate);
-      if (cohortMonth < floorMonth) seen.add(cohortMonth);
+      const cohortQuarter = quarterKeyUTC(user.creationDate);
+      if (cohortQuarter < floorQuarter) seen.add(cohortQuarter);
     }
     excludedCohorts = seen.size;
   }
@@ -405,8 +376,8 @@ function buildTtfb(inventory: ObjectInventory, users: AdoptionBuilderRecency[]):
   const round1 = (v: number | null) => (v === null ? null : Math.round(v * 10) / 10);
   const cohorts: InventoryTtfbCohort[] = [...cohortMap.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, c]) => ({
-      month,
+    .map(([quarter, c]) => ({
+      quarter,
       cohortUsers: c.cohortUsers,
       builders: c.days.length,
       medianDays: round1(median(c.days)),
@@ -420,56 +391,21 @@ function buildTtfb(inventory: ObjectInventory, users: AdoptionBuilderRecency[]):
   };
 }
 
-/** Whole months between a 'YYYY-MM' key and a reference 'YYYY-MM' key. */
-function monthsBefore(month: string, refMonth: string): number {
-  const y = Number(month.slice(0, 4));
-  const m = Number(month.slice(5, 7));
-  const ry = Number(refMonth.slice(0, 4));
-  const rm = Number(refMonth.slice(5, 7));
-  return (ry - y) * 12 + (rm - m);
-}
-
-interface StalenessAndProjects {
-  staleness: InventoryStaleness;
+interface BusFactorAndProjects {
   busFactor: InventoryBusFactor;
-  maturityHistogram: number[];
   projectRows: InventoryProjectViewRow[];
 }
 
-function collapseProjects(inventory: ObjectInventory, refMonth: string): StalenessAndProjects {
-  let freshCount = 0;
-  let agingCount = 0;
-  let staleCount = 0;
-  let zombieProjects = 0;
-  let measuredProjects = 0;
+function collapseProjects(inventory: ObjectInventory): BusFactorAndProjects {
   const busFactor: InventoryBusFactor = {
     singleCreator: 0,
     twoToThree: 0,
     fourPlus: 0,
     measuredProjects: 0,
   };
-  const maturityHistogram = new Array<number>(MATURITY_DIMENSIONS.length + 1).fill(0);
   const projectRows: InventoryProjectViewRow[] = [];
 
   for (const [projectKey, p] of Object.entries(inventory.projects)) {
-    let fresh = 0;
-    let aging = 0;
-    let stale = 0;
-    for (const [month, count] of Object.entries(p.lastEditMonthCounts)) {
-      const age = monthsBefore(month, refMonth);
-      if (age <= FRESH_MONTHS) fresh += count;
-      else if (age <= STALE_MONTHS) aging += count;
-      else stale += count;
-    }
-    freshCount += fresh;
-    agingCount += aging;
-    staleCount += stale;
-    const dated = fresh + aging + stale;
-    if (dated > 0) {
-      measuredProjects++;
-      if (fresh === 0 && aging === 0) zombieProjects++;
-    }
-
     const creatorEntries = Object.entries(p.creators);
     let topCreator: string | null = null;
     let topCreated = 0;
@@ -491,7 +427,6 @@ function collapseProjects(inventory: ObjectInventory, refMonth: string): Stalene
     const maturityScore = MATURITY_DIMENSIONS.filter(
       (d) => sumFamilies(p.byFamily, d.families) > 0,
     ).length;
-    maturityHistogram[maturityScore]++;
 
     const notebooks = sumFamilies(p.byFamily, ['notebook', 'sql-notebook']);
     const recipes = sumFamilies(p.byFamily, RECIPE_FAMILIES);
@@ -504,29 +439,17 @@ function collapseProjects(inventory: ObjectInventory, refMonth: string): Stalene
       topCreatorShare: createdTotal > 0 ? topCreated / createdTotal : 0,
       lastEditMs: p.lastHumanEditMs,
       lastEditor: p.lastEditor,
-      stalePct: dated > 0 ? (stale / dated) * 100 : 0,
-      datedObjects: dated,
       maturityScore,
       notebookRecipeRatio: recipes > 0 ? notebooks / recipes : null,
       groups: TREND_GROUPS.map((g) => sumFamilies(p.byFamily, g.families)),
       creators: p.creators,
     });
   }
-  projectRows.sort((a, b) => b.objectCount - a.objectCount || a.projectKey.localeCompare(b.projectKey));
+  projectRows.sort(
+    (a, b) => b.objectCount - a.objectCount || a.projectKey.localeCompare(b.projectKey),
+  );
 
-  return {
-    staleness: {
-      freshCount,
-      agingCount,
-      staleCount,
-      unknownCount: Math.max(0, inventory.scanned - freshCount - agingCount - staleCount),
-      zombieProjects,
-      measuredProjects,
-    },
-    busFactor,
-    maturityHistogram,
-    projectRows,
-  };
+  return { busFactor, projectRows };
 }
 
 function buildSeatTypes(
@@ -559,39 +482,6 @@ function buildSeatTypes(
   return [...byProfile.entries()]
     .map(([profile, row]) => ({ profile, users: row.users, creators: row.creators }))
     .sort((a, b) => b.users - a.users || b.creators - a.creators);
-}
-
-function buildDormantCreators(
-  inventory: ObjectInventory,
-  users: AdoptionBuilderRecency[],
-  referenceMs: number,
-): InventoryDormantCreator[] {
-  const sessionByLogin = new Map(users.map((r) => [r.login, r.lastSessionActivity]));
-  // Reference "now" for session recency: the newest session anywhere, falling
-  // back to the inventory's own lastEditMs (never the wall clock).
-  let sessionRef = 0;
-  for (const record of users) {
-    if (record.lastSessionActivity != null) sessionRef = Math.max(sessionRef, record.lastSessionActivity);
-  }
-  if (sessionRef === 0) sessionRef = referenceMs;
-  const userLogins = new Set(users.map((u) => u.login));
-
-  const dormant: InventoryDormantCreator[] = [];
-  for (const [login, stats] of Object.entries(inventory.creators)) {
-    if (stats.created <= 0) continue;
-    const lastSessionMs = sessionByLogin.get(login) ?? null;
-    const isDormant =
-      lastSessionMs === null || sessionRef - lastSessionMs > DORMANT_THRESHOLD_DAYS * DAY_MS;
-    if (!isDormant) continue;
-    dormant.push({
-      login,
-      created: stats.created,
-      lastEditMs: stats.lastEditMs,
-      lastSessionMs,
-      inUserSnapshot: userLogins.has(login),
-    });
-  }
-  return dormant.sort((a, b) => b.created - a.created);
 }
 
 export function buildInventoryView(
@@ -631,48 +521,18 @@ export function buildInventoryView(
       groups: TREND_GROUPS.map((g) => (m ? sumFamilies(m.byFamily, g.families) : 0)),
     };
   });
-  const heatPoints: AdoptionMonthPoint[] = trendPoints.map((p) => ({
-    month: p.month,
-    commits: p.total,
-    activeBuilders: p.distinctCreators,
+  const { busFactor, projectRows } = collapseProjects(inventory);
+
+  // Per-family-group builder leaderboards — one ranked list per TREND_GROUPS
+  // slot, from each creator's byFamily counts.
+  const topCreatorsByGroup: InventoryGroupCreators[] = TREND_GROUPS.map((group) => ({
+    key: group.key,
+    creators: Object.entries(inventory.creators)
+      .map(([login, stats]) => ({ login, created: sumFamilies(stats.byFamily, group.families) }))
+      .filter((c) => c.created > 0)
+      .sort((a, b) => b.created - a.created || a.login.localeCompare(b.login))
+      .slice(0, 5),
   }));
-
-  const personas: Record<string, InventoryPersonaRow> = {};
-  for (const [login, stats] of Object.entries(inventory.creators)) {
-    if (stats.created <= 0) continue;
-    const classified =
-      stats.created >= MIN_PERSONA_OBJECTS ? classifyPersona(stats.byFamily, stats.created) : null;
-    personas[login] = {
-      login,
-      persona: classified?.persona ?? null,
-      created: stats.created,
-      byFamily: stats.byFamily,
-      shareSummary:
-        classified?.shareSummary ??
-        `${stats.created} object${stats.created === 1 ? '' : 's'} created (persona needs ≥${MIN_PERSONA_OBJECTS})`,
-    };
-  }
-
-  // Derived analytics — all vs the inventory's own reference "now".
-  const referenceMs = inventory.lastEditMs ?? Date.now();
-  const { staleness, busFactor, maturityHistogram, projectRows } = collapseProjects(
-    inventory,
-    monthKeyUTC(referenceMs),
-  );
-
-  const editBuckets = { v1: 0, v2to5: 0, v6to20: 0, v21plus: 0 };
-  for (const stats of Object.values(inventory.families)) {
-    editBuckets.v1 += stats.editBuckets.v1;
-    editBuckets.v2to5 += stats.editBuckets.v2to5;
-    editBuckets.v6to20 += stats.editBuckets.v6to20;
-    editBuckets.v21plus += stats.editBuckets.v21plus;
-  }
-  const editIntensity: InventoryEditIntensity = {
-    editBuckets,
-    savedOnce: Object.values(inventory.projects).reduce((sum, p) => sum + p.savedOnce, 0),
-    versionedObjects:
-      editBuckets.v1 + editBuckets.v2to5 + editBuckets.v6to20 + editBuckets.v21plus,
-  };
 
   return {
     inventory,
@@ -682,16 +542,10 @@ export function buildInventoryView(
     complete: inventory.complete,
     composition,
     trendPoints,
-    heatPoints,
-    personas,
     ttfb: buildTtfb(inventory, recency),
-    staleness,
     busFactor,
-    maturityHistogram,
     seatTypes: buildSeatTypes(inventory, recency),
-    dormantCreators: buildDormantCreators(inventory, recency, referenceMs),
-    dormantThresholdDays: DORMANT_THRESHOLD_DAYS,
-    editIntensity,
+    topCreatorsByGroup,
     projectRows,
   };
 }

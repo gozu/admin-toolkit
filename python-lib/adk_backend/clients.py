@@ -744,6 +744,9 @@ def _adoption_git_aggregate(client: Any) -> Dict[str, Any]:
     # human login -> commit count / touched projects / first & last commit ms —
     # feeds the top-builders leaderboard and the per-group activity roll-up
     builder_commits: Dict[str, int] = {}
+    # human login -> {month: commits} — the route sums these per DSS group so
+    # each group gets its own monthly trend; never serialized per-builder
+    builder_month_commits: Dict[str, Dict[str, int]] = {}
     builder_projects: Dict[str, set] = {}
     builder_first_ms: Dict[str, int] = {}
     builder_last_ms: Dict[str, int] = {}
@@ -801,6 +804,8 @@ def _adoption_git_aggregate(client: Any) -> Dict[str, Any]:
                     month_commits[month] = month_commits.get(month, 0) + 1
                     month_builders.setdefault(month, set()).add(ident)
                     builder_months.setdefault(ident, set()).add(month)
+                    bm = builder_month_commits.setdefault(ident, {})
+                    bm[month] = bm.get(month, 0) + 1
 
         project_rows.append({
             'projectKey': key,
@@ -864,6 +869,8 @@ def _adoption_git_aggregate(client: Any) -> Dict[str, Any]:
         # internal (login -> set of project keys): the route unions these per
         # DSS group; never serialized to the frontend
         'builderProjects': builder_projects,
+        # internal (login -> {month: commits}): summed per group by the route
+        'builderMonthlyCommits': builder_month_commits,
         'totals': {
             'projectCount': len(keys),
             'builderCount': len(builders),

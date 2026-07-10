@@ -893,11 +893,18 @@ export function AdoptionPage() {
   const topBuilders = builders.slice(0, 12);
   const builderCommitsMax = Math.max(1, ...topBuilders.map((b) => b.commits));
 
-  // Onboarding cohorts — complete months, zero-filled, last 24; the running
-  // month is a footnote, never a bar.
+  // Onboarding cohorts — complete months, zero-filled up to the LAST complete
+  // month (a quiet recent stretch is a real zero, not missing data), last 24;
+  // the running month is a footnote, never a bar.
+  const prevMonthKey = (() => {
+    const y = Number(currentMonthKey.slice(0, 4));
+    const m = Number(currentMonthKey.slice(5, 7));
+    return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+  })();
   const cohortByMonth = new Map(cohorts.map((c) => [c.month, c.newUsers]));
-  const cohortMonths = fillMonthRange(
-    cohorts.filter((c) => c.month < currentMonthKey).map((c) => c.month),
+  const cohortMonthKeys = cohorts.filter((c) => c.month < currentMonthKey).map((c) => c.month);
+  const cohortMonths = (
+    cohortMonthKeys.length > 0 ? fillMonthRange([...cohortMonthKeys, prevMonthKey]) : []
   ).slice(-24);
   const cohortPoints: ColPoint[] = cohortMonths.map((month) => {
     const n = cohortByMonth.get(month) ?? 0;
@@ -932,7 +939,7 @@ export function AdoptionPage() {
           {
             key: '__rest',
             label: `${restComposition.length} smaller ${restComposition.length === 1 ? 'family' : 'families'}`,
-            color: 'var(--bg-elevated)',
+            color: 'color-mix(in srgb, var(--text-tertiary) 40%, transparent)',
             value: restComposition.reduce((s, c) => s + c.count, 0),
             hint: restComposition
               .map((c) => `${c.label} (${c.count.toLocaleString()})`)
@@ -1561,7 +1568,10 @@ export function AdoptionPage() {
                         {b.commits.toLocaleString()}
                       </span>
                     </div>
-                    {persona && (
+                    {/* Family-mix bar only above the persona floor — a
+                        one-object builder would paint a misleading full-width
+                        single-color bar. */}
+                    {persona?.persona && (
                       <div className="ml-7 mt-1">
                         <SegmentBar height={4} segments={familyMixSegments(persona)} />
                       </div>

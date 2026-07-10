@@ -217,44 +217,76 @@ def api_resource_sample():
         return jsonify({'ok': False, 'error': f"{type(e).__name__}: {e}"})
 
 
+# Remote stream cadences — each remote sample is a DSS macro job, so these
+# mirror the retired poll chain (15s sample / 60s `ps`), not the local 1s tick.
+_REMOTE_STREAM_PERIOD_S = 15
+_REMOTE_HEAVY_EVERY = 4
+
+
 @bp.route('/api/host/resource-stream')
 def api_resource_stream():
-    """Long-lived SSE sampler for the Resources page — LOCAL host only.
+    """Long-lived SSE sampler for the Resources page — every host.
 
-    One connection replaces the old poll-every-second architecture: each 1s
-    tick emits an `event: sample` (raw /proc/stat + /proc/meminfo counters —
-    the frontend diffs consecutive samples exactly as it did with the polled
-    endpoint) and, from the second tick on, an `event: processes` per-process
-    snapshot derived from /proc/<pid>/stat tick deltas (no `ps`, no macro run).
-    Remote hosts keep polling /api/host/resource-sample; the frontend never
-    calls this for them. No g.client use inside the loop — pure /proc reads.
+    One connection replaces the old poll chains: each tick emits an
+    `event: sample` (raw /proc/stat + /proc/meminfo counters — the frontend
+    diffs consecutive samples) and periodically an `event: processes`
+    per-process snapshot.
+
+    LOCAL host: 1s ticks reading /proc in-process; processes from
+    /proc/<pid>/stat tick deltas (no `ps`, no macro run, no g.client).
+    REMOTE host: 15s ticks via the resource-sample macro, `ps` via the
+    process-metrics macro every 4th tick (skipping the first — the page runs
+    its own initial scan, which also carries the 409 macro-project-missing
+    bootstrap flow). Any macro failure mid-stream degrades to an {ok:false}
+    sample frame — headers are already sent, so no error status is possible.
     """
-    if _safe_request_host_id() != 'local':
-        return jsonify({'ok': False, 'error': 'local host only'}), 400
-
-    def generate():
-        proc_state = None
-        try:
-            while True:
-                sample = _read_resource_sample()
-                yield "event: sample\ndata: %s\n\n" % json.dumps(sample)
-                if not sample.get('ok'):
-                    return
-                cpu = sample.get('cpu') or {}
-                total_jiffies = sum(
-                    v for k, v in cpu.items() if k != 'cpuCount' and isinstance(v, int)
-                )
-                payload, proc_state = _read_proc_processes(
-                    proc_state,
-                    total_jiffies,
-                    _coerce_int(cpu.get('cpuCount'), 1) or 1,
-                    _coerce_int((sample.get('mem') or {}).get('totalKb'), 0),
-                )
-                if payload is not None:
-                    yield "event: processes\ndata: %s\n\n" % json.dumps(payload)
-                time.sleep(1)
-        except GeneratorExit:
-            return
+    if _safe_request_host_id() == 'local':
+        def generate():
+            proc_state = None
+            try:
+                while True:
+                    sample = _read_resource_sample()
+                    yield "event: sample\ndata: %s\n\n" % json.dumps(sample)
+                    if not sample.get('ok'):
+                        return
+                    cpu = sample.get('cpu') or {}
+                    total_jiffies = sum(
+                        v for k, v in cpu.items() if k != 'cpuCount' and isinstance(v, int)
+                    )
+                    payload, proc_state = _read_proc_processes(
+                        proc_state,
+                        total_jiffies,
+                        _coerce_int(cpu.get('cpuCount'), 1) or 1,
+                        _coerce_int((sample.get('mem') or {}).get('totalKb'), 0),
+                    )
+                    if payload is not None:
+                        yield "event: processes\ndata: %s\n\n" % json.dumps(payload)
+                    time.sleep(1)
+            except GeneratorExit:
+                return
+    else:
+        def generate():
+            tick = 0
+            try:
+                while True:
+                    try:
+                        sample = _resource_sample_macro(g.client)
+                    except Exception as e:
+                        sample = {'ok': False, 'error': f"{type(e).__name__}: {e}"}
+                    yield "event: sample\ndata: %s\n\n" % json.dumps(sample)
+                    if not sample.get('ok'):
+                        return
+                    if tick > 0 and tick % _REMOTE_HEAVY_EVERY == 0:
+                        try:
+                            payload = _process_metrics_macro(g.client)
+                        except Exception:
+                            payload = None
+                        if isinstance(payload, dict) and payload.get('ok'):
+                            yield "event: processes\ndata: %s\n\n" % json.dumps(payload)
+                    tick += 1
+                    time.sleep(_REMOTE_STREAM_PERIOD_S)
+            except GeneratorExit:
+                return
 
     return _sse_response(generate)
 

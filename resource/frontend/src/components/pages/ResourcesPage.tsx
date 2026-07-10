@@ -13,9 +13,9 @@ import {
 
 /** Merged Memory + CPU page. In API mode it additionally runs the live
  * sampler that feeds the utilization strip, doughnuts and process table: one
- * SSE stream (1s server ticks) on the local host, or a 15s poll chain plus a
- * 60s `ps`+host-summary heavy tier on remote hosts. Zip mode keeps the static
- * doughnuts/table exactly as before — no sampling. */
+ * SSE stream per host — 1s /proc ticks locally, 15s/60s macro ticks on remote
+ * hosts (server-driven). Zip mode keeps the static doughnuts/table exactly as
+ * before — no sampling. */
 export function ResourcesPage() {
   const { state, setParsedData } = useDiag();
   const { parsedData } = state;

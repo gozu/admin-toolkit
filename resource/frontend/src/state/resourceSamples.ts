@@ -1,28 +1,18 @@
-import { fetchJson, fetchSse } from '../utils/api';
+import { fetchSse } from '../utils/api';
 import { createSyncStore } from './createSyncStore';
 import { getActiveHostId } from './hostStore';
 import { subscribeSessionEpoch } from './sessionCache';
-import {
-  applyStreamedProcessSnapshot,
-  restartProcessMetricsScan,
-  type StreamedProcessSnapshot,
-} from './processMetrics';
-import { refreshHostSummary } from './hostSummary';
+import { applyStreamedProcessSnapshot, type StreamedProcessSnapshot } from './processMetrics';
 import { formatMemory } from '../utils/formatters';
 import type { MemoryInfo, ParsedData } from '../types';
 
 // ─────────────────────────────────────────────────────────────────────────
-// Live resource sampling for the Resources page.
-//
-// LOCAL host: one long-lived SSE connection to /api/host/resource-stream.
-// The server samples /proc every second and pushes `sample` (raw cumulative
-// counters — diffed client-side into CPU%/MEM%, same as the polled path) and
-// `processes` (per-PID snapshot from /proc tick deltas) frames. No macro
-// runs, no per-second HTTP churn.
-//
-// REMOTE host: the pre-stream polling architecture — a setTimeout chain on
-// /api/host/resource-sample (15s) plus a slower "heavy tier" (60s) that
-// re-runs the full `ps` macro + host summary.
+// Live resource sampling for the Resources page: one long-lived SSE
+// connection to /api/host/resource-stream for EVERY host. The server pushes
+// `sample` (raw cumulative counters — diffed client-side into CPU%/MEM%) and
+// `processes` (per-PID snapshot) frames. The cadence is server-driven: 1s
+// /proc reads locally, 15s/60s macro runs on remote hosts (each remote
+// sample is a DSS macro job — the interval constants here are display-only).
 // ─────────────────────────────────────────────────────────────────────────
 
 export interface ResourceCpuCounters {
@@ -67,19 +57,14 @@ export interface ResourceSamplesState {
   status: ResourcePollStatus;
   samples: ResourceSample[];
   intervalMs: number;
-  /** How samples arrive: pushed over SSE (local) or polled (remote). */
-  mode: 'stream' | 'poll';
   error: string | null;
 }
 
 // 120 intervals + the seed sample = 2 min of history at the 1s stream cadence.
 export const MAX_SAMPLE_SLOTS = 121;
-// The server-side stream tick (display only — the server drives the cadence).
+// Server-side stream ticks (display only — the server drives the cadence).
 const LOCAL_STREAM_MS = 1_000;
-const REMOTE_INTERVAL_MS = 15_000;
-// Heavy tier (full `ps` macro + host summary), remote hosts only.
-const REMOTE_HEAVY_MS = 60_000;
-const MAX_CONSECUTIVE_FAILURES = 2;
+const REMOTE_STREAM_MS = 15_000;
 const MAX_STREAM_RETRIES = 2;
 const STREAM_RETRY_DELAY_MS = 2_000;
 
@@ -87,7 +72,6 @@ const INITIAL_STATE: ResourceSamplesState = {
   status: 'idle',
   samples: [],
   intervalMs: LOCAL_STREAM_MS,
-  mode: 'stream',
   error: null,
 };
 
@@ -96,14 +80,11 @@ export const resourceSamplesStore = createSyncStore<ResourceSamplesState>(INITIA
 });
 
 let _active = false;
-// Chain token: every (re)start/resume bumps it so a stale in-flight tick or a
-// dying stream consumer from a previous chain can never double-schedule.
+// Chain token: every (re)start/resume bumps it so a dying stream consumer
+// from a previous chain can never double-schedule its retry timer.
 let _chain = 0;
 let _timer: ReturnType<typeof setTimeout> | null = null;
-let _failures = 0;
 let _streamRetries = 0;
-let _isLocal = true;
-let _lastHeavyAt = 0;
 let _streamAbort: AbortController | null = null;
 let _applyParsedData: ((data: Partial<ParsedData>) => void) | null = null;
 let _visibilityHooked = false;
@@ -120,12 +101,6 @@ function abortStream(): void {
   _streamAbort = null;
 }
 
-/** Launch the transport that matches the active host. */
-function launch(chainId: number): void {
-  if (_isLocal) void runStream(chainId);
-  else void tick(chainId);
-}
-
 function handleVisibility(): void {
   if (!_active) return;
   if (document.hidden) {
@@ -137,7 +112,7 @@ function handleVisibility(): void {
     }
   } else if (resourceSamplesStore.get().status === 'paused') {
     resourceSamplesStore.patch({ status: 'polling' });
-    launch(++_chain);
+    void runStream(++_chain);
   }
 }
 
@@ -185,8 +160,6 @@ function giveUp(err: unknown): void {
   stopResourcePolling();
 }
 
-// ── Local transport: one SSE connection ─────────────────────────────────
-
 async function runStream(chainId: number): Promise<void> {
   const controller = new AbortController();
   _streamAbort = controller;
@@ -222,36 +195,6 @@ async function runStream(chainId: number): Promise<void> {
   }
 }
 
-// ── Remote transport: setTimeout poll chain + heavy tier ────────────────
-
-async function tick(chainId: number): Promise<void> {
-  if (!_active || chainId !== _chain || document.hidden) return;
-  try {
-    const data = await fetchJson<ResourceSampleResponse>('/api/host/resource-sample');
-    if (!_active || chainId !== _chain) return;
-    if (!data.ok || !data.cpu || !data.mem) {
-      throw new Error(data.error || 'resource sample unavailable');
-    }
-    _failures = 0;
-    appendSample(data);
-  } catch (err) {
-    if (!_active || chainId !== _chain) return;
-    _failures += 1;
-    if (_failures >= MAX_CONSECUTIVE_FAILURES) {
-      giveUp(err);
-      return;
-    }
-  }
-  const now = Date.now();
-  if (now - _lastHeavyAt >= REMOTE_HEAVY_MS) {
-    _lastHeavyAt = now;
-    restartProcessMetricsScan();
-    if (_applyParsedData) void refreshHostSummary(_applyParsedData);
-  }
-  if (!_active || chainId !== _chain || document.hidden) return;
-  _timer = setTimeout(() => void tick(chainId), REMOTE_INTERVAL_MS);
-}
-
 /** Start (or re-start) live sampling for the active host. Idempotent while
  * active. Existing same-session samples are kept so navigating away and back
  * doesn't lose the history window. */
@@ -259,23 +202,17 @@ export function startResourcePolling(applyParsedData: (data: Partial<ParsedData>
   _applyParsedData = applyParsedData;
   if (_active) return;
   _active = true;
-  _failures = 0;
   _streamRetries = 0;
-  // Don't fire the remote heavy tier on mount — the page already starts the
-  // process scan itself and the host summary is fresh from startup.
-  _lastHeavyAt = Date.now();
-  _isLocal = getActiveHostId() === 'local';
   resourceSamplesStore.patch({
     status: 'polling',
-    intervalMs: _isLocal ? LOCAL_STREAM_MS : REMOTE_INTERVAL_MS,
-    mode: _isLocal ? 'stream' : 'poll',
+    intervalMs: getActiveHostId() === 'local' ? LOCAL_STREAM_MS : REMOTE_STREAM_MS,
     error: null,
   });
   if (!_visibilityHooked) {
     _visibilityHooked = true;
     document.addEventListener('visibilitychange', handleVisibility);
   }
-  launch(++_chain);
+  void runStream(++_chain);
 }
 
 export function stopResourcePolling(): void {

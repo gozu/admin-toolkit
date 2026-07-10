@@ -32,7 +32,7 @@ function fmtClock(ts: number): string {
 }
 
 export function LiveResourceChart() {
-  const { status, samples, intervalMs, mode } = resourceSamplesStore.use();
+  const { status, samples, intervalMs } = resourceSamplesStore.use();
   const points = useMemo(() => computeResourceSeries(samples), [samples]);
   const n = points.length;
   const last = n > 0 ? points[n - 1] : null;
@@ -101,9 +101,7 @@ export function LiveResourceChart() {
             ? 'paused — tab in background'
             : status === 'idle'
               ? 'stopped'
-              : mode === 'stream'
-                ? `streaming · ${Math.round(intervalMs / 1000)}s · ${windowMinutes} min window`
-                : `sampling every ${Math.round(intervalMs / 1000)}s · ${windowMinutes} min window`}
+              : `streaming · ${Math.round(intervalMs / 1000)}s · ${windowMinutes} min window`}
         </span>
       </div>
 

@@ -207,6 +207,10 @@ def _adoption_data(client: Any) -> Dict[str, Any]:
         'projectRows': project_rows,
         'cohorts': cohorts,
         'repeatBuilders': agg.get('repeatBuilders', {'total': 0, 'single': 0, 'repeat': 0}),
+        # login → 'YYYY-MM' → commits, for the new/returning/lapsed lifecycle
+        # view. Already aggregated by _adoption_git_aggregate for the group
+        # roll-up — exposing it costs nothing extra.
+        'builderMonthly': agg.get('builderMonthlyCommits', {}),
         'builderRecency': builder_recency,
         'groups': groups,
         'builderStats': top_builders,

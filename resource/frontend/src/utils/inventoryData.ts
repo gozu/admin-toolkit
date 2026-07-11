@@ -197,6 +197,12 @@ export interface InventoryProjectViewRow {
   creators: Record<string, number>;
 }
 
+/** Service/automation principals — excluded from human leaderboards (an API
+ * key ranked as a "top builder" torpedoes the who-gets-value story). */
+export function isAutomationLogin(login: string): boolean {
+  return login.startsWith('api:') || login.startsWith('no:');
+}
+
 /** Top creators for one TREND_GROUPS slot (per-family builder leaderboards). */
 export interface InventoryGroupCreators {
   key: string; // TREND_GROUPS key
@@ -207,7 +213,10 @@ export interface InventoryView {
   inventory: ObjectInventory;
   objectsBuilt: number;
   taggedObjects: number;
+  /** Distinct HUMAN creators with ≥1 surviving object (automation excluded). */
   allTimeCreators: number;
+  /** Surviving objects created by service/automation principals. */
+  automationCreated: number;
   complete: boolean;
   composition: InventoryCompositionRow[];
   trendPoints: InventoryTrendPoint[];
@@ -528,6 +537,7 @@ export function buildInventoryView(
   const topCreatorsByGroup: InventoryGroupCreators[] = TREND_GROUPS.map((group) => ({
     key: group.key,
     creators: Object.entries(inventory.creators)
+      .filter(([login]) => !isAutomationLogin(login))
       .map(([login, stats]) => ({ login, created: sumFamilies(stats.byFamily, group.families) }))
       .filter((c) => c.created > 0)
       .sort((a, b) => b.created - a.created || a.login.localeCompare(b.login))
@@ -538,7 +548,12 @@ export function buildInventoryView(
     inventory,
     objectsBuilt: inventory.scanned,
     taggedObjects: inventory.taggedObjects,
-    allTimeCreators: Object.values(inventory.creators).filter((c) => c.created > 0).length,
+    allTimeCreators: Object.entries(inventory.creators).filter(
+      ([login, c]) => c.created > 0 && !isAutomationLogin(login),
+    ).length,
+    automationCreated: Object.entries(inventory.creators)
+      .filter(([login]) => isAutomationLogin(login))
+      .reduce((s, [, c]) => s + c.created, 0),
     complete: inventory.complete,
     composition,
     trendPoints,

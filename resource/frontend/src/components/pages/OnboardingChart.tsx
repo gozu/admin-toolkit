@@ -89,6 +89,7 @@ export function OnboardingChart({
           borderRadius: 2,
           barPercentage: 0.7,
           categoryPercentage: 0.9,
+          maxBarThickness: 48,
           yAxisID: 'y',
           order: 2,
         },

@@ -111,6 +111,8 @@ export interface AdoptionData {
   projectRows?: AdoptionProjectRow[];
   cohorts?: AdoptionCohort[];
   repeatBuilders?: AdoptionRepeatBuilders;
+  /** login → 'YYYY-MM' → commits — feeds the new/returning/lapsed lifecycle. */
+  builderMonthly?: Record<string, Record<string, number>>;
   builderRecency?: AdoptionBuilderRecency[];
   groups?: AdoptionGroupRow[];
   builderStats?: AdoptionBuilderRow[];

@@ -73,7 +73,7 @@ function ChapterHeader({
   right?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-[var(--border-glass)] pb-2">
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-[var(--border-glass)] px-4 pb-2">
       <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
         <span className="font-mono text-[10px] tracking-[0.2em] text-[var(--text-muted)]">
           {no}
@@ -361,31 +361,31 @@ const RUN_KINDS: Array<{ label: string; match: (msgType: string) => boolean; hin
 const PULSE_BUCKETS: Array<{ key: string; label: string; color: string; hint: string }> = [
   {
     key: 'build',
-    label: 'Building (saves & creates)',
+    label: 'Building',
     color: 'var(--viz-cat-1)',
     hint: 'Config writes: object creation, edits, settings saves.',
   },
   {
     key: 'run',
-    label: 'Running (jobs · scenarios · macros)',
+    label: 'Running',
     color: 'var(--viz-cat-3)',
     hint: 'Compute actually executed: flow jobs, scenario runs, macro runs.',
   },
   {
     key: 'explore',
-    label: 'Exploring (flows, datasets, search)',
+    label: 'Exploring',
     color: 'var(--viz-cat-5)',
-    hint: 'Reads and navigation: browsing flows, previewing data, catalog.',
+    hint: 'Reads and navigation: browsing flows, previewing data, catalog & search.',
   },
   {
     key: 'consume',
-    label: 'Consuming (dashboards & exports)',
+    label: 'Consuming',
     color: 'var(--viz-cat-4)',
     hint: 'Value leaving the platform: dashboards viewed, exports, downloads.',
   },
   {
     key: 'other',
-    label: 'Other events',
+    label: 'Other',
     color: 'var(--text-tertiary)',
     hint: 'Everything else, incl. internal monitoring noise that slipped the filters.',
   },
@@ -847,10 +847,14 @@ export function AdoptionPage() {
 
   // The people funnel — one reconciled account of "how many people":
   // accounts on the instance → ever built (git) → built in the last 90d.
+  // Git history remembers departed builders, so "ever built" can EXCEED the
+  // current account count — the subset framing (funnel arrows, "X of Y
+  // accounts") is only honest when it actually holds.
   const accountCount = recency.length;
   const activeRecently = builders.filter(
     (b) => b.lastCommitMs != null && nowMs - b.lastCommitMs <= ACTIVE_DAYS * DAY_MS,
   ).length;
+  const buildersAreSubset = totals != null && accountCount >= totals.builderCount;
 
   // Momentum (customer's "is usage increasing?"): mean active builders over the
   // last 12 complete months vs the 12 before.
@@ -1034,11 +1038,19 @@ export function AdoptionPage() {
   const verdict: ReactNode[] = [];
   if (totals) {
     verdict.push(
-      <span key="funnel">
-        <strong>{totals.builderCount}</strong> of <strong>{accountCount || '—'}</strong> accounts
-        have built on this instance, <strong>{activeRecently}</strong> of them in the last{' '}
-        {ACTIVE_DAYS} days.
-      </span>,
+      buildersAreSubset ? (
+        <span key="funnel">
+          <strong>{totals.builderCount}</strong> of <strong>{accountCount}</strong> accounts have
+          built on this instance, <strong>{activeRecently}</strong> of them in the last{' '}
+          {ACTIVE_DAYS} days.
+        </span>
+      ) : (
+        <span key="funnel">
+          <strong>{totals.builderCount}</strong> people have built on this instance over its
+          history (incl. departed accounts) — <strong>{activeRecently}</strong> in the last{' '}
+          {ACTIVE_DAYS} days. It currently hosts <strong>{accountCount || '—'}</strong> accounts.
+        </span>
+      ),
     );
     if (momentumPct != null) {
       verdict.push(
@@ -1277,16 +1289,24 @@ export function AdoptionPage() {
             </div>
           )}
           <div className="flex flex-wrap items-end gap-x-6 gap-y-4 px-4 py-4">
-            {/* People funnel — one reconciled account of "how many people". */}
+            {/* People funnel — one reconciled account of "how many people".
+                The arrow chain only appears when the subset actually holds
+                (departed builders can outnumber current accounts). */}
             <div className="flex items-end gap-3">
-              <BigStat value={accountCount || '—'} label="Accounts" />
-              <span className="pb-3 font-mono text-[var(--text-muted)]">→</span>
-              <div title="Distinct people with at least one git commit in any project, all time.">
+              {buildersAreSubset && (
+                <>
+                  <div title="Accounts in the current user snapshot.">
+                    <BigStat value={accountCount || '—'} label="Accounts" />
+                  </div>
+                  <span className="pb-3 font-mono text-[var(--text-muted)]">→</span>
+                </>
+              )}
+              <div title="Distinct people with at least one git commit in any project, all time — includes builders whose account has since been removed.">
                 <BigStat
                   value={totals ? totals.builderCount : '—'}
-                  label="Ever built"
+                  label="Ever built (all time)"
                   sub={
-                    totals && accountCount > 0
+                    buildersAreSubset && totals && accountCount > 0
                       ? pctLabel(totals.builderCount, accountCount)
                       : undefined
                   }
@@ -1304,6 +1324,14 @@ export function AdoptionPage() {
                   }
                 />
               </div>
+              {!buildersAreSubset && (
+                <>
+                  <span className="pb-3 font-mono text-[var(--text-muted)]">·</span>
+                  <div title="Accounts in the current user snapshot — smaller than all-time builders when people have left.">
+                    <BigStat value={accountCount || '—'} label="Accounts today" />
+                  </div>
+                </>
+              )}
             </div>
             <div className="hidden h-8 w-px bg-[var(--border-glass)] sm:block" />
             <div
@@ -1382,7 +1410,6 @@ export function AdoptionPage() {
               no="02"
               title="What's being made, and by whom?"
               caption={`surviving objects only — deleted work is invisible · ${inventoryView.taggedObjects.toLocaleString()} of ${inventoryView.objectsBuilt.toLocaleString()} carry creator tags`}
-              right={<FamilyGroupLegend />}
             />
             {creationPoints.length > 0 && (
               <div className="chart-container">

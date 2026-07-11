@@ -51,7 +51,7 @@ const PAGE_LABELS: Record<PageId, string> = {
   resources: 'Resources',
   projects: 'Projects',
   users: 'Users',
-  adoption: 'Adoption',
+  adoption: 'Activity',
   'code-envs': 'Cleaner',
   'code-envs-cleaner': 'Insights',
   'code-envs-comparison': 'Comparison',

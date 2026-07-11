@@ -132,21 +132,9 @@ export function EngagementTrendChart({ points }: { points: AdoptionMonthPoint[] 
           },
         },
         // Two stacked panels on one canvas — the x axis is shared by
-        // construction, so the panels can never misalign.
-        y: {
-          stack: 'panels',
-          stackWeight: 3,
-          offset: true,
-          beginAtZero: true,
-          grid: { color: gridColor },
-          ticks: {
-            color: tickColor,
-            precision: 0,
-            maxTicksLimit: 5,
-            font: { size: 11, family: "'JetBrains Mono', monospace" },
-          },
-          title: { display: true, text: 'People building', color: tickColor, font: { size: 10 } },
-        },
+        // construction, so the panels can never misalign. Scale stacking
+        // places later-defined axes ABOVE earlier ones, so commits (context)
+        // is declared first and people (headline) second → people on top.
         y2: {
           stack: 'panels',
           stackWeight: 2,
@@ -160,6 +148,20 @@ export function EngagementTrendChart({ points }: { points: AdoptionMonthPoint[] 
             font: { size: 11, family: "'JetBrains Mono', monospace" },
           },
           title: { display: true, text: 'Commits', color: tickColor, font: { size: 10 } },
+        },
+        y: {
+          stack: 'panels',
+          stackWeight: 3,
+          offset: true,
+          beginAtZero: true,
+          grid: { color: gridColor },
+          ticks: {
+            color: tickColor,
+            precision: 0,
+            maxTicksLimit: 5,
+            font: { size: 11, family: "'JetBrains Mono', monospace" },
+          },
+          title: { display: true, text: 'People building', color: tickColor, font: { size: 10 } },
         },
       },
     }),

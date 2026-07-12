@@ -213,7 +213,7 @@ export function CumulativeAdoptionChart({
             maxRotation: 0,
             autoSkip: true,
             maxTicksLimit: 12,
-            font: { size: 10, family: "'JetBrains Mono', monospace" },
+            font: { size: 12, family: "'JetBrains Mono', monospace" },
             callback(_value: unknown, index: number) {
               return trimester
                 ? quarterLabel(quarterly[index]?.quarter ?? '')
@@ -228,13 +228,13 @@ export function CumulativeAdoptionChart({
           ticks: {
             color: tickColor,
             precision: 0,
-            font: { size: 10, family: "'JetBrains Mono', monospace" },
+            font: { size: 12, family: "'JetBrains Mono', monospace" },
           },
           title: {
             display: true,
             text: trimester ? 'New people / projects' : 'People / projects',
             color: tickColor,
-            font: { size: 10 },
+            font: { size: 12 },
           },
         },
         y1: {
@@ -244,9 +244,9 @@ export function CumulativeAdoptionChart({
           ticks: {
             color: tickColor,
             precision: 0,
-            font: { size: 10, family: "'JetBrains Mono', monospace" },
+            font: { size: 12, family: "'JetBrains Mono', monospace" },
           },
-          title: { display: true, text: 'Commits', color: tickColor, font: { size: 10 } },
+          title: { display: true, text: 'Commits', color: tickColor, font: { size: 12 } },
         },
       },
     }),

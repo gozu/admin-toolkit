@@ -38,13 +38,37 @@ interface TraceAnimationCtx {
 
 const TRACE_TOTAL_MS = 900;
 
+/** Entrance animations (trace/grow) fire once per chart INSTANCE, never on
+ * data updates: while the page is still streaming its payloads in, a chart
+ * can receive several data updates within its first seconds, and replaying
+ * the entrance on each one reads as blinking. `afterUpdate` runs right after
+ * the first update wires its animations, so every later update sees the flag.
+ * A remount (e.g. the cumulative↔per-quarter type switch) is a fresh instance
+ * and replays the entrance — that part is deliberate. */
+interface EntranceChart {
+  $adkEntranceDone?: boolean;
+}
+const entranceGuard: Plugin = {
+  id: 'adkEntranceGuard',
+  afterUpdate(chart) {
+    (chart as unknown as EntranceChart).$adkEntranceDone = true;
+  },
+};
+Chart.register(entranceGuard);
+const entranceDone = (raw: unknown): boolean =>
+  Boolean(((raw as TraceAnimationCtx).chart as unknown as EntranceChart).$adkEntranceDone);
+
 /** Left-to-right trace reveal for a line dataset (the chart.js progressive
  * pattern): each point animates in after the previous one, so the line draws
  * itself across the chart. Attach per-dataset (`animations:`) so co-plotted
  * bar datasets keep the default grow-in sweep. */
 export function lineTraceAnimation(pointCount: number, axisId = 'y') {
   const perPoint = TRACE_TOTAL_MS / Math.max(1, pointCount);
-  const previousY = (raw: unknown): number => {
+  const startX = (raw: unknown): number | undefined =>
+    // NaN skips the point until its slot in the trace.
+    entranceDone(raw) ? undefined : Number.NaN;
+  const previousY = (raw: unknown): number | undefined => {
+    if (entranceDone(raw)) return undefined;
     const ctx = raw as TraceAnimationCtx;
     const base = ctx.chart.scales[axisId]?.getPixelForValue(0) ?? 0;
     if (ctx.index === 0) return base;
@@ -54,7 +78,7 @@ export function lineTraceAnimation(pointCount: number, axisId = 'y') {
   };
   const staggerDelay = (flag: 'xStarted' | 'yStarted') => (raw: unknown) => {
     const ctx = raw as TraceAnimationCtx;
-    if (ctx.type !== 'data' || ctx[flag]) return 0;
+    if (ctx.type !== 'data' || ctx[flag] || entranceDone(raw)) return 0;
     ctx[flag] = true;
     return ctx.index * perPoint;
   };
@@ -63,7 +87,7 @@ export function lineTraceAnimation(pointCount: number, axisId = 'y') {
       type: 'number' as const,
       easing: 'linear' as const,
       duration: perPoint,
-      from: Number.NaN, // point is skipped until its slot in the trace
+      from: startX,
       delay: staggerDelay('xStarted'),
     },
     y: {
@@ -88,12 +112,12 @@ export function barGrowAnimation(axisId = 'y') {
       duration: 650,
       from(raw: unknown) {
         const ctx = raw as TraceAnimationCtx;
-        if (ctx.type !== 'data') return undefined;
+        if (ctx.type !== 'data' || entranceDone(raw)) return undefined;
         return ctx.chart.scales[axisId]?.getPixelForValue(0);
       },
       delay(raw: unknown) {
         const ctx = raw as TraceAnimationCtx;
-        if (ctx.type !== 'data' || ctx.yStarted) return 0;
+        if (ctx.type !== 'data' || ctx.yStarted || entranceDone(raw)) return 0;
         ctx.yStarted = true;
         return Math.min(ctx.index * 14, 400);
       },

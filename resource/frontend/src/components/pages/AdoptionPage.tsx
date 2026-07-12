@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { useDiag } from '../../context/DiagContext';
 import { adoptionScan } from '../../state/adoptionScan';
@@ -67,11 +67,11 @@ function ChapterHeader({
     <div className="border-b border-[var(--border-glass)] px-4 pb-2.5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
-          <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--text-muted)]">
+          <span className="font-mono text-[13px] tracking-[0.2em] text-[var(--text-muted)]">
             {no}
           </span>
           <h3 className="text-[17px] font-semibold text-[var(--text-primary)]">{title}</h3>
-          {caption && <span className="text-[10px] text-[var(--text-tertiary)]">{caption}</span>}
+          {caption && <span className="text-xs text-[var(--text-tertiary)]">{caption}</span>}
         </div>
         {right}
       </div>
@@ -92,7 +92,7 @@ function FamilyGroupLegend({ className = '' }: { className?: string }) {
       {TREND_GROUPS.map((g, gi) => (
         <span
           key={g.key}
-          className="inline-flex items-center gap-1 whitespace-nowrap text-[9px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]"
+          className="inline-flex items-center gap-1 whitespace-nowrap text-[11px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]"
         >
           <span
             className="h-1.5 w-1.5 flex-shrink-0 rounded-[2px]"
@@ -172,13 +172,13 @@ function LinkedMix({
               className="adk-dot h-2 w-2 flex-shrink-0 rounded-[2px]"
               style={{ background: it.color }}
             />
-            <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
+            <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-secondary)]">
               {it.label}
             </span>
-            <span className="w-10 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]">
+            <span className="w-10 flex-shrink-0 text-right font-mono text-xs tabular-nums text-[var(--text-tertiary)]">
               {pctLabel(it.value, denom)}
             </span>
-            <span className="w-16 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
+            <span className="w-16 flex-shrink-0 text-right font-mono text-xs tabular-nums text-[var(--text-primary)]">
               {it.value.toLocaleString()}
             </span>
           </div>
@@ -245,7 +245,7 @@ function MiniColumns({
             className="adk-colwrap flex h-full min-w-0 flex-1 flex-col justify-end"
           >
             {showValues && (
-              <span className="adk-colval pb-0.5 text-center font-mono text-[9px] leading-none text-[var(--text-secondary)]">
+              <span className="adk-colval pb-0.5 text-center font-mono text-[11px] leading-none text-[var(--text-secondary)]">
                 {p.muted ? '—' : `${p.value.toLocaleString()}${valueSuffix}`}
               </span>
             )}
@@ -266,7 +266,7 @@ function MiniColumns({
           {points.map((p) => (
             <span
               key={p.key}
-              className="min-w-0 flex-1 truncate text-center font-mono text-[9px] leading-none text-[var(--text-tertiary)]"
+              className="min-w-0 flex-1 truncate text-center font-mono text-[11px] leading-none text-[var(--text-tertiary)]"
             >
               {p.label ?? ''}
             </span>
@@ -274,7 +274,7 @@ function MiniColumns({
         </div>
       )}
       {(axisLeft || axisRight) && (
-        <div className="mt-1 flex items-center justify-between font-mono text-[9px] leading-none text-[var(--text-tertiary)]">
+        <div className="mt-1 flex items-center justify-between font-mono text-[11px] leading-none text-[var(--text-tertiary)]">
           <span>{axisLeft}</span>
           <span>{axisRight}</span>
         </div>
@@ -302,8 +302,11 @@ function MiniCumulative({
   unitLabel: string;
   height?: number;
 }) {
-  // Trace-in: the line draws itself left-to-right on mount (dashoffset sweep),
-  // the area fill fades up behind it.
+  // Trace-in: a clip rect widens left-to-right on mount so the line (and its
+  // area fill) draw themselves in. NOT a pathLength/dasharray trace — dash
+  // lengths misrender under preserveAspectRatio="none" + non-scaling-stroke
+  // and leave permanent gaps in the stroke.
+  const clipId = useId();
   const [ready, setReady] = useState(false);
   useEffect(() => {
     const id = requestAnimationFrame(() => setReady(true));
@@ -328,24 +331,27 @@ function MiniCumulative({
         preserveAspectRatio="none"
         role="img"
       >
-        <path
-          d={area}
-          fill={color}
-          opacity={ready ? 0.12 : 0}
-          style={{ transition: 'opacity 500ms ease-out 300ms' }}
-        />
-        <path
-          d={line}
-          fill="none"
-          stroke={color}
-          strokeWidth={1.5}
-          vectorEffect="non-scaling-stroke"
-          strokeLinejoin="round"
-          pathLength={1}
-          strokeDasharray="1"
-          strokeDashoffset={ready ? 0 : 1}
-          style={{ transition: 'stroke-dashoffset 700ms ease-out' }}
-        />
+        <defs>
+          <clipPath id={clipId}>
+            <rect
+              x={0}
+              y={0}
+              height={height}
+              style={{ width: ready ? W : 0, transition: 'width 700ms ease-out' }}
+            />
+          </clipPath>
+        </defs>
+        <g clipPath={`url(#${clipId})`}>
+          <path d={area} fill={color} opacity={0.12} />
+          <path
+            d={line}
+            fill="none"
+            stroke={color}
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+            strokeLinejoin="round"
+          />
+        </g>
         {values.map((v, i) => (
           <rect
             key={months[i]}
@@ -359,7 +365,7 @@ function MiniCumulative({
           </rect>
         ))}
       </svg>
-      <div className="mt-1 flex items-center justify-between font-mono text-[9px] leading-none text-[var(--text-tertiary)]">
+      <div className="mt-1 flex items-center justify-between font-mono text-[11px] leading-none text-[var(--text-tertiary)]">
         <span>{monthLabel(months[0])}</span>
         <span>{monthLabel(months[n - 1])}</span>
       </div>
@@ -394,7 +400,7 @@ function TrendModeToggle({
           type="button"
           aria-pressed={mode === value}
           onClick={() => onChange(value)}
-          className={`px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] transition-colors ${
+          className={`px-2 py-0.5 font-mono text-xs uppercase tracking-[0.08em] transition-colors ${
             mode === value
               ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
               : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
@@ -423,11 +429,11 @@ function CapabilityTimeline({
           title={`First surviving ${it.label.toLowerCase()} created in ${monthLabel(it.month)}. Earlier, since-deleted work would be invisible — this is the latest the capability can have arrived.`}
           className="adk-hover-row -mx-1 flex items-center gap-2 px-1 py-0.5"
         >
-          <span className="w-14 flex-shrink-0 font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]">
+          <span className="w-14 flex-shrink-0 font-mono text-xs tabular-nums text-[var(--text-tertiary)]">
             {monthLabel(it.month)}
           </span>
           <span className="h-2 w-2 flex-shrink-0 rounded-[2px]" style={{ background: it.color }} />
-          <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
+          <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-secondary)]">
             first {it.label.toLowerCase()}
           </span>
         </div>
@@ -555,7 +561,7 @@ function InventoryCreatorsSection({
   const shown = creators.slice(0, 40);
   return (
     <div>
-      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
         <span>
           Config history — {creators.length} {creators.length === 1 ? 'creator' : 'creators'} ·{' '}
           {inv.objectCount.toLocaleString()} surviving objects
@@ -589,14 +595,14 @@ function InventoryCreatorsSection({
         {shown.map(([login, count]) => (
           <span
             key={login}
-            className="adk-chip rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]"
+            className="adk-chip rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-1.5 py-0.5 font-mono text-[13px] text-[var(--text-secondary)]"
             title={`${count.toLocaleString()} surviving objects created by ${login} in this project`}
           >
             {login} <span className="text-[var(--text-tertiary)]">×{count.toLocaleString()}</span>
           </span>
         ))}
         {creators.length > shown.length && (
-          <span className="text-[10px] text-[var(--text-tertiary)]">
+          <span className="text-xs text-[var(--text-tertiary)]">
             +{creators.length - shown.length} more
           </span>
         )}
@@ -617,7 +623,7 @@ function ProjectAuthorsPanel({
   const authors = row.authors ?? EMPTY;
   return (
     <div className="border-t border-[var(--border-glass)] bg-[var(--bg-glass)] px-4 py-3">
-      <div className="mb-2 flex items-center gap-3 text-[10px] uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
+      <div className="mb-2 flex items-center gap-3 text-xs uppercase tracking-[0.12em] text-[var(--text-tertiary)]">
         <span>
           {authors.length} distinct {authors.length === 1 ? 'builder' : 'builders'} (git)
         </span>
@@ -634,7 +640,7 @@ function ProjectAuthorsPanel({
         {authors.map((a) => (
           <span
             key={a}
-            className="adk-chip rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-secondary)]"
+            className="adk-chip rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-1.5 py-0.5 font-mono text-[13px] text-[var(--text-secondary)]"
           >
             {a}
           </span>
@@ -713,7 +719,7 @@ function PulseCard({ pulse, nowMs }: { pulse: AdoptionPulseData; nowMs: number }
         <h4 title="Reverse tail-scan of the newest audit files. A 72-hour operational sample — useful as a systems check, never as adoption evidence. The window label is MEASURED from actual event timestamps.">
           Last 72 hours — operational pulse
         </h4>
-        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+        <span className="font-mono text-xs uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
           audit tail · {windowLabel}
         </span>
       </div>
@@ -734,7 +740,7 @@ function PulseCard({ pulse, nowMs }: { pulse: AdoptionPulseData; nowMs: number }
                   <div
                     key={r.label}
                     title={r.hint}
-                    className="adk-hover-row -mx-1 flex items-center justify-between gap-2 px-1 py-0.5 text-[11px]"
+                    className="adk-hover-row -mx-1 flex items-center justify-between gap-2 px-1 py-0.5 text-[13px]"
                   >
                     <span className="text-[var(--text-secondary)]">{r.label}</span>
                     <span className="font-mono tabular-nums text-[var(--text-primary)]">
@@ -743,7 +749,7 @@ function PulseCard({ pulse, nowMs }: { pulse: AdoptionPulseData; nowMs: number }
                   </div>
                 ))}
                 {restRun > 0 && (
-                  <div className="adk-hover-row -mx-1 flex items-center justify-between gap-2 px-1 py-0.5 text-[11px]">
+                  <div className="adk-hover-row -mx-1 flex items-center justify-between gap-2 px-1 py-0.5 text-[13px]">
                     <span className="text-[var(--text-tertiary)]">other run events</span>
                     <span className="font-mono tabular-nums text-[var(--text-tertiary)]">
                       {restRun.toLocaleString()}
@@ -753,7 +759,7 @@ function PulseCard({ pulse, nowMs }: { pulse: AdoptionPulseData; nowMs: number }
               </div>
             )}
             {topHumans.length > 0 && (
-              <div className="text-[10px] text-[var(--text-tertiary)]">
+              <div className="text-xs text-[var(--text-tertiary)]">
                 most active:{' '}
                 {topHumans.map((h, i) => (
                   <span key={h.login}>
@@ -786,7 +792,7 @@ function PulseCard({ pulse, nowMs }: { pulse: AdoptionPulseData; nowMs: number }
                 }
               />
             </div>
-            <div className="pt-1.5 text-[10px] text-[var(--text-tertiary)]">
+            <div className="pt-1.5 text-xs text-[var(--text-tertiary)]">
               human events per hour ·{' '}
               {pulse.exhaustedFiles
                 ? `the rotated audit files reach back only ${windowLabel.replace('last ', '')} — that's the whole retained trail`
@@ -1206,7 +1212,7 @@ export function AdoptionPage() {
             className="flex items-center gap-1.5 text-left hover:text-[var(--neon-cyan)]"
             aria-expanded={open}
           >
-            <span className="font-mono text-[10px] text-[var(--text-tertiary)]">
+            <span className="font-mono text-xs text-[var(--text-tertiary)]">
               {open ? '▾' : '▸'}
             </span>
             <span
@@ -1219,7 +1225,7 @@ export function AdoptionPage() {
               {row.projectKey}
             </span>
             {!row.active && (
-              <span className="text-[9px] uppercase tracking-wide text-[var(--text-tertiary)]">
+              <span className="text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">
                 dormant
               </span>
             )}
@@ -1359,7 +1365,7 @@ export function AdoptionPage() {
           <div className="chart-header flex items-center justify-between gap-3">
             <h4>User Activity</h4>
             <span
-              className="hidden font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)] sm:block"
+              className="hidden font-mono text-xs uppercase tracking-[0.1em] text-[var(--text-tertiary)] sm:block"
               title="Project git history and the user snapshot span the full persistent record. Config-tree metrics cover the full history of objects that still exist — deleted work is invisible (survivorship bias). Only the 72h pulse card uses the short audit window."
             >
               as of {fmtDate(nowMs)} · git + config history
@@ -1374,18 +1380,18 @@ export function AdoptionPage() {
             <div className="px-4 py-3 text-sm text-[var(--neon-red)]">{error}</div>
           )}
           {(invState.loading || evState.loading) && (
-            <div className="border-b border-[var(--border-glass)] px-4 py-2 text-[11px] text-[var(--text-tertiary)]">
+            <div className="border-b border-[var(--border-glass)] px-4 py-2 text-[13px] text-[var(--text-tertiary)]">
               {invState.loading && 'Walking the config tree for object history… '}
               {evState.loading && 'Reading the audit tail for recent activity…'}
             </div>
           )}
           {!invState.loading && (invState.error || invState.data?.error) && (
-            <div className="border-b border-[var(--border-glass)] px-4 py-2 text-[11px] text-[var(--text-tertiary)]">
+            <div className="border-b border-[var(--border-glass)] px-4 py-2 text-[13px] text-[var(--text-tertiary)]">
               Config inventory unavailable: {invState.error || invState.data?.error}
             </div>
           )}
           {!evState.loading && (evState.error || evState.data?.error) && (
-            <div className="border-b border-[var(--border-glass)] px-4 py-2 text-[11px] text-[var(--text-tertiary)]">
+            <div className="border-b border-[var(--border-glass)] px-4 py-2 text-[13px] text-[var(--text-tertiary)]">
               Recent activity unavailable: {evState.error || evState.data?.error}
             </div>
           )}
@@ -1526,7 +1532,7 @@ export function AdoptionPage() {
                       <div key={d.group.key}>
                         <div className="mb-1.5 flex items-baseline justify-between gap-2">
                           <span
-                            className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]"
+                            className="inline-flex items-center gap-1.5 text-xs uppercase tracking-[0.1em] text-[var(--text-secondary)]"
                             title={subtypeHint}
                           >
                             <span
@@ -1535,7 +1541,7 @@ export function AdoptionPage() {
                             />
                             {d.group.label}
                           </span>
-                          <span className="font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]">
+                          <span className="font-mono text-xs tabular-nums text-[var(--text-tertiary)]">
                             {d.total.toLocaleString()} all time
                           </span>
                         </div>
@@ -1567,7 +1573,7 @@ export function AdoptionPage() {
                     );
                   })}
                 </div>
-                <div className="border-t border-[var(--border-glass)] px-4 py-2 text-[10px] text-[var(--text-tertiary)]">
+                <div className="border-t border-[var(--border-glass)] px-4 py-2 text-xs text-[var(--text-tertiary)]">
                   surviving tagged objects only ({inventoryView.taggedObjects.toLocaleString()} of{' '}
                   {inventoryView.objectsBuilt.toLocaleString()}) — deleted work is invisible
                   {detailEmpty.length > 0 &&
@@ -1580,8 +1586,10 @@ export function AdoptionPage() {
             )}
             {/* Decline-proof pair: when each capability arrived (firsts) and
                 how deep the surviving projects run. */}
+            {/* Default grid stretch keeps the pair the same height; the depth
+                histogram fills whatever the firsts list dictates. */}
             {(capabilityFirsts.length > 0 || projectDepthMeasured > 0) && (
-              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 {capabilityFirsts.length > 0 && (
                   <div className="chart-container">
                     <div className="chart-header flex items-center justify-between gap-3">
@@ -1592,28 +1600,28 @@ export function AdoptionPage() {
                     <div className="px-4 py-3">
                       <CapabilityTimeline items={capabilityFirsts} />
                     </div>
-                    <div className="border-t border-[var(--border-glass)] px-4 py-2 text-[10px] text-[var(--text-tertiary)]">
+                    <div className="border-t border-[var(--border-glass)] px-4 py-2 text-xs text-[var(--text-tertiary)]">
                       first surviving tagged object per family — imports count from their arrival on
                       this instance; deleted early work is invisible
                     </div>
                   </div>
                 )}
                 {projectDepthMeasured > 0 && (
-                  <div className="chart-container">
+                  <div className="chart-container flex flex-col">
                     <div className="chart-header flex items-center justify-between gap-3">
                       <h4 title="How many surviving objects each project holds, bucketed by order of magnitude — how much of the estate is skeleton vs substance.">
                         Project depth — surviving objects per project
                       </h4>
                     </div>
-                    <div className="px-4 py-3">
+                    <div className="min-h-[110px] min-w-0 flex-1 px-4 py-3">
                       <MiniColumns
                         points={projectDepthCols}
                         color="var(--viz-cat-2)"
-                        height={72}
                         gap={6}
+                        fill
                       />
                     </div>
-                    <div className="border-t border-[var(--border-glass)] px-4 py-2 text-[10px] text-[var(--text-tertiary)]">
+                    <div className="border-t border-[var(--border-glass)] px-4 py-2 text-xs text-[var(--text-tertiary)]">
                       surviving objects only ({projectDepthMeasured.toLocaleString()}{' '}
                       {projectDepthMeasured === 1 ? 'project' : 'projects'} measured) — deleted work
                       is invisible
@@ -1641,7 +1649,7 @@ export function AdoptionPage() {
                       const max = Math.max(1, ...board.creators.map((c) => c.created));
                       return (
                         <div key={board.key}>
-                          <div className="mb-1 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+                          <div className="mb-1 inline-flex items-center gap-1.5 text-xs uppercase tracking-[0.1em] text-[var(--text-secondary)]">
                             <span
                               className="h-1.5 w-1.5 rounded-[2px]"
                               style={{ background: color }}
@@ -1655,7 +1663,7 @@ export function AdoptionPage() {
                                 className="adk-hover-row -mx-1 flex items-center gap-2 px-1 py-0.5"
                                 title={`${c.created.toLocaleString()} surviving ${group.label.toLowerCase()} created by ${c.login}`}
                               >
-                                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--text-secondary)]">
+                                <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-[var(--text-secondary)]">
                                   {c.login}
                                 </span>
                                 <span className="h-1 min-w-14 max-w-[200px] flex-1 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
@@ -1667,7 +1675,7 @@ export function AdoptionPage() {
                                     }}
                                   />
                                 </span>
-                                <span className="w-12 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
+                                <span className="w-12 flex-shrink-0 text-right font-mono text-xs tabular-nums text-[var(--text-primary)]">
                                   {c.created.toLocaleString()}
                                 </span>
                               </div>
@@ -1723,21 +1731,21 @@ export function AdoptionPage() {
                     return (
                       <div key={g.name} className="adk-hover-row -mx-1 px-1 py-1">
                         <div className="flex items-center gap-2">
-                          <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
+                          <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-secondary)]">
                             {g.name}
-                            <span className="ml-1.5 text-[10px] text-[var(--text-tertiary)]">
+                            <span className="ml-1.5 text-xs text-[var(--text-tertiary)]">
                               {g.builderCount}/{g.memberCount} building · {g.projectCount}{' '}
                               {g.projectCount === 1 ? 'project' : 'projects'} ·{' '}
                               {relDays(g.lastCommitMs, nowMs).text}
                             </span>
                           </span>
                           <span
-                            className="w-10 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]"
+                            className="w-10 flex-shrink-0 text-right font-mono text-xs tabular-nums text-[var(--text-tertiary)]"
                             title="Share of all human commits (group shares can overlap)."
                           >
                             {pctLabel(g.commits, totalGroupCommits)}
                           </span>
-                          <span className="w-14 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
+                          <span className="w-14 flex-shrink-0 text-right font-mono text-xs tabular-nums text-[var(--text-primary)]">
                             {g.commits.toLocaleString()}
                           </span>
                         </div>
@@ -1755,7 +1763,7 @@ export function AdoptionPage() {
                     );
                   })}
                   {(activeGroups.length > topGroups.length || quietGroups > 0) && (
-                    <div className="pt-0.5 text-[10px] text-[var(--text-tertiary)] lg:col-span-2">
+                    <div className="pt-0.5 text-xs text-[var(--text-tertiary)] lg:col-span-2">
                       {activeGroups.length > topGroups.length &&
                         `+${activeGroups.length - topGroups.length} more active ${activeGroups.length - topGroups.length === 1 ? 'group' : 'groups'}`}
                       {activeGroups.length > topGroups.length && quietGroups > 0 && ' · '}
@@ -1774,7 +1782,7 @@ export function AdoptionPage() {
                 Onboarding &amp; activation — quarterly
               </h4>
               {showTtfb && ttfb && (
-                <span className="flex flex-wrap items-center gap-x-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+                <span className="flex flex-wrap items-center gap-x-2 font-mono text-xs uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
                   <span>
                     median {ttfb.overallMedianDays ?? '—'}d to first build · {ttfb.usersMeasured}{' '}
                     users measured
@@ -1828,7 +1836,7 @@ export function AdoptionPage() {
                 {' — '}too few for a stable activation chart.
               </div>
             )}
-            <div className="border-t border-[var(--border-glass)] px-4 py-2 text-[10px] text-[var(--text-tertiary)]">
+            <div className="border-t border-[var(--border-glass)] px-4 py-2 text-xs text-[var(--text-tertiary)]">
               complete quarters only
               {cohortsThisQuarter > 0 &&
                 ` · +${cohortsThisQuarter} new ${cohortsThisQuarter === 1 ? 'account' : 'accounts'} so far in ${quarterLabel(currentQuarterKey)}`}
@@ -1866,7 +1874,7 @@ export function AdoptionPage() {
                         label="Single-creator projects"
                         tone={concentrationWarn ? 'warn' : undefined}
                       />
-                      <span className="text-[10px] text-[var(--text-tertiary)]">
+                      <span className="text-xs text-[var(--text-tertiary)]">
                         of {busFactor.measuredProjects} projects with tagged objects
                         {!concentrationWarn && busFactor.measuredProjects < 10
                           ? ' — small sample, expected to skew single'
@@ -1901,7 +1909,7 @@ export function AdoptionPage() {
                     <h4 title="Span from each builder's first to last commit, all time — how seasoned the bench is. An experience measure, not an activity count: a builder who left long ago still counts at full tenure.">
                       Builder tenure — seasoned bench
                     </h4>
-                    <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+                    <span className="font-mono text-xs uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
                       {tenureMeasured.toLocaleString()}{' '}
                       {tenureMeasured === 1 ? 'builder' : 'builders'}
                     </span>
@@ -1909,7 +1917,7 @@ export function AdoptionPage() {
                   <div className="px-4 py-3">
                     <MiniColumns points={tenureCols} color="var(--viz-cat-1)" height={72} gap={6} />
                   </div>
-                  <div className="border-t border-[var(--border-glass)] px-4 py-2 text-[10px] text-[var(--text-tertiary)]">
+                  <div className="border-t border-[var(--border-glass)] px-4 py-2 text-xs text-[var(--text-tertiary)]">
                     span from each builder&rsquo;s first to last commit, all time — an experience
                     measure, not an activity count
                   </div>
@@ -1949,7 +1957,7 @@ export function AdoptionPage() {
             <button
               type="button"
               onClick={() => setShowAllProjects((v) => !v)}
-              className="self-start rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong,var(--border-default))] hover:text-[var(--text-primary)]"
+              className="self-start rounded border border-[var(--border-glass)] bg-[var(--bg-elevated)] px-2.5 py-1 text-[13px] text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong,var(--border-default))] hover:text-[var(--text-primary)]"
             >
               {showAllProjects
                 ? 'Show top 20 by commits'

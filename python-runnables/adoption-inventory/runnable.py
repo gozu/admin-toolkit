@@ -20,9 +20,11 @@ derivations transfer verbatim:
   zones, visual analyses) carry no creation tags on disk (verified live) —
   they are counted by file mtime, which feeds the staleness histogram but
   never the human-attributed fields.
-- Every human timestamp is floored at the project's arrival on this instance
-  (its config git repo's first commit): imported/copied projects keep foreign
-  creationTags that would otherwise fabricate pre-instance history.
+- Every human timestamp is floored at the project's arrival on this instance:
+  max(project repo first commit, instance birth = root config repo first
+  commit). Imported/copied projects keep foreign creationTags — and exports
+  can even carry foreign git history — which would otherwise fabricate
+  pre-instance history.
 """
 import json
 import os
@@ -369,18 +371,16 @@ def _scan_meta_only(inv, project_key, project_dir):
         pass
 
 
-def _project_arrival_ms(project_dir):
-    """When the project appeared on THIS instance: its config git repo's first
-    commit ("Imported project X" for imports, "Created project" for locals).
-    None (no repo / git failure) means no floor — behave as before."""
-    if not os.path.isdir(os.path.join(project_dir, '.git')):
+def _git_first_commit_ms(repo_dir):
+    """Timestamp of a repo's first commit; None on no repo / git failure."""
+    if not os.path.isdir(os.path.join(repo_dir, '.git')):
         return None
     try:
         # safe.directory: the repo is normally owned by the service account the
         # macro runs as, but a mixed-ownership repo would otherwise fail git's
         # dubious-ownership guard and silently skip the clamp.
         out = subprocess.run(
-            ['git', '-c', 'safe.directory=%s' % project_dir, '-C', project_dir,
+            ['git', '-c', 'safe.directory=%s' % repo_dir, '-C', repo_dir,
              'log', '--reverse', '--format=%at'],
             capture_output=True, text=True, timeout=30,
         )
@@ -390,6 +390,19 @@ def _project_arrival_ms(project_dir):
         return None
     first = out.stdout.split('\n', 1)[0].strip()
     return int(first) * 1000 if first.isdigit() else None
+
+
+def _arrival_floor_ms(project_dir, birth_ms):
+    """When the project appeared on THIS instance. The project repo's first
+    commit says "Imported project X" for imports and "Created project" for
+    locals — but exports can carry the project's git history along, so a
+    project repo can predate the instance itself (verified live: akaos born
+    2026-01-22 per config/.git "Welcome to DSS!", yet an imported project repo
+    starts Dec '22). The instance-birth floor wins over anything older."""
+    arrival = _git_first_commit_ms(project_dir)
+    if birth_ms is None:
+        return arrival
+    return birth_ms if arrival is None else max(arrival, birth_ms)
 
 
 def _build_inventory(dip_home):
@@ -405,9 +418,13 @@ def _build_inventory(dip_home):
     except OSError as exc:
         return {'ok': False, 'error': 'cannot list %s: %s' % (projects_dir, exc)}
 
+    # Instance birth = first commit of the root config repo ("Welcome to
+    # DSS!"), written at install and never part of any project import.
+    birth_ms = _git_first_commit_ms(os.path.join(dip_home, 'config'))
+
     for project_key in project_keys:
         project_dir = os.path.join(projects_dir, project_key)
-        arrival_ms = _project_arrival_ms(project_dir)
+        arrival_ms = _arrival_floor_ms(project_dir, birth_ms)
         for subdir, family in _JSON_CATEGORIES:
             for path in _iter_json_files(os.path.join(project_dir, subdir)):
                 try:

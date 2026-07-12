@@ -170,7 +170,7 @@ export function OnboardingChart({
             maxRotation: 0,
             autoSkip: true,
             maxTicksLimit: 12,
-            font: { size: 10, family: "'JetBrains Mono', monospace" },
+            font: { size: 12, family: "'JetBrains Mono', monospace" },
             callback(_value: unknown, index: number) {
               return quarterLabel(points[index]?.quarter ?? '');
             },
@@ -183,9 +183,9 @@ export function OnboardingChart({
           ticks: {
             color: tickColor,
             precision: 0,
-            font: { size: 10, family: "'JetBrains Mono', monospace" },
+            font: { size: 12, family: "'JetBrains Mono', monospace" },
           },
-          title: { display: true, text: 'New accounts', color: tickColor, font: { size: 10 } },
+          title: { display: true, text: 'New accounts', color: tickColor, font: { size: 12 } },
         },
         ...(showTtfb
           ? {
@@ -196,13 +196,13 @@ export function OnboardingChart({
                 ticks: {
                   color: tickColor,
                   precision: 0,
-                  font: { size: 10, family: "'JetBrains Mono', monospace" },
+                  font: { size: 12, family: "'JetBrains Mono', monospace" },
                 },
                 title: {
                   display: true,
                   text: 'Days to first build — down is the win',
                   color: tickColor,
-                  font: { size: 10 },
+                  font: { size: 12 },
                 },
               },
             }

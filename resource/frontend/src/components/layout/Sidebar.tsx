@@ -56,6 +56,13 @@ const icons: Record<string, ReactNode> = {
       <circle cx="18" cy="15" r="2" />
     </svg>
   ),
+  // Shield-check — per-action permission gates (what each agent is allowed to do).
+  'agent-settings': (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3l7 2.5V11c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V5.5z" />
+      <path d="M9 12l2 2 4-4.5" />
+    </svg>
+  ),
   'mission-control': (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="9" />

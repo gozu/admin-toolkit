@@ -1,7 +1,7 @@
 import { createSyncStore } from './createSyncStore';
 import { fetchJson } from '../utils/api';
 
-// Agent Settings → per-action enablement gates. Read-only sensor tools
+// Agent Permissions → per-action enablement gates. Read-only sensor tools
 // default ON; every actuator action defaults OFF until an admin enables it.
 // Toggles persist into the plugin config through the backend (advanced-gated)
 // and reach running agent kernels within ~30s (action_gates.py cache TTL).

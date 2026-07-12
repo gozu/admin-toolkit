@@ -123,7 +123,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   // proxy). Loads per conversation, never through the startup ritual.
   { id: 'agents', label: 'Agents', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'chat', 'ops', 'actuator', 'triage', 'plan', 'approve', 'autonomous', 'ai'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
   { id: 'agent-tuning', label: 'Agent Tuning', navLabel: 'Tuning', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'tuning', 'prompt', 'system', 'rubric', 'version', 'customize', 'override'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
-  { id: 'agent-settings', label: 'Agent Settings', navLabel: 'Settings', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'settings', 'actions', 'gates', 'enable', 'disable', 'permissions', 'read', 'write', 'execute', 'catalog'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
+  { id: 'agent-settings', label: 'Agent Permissions', navLabel: 'Permissions', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'permissions', 'settings', 'actions', 'gates', 'enable', 'disable', 'allow', 'read', 'write', 'execute', 'catalog'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
 
   // MISC
   { id: 'settings', label: 'Settings', section: 'Misc', navSection: 'MISC', keywords: ['settings', 'mail', 'channel', 'email', 'config', 'preferences'], availability: 'always', lifecycle: { fields: ['settingsLoading'] } },

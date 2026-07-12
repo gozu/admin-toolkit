@@ -78,7 +78,7 @@ const PAGE_LABELS: Record<PageId, string> = {
   feedback: 'Feedback',
   agents: 'Agents',
   'agent-tuning': 'Agent Tuning',
-  'agent-settings': 'Agent Settings',
+  'agent-settings': 'Agent Permissions',
 };
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];

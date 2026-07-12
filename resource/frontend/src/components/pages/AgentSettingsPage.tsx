@@ -10,7 +10,7 @@ import { useRedState } from '../../state/redUnlockStore';
 import { UnlockModal } from '../UnlockModal';
 
 /**
- * Agent Settings — the per-action enablement catalog. Every capability the
+ * Agent Permissions — the per-action enablement catalog. Every capability the
  * agents have is listed here: read-only sensor tools (checked by default)
  * and the actuator actions grouped read/write vs execute (unchecked and
  * therefore refused until an admin enables them). Toggles are advanced-gated
@@ -141,7 +141,7 @@ export function AgentSettingsPage() {
     <div className="w-full flex-1 min-h-0 py-4 overflow-y-auto">
       <div className="w-full max-w-[64rem] mx-auto px-4 space-y-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Agent Settings</h2>
+          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Agent Permissions</h2>
           <span className="text-xs text-[var(--text-tertiary)]">
             per-action enablement · {sensors.length + actions.length} capabilities
           </span>

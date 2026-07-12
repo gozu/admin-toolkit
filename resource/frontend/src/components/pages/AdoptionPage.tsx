@@ -302,7 +302,9 @@ function MiniCumulative({
   const W = 100;
   const xAt = (i: number) => (n === 1 ? W : (i / (n - 1)) * W);
   const yAt = (v: number) => height - (v / max) * (height - 4) - 2;
-  const line = values.map((v, i) => `${i === 0 ? 'M' : 'L'}${xAt(i).toFixed(2)},${yAt(v).toFixed(2)}`).join(' ');
+  const line = values
+    .map((v, i) => `${i === 0 ? 'M' : 'L'}${xAt(i).toFixed(2)},${yAt(v).toFixed(2)}`)
+    .join(' ');
   const area = `${line} L${W},${height} L0,${height} Z`;
   return (
     <div>
@@ -705,7 +707,6 @@ function PulseCard({ pulse, nowMs }: { pulse: AdoptionPulseData; nowMs: number }
   );
 }
 
-
 export function AdoptionPage() {
   const { state } = useDiag();
   const { data, scanStarted, error } = adoptionScan.use();
@@ -769,7 +770,9 @@ export function AdoptionPage() {
   // coin flip dressed as a trend — below the floor we show only absolutes.
   const sum = (pts: AdoptionMonthPoint[]) => pts.reduce((s, p) => s + p.commits, 0);
   const commitsRecent12 =
-    gitTrendComplete.length >= MOMENTUM_MONTHS ? sum(gitTrendComplete.slice(-MOMENTUM_MONTHS)) : null;
+    gitTrendComplete.length >= MOMENTUM_MONTHS
+      ? sum(gitTrendComplete.slice(-MOMENTUM_MONTHS))
+      : null;
   const commitsPrior12 =
     gitTrendComplete.length >= MOMENTUM_MONTHS * 2
       ? sum(gitTrendComplete.slice(-MOMENTUM_MONTHS * 2, -MOMENTUM_MONTHS))
@@ -975,8 +978,7 @@ export function AdoptionPage() {
         {busFactor && busFactor.measuredProjects > 0 ? (
           <>
             , and <strong>{busFactor.singleCreator}</strong> of{' '}
-            <strong>{busFactor.measuredProjects}</strong> measured projects rely on a single
-            creator
+            <strong>{busFactor.measuredProjects}</strong> measured projects rely on a single creator
           </>
         ) : null}
         .
@@ -1048,8 +1050,8 @@ export function AdoptionPage() {
   const ch3Answer =
     busFactor && busFactor.measuredProjects > 0 ? (
       <>
-        <strong>{busFactor.singleCreator}</strong> of{' '}
-        <strong>{busFactor.measuredProjects}</strong> measured projects single-creator
+        <strong>{busFactor.singleCreator}</strong> of <strong>{busFactor.measuredProjects}</strong>{' '}
+        measured projects single-creator
       </>
     ) : null;
 
@@ -1378,28 +1380,44 @@ export function AdoptionPage() {
                   </h4>
                 </div>
                 <div className="grid grid-cols-1 gap-x-6 gap-y-4 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {detailCharts.map((d) => (
-                    <div key={d.group.key}>
-                      <div className="mb-1.5 flex items-baseline justify-between gap-2">
-                        <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+                  {detailCharts.map((d) => {
+                    // Every curve says what it counts — "Uncategorized"
+                    // especially: list the actual subtypes on hover.
+                    const subtypes = inventoryView.composition
+                      .filter((row) => d.group.families.includes(row.family))
+                      .flatMap((row) => row.topSubtypes)
+                      .sort((a, b) => b.count - a.count)
+                      .slice(0, 6);
+                    const subtypeHint =
+                      subtypes.length > 0
+                        ? `contains: ${subtypes.map((s) => `${s.subtype} (${s.count})`).join(', ')}`
+                        : undefined;
+                    return (
+                      <div key={d.group.key}>
+                        <div className="mb-1.5 flex items-baseline justify-between gap-2">
                           <span
-                            className="h-1.5 w-1.5 rounded-[2px]"
-                            style={{ background: d.color }}
-                          />
-                          {d.group.label}
-                        </span>
-                        <span className="font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]">
-                          {d.total.toLocaleString()} all time
-                        </span>
+                            className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]"
+                            title={subtypeHint}
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-[2px]"
+                              style={{ background: d.color }}
+                            />
+                            {d.group.label}
+                          </span>
+                          <span className="font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]">
+                            {d.total.toLocaleString()} all time
+                          </span>
+                        </div>
+                        <MiniCumulative
+                          values={d.values}
+                          months={creationMonthsAxis}
+                          color={d.color}
+                          unitLabel={d.group.label.toLowerCase()}
+                        />
                       </div>
-                      <MiniCumulative
-                        values={d.values}
-                        months={creationMonthsAxis}
-                        color={d.color}
-                        unitLabel={d.group.label.toLowerCase()}
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div className="border-t border-[var(--border-glass)] px-4 py-2 text-[10px] text-[var(--text-tertiary)]">
                   surviving tagged objects only ({inventoryView.taggedObjects.toLocaleString()} of{' '}
@@ -1418,7 +1436,11 @@ export function AdoptionPage() {
               <div className="px-4 py-3">
                 <div className="grid grid-cols-1 items-start gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {inventoryView.topCreatorsByGroup
-                    .map((board, gi) => ({ board, group: DETAIL_GROUPS[gi], color: DETAIL_GROUP_COLORS[gi] }))
+                    .map((board, gi) => ({
+                      board,
+                      group: DETAIL_GROUPS[gi],
+                      color: DETAIL_GROUP_COLORS[gi],
+                    }))
                     .filter(({ board }) => board.creators.length > 0)
                     .map(({ board, group, color }) => {
                       const max = Math.max(1, ...board.creators.map((c) => c.created));
@@ -1595,7 +1617,8 @@ export function AdoptionPage() {
               <div className="px-4 py-4 text-[12px] leading-relaxed text-[var(--text-secondary)]">
                 <strong className="text-[var(--text-primary)]">{onboardingTotal}</strong>{' '}
                 {onboardingTotal === 1 ? 'account' : 'accounts'} created across{' '}
-                {onboardingPoints.length} complete {onboardingPoints.length === 1 ? 'quarter' : 'quarters'}
+                {onboardingPoints.length} complete{' '}
+                {onboardingPoints.length === 1 ? 'quarter' : 'quarters'}
                 {onboardingTotal > 0 && (
                   <>
                     {' '}

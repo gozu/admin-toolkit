@@ -151,3 +151,46 @@ export function formatSizeGb(sizeBytes: number | undefined): string {
   if (!sizeBytes) return '—';
   return formatGb(sizeBytes);
 }
+
+/**
+ * Split a canonical CPU-cores label into physical/logical counts. Handles the
+ * backend "N Cores / M Threads" form, the diag-text "N C / M T" form, and a
+ * bare "N". `logical` is null when the label carries only one number.
+ */
+export function parseCpuCoreCounts(cpuCores: string | undefined): {
+  physical: number | null;
+  logical: number | null;
+} {
+  const nums = cpuCores?.match(/\d+/g);
+  if (!nums || nums.length === 0) return { physical: null, logical: null };
+  const physical = parseInt(nums[0], 10);
+  const logical = nums.length > 1 ? parseInt(nums[1], 10) : null;
+  return {
+    physical: Number.isFinite(physical) ? physical : null,
+    logical: logical !== null && Number.isFinite(logical) ? logical : null,
+  };
+}
+
+/**
+ * "4 Cores / 8 Threads" → "4 Physical cores / 8 Logical Cores". Falls back to
+ * the raw label when it can't be split into two counts.
+ */
+export function formatCpuCoresLong(cpuCores: string | undefined): string {
+  const { physical, logical } = parseCpuCoreCounts(cpuCores);
+  if (physical !== null && logical !== null) {
+    return `${physical} Physical cores / ${logical} Logical Cores`;
+  }
+  return cpuCores ?? '';
+}
+
+/**
+ * "4 Cores / 8 Threads" → "4c/8t". Falls back to the raw label when it can't
+ * be split into two counts.
+ */
+export function formatCpuCoresCompact(cpuCores: string | undefined): string {
+  const { physical, logical } = parseCpuCoreCounts(cpuCores);
+  if (physical !== null && logical !== null) {
+    return `${physical}c/${logical}t`;
+  }
+  return cpuCores ?? '';
+}

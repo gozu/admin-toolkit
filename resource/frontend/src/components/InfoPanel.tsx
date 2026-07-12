@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useDiag } from '../context/DiagContext';
 import { RefreshControl } from './common/RefreshControl';
 import { getHostSummary, refreshHostSummary, subscribeHostSummary } from '../state/hostSummary';
+import { formatCpuCoresCompact, formatCpuCoresLong } from '../utils/formatters';
 
 function useCountUp(target: number, duration = 1000) {
   const [value, setValue] = useState(0);
@@ -267,14 +268,17 @@ export function InfoPanel() {
           />
         )}
 
-        {/* CPU Cores */}
+        {/* CPU Cores — compact "Nc/Mt", full "N Physical cores / M Logical Cores" on hover */}
         {parsedData.cpuCores && (
           <MetricCard
             label="CPU Cores"
-            value={parsedData.cpuCores}
+            value={
+              <span title={formatCpuCoresLong(parsedData.cpuCores)}>
+                {formatCpuCoresCompact(parsedData.cpuCores)}
+              </span>
+            }
             icon={<CpuIcon />}
             delay={4}
-            animateValue
           />
         )}
 

@@ -4,7 +4,7 @@ import { Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, type TooltipItem, type Plugin } from 'chart.js';
 import { useDiag } from '../context/DiagContext';
 import { useTableFilter } from '../hooks/useTableFilter';
-import { parseNumericValue } from '../utils/formatters';
+import { parseNumericValue, formatCpuCoresLong } from '../utils/formatters';
 import { CHART_PALETTE } from '../utils/chartColors';
 import { BASE_TOOLTIP_STYLE, baseLegendLabels } from '../utils/chartConfig';
 import { getProcessMetrics, subscribeProcessMetrics } from '../state/processMetrics';
@@ -177,7 +177,7 @@ export function CpuChart() {
             </tr>
             <tr>
               <td>Cores</td>
-              <td>{parsedData.cpuCores}</td>
+              <td>{formatCpuCoresLong(parsedData.cpuCores)}</td>
             </tr>
           </tbody>
         </table>

@@ -20,9 +20,13 @@ derivations transfer verbatim:
   zones, visual analyses) carry no creation tags on disk (verified live) —
   they are counted by file mtime, which feeds the staleness histogram but
   never the human-attributed fields.
+- Every human timestamp is floored at the project's arrival on this instance
+  (its config git repo's first commit): imported/copied projects keep foreign
+  creationTags that would otherwise fabricate pre-instance history.
 """
 import json
 import os
+import subprocess
 import time
 from datetime import datetime, timezone
 
@@ -122,9 +126,18 @@ class _Inventory(object):
         self.errors = 0
         self.max_plausible_ms = int(time.time() * 1000) + 24 * 60 * 60 * 1000
 
-    def _clamp_ms(self, ms):
+    def _clamp_ms(self, ms, floor_ms=None):
         if isinstance(ms, (int, float)) and _MIN_PLAUSIBLE_MS <= ms <= self.max_plausible_ms:
-            return int(ms)
+            ms = int(ms)
+            # Imported/copied projects keep their original creationTag/versionTag
+            # payloads, which can predate this instance by years (verified live:
+            # akaos DIAG_PARSER_BRANCH1 carries Sep '20 tags but its config git
+            # repo starts Dec '22). Floor every human timestamp at the project's
+            # arrival here so the inventory never claims history older than the
+            # instance's own git spine.
+            if floor_ms is not None and ms < floor_ms:
+                ms = floor_ms
+            return ms
         return None
 
     def _family(self, key):
@@ -170,7 +183,7 @@ class _Inventory(object):
         proj['lastEditMonthCounts'][mk] = proj['lastEditMonthCounts'].get(mk, 0) + 1
         self.last_edit_ms = ms if self.last_edit_ms is None else max(self.last_edit_ms, ms)
 
-    def add_config_object(self, project_key, obj, fam):
+    def add_config_object(self, project_key, obj, fam, arrival_ms=None):
         self.scanned += 1
         fam_stats = self._family(fam)
         fam_stats['count'] += 1
@@ -186,10 +199,10 @@ class _Inventory(object):
         version_tag = obj.get('versionTag')
         creator_login = _tag_login(creation_tag)
         created_ms = self._clamp_ms((creation_tag or {}).get('lastModifiedOn')
-                                    if isinstance(creation_tag, dict) else None)
+                                    if isinstance(creation_tag, dict) else None, arrival_ms)
         editor_login = _tag_login(version_tag)
         edit_ms = self._clamp_ms((version_tag or {}).get('lastModifiedOn')
-                                 if isinstance(version_tag, dict) else None)
+                                 if isinstance(version_tag, dict) else None, arrival_ms)
         # versionNumber = save count after creation (0 = never re-saved). Some
         # object kinds carry only a creationTag, so fall back to it.
         raw_version = None
@@ -356,6 +369,29 @@ def _scan_meta_only(inv, project_key, project_dir):
         pass
 
 
+def _project_arrival_ms(project_dir):
+    """When the project appeared on THIS instance: its config git repo's first
+    commit ("Imported project X" for imports, "Created project" for locals).
+    None (no repo / git failure) means no floor — behave as before."""
+    if not os.path.isdir(os.path.join(project_dir, '.git')):
+        return None
+    try:
+        # safe.directory: the repo is normally owned by the service account the
+        # macro runs as, but a mixed-ownership repo would otherwise fail git's
+        # dubious-ownership guard and silently skip the clamp.
+        out = subprocess.run(
+            ['git', '-c', 'safe.directory=%s' % project_dir, '-C', project_dir,
+             'log', '--reverse', '--format=%at'],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    first = out.stdout.split('\n', 1)[0].strip()
+    return int(first) * 1000 if first.isdigit() else None
+
+
 def _build_inventory(dip_home):
     projects_dir = os.path.join(dip_home, 'config', 'projects')
     plugin_ids = _plugin_ids(dip_home)
@@ -371,6 +407,7 @@ def _build_inventory(dip_home):
 
     for project_key in project_keys:
         project_dir = os.path.join(projects_dir, project_key)
+        arrival_ms = _project_arrival_ms(project_dir)
         for subdir, family in _JSON_CATEGORIES:
             for path in _iter_json_files(os.path.join(project_dir, subdir)):
                 try:
@@ -383,7 +420,7 @@ def _build_inventory(dip_home):
                     continue
                 fam = (_family_for_recipe_type(obj.get('type'), plugin_ids)
                        if family == 'recipe' else family)
-                inv.add_config_object(project_key, obj, fam)
+                inv.add_config_object(project_key, obj, fam, arrival_ms)
         _scan_meta_only(inv, project_key, project_dir)
 
     result = inv.snapshot()

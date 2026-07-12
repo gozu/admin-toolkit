@@ -15,7 +15,12 @@ import {
   type TooltipItem,
 } from 'chart.js';
 import { CHART_PALETTE } from '../../utils/chartColors';
-import { BASE_TOOLTIP_STYLE, baseLegendLabels, lineTraceAnimation } from '../../utils/chartConfig';
+import {
+  BASE_TOOLTIP_STYLE,
+  baseLegendLabels,
+  barGrowAnimation,
+  lineTraceAnimation,
+} from '../../utils/chartConfig';
 import { quarterLabel } from '../../utils/inventoryData';
 
 // Flagship: cumulative "only goes up" adoption lines — people who ever built,
@@ -112,6 +117,7 @@ export function CumulativeAdoptionChart({
             backgroundColor: CHART_PALETTE.blue,
             yAxisID: 'y',
             order: 0,
+            animations: barGrowAnimation('y'),
           },
           {
             ...BAR_STYLE,
@@ -120,6 +126,7 @@ export function CumulativeAdoptionChart({
             backgroundColor: CHART_PALETTE.mint,
             yAxisID: 'y',
             order: 1,
+            animations: barGrowAnimation('y'),
           },
           {
             ...BAR_STYLE,
@@ -128,6 +135,7 @@ export function CumulativeAdoptionChart({
             backgroundColor: COMMITS_FILL,
             yAxisID: 'y1',
             order: 2,
+            animations: barGrowAnimation('y1'),
           },
         ],
       };

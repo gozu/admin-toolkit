@@ -42,8 +42,6 @@ const SPARK_MONTHS = 12;
 // TTFB is hidden below this many measured users — "0d median, 2 users" is
 // noise dressed as a stat.
 const MIN_TTFB_USERS = 5;
-// "Recently active" window for the funnel and idle-seat detection.
-const ACTIVE_DAYS = 90;
 // Below these floors, onboarding renders a sentence instead of slab bars.
 const MIN_ONBOARDING_QUARTERS = 3;
 const MIN_ONBOARDING_USERS = 5;
@@ -858,9 +856,6 @@ export function AdoptionPage() {
   // current account count — the subset framing (funnel arrows, "X of Y
   // accounts") is only honest when it actually holds.
   const accountCount = recency.length;
-  const activeRecently = builders.filter(
-    (b) => b.lastCommitMs != null && nowMs - b.lastCommitMs <= ACTIVE_DAYS * DAY_MS,
-  ).length;
   const buildersAreSubset = totals != null && accountCount >= totals.builderCount;
 
   // Flagship cumulative series: people who ever built / projects ever active /
@@ -1140,63 +1135,17 @@ export function AdoptionPage() {
     title: `${tenureCounts[i].toLocaleString()} ${tenureCounts[i] === 1 ? 'builder' : 'builders'} with ${label} between first and last commit`,
   }));
 
-  // The generated verdict — the page states its own conclusion instead of
-  // making the reader reverse-engineer it from charts. Every clause is
-  // computed and omitted when unmeasurable.
-  // The verdict opens with an ASSESSMENT, not a fact recital — the reader
-  // should be able to repeat one sentence in a meeting and defend it.
-  const breadthWord =
-    totals && totals.builderCount > 0
-      ? activeRecently === 0
-        ? 'stalled'
-        : activeRecently / totals.builderCount <= 0.34
-          ? 'narrow'
-          : activeRecently / totals.builderCount <= 0.67
-            ? 'moderate'
-            : 'broad'
-      : null;
+  // The generated verdict — a plain scale statement, deliberately free of
+  // judgement (breadth/narrowness assessments read as negative and were
+  // removed at the user's request).
   const verdict: ReactNode[] = [];
-  if (totals && breadthWord) {
+  if (totals && inventoryView) {
     verdict.push(
-      <span key="assessment">
-        Adoption is{' '}
-        <strong>
-          {activeRecently > 0 ? 'active' : 'quiet'}
-          {activeRecently > 0 ? ` but ${breadthWord}` : ''}
-        </strong>
-        :{' '}
-        {buildersAreSubset ? (
-          <>
-            <strong>{activeRecently}</strong> of <strong>{totals.builderCount}</strong> all-time
-            builders (from <strong>{accountCount}</strong> accounts) committed in the last{' '}
-            {ACTIVE_DAYS} days
-          </>
-        ) : (
-          <>
-            <strong>{activeRecently}</strong> of <strong>{totals.builderCount}</strong> all-time
-            builders committed in the last {ACTIVE_DAYS} days (the instance currently hosts{' '}
-            <strong>{accountCount || '—'}</strong> accounts; git history remembers departed
-            builders)
-          </>
-        )}
-        {busFactor && busFactor.measuredProjects > 0 ? (
-          <>
-            , and <strong>{busFactor.singleCreator}</strong> of{' '}
-            <strong>{busFactor.measuredProjects}</strong> measured projects rely on a single creator
-          </>
-        ) : null}
-        .
+      <span key="objects">
+        The instance holds <strong>{inventoryView.objectsBuilt.toLocaleString()}</strong> surviving
+        objects across <strong>{totals.projectCount}</strong> projects.
       </span>,
     );
-    if (inventoryView) {
-      verdict.push(
-        <span key="objects">
-          {' '}
-          The instance holds <strong>{inventoryView.objectsBuilt.toLocaleString()}</strong>{' '}
-          surviving objects across <strong>{totals.projectCount}</strong> projects.
-        </span>,
-      );
-    }
   }
 
   // Computed chapter answers — the question headers never go unanswered.
@@ -1636,7 +1585,7 @@ export function AdoptionPage() {
                 {capabilityFirsts.length > 0 && (
                   <div className="chart-container">
                     <div className="chart-header flex items-center justify-between gap-3">
-                      <h4 title="The month each family first shows a surviving tagged creation — the order capabilities were adopted on this instance. A first can only be later than reality: deleted early work is invisible.">
+                      <h4 title="The month each family first shows a surviving tagged creation — the order capabilities were adopted on this instance. Imported projects count from their arrival here, not from their foreign creation tags. A first can only be later than reality: deleted early work is invisible.">
                         Capability adoption — firsts
                       </h4>
                     </div>
@@ -1644,7 +1593,8 @@ export function AdoptionPage() {
                       <CapabilityTimeline items={capabilityFirsts} />
                     </div>
                     <div className="border-t border-[var(--border-glass)] px-4 py-2 text-[10px] text-[var(--text-tertiary)]">
-                      first surviving tagged object per family — deleted early work is invisible
+                      first surviving tagged object per family — imports count from their arrival on
+                      this instance; deleted early work is invisible
                     </div>
                   </div>
                 )}

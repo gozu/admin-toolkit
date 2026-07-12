@@ -3,10 +3,8 @@ import { Chart } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   LineController,
-  BarController,
   LineElement,
   PointElement,
-  BarElement,
   LinearScale,
   CategoryScale,
   Tooltip,
@@ -18,18 +16,16 @@ import { CHART_PALETTE } from '../../utils/chartColors';
 import { BASE_TOOLTIP_STYLE, baseLegendLabels, lineTraceAnimation } from '../../utils/chartConfig';
 import { quarterLabel } from '../../utils/inventoryData';
 
-// Onboarding & activation on ONE trimester axis: bars = new accounts per
-// quarter (persistent user snapshot), line = median days from signup to first
-// surviving build for that signup cohort (config-tree provenance). Complete
+// Onboarding & activation on ONE trimester axis: white line = new accounts
+// per quarter (persistent user snapshot), directional line = median days from
+// signup to first surviving build for that signup cohort. Complete
 // quarters only — the running quarter is footnoted by the caller, never
 // plotted. Quarters where TTFB isn't measurable leave a gap (spanGaps joins
 // across them, dashed by the sparse data itself).
 ChartJS.register(
   LineController,
-  BarController,
   LineElement,
   PointElement,
-  BarElement,
   LinearScale,
   CategoryScale,
   Tooltip,
@@ -62,6 +58,8 @@ export function OnboardingChart({
   const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
   const tickColor = isDark ? 'rgba(160,160,176,0.85)' : 'rgba(60,60,80,0.7)';
   const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  // "White" tracks the theme's ink — pure white vanishes on the light canvas.
+  const accountsLine = isDark ? 'rgba(255,255,255,0.92)' : 'rgba(35,35,50,0.9)';
 
   const chartData = useMemo(() => {
     // Per-point marker colors mirror the incoming segment (walking back over
@@ -121,21 +119,24 @@ export function OnboardingChart({
             ]
           : []),
         {
-          type: 'bar' as const,
+          type: 'line' as const,
           label: 'New accounts',
           data: points.map((p) => p.newUsers),
-          backgroundColor: CHART_PALETTE.mint,
-          borderWidth: 0,
-          borderRadius: 2,
-          barPercentage: 0.7,
-          categoryPercentage: 0.9,
-          maxBarThickness: 48,
+          borderColor: accountsLine,
+          backgroundColor: accountsLine,
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          pointBackgroundColor: accountsLine,
+          pointBorderColor: accountsLine,
           yAxisID: 'y',
           order: 2,
+          animations: lineTraceAnimation(points.length, 'y'),
         },
       ],
     };
-  }, [points, showTtfb]);
+  }, [points, showTtfb, accountsLine]);
 
   const options = useMemo(
     () => ({
@@ -147,14 +148,14 @@ export function OnboardingChart({
         tooltip: {
           ...BASE_TOOLTIP_STYLE,
           callbacks: {
-            title: (items: TooltipItem<'line' | 'bar'>[]) => {
+            title: (items: TooltipItem<'line'>[]) => {
               if (!items.length) return '';
               const p = points[items[0].dataIndex];
               return p
                 ? `${quarterLabel(p.quarter)} · ${p.builders}/${p.newUsers} built something that survives`
                 : '';
             },
-            label: (ctx: TooltipItem<'line' | 'bar'>) =>
+            label: (ctx: TooltipItem<'line'>) =>
               ctx.parsed.y == null
                 ? `${ctx.dataset.label}: not measurable`
                 : `${ctx.dataset.label}: ${ctx.formattedValue}${ctx.dataset.yAxisID === 'y1' ? 'd' : ''}`,
@@ -221,7 +222,7 @@ export function OnboardingChart({
 
   return (
     <div className="chart-body" style={{ height: '240px' }}>
-      <Chart type="bar" data={chartData} options={options} />
+      <Chart type="line" data={chartData} options={options} />
     </div>
   );
 }

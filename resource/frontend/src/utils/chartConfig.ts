@@ -76,6 +76,31 @@ export function lineTraceAnimation(pointCount: number, axisId = 'y') {
   };
 }
 
+/** Bottom-up grow-from-zero for a bar dataset with a small per-bar stagger.
+ * Attach per-dataset (`animations:`) — unlike the global sweep below, which
+ * fast-paths charts it has already seen, this replays on every chart mount,
+ * so a cumulative↔per-quarter remount grows the bars again. */
+export function barGrowAnimation(axisId = 'y') {
+  return {
+    y: {
+      type: 'number' as const,
+      easing: 'easeOutQuart' as const,
+      duration: 650,
+      from(raw: unknown) {
+        const ctx = raw as TraceAnimationCtx;
+        if (ctx.type !== 'data') return undefined;
+        return ctx.chart.scales[axisId]?.getPixelForValue(0);
+      },
+      delay(raw: unknown) {
+        const ctx = raw as TraceAnimationCtx;
+        if (ctx.type !== 'data' || ctx.yStarted) return 0;
+        ctx.yStarted = true;
+        return Math.min(ctx.index * 14, 400);
+      },
+    },
+  };
+}
+
 /* Chart draw-in: the first render of each chart sweeps in (650ms easeOutQuart,
  * small per-bar stagger); subsequent data/theme updates use a fast 200ms
  * transition. Applied by mutating Chart.defaults so every chart component

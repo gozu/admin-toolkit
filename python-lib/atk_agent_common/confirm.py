@@ -28,10 +28,29 @@ def _signing_key(red_password):
     return hashlib.sha256(red_password.encode('utf-8') + _SIGNING_CONTEXT).digest()
 
 
+def _strip_nulls(node):
+    """Drop dict keys whose value is None (recursively; list order preserved).
+
+    The DSS agent-tool transport serializer drops null-valued keys from tool
+    I/O, so a canonical carrying None values (e.g. a create's scenarioId=None,
+    or an expectedCurrent email that is genuinely unset) serializes with those
+    keys at mint time but WITHOUT them on the echoed-back execute side —
+    breaking the token. Normalizing here, symmetrically in mint and verify,
+    makes signing match that reality. It is behaviour-preserving: executors
+    read target.get(k), so a key set to None and an absent key already act
+    identically, and any action that survives transport unchanged has no None
+    keys to drop (so this is a no-op for it)."""
+    if isinstance(node, dict):
+        return {k: _strip_nulls(v) for k, v in node.items() if v is not None}
+    if isinstance(node, list):
+        return [_strip_nulls(v) for v in node]
+    return node
+
+
 def canonical_target(target):
     """Deterministic serialization of the target (dict/str) for signing."""
     if isinstance(target, dict):
-        return json.dumps(target, sort_keys=True, separators=(',', ':'))
+        return json.dumps(_strip_nulls(target), sort_keys=True, separators=(',', ':'))
     return str(target)
 
 

@@ -123,6 +123,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   // proxy). Loads per conversation, never through the startup ritual.
   { id: 'agents', label: 'Agents', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'chat', 'ops', 'actuator', 'triage', 'plan', 'approve', 'autonomous', 'ai'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
   { id: 'agent-tuning', label: 'Agent Tuning', navLabel: 'Tuning', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'tuning', 'prompt', 'system', 'rubric', 'version', 'customize', 'override'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
+  { id: 'agent-settings', label: 'Agent Settings', navLabel: 'Settings', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'settings', 'actions', 'gates', 'enable', 'disable', 'permissions', 'read', 'write', 'execute', 'catalog'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
 
   // MISC
   { id: 'settings', label: 'Settings', section: 'Misc', navSection: 'MISC', keywords: ['settings', 'mail', 'channel', 'email', 'config', 'preferences'], availability: 'always', lifecycle: { fields: ['settingsLoading'] } },
@@ -142,7 +143,7 @@ export const MODULE_BY_ID: Readonly<Record<PageId, ModuleDefinition>> = Object.f
 
 export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'OVERVIEW', items: ['mission-control', 'summary', 'filesystem', 'resources'] },
-  { title: 'AGENTS', items: ['agents', 'agent-tuning'], experimental: true },
+  { title: 'AGENTS', items: ['agents', 'agent-tuning', 'agent-settings'], experimental: true },
   { title: 'CONNECTIONS', items: ['connections-inventory', 'connections-insights', 'connections-health', 'connections-fs-migration'] },
   { title: 'PROJECTS', items: ['project-cleaner', 'projects', 'project-compute', 'project-cost'] },
   { title: 'USERS', items: ['users', 'adoption'] },   // restored from ['users']

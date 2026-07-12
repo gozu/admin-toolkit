@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.731",
+    "version": "0.4.732",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -337,6 +337,15 @@
             "type": "STRING",
             "mandatory": false,
             "defaultValue": ""
+        },
+        {
+            "name": "agent_action_gates",
+            "label": "Agent action gates (managed)",
+            "description": "Managed by the webapp's Agents \u2192 Agent Settings page \u2014 JSON {action: bool}. Read-only sensor tools default ON; every actuator action defaults OFF until enabled there. Declared here (hidden) so DSS never prunes the saved value.",
+            "type": "TEXTAREA",
+            "mandatory": false,
+            "defaultValue": "",
+            "visibilityCondition": "false"
         },
         {
             "name": "sep_outreach_thresholds",

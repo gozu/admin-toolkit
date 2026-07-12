@@ -329,7 +329,8 @@ export type PageId =
   | 'settings'
   | 'feedback'
   | 'agents'
-  | 'agent-tuning';
+  | 'agent-tuning'
+  | 'agent-settings';
 
 export type AppMode = 'landing' | 'single' | 'comparison' | 'tools' | 'settings';
 

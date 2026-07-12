@@ -19,6 +19,7 @@ _LOG_CLEANER_MACRO_ID = 'pyrunnable_admin-toolkit_log-cleaner'
 _DOCKER_GOVERNOR_MACRO_ID = 'pyrunnable_admin-toolkit_docker-governor'
 _K8S_APPLY_MACRO_ID = 'pyrunnable_admin-toolkit_k8s-apply'
 _FS_CLEANUP_MACRO_ID = 'pyrunnable_admin-toolkit_fs-cleanup'
+_HOST_CONFIG_MACRO_ID = 'pyrunnable_admin-toolkit_host-config'
 
 
 def _host_metrics_macro(client: Any) -> Dict[str, Any]:
@@ -184,6 +185,13 @@ def _generic_op_macro(client: Any, macro_id: str, operation: str, **params: Any)
     if not isinstance(result, dict):
         return {'ok': False, 'error': f'macro returned non-dict: {type(result).__name__}'}
     return result
+
+
+def _host_config_macro(client: Any, operation: str, **params: Any) -> Dict[str, Any]:
+    """Invoke the host-config macro (operation ∈ {read, apply}). Extra params
+    for apply: file, section, key, value, expected_current. The whitelist +
+    drift guard are enforced inside the macro itself."""
+    return _generic_op_macro(client, _HOST_CONFIG_MACRO_ID, operation, **params)
 
 
 def _log_cleaner_macro(client: Any, operation: str, **params: Any) -> Dict[str, Any]:

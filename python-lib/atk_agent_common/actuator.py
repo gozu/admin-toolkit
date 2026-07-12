@@ -2,22 +2,26 @@
 
 Safety model (layered — every gate independent):
   1. plugin `enable_red_actions` master kill-switch (checked at execute)
-  2. per-agent `allow_red_actions` + `allowed_actions` (checked by the agent)
-  3. plan → HMAC confirm_token (confirm.py) → execute recomputes; drift/expiry kills it
-  4. execute requires the literal `confirm: true` from the model
-  5. the backend's own @advanced red gate still applies server-side
+  2. per-action Agent Settings gates (action_gates.py — every non-read action
+     is OFF until an admin enables it; checked at plan AND execute)
+  3. per-agent `allow_red_actions` + `allowed_actions` (checked by the agent)
+  4. plan → HMAC confirm_token (confirm.py) → execute recomputes; drift/expiry kills it
+  5. execute requires the literal `confirm: true` from the model
+  6. the backend's own @advanced red gate still applies server-side
 The plan IS the dry run: it gathers the exact targets + blast radius from
 read-only scans and shows the human what will happen. There is no single-call
 path to a mutation.
 
 Deliberately excluded (structural, not policy — the agent cannot do these):
-DSS/backend restart (kills the toolkit itself), install.ini / systemd /
-ulimits (root/host-level files), license operations, external credential
-creation or rotation (the agent holds no cloud/DB secrets), user creation and
-password resets, SSO/LDAP paths (settings blacklist), arbitrary shell, and
-deleting the ADMINTOOLKIT project / the admin-toolkit plugin / the toolkit's
-own API key (planner-refused). Also still excluded pending explicit opt-in:
-container-exec, email send, cs-template migrate.
+DSS/backend restart (kills the toolkit itself), license operations, external
+credential creation or rotation (the agent holds no cloud/DB secrets), user
+creation and password resets, SSO/LDAP paths (settings blacklist), arbitrary
+shell, and deleting the ADMINTOOLKIT project / the admin-toolkit plugin / the
+toolkit's own API key (planner-refused). Also still excluded pending explicit
+opt-in: container-exec, cs-template migrate. install.ini / systemd / ulimits
+edits and messaging sends ARE in the catalog now (host-config-set /
+notification-send) — policy-whitelisted and default-disabled like everything
+else.
 
 Remediation-suite actions (log-cleanup, docker-prune, k8s-apply-fix,
 settings-set, project-clear-webapp-runs) are POLICY-GATED below the model:
@@ -33,7 +37,7 @@ and the plan/execute protocol (confirm tokens, batching, audit).
 import json
 
 from . import actions as actions_registry
-from . import confirm, shaping
+from . import action_gates, confirm, shaping
 from .errors import RedLocked, ToolkitError
 from .policies import kubectl_policy, settings_paths
 
@@ -814,6 +818,8 @@ def plan_admin_action(client, host='local', action=None, target=None, params=Non
     if action not in ACTIONS:
         return {'error': {'code': 'bad-input',
                           'message': 'action must be one of: %s' % ', '.join(ACTIONS)}}
+    if not action_gates.action_enabled(client, action):
+        return action_gates.disabled_error(action)
     host = host or 'local'
     target_list = _normalize_targets(target, targets)
     if len(target_list) > 1 and action not in BATCHABLE_ACTIONS:
@@ -880,6 +886,8 @@ def execute_admin_action(client, host='local', action=None, target=None,
         return {'error': {'code': 'red-actions-disabled',
                           'message': 'The agentic-actions master switch is OFF in the plugin settings.',
                           'remediation': 'An administrator must turn it on; agents cannot.'}}
+    if not action_gates.action_enabled(client, action):
+        return action_gates.disabled_error(action)
     if not confirm_flag:
         return {'error': {'code': 'not-confirmed',
                           'message': 'execute requires confirm=true, sent only after the user '

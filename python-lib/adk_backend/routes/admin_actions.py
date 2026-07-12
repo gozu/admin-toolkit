@@ -17,10 +17,11 @@ import tempfile
 
 from flask import Blueprint, g, jsonify, request
 
-from adk_backend.clients import _active_support_project
+from adk_backend.clients import _active_support_project, _resolve_macro_project
 from adk_backend.macros import _fs_cleanup_macro
 from adk_backend.utils import advanced
 from atk_agent_common.policies import settings_paths
+from atk_agent_common.policies import toolkit_scenarios as _toolkit_scenario_policy
 
 bp = Blueprint('admin_actions', __name__)
 _LOGGER = logging.getLogger(__name__)
@@ -862,6 +863,54 @@ def _impl_variables_set(client, body):
     return {'ok': True, 'path': path, 'before': current, 'after': body.get('newValue')}
 
 
+def _impl_toolkit_scenario_write(client, body):
+    """Create/rewrite an agent-authored scenario — ADMINTOOLKIT ONLY. The
+    step whitelist is re-validated here (never trust the planned payload);
+    _resolve_macro_project pins the project structurally."""
+    name = str(body.get('name') or '').strip()
+    scenario_id = str(body.get('scenarioId') or '').strip() or None
+    steps = body.get('steps') or []
+    hour = body.get('dailyTriggerHour')
+    active = body.get('active')
+    if not name:
+        return {'ok': False, 'error': 'name is required'}
+    ok, reason = _toolkit_scenario_policy.validate_name(name)
+    if not ok:
+        return {'ok': False, 'error': reason}
+    ok, reason = _toolkit_scenario_policy.validate_steps(steps)
+    if not ok:
+        return {'ok': False, 'error': reason}
+
+    project = _resolve_macro_project(client)
+    created = False
+    if scenario_id:
+        row = next((s for s in project.list_scenarios() or []
+                    if s.get('id') == scenario_id), None)
+        if row is None:
+            return {'ok': False, 'error': 'scenario %r not found in %s'
+                                          % (scenario_id, project.project_key)}
+        if str(row.get('name') or '') in _toolkit_scenario_policy.PROTECTED_SCENARIO_NAMES:
+            return {'ok': False, 'error': 'scenario %r is toolkit-provisioned automation '
+                                          '— not agent-writable' % row.get('name')}
+        scenario = project.get_scenario(scenario_id)
+    else:
+        scenario = project.create_scenario(scenario_name=name, type='step_based')
+        created = True
+
+    settings = scenario.get_settings()
+    settings.get_raw()['name'] = name
+    if active is not None:
+        settings.get_raw()['active'] = bool(active)
+    del settings.raw_steps[:]
+    settings.raw_steps.extend(steps)
+    if hour is not None:
+        del settings.raw_triggers[:]
+        settings.add_daily_trigger(hour=int(hour), minute=0, timezone='SERVER')
+    settings.save()
+    return {'ok': True, 'projectKey': project.project_key, 'scenarioId': scenario.id,
+            'name': name, 'created': created, 'stepCount': len(steps)}
+
+
 _ACTION_IMPLS = {
     'connection-test': _impl_connection_test,
     'connection-delete': _impl_connection_delete,
@@ -893,6 +942,7 @@ _ACTION_IMPLS = {
     'user-set-enabled': _impl_user_set_enabled,
     'api-key-delete': _impl_api_key_delete,
     'variables-set': _impl_variables_set,
+    'toolkit-scenario-write': _impl_toolkit_scenario_write,
 }
 
 

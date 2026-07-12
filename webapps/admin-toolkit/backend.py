@@ -165,6 +165,7 @@ def _handle_remote_keys_locked(_exc: RemoteKeysLocked):
 # ─────────────────────────────────────────────────────────────────────────
 from adk_backend.routes.admin_actions import bp as admin_actions_bp
 from adk_backend.routes.adoption import bp as adoption_bp
+from adk_backend.routes.agent_gates import bp as agent_gates_bp
 from adk_backend.routes.agent_tuning import bp as agent_tuning_bp
 from adk_backend.routes.agents import bp as agents_bp
 from adk_backend.routes.algorithm_review import bp as algorithm_review_bp
@@ -183,6 +184,7 @@ from adk_backend.routes.dir_tree import bp as dir_tree_bp
 from adk_backend.routes.email_tools import bp as email_tools_bp
 from adk_backend.routes.feedback import bp as feedback_bp
 from adk_backend.routes.footprint import bp as footprint_bp
+from adk_backend.routes.host_config import bp as host_config_bp
 from adk_backend.routes.hosts import bp as hosts_bp
 from adk_backend.routes.docker_governor import bp as docker_governor_bp
 from adk_backend.routes.image_cleaner import bp as image_cleaner_bp
@@ -191,6 +193,7 @@ from adk_backend.routes.k8s_insights import bp as k8s_insights_bp
 from adk_backend.routes.llm_tools import bp as llm_tools_bp
 from adk_backend.routes.log_cleaner import bp as log_cleaner_bp
 from adk_backend.routes.logs import bp as logs_bp
+from adk_backend.routes.messaging_tools import bp as messaging_tools_bp
 from adk_backend.routes.misc import bp as misc_bp
 from adk_backend.routes.overview import bp as overview_bp
 from adk_backend.routes.plugins import bp as plugins_bp
@@ -199,6 +202,7 @@ from adk_backend.routes.settings import bp as settings_bp
 
 app.register_blueprint(admin_actions_bp)
 app.register_blueprint(adoption_bp)
+app.register_blueprint(agent_gates_bp)
 app.register_blueprint(agent_tuning_bp)
 app.register_blueprint(agents_bp)
 app.register_blueprint(algorithm_review_bp)
@@ -217,6 +221,7 @@ app.register_blueprint(dir_tree_bp)
 app.register_blueprint(email_tools_bp)
 app.register_blueprint(feedback_bp)
 app.register_blueprint(footprint_bp)
+app.register_blueprint(host_config_bp)
 app.register_blueprint(hosts_bp)
 app.register_blueprint(docker_governor_bp)
 app.register_blueprint(image_cleaner_bp)
@@ -225,6 +230,7 @@ app.register_blueprint(k8s_insights_bp)
 app.register_blueprint(llm_tools_bp)
 app.register_blueprint(log_cleaner_bp)
 app.register_blueprint(logs_bp)
+app.register_blueprint(messaging_tools_bp)
 app.register_blueprint(misc_bp)
 app.register_blueprint(overview_bp)
 app.register_blueprint(plugins_bp)

@@ -61,10 +61,25 @@ def resolve(plugin_config=None):
         'log_cleanup_min_age_days': int(pick('log_cleanup_min_age_days',
                                              cfg.get('log_cleanup_min_age_days') or 3)),
         'settings_set_blocked_extra': pick('settings_set_blocked_extra'),
+        # Per-action enablement map (Agent Settings page). JSON {name: bool};
+        # kernel-start snapshot only — action_gates.py fetches the live map
+        # through the backend with this as the offline fallback.
+        'agent_action_gates': _parse_gates(pick('agent_action_gates')),
     }
     if not settings['backend_url']:
         settings['backend_url'] = _discover_backend_url() or ''
     return settings
+
+
+def _parse_gates(raw):
+    if isinstance(raw, dict):
+        return {str(k): bool(v) for k, v in raw.items()}
+    try:
+        import json
+        parsed = json.loads(raw or '{}')
+        return {str(k): bool(v) for k, v in parsed.items()} if isinstance(parsed, dict) else {}
+    except (ValueError, TypeError):
+        return {}
 
 
 def _discover_backend_url():

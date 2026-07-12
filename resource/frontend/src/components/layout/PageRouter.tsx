@@ -81,6 +81,9 @@ const AgentsPageLazy = lazy(() =>
 const AgentTuningPageLazy = lazy(() =>
   import('../pages/AgentTuningPage').then((m) => ({ default: m.AgentTuningPage })),
 );
+const AgentSettingsPageLazy = lazy(() =>
+  import('../pages/AgentSettingsPage').then((m) => ({ default: m.AgentSettingsPage })),
+);
 
 function LoadingSpinner() {
   return (
@@ -169,6 +172,8 @@ function renderPage(activePage: PageId, adoptionVisible: boolean): React.ReactNo
       return <AgentsPageLazy />;
     case 'agent-tuning':
       return <AgentTuningPageLazy />;
+    case 'agent-settings':
+      return <AgentSettingsPageLazy />;
     case 'settings':
       return <SettingsPage />;
     case 'feedback':

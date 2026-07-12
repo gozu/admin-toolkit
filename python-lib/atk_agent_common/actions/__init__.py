@@ -13,10 +13,12 @@ their shapes and batchability are declared here so the generated prose and
 the batch gate cover the whole catalog.
 """
 
-from . import clusters, connections, db, plugins_domain, projects_domain, runtime, storage, users
+from . import (clusters, connections, db, host_config, messaging, plugins_domain,
+               projects_domain, runtime, storage, toolkit_scenarios, users)
 
 _DOMAIN_MODULES = (connections, clusters, plugins_domain, projects_domain,
-                   runtime, users, storage, db)
+                   runtime, users, storage, db, messaging, toolkit_scenarios,
+                   host_config)
 
 SPECS = [spec for module in _DOMAIN_MODULES for spec in module.SPECS]
 
@@ -110,14 +112,102 @@ def _required_keys(shape):
 # {action: frozenset(required target keys)} for the WHOLE catalog — parsed
 # from the same shape strings the tool descriptions quote, so the
 # propose-time shape check (action_items) can never drift from the prose.
+# SHAPES carries the per-action prose fragment for catalog consumers
+# (Agent Settings page).
 REQUIRED_TARGET_KEYS = {}
+SHAPES = {}
 for _shape in _LEGACY_SHAPES:
     for _action in _shape.split(' {', 1)[0].split('/'):
         REQUIRED_TARGET_KEYS[_action.strip()] = _required_keys(_shape)
+        SHAPES[_action.strip()] = _shape
 for _spec_row in SPECS:
     REQUIRED_TARGET_KEYS[_spec_row['action']] = _required_keys(_spec_row['shape'])
+    SHAPES[_spec_row['action']] = _spec_row['shape']
 del _shape, _action, _spec_row
+
+# Risk class for the legacy dozen (planners/executors in actuator.py); the
+# registry rows carry their own. ALL_RISKS covers the whole catalog.
+_LEGACY_RISKS = {
+    'project-delete': 'red', 'code-env-delete': 'red', 'image-delete': 'red',
+    'db-vacuum': 'amber', 'db-analyze': 'amber', 'plugin-deploy': 'amber',
+    'k8s-exec-config-tune': 'amber', 'log-cleanup': 'amber', 'docker-prune': 'amber',
+    'k8s-apply-fix': 'red', 'code-env-consolidate': 'red', 'settings-set': 'amber',
+}
+ALL_RISKS = dict(_LEGACY_RISKS, **RISKS)
 
 BATCH_NOTE = ('Batchable actions (%s) accept targets: [dict, ...] — several '
               'objects, same action, ONE plan and ONE confirm token.'
               % ', '.join(sorted(BATCHABLE)))
+
+
+# Coarse capability class per action, surfaced by the Agent Settings page:
+#   read/write — mutates persisted configuration (restorable/reversible-ish)
+#   execute    — runs/stops/cleans/destroys workloads or data, or sends
+# (Read-only tools are the sensors in tools_impl.SENSOR_DESCRIPTIONS — a
+# separate surface; every action below is a mutation of some kind.)
+# Central on purpose: the assert keeps it complete, so adding an action
+# without classifying it is a hard import error.
+MODES = {
+    # read/write — configuration mutations
+    'connection-update': 'read/write',
+    'k8s-exec-config-tune': 'read/write',
+    'settings-set': 'read/write',
+    'variables-set': 'read/write',
+    'project-variables-set': 'read/write',
+    'project-set-cluster': 'read/write',
+    'project-change-owner': 'read/write',
+    'scenario-disable': 'read/write',
+    'scenario-enable': 'read/write',
+    'user-enable': 'read/write',
+    'user-disable': 'read/write',
+    'code-env-consolidate': 'read/write',
+    'toolkit-scenario-write': 'read/write',
+    'host-config-set': 'read/write',
+    # execute — run/stop/clean/destroy/send
+    'project-delete': 'execute',
+    'code-env-delete': 'execute',
+    'image-delete': 'execute',
+    'db-vacuum': 'execute',
+    'db-analyze': 'execute',
+    'db-reindex': 'execute',
+    'plugin-deploy': 'execute',
+    'plugin-update': 'execute',
+    'plugin-uninstall': 'execute',
+    'plugin-code-env-rebuild': 'execute',
+    'code-env-update': 'execute',
+    'log-cleanup': 'execute',
+    'docker-prune': 'execute',
+    'k8s-apply-fix': 'execute',
+    'cluster-start': 'execute',
+    'cluster-stop': 'execute',
+    'cluster-detach': 'execute',
+    'cluster-pods-cleanup': 'execute',
+    'connection-test': 'execute',
+    'connection-index': 'execute',
+    'connection-delete': 'execute',
+    'project-export': 'execute',
+    'project-clear-webapp-runs': 'execute',
+    'tmp-cleanup': 'execute',
+    'exports-cleanup': 'execute',
+    'job-logs-cleanup': 'execute',
+    'job-kill': 'execute',
+    'scenario-kill': 'execute',
+    'scenario-run': 'execute',
+    'continuous-activity-stop': 'execute',
+    'webapp-backend-stop': 'execute',
+    'webapp-backend-restart': 'execute',
+    'notebook-kernels-shutdown': 'execute',
+    'notebook-clear-outputs': 'execute',
+    'dataset-clear': 'execute',
+    'dataset-delete': 'execute',
+    'api-key-delete': 'execute',
+    'notification-send': 'execute',
+}
+assert set(MODES) == set(REQUIRED_TARGET_KEYS), (
+    'MODES out of sync with the catalog: missing %s / stale %s'
+    % (sorted(set(REQUIRED_TARGET_KEYS) - set(MODES)),
+       sorted(set(MODES) - set(REQUIRED_TARGET_KEYS))))
+assert set(ALL_RISKS) == set(REQUIRED_TARGET_KEYS), (
+    'ALL_RISKS out of sync with the catalog: missing %s / stale %s'
+    % (sorted(set(REQUIRED_TARGET_KEYS) - set(ALL_RISKS)),
+       sorted(set(ALL_RISKS) - set(REQUIRED_TARGET_KEYS))))

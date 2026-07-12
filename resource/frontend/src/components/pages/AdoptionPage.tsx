@@ -494,6 +494,13 @@ const DATASET_TYPE_LABELS: Record<string, string> = {
   ElasticSearch: 'Elasticsearch',
   GCS: 'Google Cloud Storage',
   S3: 'Amazon S3',
+  // Names the camelCase splitter would mangle ('Postgre SQL', 'My SQL', …).
+  PostgreSQL: 'PostgreSQL',
+  MySQL: 'MySQL',
+  BigQuery: 'BigQuery',
+  MongoDB: 'MongoDB',
+  DynamoDB: 'DynamoDB',
+  StatsDB: 'Stats DB',
 };
 
 interface TechStackItem {
@@ -1093,7 +1100,12 @@ export function AdoptionPage() {
       }
     }
     for (const [sub, n] of Object.entries(fams.webapp?.subtypes ?? {})) {
-      add(WEBAPP_FRAMEWORKS[sub] ?? sub.charAt(0) + sub.slice(1).toLowerCase(), 'framework', n);
+      // Plugin webapp types are ids like 'webapp_<plugin>_<component>' —
+      // aggregate them instead of leaking raw ids into the UI.
+      const label = WEBAPP_FRAMEWORKS[sub];
+      if (label) add(label, 'framework', n);
+      else if (sub.includes('_')) add('Plugin webapps', 'framework', n);
+      else add(sub.charAt(0) + sub.slice(1).toLowerCase(), 'framework', n);
     }
     return [...agg.values()].sort((a, b) => b.count - a.count).slice(0, 10);
   })();

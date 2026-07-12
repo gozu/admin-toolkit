@@ -1,8 +1,8 @@
-/* Agent tool: per-domain DSS configuration summaries (connections, code envs, plugins, LLMs) */
+/* Agent tool: registry-backed per-domain DSS configuration/insights summaries */
 {
     "meta": {
         "label": "Admin Toolkit: Config inspect",
-        "description": "Inspect a DSS host's configuration by domain: connections (+health probe), code envs (deprecated/unused/largest), plugins (+usage), LLM Mesh models.",
+        "description": "Inspect a DSS host by domain (registry-backed: connections + usage/owners, code envs, plugins, LLMs, users, adoption, cost detail, per-project listings). domain='list' returns the manifest.",
         "icon": "icon-cogs"
     },
     "params": []

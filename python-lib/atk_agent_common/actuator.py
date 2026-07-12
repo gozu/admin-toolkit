@@ -16,11 +16,11 @@ Deliberately excluded (structural, not policy — the agent cannot do these):
 DSS/backend restart (kills the toolkit itself), license operations, external
 credential creation or rotation (the agent holds no cloud/DB secrets), user
 creation and password resets, SSO/LDAP paths (settings blacklist), arbitrary
-shell, and deleting the ADMINTOOLKIT project / the admin-toolkit plugin / the
-toolkit's own API key (planner-refused). Also still excluded pending explicit
-opt-in: container-exec, cs-template migrate. install.ini / systemd / ulimits
-edits and messaging sends ARE in the catalog now (host-config-set /
-notification-send) — policy-whitelisted and default-disabled like everything
+shell, install.ini / systemd / ulimits (root/host-level files), and deleting
+the ADMINTOOLKIT project / the admin-toolkit plugin / the toolkit's own API
+key (planner-refused). Also still excluded pending explicit opt-in:
+container-exec, cs-template migrate. Messaging sends ARE in the catalog now
+(notification-send) — policy-whitelisted and default-disabled like everything
 else.
 
 Remediation-suite actions (log-cleanup, docker-prune, k8s-apply-fix,

@@ -13,12 +13,11 @@ their shapes and batchability are declared here so the generated prose and
 the batch gate cover the whole catalog.
 """
 
-from . import (clusters, connections, db, host_config, messaging, plugins_domain,
+from . import (clusters, connections, db, messaging, plugins_domain,
                projects_domain, runtime, storage, toolkit_scenarios, users)
 
 _DOMAIN_MODULES = (connections, clusters, plugins_domain, projects_domain,
-                   runtime, users, storage, db, messaging, toolkit_scenarios,
-                   host_config)
+                   runtime, users, storage, db, messaging, toolkit_scenarios)
 
 SPECS = [spec for module in _DOMAIN_MODULES for spec in module.SPECS]
 
@@ -162,7 +161,7 @@ MODES = {
     'user-disable': 'read/write',
     'code-env-consolidate': 'read/write',
     'toolkit-scenario-write': 'read/write',
-    'host-config-set': 'read/write',
+    'user-update': 'read/write',
     # execute — run/stop/clean/destroy/send
     'project-delete': 'execute',
     'code-env-delete': 'execute',

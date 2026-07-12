@@ -421,6 +421,27 @@ export const EDU: Record<string, EduEntry> = {
       'Same scale gate as vacuum/analyze: propose only on ~1000+-user instances.',
     ],
   },
+  'action.notification-send': {
+    title: 'notification-send',
+    body: [
+      'Composes and sends one notification through a configured DSS messaging channel. Mail channels deliver directly (recipients[] required); slack/teams/webhook/chat channels deliver to their configured destination via a reporter on the ADMINTOOLKIT relay scenario.',
+      'The plan shows the full message text verbatim — what you approve is exactly what leaves the instance, and sends cannot be recalled.',
+    ],
+  },
+  'action.toolkit-scenario-write': {
+    title: 'toolkit-scenario-write',
+    body: [
+      'Creates or rewrites a scenario in the ADMINTOOLKIT support project ONLY — agent-authored automation never lives in user projects, and the toolkit-provisioned scenarios are protected.',
+      'Code-bearing steps (custom Python, SQL, non-toolkit macros, any script/sql/code payload — unknown step types count as code, fail-safe) require an explicit ackCustomCode: the plan shows the step params verbatim so you review the actual code, and the backend re-runs the same scan at execute.',
+    ],
+  },
+  'action.user-update': {
+    title: 'user-update',
+    body: [
+      'Updates the email, display name and/or license profile of one user account — the fix for missing/wrong owner emails (outreach bounces) and for license seat pressure (right-sizing DESIGNER → EXPLORER).',
+      'Every changed field is drift-guarded: the current value is bound into the confirm token and re-checked at execute. Batchable for profile-right-sizing sweeps.',
+    ],
+  },
   'concept.auto-remediation': {
     title: 'Auto-remediation',
     body: [

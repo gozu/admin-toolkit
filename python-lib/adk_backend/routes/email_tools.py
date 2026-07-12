@@ -15,7 +15,7 @@ from adk_backend.mail import (
     _get_configured_mail_channel, _get_mail_channel, _list_mail_channels,
 )
 from adk_backend.usage_scan import _dedupe_usage_entries
-from adk_backend.utils import _coerce_int, advanced
+from adk_backend.utils import _coerce_int, advanced, project_deep_link
 
 bp = Blueprint('email_tools', __name__)
 _LOGGER = logging.getLogger(__name__)
@@ -438,17 +438,23 @@ _SCENARIO_LIST_MARKER = '__SCLIST_HTML__'
 _INACTIVE_LIST_MARKER = '__IPLIST_HTML__'
 
 
-def _build_items_html(items: List[str], accent: str = '#3a3f47') -> str:
-    """Render a flat list of items as styled inline tags."""
+def _build_items_html(items: List[str], accent: str = '#3a3f47', links: Dict[str, str] = None) -> str:
+    """Render a flat list of items as styled inline tags; items with a link
+    become clickable (project deep links)."""
     import html as _html
     if not items:
         return '<span style="color:#8895a7;font-size:13px;font-style:italic;">none</span>'
     tags = []
     for item in items:
+        label = _html.escape(item)
+        href = (links or {}).get(item)
+        if href:
+            label = (f'<a href="{_html.escape(href, quote=True)}" '
+                     f'style="color:{accent};text-decoration:underline;">{label}</a>')
         tags.append(
             f'<span style="display:inline-block;background:#f0f2f5;color:{accent};'
             f'font-size:13px;font-weight:500;padding:5px 14px;border-radius:6px;'
-            f'margin:3px 4px 3px 0;line-height:1.4;">{_html.escape(item)}</span>'
+            f'margin:3px 4px 3px 0;line-height:1.4;">{label}</span>'
         )
     return f'<div style="margin:8px 0 4px 0;">{"".join(tags)}</div>'
 
@@ -960,13 +966,22 @@ def api_tools_email_preview():
         else:
             object_lines = _usage_lines_grouped_by_code_env(usage_details)
 
+        # Project deep links (studioExternalUrl-based): plain key lists give
+        # recipients nothing to click — link every project we name.
+        project_links = {key: project_deep_link(g.client, key) for key in project_keys}
+        project_links = {k: v for k, v in project_links.items() if v}
+
+        def _project_line(key: str) -> str:
+            link = project_links.get(key)
+            return f"- {key} — {link}" if link else f"- {key}"
+
         variables = {
             'owner': owner,
             'owner_email': to_email,
             'project_count': str(len(project_keys)),
             'code_env_count': str(len(code_env_names)),
             'object_count': str(len(usage_details)),
-            'project_list': '\n'.join([f"- {key}" for key in project_keys]) if project_keys else '- none',
+            'project_list': '\n'.join([_project_line(key) for key in project_keys]) if project_keys else '- none',
             'code_env_list': '\n'.join([f"- {name}" for name in code_env_names]) if code_env_names else '- none',
             'objects_list': '\n'.join(object_lines),
             'project_keys': ', '.join(project_keys) if project_keys else 'none',
@@ -1010,10 +1025,13 @@ def api_tools_email_preview():
             pname = str(proj.get('name') or proj.get('projectKey') or 'Unknown')
             pkey = str(proj.get('projectKey') or '')
             days_inactive = _coerce_int(proj.get('daysInactive'), 0)
+            link = project_deep_link(g.client, pkey)
+            link_suffix = f" — {link}" if link else ''
             if days_inactive > 0:
-                inactive_project_lines.append(f"- {pname} ({pkey}): inactive for {days_inactive} days")
+                inactive_project_lines.append(
+                    f"- {pname} ({pkey}): inactive for {days_inactive} days{link_suffix}")
             else:
-                inactive_project_lines.append(f"- {pname} ({pkey})")
+                inactive_project_lines.append(f"- {pname} ({pkey}){link_suffix}")
         variables['inactive_project_list'] = '\n'.join(inactive_project_lines) if inactive_project_lines else '- none'
 
         # Build project_env_list: project → code envs → objects (where used)
@@ -1067,7 +1085,7 @@ def api_tools_email_preview():
         # Build rich HTML for all list variables
         _rich_html_map = {
             'project_env_list': (_PROJECT_ENV_MARKER, _build_project_env_html(projects_data, _pel_grouped)),
-            'project_list': (_PROJECT_LIST_MARKER, _build_items_html(project_keys)),
+            'project_list': (_PROJECT_LIST_MARKER, _build_items_html(project_keys, links=project_links)),
             'code_env_list': (_CODE_ENV_LIST_MARKER, _build_items_html(code_env_names, accent='#00897b')),
             'objects_list': (_OBJECTS_LIST_MARKER, _build_objects_html(usage_details, group_by_project=(campaign == 'project'))),
             'code_studio_list': (_CODE_STUDIO_LIST_MARKER, _build_code_studio_html(projects_data)),

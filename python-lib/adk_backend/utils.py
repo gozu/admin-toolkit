@@ -27,6 +27,38 @@ def advanced(view_func):
     return view_func
 
 
+# Per-DSS-host cache of studioExternalUrl (rarely changes; one general-
+# settings read per host per 10 minutes).
+_STUDIO_URL_CACHE: Dict[str, Tuple[float, Optional[str]]] = {}
+_STUDIO_URL_TTL_S = 600
+
+
+def studio_external_url(client: Any) -> Optional[str]:
+    """studioExternalUrl from the host's general settings, or None. The base
+    for project deep links in agent/email surfaces — they have no browser
+    window.origin (unlike the frontend's codeEnvUsageLinks)."""
+    cache_key = str(getattr(client, 'host', '') or '')
+    now = time.time()
+    hit = _STUDIO_URL_CACHE.get(cache_key)
+    if hit is not None and now - hit[0] < _STUDIO_URL_TTL_S:
+        return hit[1]
+    url: Optional[str] = None
+    try:
+        url = str((client.get_general_settings().get_raw() or {})
+                  .get('studioExternalUrl') or '').rstrip('/') or None
+    except Exception:
+        url = None
+    _STUDIO_URL_CACHE[cache_key] = (now, url)
+    return url
+
+
+def project_deep_link(client: Any, project_key: Any) -> Optional[str]:
+    """<studioExternalUrl>/projects/<KEY>/ or None when the URL is unset."""
+    base = studio_external_url(client)
+    key = str(project_key or '').strip()
+    return '%s/projects/%s/' % (base, key) if base and key else None
+
+
 def _coerce_int(value: Any, default: int = 0) -> int:
     try:
         return int(value)

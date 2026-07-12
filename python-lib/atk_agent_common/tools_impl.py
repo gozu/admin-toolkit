@@ -13,6 +13,7 @@ Field names and parsing here follow shapes recorded live from the backend
 
 import re
 
+from . import domain_registry as _registry
 from . import shaping
 from .errors import ToolkitError
 
@@ -262,233 +263,404 @@ def compute_cost(client, host='local', group_by='project', top_n=10):
     return shaping.enforce_budget(out)
 
 
-# ── config-inspect ───────────────────────────────────────────────────────────
+# ── config-inspect (registry-backed: atk_agent_common.domain_registry) ──────
+#
+# One handler per registry row, uniform signature
+#   (client, host, domain, name_filter, detail, top_n, page) -> dict
+# The dispatcher merges the handler result into {host, domain}, applies the
+# optional fields[] projection and the output budget. Adding a domain =
+# adding a registry row + a handler here; the tool description, the 'list'
+# manifest and the coverage contract all derive from the registry.
 
-_CONFIG_DOMAINS = ('projects', 'connections', 'code-envs', 'plugins', 'llms',
-                   'clusters', 'scenarios', 'webapps', 'users', 'api-keys',
-                   'notebooks', 'jobs', 'datasets')
-# Domains that are per-project listings: name_filter is the PROJECT KEY.
-_PROJECT_SCOPED_DOMAINS = ('scenarios', 'webapps', 'notebooks', 'jobs', 'datasets')
+
+def _domain_connections(client, host, domain, name_filter, detail, top_n, page):
+    flt = (name_filter or '').lower()
+    data = client.get('/api/connections', host=host)
+    details = data.get('connectionDetails') or []
+    if flt:
+        details = [c for c in details if flt in (c.get('name') or '').lower()
+                   or flt in (c.get('type') or '').lower()]
+    out = {'countsByType': data.get('connections'),
+           'connections': details[:max(1, top_n * 2)]}
+    if detail == 'health':
+        from . import health as health_mod
+        events = health_mod.fetch_connection_health(client, host)
+        if events is None:
+            out['healthError'] = ('connection health probe unavailable — the backend '
+                                  'may still be scanning; retry in a few minutes')
+            events = []
+        if flt:
+            events = [e for e in events if flt in (e.get('name') or '').lower()]
+        failing = [e for e in events if e.get('status') == 'fail']
+        out['healthProbe'] = {
+            'probed': len(events),
+            'failing': [shaping.pick(e, ('name', 'type', 'error', 'status')) for e in failing[:top_n]],
+        }
+    return out
+
+
+def _domain_code_envs(client, host, domain, name_filter, detail, top_n, page):
+    flt = (name_filter or '').lower()
+    data = client.get('/api/code-envs', host=host, heavy=True,
+                      progress_path='/api/code-envs/progress')
+    envs = data.get('codeEnvs') or []
+    if flt:
+        envs = [e for e in envs if flt in (e.get('name') or '').lower()]
+    thresholds = client.get('/api/settings/threshold-defaults')
+    deprecated_prefixes = [p.strip() for p in
+                           (thresholds.get('deprecatedPythonPrefixes') or '').split(',') if p.strip()]
+
+    def is_deprecated(env):
+        v = str(env.get('version') or '')
+        return any(v.startswith(p) for p in deprecated_prefixes)
+
+    out = {'totals': {
+        'totalEnvCount': data.get('totalEnvCount'),
+        'analyzedEnvCount': len(data.get('codeEnvs') or []),
+        'pythonVersionCounts': data.get('pythonVersionCounts'),
+        'rVersionCounts': data.get('rVersionCounts'),
+    }}
+    # Per-item admin whitelist (false-positive doctrine): whitelisted envs
+    # drop out of the finding lists; report only the suppressed count.
+    from . import health as health_mod
+    wl = health_mod._whitelist_lookup(health_mod.fetch_host_whitelist(client, host))
+    deprecated_rows = [e for e in envs if is_deprecated(e)
+                       and not wl('python-env-lifecycle', e.get('name'))]
+    out['deprecatedPython'] = [shaping.pick(e, ('name', 'version', 'owner', 'usageCount', 'projectCount'))
+                               for e in deprecated_rows][:top_n]
+    out['unused'] = [shaping.pick(e, ('name', 'version', 'owner', 'sizeBytes'))
+                     for e in envs if not (e.get('usageCount') or 0)][:top_n]
+    largest_rows = [e for e in envs if not wl('code-env-size', e.get('name'))]
+    out['largest'] = shaping.top_rows(largest_rows, 'sizeBytes', top_n,
+                                      keys=('name', 'version', 'sizeBytes', 'usageCount', 'projectCount'))
+    if wl.matched:
+        out['whitelistSuppressed'] = len(wl.matched)
+    if flt:
+        out['matching'] = [shaping.pick(e, ('name', 'version', 'owner', 'usageCount',
+                                            'projectCount', 'sizeBytes', 'projectKeys'))
+                           for e in envs[:top_n]]
+    return out
+
+
+def _domain_plugins(client, host, domain, name_filter, detail, top_n, page):
+    flt = (name_filter or '').lower()
+    data = client.get('/api/plugins', host=host)
+    details = data.get('pluginDetails') or []
+    if flt:
+        details = [p for p in details if flt in (p.get('id') or '').lower()
+                   or flt in (p.get('label') or '').lower()]
+    out = {'pluginsCount': data.get('pluginsCount'),
+           'devPlugins': [p.get('id') for p in details if p.get('isDev')][:top_n],
+           'plugins': [shaping.pick(p, ('id', 'installedVersion', 'label', 'isDev'))
+                       for p in details[:max(1, top_n * 2)]]}
+    if detail == 'usage':
+        usages = client.get('/api/plugins/usages', host=host, heavy=True)
+        by_plugin = usages.get('usagesByPlugin') or {}
+        rows = [{'id': pid, 'projectsUsingCount': (u or {}).get('projectsUsingCount', 0)}
+                for pid, u in by_plugin.items()
+                if not flt or flt in pid.lower()]
+        out['unusedPlugins'] = sorted(p['id'] for p in rows if not p['projectsUsingCount'])[:top_n * 2]
+        out['mostUsed'] = shaping.top_rows(rows, 'projectsUsingCount', top_n)
+    return out
+
+
+def _domain_clusters(client, host, domain, name_filter, detail, top_n, page):
+    flt = (name_filter or '').lower()
+    data = client.get('/api/k8s-insights/clusters', host=host)
+    rows = data.get('clusters') or []
+    if flt:
+        rows = [c for c in rows if flt in (c.get('id') or '').lower()
+                or flt in (c.get('name') or '').lower()]
+    out = {'totalDiscovered': data.get('totalDiscovered'),
+           'unavailableCount': len(data.get('unavailable') or []),
+           # Unavailable = no kubeconfig and not RUNNING: stale attachments, the
+           # natural cluster-detach candidates — name them, don't just count them.
+           'unavailable': [shaping.pick(c, ('id', 'state', 'type'))
+                           for c in (data.get('unavailable') or [])[:max(1, top_n * 2)]],
+           'clusters': [shaping.pick(c, ('id', 'name', 'state', 'architecture', 'type'))
+                        for c in rows[:max(1, top_n * 2)]]}
+    if detail == 'health':
+        try:
+            health = client.get('/api/k8s-insights/clusters/health', host=host, heavy=True)
+            probes = health.get('clusters') or []
+            if flt:
+                probes = [p for p in probes if flt in (p.get('id') or '').lower()]
+            out['reachability'] = {
+                'ok': sum(1 for p in probes if p.get('ok')),
+                'failing': [shaping.pick(p, ('id', 'errorClass', 'errorSummary'))
+                            for p in probes if not p.get('ok')][:top_n],
+            }
+        except ToolkitError as exc:
+            out['reachabilityError'] = exc.message
+    return out
+
+
+def _domain_llms(client, host, domain, name_filter, detail, top_n, page):
+    flt = (name_filter or '').lower()
+    data = client.get('/api/llms', host=host)
+    llms = data.get('llms') or []
+    if flt:
+        llms = [l for l in llms if flt in (l.get('id') or '').lower()
+                or flt in (l.get('connection') or '').lower()
+                or flt in (l.get('model') or '').lower()]
+    by_conn = {}
+    for l in llms:
+        by_conn.setdefault(l.get('connection') or '?', []).append(l.get('model'))
+    out = {'llmCount': len(llms),
+           'byConnection': {conn: models[:top_n] for conn, models in sorted(by_conn.items())}}
+    if flt:
+        out['matching'] = [shaping.pick(l, ('id', 'model', 'type', 'connection'))
+                           for l in llms[:top_n]]
+    return out
+
+
+def _domain_projects(client, host, domain, name_filter, detail, top_n, page):
+    # Resolve a project label to its KEY: the project-scoped domains all take
+    # name_filter=<projectKey>, and the agent rarely knows the key.
+    flt = (name_filter or '').lower()
+    inv = client.get('/api/tools/admin-actions/inventory', host=host,
+                     params={'domain': 'projects'})
+    projects = inv.get('projects') or []
+    if flt:
+        projects = [p for p in projects if flt in (p.get('projectKey') or '').lower()
+                    or flt in (p.get('name') or '').lower()]
+    return {'projectCount': len(projects), 'projects': projects[:max(1, top_n * 2)]}
+
+
+def _domain_project_scoped(client, host, domain, name_filter, detail, top_n, page):
+    # Per-project listings backed by the admin-actions inventory GET;
+    # name_filter carries the PROJECT KEY (required).
+    project_key = (name_filter or '').strip()
+    if not project_key:
+        return {'error': {'code': 'bad-input',
+                          'message': "domain %r needs name_filter=<projectKey> — find the "
+                                     "key with domain='projects' (name_filter matches key "
+                                     "or label)" % domain}}
+    params = {'domain': domain, 'projectKey': project_key}
+    if domain == 'datasets' and detail == 'usage':
+        # lineage drill-down: producers/consumers from recipe IO, webapp/
+        # scenario name-refs, unreferenced + delete-candidate rollups.
+        params['detail'] = 'usage'
+    inv = client.get('/api/tools/admin-actions/inventory', host=host,
+                     params=params, heavy=params.get('detail') == 'usage')
+    key = {'scenarios': 'scenarios', 'webapps': 'webapps',
+           'notebooks': 'notebooks', 'jobs': 'jobs', 'datasets': 'datasets',
+           'continuous-activities': 'activities'}[domain]
+    out = {'projectKey': project_key}
+    rows = inv.get(key) or []
+    if domain == 'datasets' and detail == 'usage':
+        out['summary'] = inv.get('summary')
+        # rollups carry the verdict; row budget can be tighter than 2×top_n
+        out[key] = rows[:max(1, top_n * 4)]
+    else:
+        size = max(1, top_n * 2)
+        start = (page - 1) * size
+        out[key] = rows[start:start + size]
+        if start:
+            out['page'] = page
+    if inv.get('note'):
+        out['note'] = inv['note']
+    return out
+
+
+def _domain_users(client, host, domain, name_filter, detail, top_n, page):
+    # The RICH listing (/api/users): carries email + userProfile, so owner
+    # logins resolve to addresses — the lean inventory projection does not.
+    flt = (name_filter or '').lower()
+    data = client.get('/api/users', host=host)
+    users = data.get('users') or []
+    if flt:
+        users = [u for u in users if flt in (u.get('login') or '').lower()
+                 or flt in (u.get('displayName') or '').lower()
+                 or flt in (u.get('email') or '').lower()]
+    size = max(1, top_n * 2)
+    start = (page - 1) * size
+    out = {'userStats': data.get('userStats'),
+           'userCount': len(users),
+           'disabled': [u.get('login') for u in users if not u.get('enabled', True)][:top_n],
+           'noEmail': [u.get('login') for u in users
+                       if not str(u.get('email') or '').strip()][:top_n],
+           'users': [shaping.pick(u, ('login', 'displayName', 'email', 'enabled',
+                                      'userProfile', 'groups'))
+                     for u in users[start:start + size]]}
+    if start:
+        out['page'] = page
+    return out
+
+
+def _domain_api_keys(client, host, domain, name_filter, detail, top_n, page):
+    inv = client.get('/api/tools/admin-actions/inventory', host=host,
+                     params={'domain': 'api-keys'})
+    return {'personal': (inv.get('personal') or [])[:max(1, top_n * 2)],
+            'global': (inv.get('global') or [])[:max(1, top_n * 2)],
+            'note': ('Key secrets are never shown. api-key-delete is IRREVERSIBLE; '
+                     'the toolkit refuses its own key.')}
+
+
+def _domain_connections_usage(client, host, domain, name_filter, detail, top_n, page):
+    # Same memoized scan the health scorer and the Connections Insights page
+    # use — one fetch path, no drift.
+    from . import health as health_mod
+    data = health_mod.fetch_connection_usages(client, host)
+    if data is None:
+        return {'error': {'code': 'scan-failed',
+                          'message': 'The connection-usage scan did not complete — the '
+                                     'backend may still be scanning; retry in a few '
+                                     'minutes.'}}
+    flt = (name_filter or '').lower()
+    active = set(data.get('activeTriggerProjects') or [])
+
+    def shape(rows, count_key):
+        rows = sorted(rows or [], key=lambda r: -(r.get('projectCount') or 0))
+        if flt:
+            rows = [r for r in rows if flt in (r.get('name') or '').lower()]
+        shaped = []
+        for r in rows[:max(1, top_n)]:
+            by_project = {}
+            for p in r.get('projects') or []:
+                pk = p.get('projectKey')
+                row = by_project.setdefault(pk, {
+                    'projectKey': pk, 'projectName': p.get('projectName'),
+                    'owner': p.get('owner'), 'ownerEmail': p.get('ownerEmail'),
+                    'objects': 0, 'activeTrigger': pk in active})
+                row['objects'] += 1
+            plist = sorted(by_project.values(), key=lambda x: -x['objects'])
+            if flt:  # one named connection → full (paged) project list
+                size = max(1, top_n * 2)
+                start = (page - 1) * size
+                plist = plist[start:start + size]
+            else:
+                plist = plist[:5]
+            shaped.append({'name': r.get('name'), 'type': r.get('type'),
+                           'projectCount': r.get('projectCount'),
+                           count_key: r.get(count_key), 'projects': plist})
+        return shaped
+
+    out = {
+        'datasetUsages': shape(data.get('datasetUsages'), 'datasetCount'),
+        'llmUsages': shape(data.get('llmUsages'), 'recipeCount'),
+        'activeTriggerProjects': sorted(active)[:top_n * 3],
+        'scan': {'scannedProjectCount': data.get('scannedProjectCount'),
+                 'failedProjectCount': data.get('failedProjectCount'),
+                 'scanErrorCount': len(data.get('scanErrors') or [])},
+        'localFilesystemUsageCount': len(data.get('localFilesystemUsages') or []),
+    }
+    if data.get('projectUrlBase'):
+        out['projectUrlBase'] = data['projectUrlBase']
+        out['linkNote'] = 'Project deep link = projectUrlBase + <projectKey> + /'
+    if detail == 'fs':
+        fs_rows = data.get('localFilesystemUsages') or []
+        if flt:
+            fs_rows = [r for r in fs_rows if flt in (r.get('connection') or '').lower()]
+        out['localFilesystemUsages'] = fs_rows[:max(1, top_n * 2)]
+    return out
+
+
+def _compact_unknown(payload, top_n):
+    """Defensive shape for macro payloads whose exact schema may drift: keep
+    scalars, cap lists (+ report their true length), summarize large dicts."""
+    out = {}
+    for k, v in (payload or {}).items():
+        if isinstance(v, list):
+            out[k] = v[:top_n]
+            if len(v) > top_n:
+                out['%sCount' % k] = len(v)
+        elif isinstance(v, dict) and len(v) > top_n * 2:
+            out['%sKeys' % k] = sorted(str(x) for x in v)[:top_n]
+            out['%sCount' % k] = len(v)
+        else:
+            out[k] = v
+    return out
+
+
+def _domain_adoption(client, host, domain, name_filter, detail, top_n, page):
+    if detail in ('inventory', 'events'):
+        data = client.get('/api/adoption/%s' % detail, host=host, heavy=True)
+        if data.get('ok') is False:
+            return {'error': {'code': 'adoption-%s-failed' % detail,
+                              'message': str(data.get('error') or 'unavailable')[:300]}}
+        return {'detail': detail, 'data': _compact_unknown(data, top_n)}
+    data = client.get('/api/adoption', host=host, heavy=True)
+    return {
+        'totals': data.get('totals'),
+        'licensing': data.get('licensing'),
+        'profileCounts': data.get('profileCounts'),
+        'repeatBuilders': data.get('repeatBuilders'),
+        'monthlyTrend': (data.get('monthlyTrend') or [])[-12:],
+        'builderStats': (data.get('builderStats') or [])[:top_n],
+        'projectRowCount': len(data.get('projectRows') or []),
+    }
+
+
+def _domain_cost_detail(client, host, domain, name_filter, detail, top_n, page):
+    data = client.get('/api/cru', host=host, heavy=True)
+    if not data.get('ok', True):
+        return {'error': {'code': 'cru-unavailable',
+                          'message': str(data.get('error') or 'CRU data unavailable')}}
+    span = data.get('span') or {}
+    out = {
+        'span': shaping.pick(span, ('firstTs', 'lastTs', 'files', 'cruRecords')),
+        'spanNote': ('Coverage = the instance\'s rolling audit-log retention; '
+                     'older usage is not observable from this tool.'),
+        'totals': data.get('totals'),
+        'topProjects': shaping.top_rows(data.get('projects'), 'cpuH', top_n,
+                                        keys=('projectKey', 'cpuH', 'memGBh',
+                                              'llmUSD', 'llmTokens', 'records')),
+        'byConnection': (data.get('connections') or [])[:top_n],
+        'idleResources': (data.get('idleResources') or [])[:top_n],
+        'llmModels': (data.get('llmModels') or [])[:top_n],
+        'daily': (data.get('daily') or [])[-30:],
+    }
+    k8s = data.get('k8s') or {}
+    if k8s.get('clusters'):
+        out['k8sClusters'] = k8s['clusters'][:top_n]
+    flt = (name_filter or '').strip().lower()
+    if flt:
+        row = next((p for p in data.get('projects') or []
+                    if str(p.get('projectKey') or '').lower() == flt), None)
+        if row is None:
+            out['projectNote'] = ('No CRU rows for project %r in the covered span.'
+                                  % name_filter)
+        else:
+            # nested byUser/byConnection/byModel breakdowns (server-capped)
+            out['project'] = row
+    return out
+
+
+_DOMAIN_HANDLERS = {row['name']: globals()[row['handler']] for row in _registry.DOMAINS}
 
 
 def config_inspect(client, host='local', domain='connections', detail=None,
-                   name_filter=None, top_n=15):
-    """Per-domain configuration summaries. `detail` unlocks slower drill-downs:
-    connections+health (probe), plugins+usage (project scan), clusters+health
-    (reachability sweep)."""
-    if domain not in _CONFIG_DOMAINS:
+                   name_filter=None, top_n=15, page=1, fields=None):
+    """Registry-backed domain inspection. domain='list' returns the manifest;
+    every other domain dispatches to its registered handler. `detail` unlocks
+    per-domain drill-downs (see the manifest's detail lists)."""
+    if domain in ('list', 'manifest'):
+        return shaping.enforce_budget({
+            'host': host or 'local',
+            'domains': _registry.manifest(),
+            'note': ("Call config_inspect(domain=<name>) to fetch one. heavy=true "
+                     'domains run scans (minutes, possibly scan_running). fixActions '
+                     'name the actuator actions that remediate findings there.')})
+    handler = _DOMAIN_HANDLERS.get(domain)
+    if handler is None:
         return {'error': {'code': 'bad-input',
-                          'message': 'domain must be one of: %s' % ', '.join(_CONFIG_DOMAINS)}}
-    flt = (name_filter or '').lower()
+                          'message': "domain must be one of: %s — or 'list' for the "
+                                     'full manifest'
+                                     % ', '.join(sorted(_DOMAIN_HANDLERS))}}
+    try:
+        page = max(1, int(page or 1))
+    except (TypeError, ValueError):
+        page = 1
+    result = handler(client, host, domain, name_filter, detail, top_n, page)
+    if 'error' in result:
+        return result
     out = {'host': host or 'local', 'domain': domain}
-
-    if domain == 'connections':
-        data = client.get('/api/connections', host=host)
-        details = data.get('connectionDetails') or []
-        if flt:
-            details = [c for c in details if flt in (c.get('name') or '').lower()
-                       or flt in (c.get('type') or '').lower()]
-        out['countsByType'] = data.get('connections')
-        out['connections'] = details[:max(1, top_n * 2)]
-        if detail == 'health':
-            events = []
-            try:
-                resp = client._do('GET', '/api/connections/health',
-                                  host=client._effective_host('/api/connections/health', host),
-                                  timeout=client.heavy_timeout, stream=True)
-                client._raise_for_status(resp, '/api/connections/health', host)
-                from . import sse as sse_mod
-                import json as json_mod
-                event, data_lines = None, []
-                for raw in resp.iter_lines(decode_unicode=True):
-                    line = (raw or '').strip('\r')
-                    if line == '':
-                        if data_lines:
-                            try:
-                                payload = json_mod.loads('\n'.join(data_lines))
-                            except ValueError:
-                                payload = None
-                            if event == 'conn' and isinstance(payload, dict):
-                                events.append(payload)
-                        event, data_lines = None, []
-                    elif line.startswith('event:'):
-                        event = line[6:].strip()
-                    elif line.startswith('data:'):
-                        data_lines.append(line[5:].strip())
-                resp.close()
-            except ToolkitError as exc:
-                out['healthError'] = exc.message
-            if flt:
-                events = [e for e in events if flt in (e.get('name') or '').lower()]
-            failing = [e for e in events if e.get('status') == 'fail']
-            out['healthProbe'] = {
-                'probed': len(events),
-                'failing': [shaping.pick(e, ('name', 'type', 'error', 'status')) for e in failing[:top_n]],
-            }
-
-    elif domain == 'code-envs':
-        data = client.get('/api/code-envs', host=host, heavy=True,
-                          progress_path='/api/code-envs/progress')
-        envs = data.get('codeEnvs') or []
-        if flt:
-            envs = [e for e in envs if flt in (e.get('name') or '').lower()]
-        thresholds = client.get('/api/settings/threshold-defaults')
-        deprecated_prefixes = [p.strip() for p in
-                               (thresholds.get('deprecatedPythonPrefixes') or '').split(',') if p.strip()]
-
-        def is_deprecated(env):
-            v = str(env.get('version') or '')
-            return any(v.startswith(p) for p in deprecated_prefixes)
-
-        out['totals'] = {
-            'totalEnvCount': data.get('totalEnvCount'),
-            'analyzedEnvCount': len(data.get('codeEnvs') or []),
-            'pythonVersionCounts': data.get('pythonVersionCounts'),
-            'rVersionCounts': data.get('rVersionCounts'),
-        }
-        # Per-item admin whitelist (false-positive doctrine): whitelisted envs
-        # drop out of the finding lists; report only the suppressed count.
-        from . import health as health_mod
-        wl = health_mod._whitelist_lookup(health_mod.fetch_host_whitelist(client, host))
-        deprecated_rows = [e for e in envs if is_deprecated(e)
-                           and not wl('python-env-lifecycle', e.get('name'))]
-        out['deprecatedPython'] = [shaping.pick(e, ('name', 'version', 'owner', 'usageCount', 'projectCount'))
-                                   for e in deprecated_rows][:top_n]
-        out['unused'] = [shaping.pick(e, ('name', 'version', 'owner', 'sizeBytes'))
-                         for e in envs if not (e.get('usageCount') or 0)][:top_n]
-        largest_rows = [e for e in envs if not wl('code-env-size', e.get('name'))]
-        out['largest'] = shaping.top_rows(largest_rows, 'sizeBytes', top_n,
-                                          keys=('name', 'version', 'sizeBytes', 'usageCount', 'projectCount'))
-        if wl.matched:
-            out['whitelistSuppressed'] = len(wl.matched)
-        if flt:
-            out['matching'] = [shaping.pick(e, ('name', 'version', 'owner', 'usageCount',
-                                                'projectCount', 'sizeBytes', 'projectKeys'))
-                               for e in envs[:top_n]]
-
-    elif domain == 'plugins':
-        data = client.get('/api/plugins', host=host)
-        details = data.get('pluginDetails') or []
-        if flt:
-            details = [p for p in details if flt in (p.get('id') or '').lower()
-                       or flt in (p.get('label') or '').lower()]
-        out['pluginsCount'] = data.get('pluginsCount')
-        out['devPlugins'] = [p.get('id') for p in details if p.get('isDev')][:top_n]
-        out['plugins'] = [shaping.pick(p, ('id', 'installedVersion', 'label', 'isDev'))
-                          for p in details[:max(1, top_n * 2)]]
-        if detail == 'usage':
-            usages = client.get('/api/plugins/usages', host=host, heavy=True)
-            by_plugin = usages.get('usagesByPlugin') or {}
-            rows = [{'id': pid, 'projectsUsingCount': (u or {}).get('projectsUsingCount', 0)}
-                    for pid, u in by_plugin.items()
-                    if not flt or flt in pid.lower()]
-            out['unusedPlugins'] = sorted(p['id'] for p in rows if not p['projectsUsingCount'])[:top_n * 2]
-            out['mostUsed'] = shaping.top_rows(rows, 'projectsUsingCount', top_n)
-
-    elif domain == 'clusters':
-        data = client.get('/api/k8s-insights/clusters', host=host)
-        rows = data.get('clusters') or []
-        if flt:
-            rows = [c for c in rows if flt in (c.get('id') or '').lower()
-                    or flt in (c.get('name') or '').lower()]
-        out['totalDiscovered'] = data.get('totalDiscovered')
-        out['unavailableCount'] = len(data.get('unavailable') or [])
-        # Unavailable = no kubeconfig and not RUNNING: stale attachments, the
-        # natural cluster-detach candidates — name them, don't just count them.
-        out['unavailable'] = [shaping.pick(c, ('id', 'state', 'type'))
-                              for c in (data.get('unavailable') or [])[:max(1, top_n * 2)]]
-        out['clusters'] = [shaping.pick(c, ('id', 'name', 'state', 'architecture', 'type'))
-                           for c in rows[:max(1, top_n * 2)]]
-        if detail == 'health':
-            try:
-                health = client.get('/api/k8s-insights/clusters/health', host=host, heavy=True)
-                probes = health.get('clusters') or []
-                if flt:
-                    probes = [p for p in probes if flt in (p.get('id') or '').lower()]
-                out['reachability'] = {
-                    'ok': sum(1 for p in probes if p.get('ok')),
-                    'failing': [shaping.pick(p, ('id', 'errorClass', 'errorSummary'))
-                                for p in probes if not p.get('ok')][:top_n],
-                }
-            except ToolkitError as exc:
-                out['reachabilityError'] = exc.message
-
-    elif domain == 'llms':
-        data = client.get('/api/llms', host=host)
-        llms = data.get('llms') or []
-        if flt:
-            llms = [l for l in llms if flt in (l.get('id') or '').lower()
-                    or flt in (l.get('connection') or '').lower()
-                    or flt in (l.get('model') or '').lower()]
-        by_conn = {}
-        for l in llms:
-            by_conn.setdefault(l.get('connection') or '?', []).append(l.get('model'))
-        out['llmCount'] = len(llms)
-        out['byConnection'] = {conn: models[:top_n] for conn, models in sorted(by_conn.items())}
-        if flt:
-            out['matching'] = [shaping.pick(l, ('id', 'model', 'type', 'connection'))
-                               for l in llms[:top_n]]
-
-    elif domain == 'projects':
-        # Resolve a project label to its KEY: the per-project domains below all
-        # take name_filter=<projectKey>, and the agent rarely knows the key.
-        inv = client.get('/api/tools/admin-actions/inventory', host=host,
-                         params={'domain': 'projects'})
-        projects = inv.get('projects') or []
-        if flt:
-            projects = [p for p in projects if flt in (p.get('projectKey') or '').lower()
-                        or flt in (p.get('name') or '').lower()]
-        out['projectCount'] = len(projects)
-        out['projects'] = projects[:max(1, top_n * 2)]
-
-    elif domain in _PROJECT_SCOPED_DOMAINS:
-        # These are per-project listings backed by the admin-actions inventory
-        # GET; name_filter carries the PROJECT KEY (required).
-        project_key = (name_filter or '').strip()
-        if not project_key:
-            return {'error': {'code': 'bad-input',
-                              'message': "domain %r needs name_filter=<projectKey> — find the "
-                                         "key with domain='projects' (name_filter matches key "
-                                         "or label)" % domain}}
-        params = {'domain': domain, 'projectKey': project_key}
-        if domain == 'datasets' and detail == 'usage':
-            # lineage drill-down: producers/consumers from recipe IO, webapp/
-            # scenario name-refs, unreferenced + delete-candidate rollups.
-            params['detail'] = 'usage'
-        inv = client.get('/api/tools/admin-actions/inventory', host=host,
-                         params=params, heavy=params.get('detail') == 'usage')
-        key = {'scenarios': 'scenarios', 'webapps': 'webapps',
-               'notebooks': 'notebooks', 'jobs': 'jobs', 'datasets': 'datasets'}[domain]
-        out['projectKey'] = project_key
-        rows = inv.get(key) or []
-        if domain == 'datasets' and detail == 'usage':
-            out['summary'] = inv.get('summary')
-            # rollups carry the verdict; row budget can be tighter than 2×top_n
-            out[key] = rows[:max(1, top_n * 4)]
-        else:
-            out[key] = rows[:max(1, top_n * 2)]
-        if inv.get('note'):
-            out['note'] = inv['note']
-
-    elif domain == 'users':
-        inv = client.get('/api/tools/admin-actions/inventory', host=host,
-                         params={'domain': 'users'})
-        users = inv.get('users') or []
-        if flt:
-            users = [u for u in users if flt in (u.get('login') or '').lower()
-                     or flt in (u.get('displayName') or '').lower()]
-        out['userCount'] = len(users)
-        out['disabled'] = [u.get('login') for u in users if not u.get('enabled', True)][:top_n]
-        out['users'] = users[:max(1, top_n * 2)]
-
-    elif domain == 'api-keys':
-        inv = client.get('/api/tools/admin-actions/inventory', host=host,
-                         params={'domain': 'api-keys'})
-        out['personal'] = (inv.get('personal') or [])[:max(1, top_n * 2)]
-        out['global'] = (inv.get('global') or [])[:max(1, top_n * 2)]
-        out['note'] = ('Key secrets are never shown. api-key-delete is IRREVERSIBLE; '
-                       'the toolkit refuses its own key.')
-
+    out.update(result)
+    if fields:
+        keep = {str(f) for f in fields} | {'host', 'domain', 'note', 'page',
+                                           'truncated', 'truncation_note'}
+        out = {k: v for k, v in out.items() if k in keep}
     return shaping.enforce_budget(out)
 
 
@@ -677,6 +849,27 @@ def db_health(client, host='local', view='overview', connection=None, top_n=10):
     return shaping.enforce_budget(out)
 
 
+def _config_inspect_description():
+    """Generated from the domain registry — the model can only ever learn
+    domains that actually exist (drift-proof by construction)."""
+    names = '|'.join(row['name'] for row in _registry.DOMAINS)
+    scoped = '/'.join(row['name'] for row in _registry.DOMAINS if row['project_scoped'])
+    heavy = ', '.join(row['name'] for row in _registry.DOMAINS if row['heavy'])
+    return (
+        "Inspect one domain of a host's configuration/insights (host, domain=%s, "
+        "detail, name_filter, top_n, page, fields[]). domain='list' returns the CHEAP "
+        'manifest of every domain — summary, filters, detail modes, output fields and '
+        'the actuator actions that can fix findings there; call it first when unsure. '
+        "domain='projects' resolves a project label to its KEY (name_filter = "
+        'key/label substring). For %s, name_filter is the PROJECT KEY (required). '
+        "datasets detail='usage' adds flow lineage plus the 'unreferenced'/"
+        "'deleteCandidates' rollups (grounding for dataset-delete). connections-usage "
+        'rows carry per-project owner + ownerEmail (grounding for owner outreach). '
+        'Heavy domains (%s) run scans — minutes, possibly scan_running. fields=[...] '
+        'keeps only those top-level output keys; page walks long listings.'
+        % (names, scoped, heavy))
+
+
 # Read-only sensor catalog: {tool name: LLM-facing description}. The single
 # source for agent_tools.build_langchain_tools AND the backend's Agent
 # Settings catalog endpoint (which must not import langchain). Every name is
@@ -692,16 +885,7 @@ SENSOR_DESCRIPTIONS = {
     'compute_cost': (
         'Compute + LLM cost from CRU audit records (host, group_by=project|user|context_type, '
         'top_n). Span limited to audit retention — check the span field.'),
-    'config_inspect': (
-        'Inspect config domain (host, domain=projects|connections|code-envs|plugins|llms|'
-        'clusters|users|api-keys|scenarios|webapps|notebooks|jobs|datasets, '
-        'detail=health|usage, name_filter, top_n). domain=projects lists projectKey+name '
-        '(name_filter = label/substring) — use it to resolve a project label to its KEY. '
-        'For scenarios/webapps/notebooks/jobs/datasets, name_filter is the PROJECT KEY '
-        '(required). datasets rows carry exposed=true when shared; detail=usage adds '
-        'per-dataset flow lineage (producing/consuming recipes, webapp/scenario name-refs) '
-        "plus summary rollups 'unreferenced' and 'deleteCandidates' — the grounding for "
-        'dataset-delete cleanup.'),
+    'config_inspect': _config_inspect_description(),
     'log_errors': (
         'Backend.log error groups (host, top_n); pattern=<regex> greps the raw tail.'),
     'storage_footprint': (

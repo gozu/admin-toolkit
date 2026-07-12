@@ -25,7 +25,8 @@ from adk_backend.clients import (
     _thread_client,
 )
 from adk_backend.settings import _BACKEND_SETTINGS
-from adk_backend.utils import _cex_item_raw, _find_llm_ids, _sse_response
+from adk_backend.utils import (_cex_item_raw, _find_llm_ids, _sse_response,
+                               studio_external_url)
 
 bp = Blueprint('connections', __name__)
 
@@ -608,6 +609,8 @@ def api_connection_usages():
                     dataset_map.setdefault(conn, []).append({
                         'projectKey': pk,
                         'projectName': pname,
+                        'owner': owner,
+                        'ownerEmail': owner_email,
                         'datasetName': u['datasetName'],
                         'datasetType': u['datasetType'],
                     })
@@ -616,6 +619,8 @@ def api_connection_usages():
                     llm_map.setdefault(conn, []).append({
                         'projectKey': pk,
                         'projectName': pname,
+                        'owner': owner,
+                        'ownerEmail': owner_email,
                         'recipeName': u['recipeName'],
                         'recipeType': u['recipeType'],
                         'llmId': u['llmId'],
@@ -669,6 +674,7 @@ def api_connection_usages():
             })
 
         total_ms = int((time.time() - t0) * 1000)
+        studio_url = studio_external_url(client)
         done_payload = {
             'total_ms': total_ms,
             'scanErrors': scan_errors,
@@ -677,6 +683,8 @@ def api_connection_usages():
             'datasetUsages': dataset_usages,
             'llmUsages': llm_usages,
             'activeTriggerProjects': sorted(active_trigger_projects),
+            # deep-link base for agent/email surfaces (no browser origin there)
+            'projectUrlBase': ('%s/projects/' % studio_url) if studio_url else None,
             'localFilesystemUsages': sorted(
                 local_fs_usages,
                 key=lambda item: (

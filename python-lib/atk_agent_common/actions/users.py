@@ -9,8 +9,12 @@ same self-lockout reason; global keys carry no owner, so the plan says that
 verification is impossible and the human must check.
 """
 
+import re
+
 from ..errors import ToolkitError
 from . import _base
+
+_EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 
 
 def _inventory(client, host, domain):
@@ -87,6 +91,75 @@ def _changes_user_toggle(target, result):
              'before': result.get('before'), 'after': result.get('after')}]
 
 
+_UPDATABLE_USER_FIELDS = ('email', 'displayName', 'userProfile')
+
+
+def _rich_user_row(client, host, login):
+    """Row from the rich /api/users listing (carries email + userProfile,
+    which the lean inventory projection does not)."""
+    rows = (client.get('/api/users', host=host) or {}).get('users') or []
+    row = next((u for u in rows if u.get('login') == login), None)
+    if row is None:
+        raise ToolkitError('User %r not found on host %r.' % (login, host),
+                           remediation="Check the login with config_inspect domain='users'.")
+    return row
+
+
+def _plan_user_update(client, host, target, params):
+    login = _base.require_str(target, 'login', 'user-update')
+    changes = {f: str((target or {}).get(f)).strip()
+               for f in _UPDATABLE_USER_FIELDS if (target or {}).get(f) is not None}
+    if not changes:
+        raise ToolkitError('user-update target needs at least one of: %s.'
+                           % ', '.join(_UPDATABLE_USER_FIELDS))
+    email = changes.get('email')
+    if email is not None and not _EMAIL_RE.match(email):
+        raise ToolkitError('email %r does not look like a valid address.' % email)
+    row = _rich_user_row(client, host, login)
+    expected = {f: row.get(f) for f in changes}
+    warnings = []
+    noop = [f for f in changes if str(expected.get(f) or '') == changes[f]]
+    if noop:
+        warnings.append('Field(s) %s already hold the proposed value — executing those '
+                        'is a no-op.' % ', '.join(sorted(noop)))
+    if 'userProfile' in changes:
+        warnings.append('Changing userProfile moves a license seat (e.g. DESIGNER → '
+                        'EXPLORER frees a designer seat but removes design capabilities '
+                        'for %s immediately).' % login)
+    caller = _backend_identity(client, host)
+    if caller and login == caller:
+        warnings.append('%s is the identity the toolkit itself runs as — profile '
+                        'downgrades can remove the API rights the toolkit depends on.'
+                        % login)
+    canonical = dict({'login': login, 'expectedCurrent': expected}, **changes)
+    return canonical, {
+        'summary': 'Update user %s (%s): %s.' % (
+            login, row.get('displayName') or '?',
+            '; '.join('%s: %s → %s' % (f, expected.get(f), changes[f])
+                      for f in sorted(changes))),
+        'currentValues': expected,
+        'proposedValues': changes,
+        'enabled': row.get('enabled'),
+        'groups': row.get('groups'),
+        'warnings': warnings or None,
+        'note': _base.drift_note(),
+    }
+
+
+def _exec_user_update(client, host, target):
+    payload = {'login': target['login'], 'expectedCurrent': target.get('expectedCurrent')}
+    for f in _UPDATABLE_USER_FIELDS:
+        if target.get(f) is not None:
+            payload[f] = target[f]
+    return _base.post_backend_action(client, host, 'user-update', payload)
+
+
+def _changes_user_update(target, result):
+    return [{'itemKey': 'user:%s:%s' % (result.get('login'), field),
+             'before': change.get('before'), 'after': change.get('after')}
+            for field, change in (result.get('changes') or {}).items()]
+
+
 def _plan_api_key_delete(client, host, target, params):
     key_type = _base.require_str(target, 'keyType', 'api-key-delete').lower()
     key_id = _base.require_str(target, 'keyId', 'api-key-delete')
@@ -137,6 +210,12 @@ SPECS = [
                'user-enable {login}', 'amber',
                _plan_user_enable, _exec_user_toggle,
                settings_hook=_changes_user_toggle),
+    _base.spec('user-update',
+               'user-update {login, email?, displayName?, userProfile?} (at least one '
+               'field; fixes missing/wrong owner emails and right-sizes license '
+               'profiles, e.g. DESIGNER → EXPLORER)', 'amber',
+               _plan_user_update, _exec_user_update, batchable=True,
+               settings_hook=_changes_user_update),
     _base.spec('api-key-delete',
                'api-key-delete {keyType: personal|global, keyId} (IRREVERSIBLE)', 'red',
                _plan_api_key_delete, _exec_api_key_delete),

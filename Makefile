@@ -238,9 +238,17 @@ deploy-all:
 	exit $$rc
 
 # ----------------------------
+# Pre-deploy contract gate (frontend contracts + agent domain coverage)
+# ----------------------------
+.PHONY: contracts
+contracts:
+	@node scripts/check_frontend_contracts.mjs
+	@node scripts/check_agent_domain_coverage.mjs
+
+# ----------------------------
 # Main deploy target
 # ----------------------------
-deploy:
+deploy: contracts
 	@echo "[START] Bumping version..."
 	@python3 -c "import json,pathlib; pf=pathlib.Path('plugin.json'); d=json.loads(pf.read_text()); p=d['version'].split('.'); b=int(p[2])+1; nv=('%s.%d.%03d'%(p[0],int(p[1])+1,0)) if b>999 else ('%s.%s.%03d'%(p[0],p[1],b)); print('plugin.json: %s -> %s'%(d['version'],nv)); d['version']=nv; pf.write_text(json.dumps(d,indent=4)+chr(10)); pkg=pathlib.Path('resource/frontend/package.json'); exec('p2=json.loads(pkg.read_text());print(\"package.json: %s -> %s\"%(p2[\"version\"],nv));p2[\"version\"]=nv;pkg.write_text(json.dumps(p2,indent=2)+chr(10))') if pkg.exists() else None"
 	@$(MAKE) build-frontend

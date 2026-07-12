@@ -748,6 +748,32 @@ def _impl_user_set_enabled(client, body):
     return {'ok': True, 'login': login, 'before': current, 'after': new_enabled}
 
 
+_USER_UPDATE_FIELDS = ('email', 'displayName', 'userProfile')
+
+
+def _impl_user_update(client, body):
+    login = body.get('login') or ''
+    changes = {f: str(body.get(f)).strip() for f in _USER_UPDATE_FIELDS
+               if body.get(f) is not None}
+    if not changes:
+        return {'ok': False, 'error': 'user-update needs at least one of: %s'
+                                      % ', '.join(_USER_UPDATE_FIELDS)}
+    settings = client.get_user(login).get_settings()
+    raw = settings.get_raw()
+    expected = body.get('expectedCurrent') or {}
+    applied = {}
+    for field, new_value in changes.items():
+        current = raw.get(field)
+        if _drifted(current, expected.get(field)):
+            return _drift_refusal('User %s %s' % (login, field),
+                                  expected.get(field), current)
+        applied[field] = {'before': current, 'after': new_value}
+    for field, new_value in changes.items():
+        raw[field] = new_value
+    settings.save()
+    return {'ok': True, 'login': login, 'changes': applied}
+
+
 def _impl_api_key_delete(client, body):
     key_type = (body.get('keyType') or '').lower()
     key_id = body.get('keyId') or ''
@@ -864,8 +890,9 @@ def _impl_variables_set(client, body):
 
 
 def _impl_toolkit_scenario_write(client, body):
-    """Create/rewrite an agent-authored scenario — ADMINTOOLKIT ONLY. The
-    step whitelist is re-validated here (never trust the planned payload);
+    """Create/rewrite an agent-authored scenario — ADMINTOOLKIT ONLY. Steps
+    are re-validated here and the code-bearing scan re-runs independently
+    (never trust the planned payload; _impl_dataset_delete precedent);
     _resolve_macro_project pins the project structurally."""
     name = str(body.get('name') or '').strip()
     scenario_id = str(body.get('scenarioId') or '').strip() or None
@@ -880,6 +907,16 @@ def _impl_toolkit_scenario_write(client, body):
     ok, reason = _toolkit_scenario_policy.validate_steps(steps)
     if not ok:
         return {'ok': False, 'error': reason}
+    try:
+        code_steps = _toolkit_scenario_policy.code_bearing_steps(steps)
+    except Exception:  # unscannable ⇒ safe side: treat as code
+        code_steps = [(0, '?', 'code scan failed — treated as code (fail-safe)')]
+    if code_steps and not bool(body.get('ackCustomCode')):
+        return {'ok': False,
+                'error': 'scenario contains code-bearing step(s) %s — write refused '
+                         'without ackCustomCode.'
+                         % '; '.join('#%d (%s: %s)' % (i + 1, t or '?', r)
+                                     for i, t, r in code_steps)}
 
     project = _resolve_macro_project(client)
     created = False
@@ -940,6 +977,7 @@ _ACTION_IMPLS = {
     'notebook-kernels-shutdown': _impl_notebook_kernels_shutdown,
     'notebook-clear-outputs': _impl_notebook_clear_outputs,
     'user-set-enabled': _impl_user_set_enabled,
+    'user-update': _impl_user_update,
     'api-key-delete': _impl_api_key_delete,
     'variables-set': _impl_variables_set,
     'toolkit-scenario-write': _impl_toolkit_scenario_write,

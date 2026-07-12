@@ -184,7 +184,6 @@ from adk_backend.routes.dir_tree import bp as dir_tree_bp
 from adk_backend.routes.email_tools import bp as email_tools_bp
 from adk_backend.routes.feedback import bp as feedback_bp
 from adk_backend.routes.footprint import bp as footprint_bp
-from adk_backend.routes.host_config import bp as host_config_bp
 from adk_backend.routes.hosts import bp as hosts_bp
 from adk_backend.routes.docker_governor import bp as docker_governor_bp
 from adk_backend.routes.image_cleaner import bp as image_cleaner_bp
@@ -221,7 +220,6 @@ app.register_blueprint(dir_tree_bp)
 app.register_blueprint(email_tools_bp)
 app.register_blueprint(feedback_bp)
 app.register_blueprint(footprint_bp)
-app.register_blueprint(host_config_bp)
 app.register_blueprint(hosts_bp)
 app.register_blueprint(docker_governor_bp)
 app.register_blueprint(image_cleaner_bp)

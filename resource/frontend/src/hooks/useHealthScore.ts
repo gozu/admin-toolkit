@@ -924,14 +924,17 @@ function scoreProjectSizePressure(
  * clamps the overall score via the existing cap logic. `skipped` rows are
  * ignored. Usage arrays `undefined` means the usage scan has not completed
  * this session ⇒ failing connections surface as 'unverified' (warning) with a
- * pointer to the Insights scan. NOTE: health results carry no recency, so only
- * "currently failing" is knowable — the rubric's "broken recently" is a
- * documented deviation.
+ * pointer to the Insights scan. A project counts against a broken connection
+ * only when it BOTH uses it AND has an active scenario with an active trigger
+ * (`activeTriggerProjects`; undefined ⇒ every using project counts). NOTE:
+ * health results carry no recency, so only "currently failing" is knowable —
+ * the rubric's "broken recently" is a documented deviation.
  */
 function scoreConnectionHealth(
   health: ParsedData['connectionHealth'] & object,
   datasetUsages: ParsedData['connectionDatasetUsages'],
   llmUsages: ParsedData['connectionLlmUsages'],
+  activeTriggerProjects: ParsedData['connectionActiveTriggerProjects'],
   isWhitelisted: IsWhitelisted,
 ): HealthIssue[] {
   const failing = health.filter(
@@ -959,19 +962,19 @@ function scoreConnectionHealth(
 
   const dsByName = new Map((datasetUsages ?? []).map((u) => [u.name, u]));
   const llmByName = new Map((llmUsages ?? []).map((u) => [u.name, u]));
+  const activeSet = activeTriggerProjects && new Set(activeTriggerProjects);
   const usedNames: string[] = [];
   const usedPreview: string[] = [];
   const unusedNames: string[] = [];
   for (const conn of failing) {
-    const ds = dsByName.get(conn.name);
-    const llm = llmByName.get(conn.name);
-    const projectCount = (ds?.projectCount || 0) + (llm?.projectCount || 0);
-    const objectCount =
-      (ds?.datasetCount || 0) + (ds?.recipeCount || 0) +
-      (llm?.datasetCount || 0) + (llm?.recipeCount || 0);
-    if (projectCount > 0 || objectCount > 0) {
+    const projects = [
+      ...(dsByName.get(conn.name)?.projects ?? []),
+      ...(llmByName.get(conn.name)?.projects ?? []),
+    ].map((p) => p.projectKey);
+    const n = new Set(activeSet ? projects.filter((k) => activeSet.has(k)) : projects).size;
+    if (n > 0) {
       usedNames.push(conn.name);
-      usedPreview.push(`${conn.name} (${projectCount} project${projectCount === 1 ? '' : 's'})`);
+      usedPreview.push(`${conn.name} (${n} project${n === 1 ? '' : 's'})`);
     } else {
       unusedNames.push(conn.name);
     }
@@ -984,7 +987,7 @@ function scoreConnectionHealth(
       category: 'connections',
       severity: 'critical',
       title: `${usedNames.length} actively-used connection${usedNames.length > 1 ? 's' : ''} failing their test`,
-      description: `${preview(usedPreview)}. Projects actively depend on these connections — datasets and recipes on them are broken for every user right now.`,
+      description: `${preview(usedPreview)}. Projects with active scenario triggers depend on these connections — automated workloads on them are broken right now.`,
       recommendation: 'Repair these connections immediately (credentials, network, or endpoint).',
       value: usedNames.length,
       whitelistRule: 'connection-broken',
@@ -997,7 +1000,7 @@ function scoreConnectionHealth(
       category: 'connections',
       severity: 'info',
       title: `${unusedNames.length} unused connection${unusedNames.length > 1 ? 's' : ''} failing their test`,
-      description: `${preview(unusedNames)}. No project references these connections — a failing test alone is low-impact mess.`,
+      description: `${preview(unusedNames)}. No project with an active scenario trigger references these connections — a failing test alone is low-impact mess.`,
       recommendation: 'Repair or delete these unused connections.',
       value: unusedNames.length,
       whitelistRule: 'connection-broken',
@@ -1396,6 +1399,7 @@ export function calculateHealthScore(
         parsedData.connectionHealth,
         usageReady ? parsedData.connectionDatasetUsages : undefined,
         usageReady ? (parsedData.connectionLlmUsages ?? []) : undefined,
+        usageReady ? parsedData.connectionActiveTriggerProjects : undefined,
         isWhitelisted,
       ));
     }

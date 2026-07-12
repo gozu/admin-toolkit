@@ -346,6 +346,7 @@ def api_connection_usages():
     Scans all projects to find:
     - Dataset connections (params.connection)
     - LLM recipe connections (llmId field in recipe payload)
+    - Projects with an active scenario trigger (`activeTriggerProjects`)
 
     Memoized by (host, session_epoch, project_set_hash) like the health scan,
     so the health score, the Insights page, and the daily triage sweep share
@@ -420,6 +421,7 @@ def api_connection_usages():
         dataset_conns = []
         llm_conns = []
         local_fs_objects = []
+        has_active_trigger = False
         errors = []
 
         # 1. Dataset connections
@@ -514,11 +516,21 @@ def api_connection_usages():
             _LOGGER.debug("[conn_usage] list_recipes failed for %s: %s", project_key, e)
             errors.append({'projectKey': project_key, 'area': 'recipes', 'error': str(e)[:240]})
 
+        # 4. Active automation (scenario active + ≥1 active trigger) — broken-
+        # connection scoring only counts these projects.
+        try:
+            has_active_trigger = any(
+                sc.get('active') and any(t.get('active') for t in sc.get('triggerDigestItems') or [])
+                for sc in proj.list_scenarios())
+        except Exception as e:
+            errors.append({'projectKey': project_key, 'area': 'scenarios', 'error': str(e)[:240]})
+
         return {
             'projectKey': project_key,
             'datasetConns': dataset_conns,
             'llmConns': llm_conns,
             'localFilesystemObjects': local_fs_objects,
+            'hasActiveTrigger': has_active_trigger,
             'errors': errors,
         }
 
@@ -569,6 +581,7 @@ def api_connection_usages():
         dataset_map: Dict[str, List[Dict]] = {}   # conn -> [{projectKey, projectName, datasetName, datasetType}]
         llm_map: Dict[str, List[Dict]] = {}       # conn -> [{projectKey, projectName, recipeName, recipeType, llmId}]
         local_fs_usages: List[Dict[str, Any]] = []
+        active_trigger_projects: set = set()
         scanned = 0
         scan_errors = []
 
@@ -584,6 +597,8 @@ def api_connection_usages():
                     result = {'projectKey': pk, 'datasetConns': [], 'llmConns': []}
                     scan_errors.append({'projectKey': pk, 'area': 'scan', 'error': str(exc)[:240]})
                 scan_errors.extend(result.get('errors', []) or [])
+                if result.get('hasActiveTrigger'):
+                    active_trigger_projects.add(pk)
 
                 pname = project_names.get(pk, pk)
                 owner = str(project_owner_by_key.get(pk) or 'Unknown')
@@ -661,6 +676,7 @@ def api_connection_usages():
             'scannedProjectCount': len(project_keys),
             'datasetUsages': dataset_usages,
             'llmUsages': llm_usages,
+            'activeTriggerProjects': sorted(active_trigger_projects),
             'localFilesystemUsages': sorted(
                 local_fs_usages,
                 key=lambda item: (

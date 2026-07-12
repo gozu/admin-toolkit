@@ -50,6 +50,7 @@ export function useConnectionUsageScan() {
     setParsedData({
       connectionDatasetUsages: [],
       connectionLlmUsages: [],
+      connectionActiveTriggerProjects: [],
       connectionLocalFilesystemUsages: [],
       connectionUsageTotal: null,
       connectionUsageScanned: null,
@@ -92,6 +93,7 @@ export function useConnectionUsageScan() {
         } else if (event === 'done') {
           const dataset = (data.datasetUsages || []) as ConnectionUsageItem[];
           const llm = (data.llmUsages || []) as ConnectionUsageItem[];
+          const activeTriggerProjects = (data.activeTriggerProjects || []) as string[];
           const fs = (data.localFilesystemUsages || []) as ConnectionLocalFilesystemUsage[];
           const scanErrors = (data.scanErrors || []) as ConnectionUsageScanError[];
           const failedProjectCount = Number(data.failedProjectCount) || 0;
@@ -106,6 +108,7 @@ export function useConnectionUsageScan() {
           setParsedData({
             connectionDatasetUsages: dataset,
             connectionLlmUsages: llm,
+            connectionActiveTriggerProjects: activeTriggerProjects,
             connectionLocalFilesystemUsages: fs,
             connectionUsageScanned: scanTotal,
             connectionUsageScanErrors: scanErrors,

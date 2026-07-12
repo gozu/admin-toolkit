@@ -558,12 +558,16 @@ def _score_project_size_pressure(project_footprint, summary, is_whitelisted):
     return max(0, min(100, 100 * (1 - avg_risk))), issues
 
 
-def _score_connection_health(health, dataset_usages, llm_usages, is_whitelisted):
+def _score_connection_health(health, dataset_usages, llm_usages,
+                             active_trigger_projects, is_whitelisted):
     """Port of scoreConnectionHealth: broken actively-used connections (rubric
     always-lead critical). Issues only — cap-connection-broken clamps via the
     existing cap logic. Usage arrays None ⇒ the usage scan did not run ⇒
-    failing connections surface as 'unverified'. Health rows carry no recency,
-    so only "currently failing" is knowable (documented rubric deviation)."""
+    failing connections surface as 'unverified'. A project counts against a
+    broken connection only when it BOTH uses it AND has an active scenario
+    with an active trigger (active_trigger_projects; None ⇒ every using
+    project counts). Health rows carry no recency, so only "currently
+    failing" is knowable (documented rubric deviation)."""
     failing = [c for c in (health or []) if c.get('status') == 'fail'
                and not is_whitelisted('connection-broken', c.get('name'))]
     if not failing:
@@ -587,18 +591,19 @@ def _score_connection_health(health, dataset_usages, llm_usages, is_whitelisted)
 
     ds_by_name = {u.get('name'): u for u in (dataset_usages or [])}
     llm_by_name = {u.get('name'): u for u in (llm_usages or [])}
+    active_set = None if active_trigger_projects is None else set(active_trigger_projects)
     used, used_preview, unused = [], [], []
     for conn in failing:
         name = str(conn.get('name'))
         ds = ds_by_name.get(name) or {}
         llm = llm_by_name.get(name) or {}
-        project_count = (ds.get('projectCount') or 0) + (llm.get('projectCount') or 0)
-        object_count = ((ds.get('datasetCount') or 0) + (ds.get('recipeCount') or 0)
-                        + (llm.get('datasetCount') or 0) + (llm.get('recipeCount') or 0))
-        if project_count > 0 or object_count > 0:
+        keys = {p.get('projectKey')
+                for p in (ds.get('projects') or []) + (llm.get('projects') or [])
+                if isinstance(p, dict) and p.get('projectKey')}
+        n = len(keys if active_set is None else keys & active_set)
+        if n > 0:
             used.append(name)
-            used_preview.append('%s (%d project%s)'
-                                % (name, project_count, '' if project_count == 1 else 's'))
+            used_preview.append('%s (%d project%s)' % (name, n, '' if n == 1 else 's'))
         else:
             unused.append(name)
 
@@ -609,8 +614,8 @@ def _score_connection_health(health, dataset_usages, llm_usages, is_whitelisted)
             'cap-connection-broken', 'connections', 'critical',
             '%d actively-used connection%s failing their test' % (n, 's' if n > 1 else ''),
             'Repair these connections immediately (credentials, network, or endpoint).',
-            description='%s. Projects actively depend on these connections — datasets and '
-                        'recipes on them are broken for every user right now.'
+            description='%s. Projects with active scenario triggers depend on these '
+                        'connections — automated workloads on them are broken right now.'
                         % preview(used_preview),
             value=n, items=used,
             whitelistRule='connection-broken', whitelistItems=used))
@@ -620,8 +625,8 @@ def _score_connection_health(health, dataset_usages, llm_usages, is_whitelisted)
             'connection-broken-unused', 'connections', 'info',
             '%d unused connection%s failing their test' % (n, 's' if n > 1 else ''),
             'Repair or delete these unused connections.',
-            description='%s. No project references these connections — a failing test alone '
-                        'is low-impact mess.' % preview(unused),
+            description='%s. No project with an active scenario trigger references these '
+                        'connections — a failing test alone is low-impact mess.' % preview(unused),
             value=n, items=unused,
             whitelistRule='connection-broken', whitelistItems=unused))
     return issues
@@ -826,7 +831,8 @@ def _extract_exec_resource_configs(raw_settings):
 
 def build_parsed_data(overview, raw_settings, java_memory_settings, code_envs_payload,
                       footprint_payload, sanity_messages=None, connection_health=None,
-                      connection_dataset_usages=None, connection_llm_usages=None):
+                      connection_dataset_usages=None, connection_llm_usages=None,
+                      connection_active_trigger_projects=None):
     """Assemble the ParsedData subset calculateHealthScore reads, exactly as the
     live UI loader does. The new-input kwargs default to None ⇒ key absent
     (= TS `undefined` = the corresponding score component silently skips)."""
@@ -853,6 +859,8 @@ def build_parsed_data(overview, raw_settings, java_memory_settings, code_envs_pa
         parsed['connectionDatasetUsages'] = connection_dataset_usages
     if connection_llm_usages is not None:
         parsed['connectionLlmUsages'] = connection_llm_usages
+    if connection_active_trigger_projects is not None:
+        parsed['connectionActiveTriggerProjects'] = connection_active_trigger_projects
     return parsed
 
 
@@ -1044,8 +1052,11 @@ def calculate_health_score(parsed, thresholds=None, whitelist=None):
         ds_usages = parsed.get('connectionDatasetUsages') if usage_ready else None
         llm_usages = (parsed.get('connectionLlmUsages') if parsed.get('connectionLlmUsages')
                       is not None else []) if usage_ready else None
+        active_trigger_projects = (parsed.get('connectionActiveTriggerProjects')
+                                   if usage_ready else None)
         all_issues.extend(_score_connection_health(parsed.get('connectionHealth'),
-                                                   ds_usages, llm_usages, is_whitelisted))
+                                                   ds_usages, llm_usages,
+                                                   active_trigger_projects, is_whitelisted))
 
     overall = sum(c['score'] * c['weight'] for c in categories)
 
@@ -1186,17 +1197,19 @@ def score_host(client, host='local', collect=None):
     sanity = fetch_sanity_messages(client, host)
     conn_health = fetch_connection_health(client, host)
     usages = None
-    ds_usages = llm_usages = None
+    ds_usages = llm_usages = active_trigger_projects = None
     if conn_health is not None and any(c.get('status') == 'fail' for c in conn_health):
         usages = fetch_connection_usages(client, host)
         if usages is not None:
             ds_usages = usages.get('datasetUsages') or []
             llm_usages = usages.get('llmUsages') or []
+            active_trigger_projects = usages.get('activeTriggerProjects')
     whitelist = fetch_host_whitelist(client, host)
     parsed = build_parsed_data(overview, raw_settings, java, code_envs, footprint,
                                sanity_messages=sanity, connection_health=conn_health,
                                connection_dataset_usages=ds_usages,
-                               connection_llm_usages=llm_usages)
+                               connection_llm_usages=llm_usages,
+                               connection_active_trigger_projects=active_trigger_projects)
     score = calculate_health_score(parsed, thresholds, whitelist=whitelist)
     if collect is not None:
         collect.update({

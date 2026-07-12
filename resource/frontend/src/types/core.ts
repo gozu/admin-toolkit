@@ -132,6 +132,8 @@ export interface ParsedData {
   sanityCheckMaxSeverity?: string | null;
   connectionDatasetUsages?: ConnectionUsageItem[];
   connectionLlmUsages?: ConnectionUsageItem[];
+  /** Project keys with an active scenario trigger — only these count against broken connections. */
+  connectionActiveTriggerProjects?: string[];
   connectionLocalFilesystemUsages?: ConnectionLocalFilesystemUsage[];
   connectionUsageTotal?: number | null;
   connectionUsageScanned?: number | null;

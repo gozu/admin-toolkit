@@ -1242,25 +1242,6 @@ export function AdoptionPage() {
     { key: 'many', label: '4+ creators', value: topDepth.many, color: 'var(--neon-green)' },
   ];
 
-  // Builder tenure — the "seasoned bench": span from each builder's first to
-  // last commit, all time. An experience measure, explicitly NOT an activity
-  // window (a builder who left two years ago still counts at full tenure).
-  const TENURE_BUCKETS = ['<1y', '1–2y', '2–3y', '3y+'];
-  const tenureCounts = TENURE_BUCKETS.map(() => 0);
-  let tenureMeasured = 0;
-  for (const b of builders) {
-    if (b.firstCommitMs == null || b.lastCommitMs == null) continue;
-    tenureMeasured++;
-    const years = (b.lastCommitMs - b.firstCommitMs) / (365 * DAY_MS);
-    tenureCounts[years < 1 ? 0 : years < 2 ? 1 : years < 3 ? 2 : 3]++;
-  }
-  const tenureCols: ColPoint[] = TENURE_BUCKETS.map((label, i) => ({
-    key: label,
-    value: tenureCounts[i],
-    label,
-    title: `${tenureCounts[i].toLocaleString()} ${tenureCounts[i] === 1 ? 'builder' : 'builders'} with ${label} between first and last commit`,
-  }));
-
   // The generated verdict — a plain scale statement, deliberately free of
   // judgement (breadth/narrowness assessments read as negative and were
   // removed at the user's request).
@@ -2015,26 +1996,6 @@ export function AdoptionPage() {
                       />
                     </div>
                     <LinkedMix items={topDepthItems} />
-                  </div>
-                </div>
-              )}
-              {tenureMeasured > 0 && (
-                <div className="chart-container">
-                  <div className="chart-header flex items-center justify-between gap-3">
-                    <h4 title="Span from each builder's first to last commit, all time — how seasoned the bench is. An experience measure, not an activity count: a builder who left long ago still counts at full tenure.">
-                      Builder tenure — seasoned bench
-                    </h4>
-                    <span className="font-mono text-xs uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
-                      {tenureMeasured.toLocaleString()}{' '}
-                      {tenureMeasured === 1 ? 'builder' : 'builders'}
-                    </span>
-                  </div>
-                  <div className="px-4 py-3">
-                    <MiniColumns points={tenureCols} color="var(--viz-cat-1)" height={72} gap={6} />
-                  </div>
-                  <div className="border-t border-[var(--border-glass)] px-4 py-2 text-xs text-[var(--text-tertiary)]">
-                    span from each builder&rsquo;s first to last commit, all time — an experience
-                    measure, not an activity count
                   </div>
                 </div>
               )}

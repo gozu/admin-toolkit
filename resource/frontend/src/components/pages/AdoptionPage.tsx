@@ -8,12 +8,13 @@ import { resolveLifecycleFromFields } from '../../utils/pageLifecycle';
 import {
   buildInventoryView,
   completeMonthsOnly,
-  familyGroupIndex,
   fillQuarterRange,
   monthKeyUTC,
   monthToQuarter,
   quarterKeyUTC,
   quarterLabel,
+  DETAIL_GROUPS,
+  DETAIL_GROUP_COLORS,
   MATURITY_DIMENSIONS,
   TREND_GROUPS,
   TREND_GROUP_COLORS,
@@ -24,24 +25,15 @@ import { ProgressIndicator } from '../common/ProgressIndicator';
 import { BigStat, SegmentBar, UsageBar } from './missionControl/microViz';
 import { TILE_VARIANTS } from './missionControl/tokens';
 import { CumulativeAdoptionChart, type CumulativePoint } from './CumulativeAdoptionChart';
-import { CumulativeCreationChart } from './CumulativeCreationChart';
 import { OnboardingChart, type OnboardingQuarterPoint } from './OnboardingChart';
 import type { ColumnDef } from '../../utils/dataGridTypes';
-import type {
-  AdoptionLicensing,
-  AdoptionMonthPoint,
-  AdoptionProjectRow,
-  AdoptionPulseData,
-} from '../../types';
+import type { AdoptionMonthPoint, AdoptionProjectRow, AdoptionPulseData } from '../../types';
 import './adoption.css';
 
 const EMPTY: never[] = [];
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 
-// Rate charts show bounded recent windows — cumulative context lives in the
-// always-up flagship curves above them.
-const RHYTHM_MONTHS = 24;
 const SPARK_MONTHS = 12;
 // TTFB is hidden below this many measured users — "0d median, 2 users" is
 // noise dressed as a stat.
@@ -51,9 +43,6 @@ const ACTIVE_DAYS = 90;
 // Momentum compares human commit volume over this many complete months vs
 // the same span before.
 const MOMENTUM_MONTHS = 12;
-// A licensed cap this large (or ≥20× assigned seats) is a sentinel, not a
-// budget — rendering "3 / 10,000" reads as shelfware and misleads.
-const UNMETERED_CAP = 1000;
 // Below these floors, onboarding renders a sentence instead of slab bars.
 const MIN_ONBOARDING_QUARTERS = 3;
 const MIN_ONBOARDING_USERS = 5;
@@ -288,6 +277,72 @@ function MiniColumns({
   );
 }
 
+/** SVG mini cumulative curve for the per-family small multiples: an
+ * always-rising line with a soft area fill, per-month hover titles, and the
+ * running total on the right. Single-series and directly titled, so hue reuse
+ * across cards stays CVD-legal. */
+function MiniCumulative({
+  values,
+  months,
+  color,
+  unitLabel,
+  height = 64,
+}: {
+  /** Cumulative totals, one per month (aligned with `months`). */
+  values: number[];
+  months: string[];
+  color: string;
+  /** Lowercase noun for hover titles, e.g. 'datasets'. */
+  unitLabel: string;
+  height?: number;
+}) {
+  if (values.length === 0) return null;
+  const max = Math.max(1, values[values.length - 1]);
+  const n = values.length;
+  const W = 100;
+  const xAt = (i: number) => (n === 1 ? W : (i / (n - 1)) * W);
+  const yAt = (v: number) => height - (v / max) * (height - 4) - 2;
+  const line = values.map((v, i) => `${i === 0 ? 'M' : 'L'}${xAt(i).toFixed(2)},${yAt(v).toFixed(2)}`).join(' ');
+  const area = `${line} L${W},${height} L0,${height} Z`;
+  return (
+    <div>
+      <svg
+        width="100%"
+        height={height}
+        viewBox={`0 0 ${W} ${height}`}
+        preserveAspectRatio="none"
+        role="img"
+      >
+        <path d={area} fill={color} opacity={0.12} />
+        <path
+          d={line}
+          fill="none"
+          stroke={color}
+          strokeWidth={1.5}
+          vectorEffect="non-scaling-stroke"
+          strokeLinejoin="round"
+        />
+        {values.map((v, i) => (
+          <rect
+            key={months[i]}
+            x={i === 0 ? 0 : (xAt(i) + xAt(i - 1)) / 2}
+            y={0}
+            width={n === 1 ? W : W / (n - 1)}
+            height={height}
+            fill="transparent"
+          >
+            <title>{`through ${monthLabel(months[i])} · ${v.toLocaleString()} ${unitLabel} built so far`}</title>
+          </rect>
+        ))}
+      </svg>
+      <div className="mt-1 flex items-center justify-between font-mono text-[9px] leading-none text-[var(--text-tertiary)]">
+        <span>{monthLabel(months[0])}</span>
+        <span>{monthLabel(months[n - 1])}</span>
+      </div>
+    </div>
+  );
+}
+
 const MONTH_ABBR = [
   'Jan',
   'Feb',
@@ -326,20 +381,6 @@ function relDays(
   if (days < 30) return { text: `${days}d ago`, days };
   if (days < 365) return { text: `${Math.floor(days / 30)}mo ago`, days };
   return { text: `${(days / 365).toFixed(1)}y ago`, days };
-}
-
-/** 'FULL_DESIGNER' → 'Full Designer'. */
-function prettyProfile(profile: string): string {
-  return profile
-    .toLowerCase()
-    .split(/[_\s]+/)
-    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
-    .join(' ');
-}
-
-function isDesignerProfile(profile: string): boolean {
-  const p = profile.toUpperCase();
-  return p.includes('DESIGNER') || p === 'DATA_SCIENTIST';
 }
 
 /** First ms of the month AFTER a 'YYYY-MM' key — cumulative cut points. */
@@ -664,237 +705,6 @@ function PulseCard({ pulse, nowMs }: { pulse: AdoptionPulseData; nowMs: number }
   );
 }
 
-const ROSTER_MONTHS = 24;
-const ROSTER_MAX_ROWS = 15;
-
-/** Builder roster: one row per person, a month-by-month git-activity strip —
- * at single-digit headcounts, named people ARE the adoption story; aggregate
- * charts just blur them. Scales by capping to the top rows and stating the
- * cut. Fully derived from per-builder monthly commits (full git span). */
-function BuilderRoster({
-  builders,
-  builderMonthly,
-  monthsAxis,
-  nowMs,
-}: {
-  builders: Array<{
-    login: string;
-    commits: number;
-    projectCount: number;
-    lastCommitMs: number | null;
-  }>;
-  builderMonthly: Record<string, Record<string, number>>;
-  monthsAxis: string[];
-  nowMs: number;
-}) {
-  const rows = builders.slice(0, ROSTER_MAX_ROWS);
-  return (
-    <div className="px-4 py-3">
-      <div className="mb-1 flex items-center gap-3">
-        <span className="w-44 flex-shrink-0" />
-        <div className="flex min-w-0 flex-1 items-center justify-between font-mono text-[9px] leading-none text-[var(--text-tertiary)]">
-          <span>{monthLabel(monthsAxis[0])}</span>
-          <span>{monthLabel(monthsAxis[monthsAxis.length - 1])}</span>
-        </div>
-        <span className="w-24 flex-shrink-0" />
-      </div>
-      <div className="space-y-1">
-        {rows.map((b) => {
-          const months = builderMonthly[b.login] ?? {};
-          const rowMax = Math.max(1, ...monthsAxis.map((m) => months[m] ?? 0));
-          const active = b.lastCommitMs != null && nowMs - b.lastCommitMs <= ACTIVE_DAYS * DAY_MS;
-          return (
-            <div key={b.login} className="adk-hover-row -mx-1 flex items-center gap-3 px-1 py-1">
-              <span className="flex w-44 flex-shrink-0 items-center gap-1.5">
-                <span
-                  className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${active ? 'bg-[var(--neon-green)]' : 'bg-[var(--text-muted)] opacity-40'}`}
-                  title={active ? `Committed within ${ACTIVE_DAYS}d` : 'No recent commits'}
-                />
-                <span className="min-w-0 truncate font-mono text-[11px] text-[var(--text-secondary)]">
-                  {b.login}
-                </span>
-              </span>
-              <div className="flex min-w-0 flex-1 gap-[2px]">
-                {monthsAxis.map((m) => {
-                  const v = months[m] ?? 0;
-                  return (
-                    <span
-                      key={m}
-                      title={`${b.login} · ${monthLabel(m)} · ${v.toLocaleString()} ${v === 1 ? 'commit' : 'commits'}`}
-                      className="h-3 min-w-0 flex-1 rounded-[1px]"
-                      style={{
-                        background:
-                          v > 0
-                            ? `color-mix(in srgb, var(--viz-cat-1) ${Math.round(35 + 65 * (v / rowMax))}%, transparent)`
-                            : 'var(--bg-elevated)',
-                      }}
-                    />
-                  );
-                })}
-              </div>
-              <span
-                className="w-24 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]"
-                title={`${b.commits.toLocaleString()} commits across ${b.projectCount} ${b.projectCount === 1 ? 'project' : 'projects'}, all time`}
-              >
-                {b.commits.toLocaleString()} · {b.projectCount}p
-              </span>
-            </div>
-          );
-        })}
-      </div>
-      {builders.length > rows.length && (
-        <div className="pt-1.5 text-[10px] text-[var(--text-tertiary)]">
-          +{builders.length - rows.length} more builders (by all-time commits) not shown
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** License reality: assigned seats per profile, with sentinel caps rendered as
- * "unmetered" (never "3 / 10,000" shelfware theater), zero rows collapsed,
- * plus designer seats nobody is using (downgrade candidates = money). */
-function LicenseCard({
-  licensing,
-  profileCounts,
-  creatorsByProfile,
-  idleDesigners,
-  hasInventory,
-  nowMs,
-}: {
-  licensing: AdoptionLicensing;
-  profileCounts: Record<string, number>;
-  creatorsByProfile: Map<string, number>;
-  idleDesigners: Array<{ login: string; lastSessionMs: number | null }>;
-  hasInventory: boolean;
-  nowMs: number;
-}) {
-  const allRows = licensing.profiles
-    .filter((p) => p.profile !== 'NONE')
-    .map((p) => {
-      const used = profileCounts[p.profile] ?? 0;
-      const rawLimit = p.licensedLimit ?? null;
-      // A cap of UNMETERED_CAP+ (or ≥20× the assigned seats) is a sentinel,
-      // not a real budget — treat as unmetered.
-      const metered =
-        rawLimit != null &&
-        rawLimit > 0 &&
-        rawLimit < UNMETERED_CAP &&
-        (used === 0 || rawLimit < used * 20);
-      return {
-        profile: p.profile,
-        limit: metered ? rawLimit : null,
-        unmetered: !metered && rawLimit != null && rawLimit !== 0,
-        used,
-        creators: creatorsByProfile.get(p.profile) ?? 0,
-      };
-    });
-  const rows = allRows
-    .filter((r) => r.used > 0 || r.creators > 0)
-    .sort((a, b) => b.used - a.used || a.profile.localeCompare(b.profile));
-  const emptyProfiles = allRows.length - rows.length;
-
-  const expiresDays =
-    licensing.expiresOnMs != null ? Math.floor((licensing.expiresOnMs - nowMs) / DAY_MS) : null;
-  const expiryTone =
-    licensing.expired || (expiresDays != null && expiresDays < 30)
-      ? 'text-[var(--neon-red)]'
-      : 'text-[var(--text-tertiary)]';
-
-  return (
-    <div className="chart-container">
-      <div className="chart-header flex items-center justify-between gap-3">
-        <h4 title="Seat assignment from the user snapshot, licensed caps from the DSS license. Caps of 1,000+ seats are sentinels ('effectively unlimited') and are shown as unmetered instead of fake percentages. Idle designer seats = designer-profile accounts with no surviving created object and no recent session.">
-          License reality — seats assigned vs licensed
-        </h4>
-      </div>
-      <div className="px-4 py-3">
-        {rows.length === 0 ? (
-          <div className="text-xs text-[var(--text-muted)]">No assigned profiles.</div>
-        ) : (
-          <div className="space-y-1.5">
-            {rows.map((r) => {
-              const pct = r.limit != null ? Math.min(100, (r.used / r.limit) * 100) : null;
-              return (
-                <div
-                  key={r.profile}
-                  className="adk-hover-row -mx-1 flex items-center gap-2 px-1 py-0.5"
-                  title={
-                    r.limit != null
-                      ? `${r.used.toLocaleString()} of ${r.limit.toLocaleString()} licensed ${prettyProfile(r.profile)} seats assigned · ${r.creators} ever created a surviving object`
-                      : `${r.used.toLocaleString()} ${prettyProfile(r.profile)} seats assigned (${r.unmetered ? 'unmetered license — cap is a sentinel' : 'no licensed cap'}) · ${r.creators} ever created a surviving object`
-                  }
-                >
-                  <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
-                    {prettyProfile(r.profile)}
-                    <span className="ml-1.5 text-[10px] text-[var(--text-tertiary)]">
-                      {r.creators > 0
-                        ? `${r.creators} ${r.creators === 1 ? 'creator' : 'creators'}`
-                        : 'no creators'}
-                    </span>
-                  </span>
-                  {pct != null && (
-                    <span className="h-1 w-20 flex-shrink-0 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
-                      <span
-                        className="block h-full rounded-full bg-[var(--accent)] transition-[width] duration-500"
-                        style={{ width: `${Math.max(pct, r.used > 0 ? 2 : 0)}%` }}
-                      />
-                    </span>
-                  )}
-                  <span className="w-28 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
-                    {r.used.toLocaleString()}
-                    {r.limit != null
-                      ? ` / ${r.limit.toLocaleString()}`
-                      : r.unmetered
-                        ? ' · unmetered'
-                        : ' · no cap'}
-                  </span>
-                </div>
-              );
-            })}
-            {emptyProfiles > 0 && (
-              <div className="pt-0.5 text-[10px] text-[var(--text-tertiary)]">
-                +{emptyProfiles} licensed {emptyProfiles === 1 ? 'profile' : 'profiles'} with no
-                assigned seats
-              </div>
-            )}
-          </div>
-        )}
-        <div className="mt-3 flex items-baseline gap-3 border-t border-[var(--border-glass)] pt-3">
-          <BigStat
-            value={hasInventory ? idleDesigners.length : '—'}
-            label="Idle designer seats"
-            tone={hasInventory && idleDesigners.length > 0 ? 'warn' : undefined}
-          />
-          <span
-            className="min-w-0 text-[10px] text-[var(--text-tertiary)]"
-            title={
-              idleDesigners.length > 0
-                ? idleDesigners
-                    .slice(0, 10)
-                    .map((d) => d.login)
-                    .join(', ') + (idleDesigners.length > 10 ? ', …' : '')
-                : undefined
-            }
-          >
-            {hasInventory
-              ? `designer profile, zero surviving objects, no session in ${ACTIVE_DAYS}d — downgrade candidates`
-              : 'needs the config inventory to spot idle designer seats'}
-          </span>
-        </div>
-        <div className={`pt-2 text-[10px] ${expiryTone}`}>
-          {licensing.licenseKind ?? 'license'} ·{' '}
-          {licensing.expired
-            ? 'EXPIRED'
-            : licensing.expiresOnMs != null
-              ? `expires ${fmtDate(licensing.expiresOnMs)}${expiresDays != null ? ` (${expiresDays}d)` : ''}`
-              : 'no expiry date'}
-          {!licensing.valid && !licensing.expired ? ' · license invalid' : ''}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function AdoptionPage() {
   const { state } = useDiag();
@@ -936,9 +746,6 @@ export function AdoptionPage() {
   const projects = data?.projectRows ?? EMPTY;
   const groups = data?.groups ?? EMPTY;
   const builders = data?.builderStats ?? EMPTY;
-  const builderMonthly = data?.builderMonthly;
-  const licensing = data?.licensing ?? null;
-  const profileCounts = data?.profileCounts ?? {};
   const peopleMax = Math.max(1, ...projects.map((p) => p.authorCount));
   const expandedRowKeys = new Set(selectedKey ? [selectedKey] : []);
 
@@ -1005,20 +812,19 @@ export function AdoptionPage() {
 
   // ── inventory-fed derivations (all null-safe) ─────────────────────────────
   const inventoryView = buildInventoryView(invState.data, recency);
-  const invGeneratedMs = invState.data?.generatedAtMs ?? nowMs;
-  const invTrendComplete = completeMonthsOnly(inventoryView?.trendPoints ?? EMPTY, invGeneratedMs);
-  const rhythmPoints = invTrendComplete.slice(-RHYTHM_MONTHS);
+  const creationTrend = inventoryView?.trendPoints ?? EMPTY;
 
-  // Current surviving portfolio, rolled up to the family groups.
-  const portfolioGroups: number[] = TREND_GROUPS.map(() => 0);
-  for (const row of inventoryView?.composition ?? [])
-    portfolioGroups[familyGroupIndex(row.family)] += row.count;
-  const portfolioItems: MixItem[] = TREND_GROUPS.map((g, gi) => ({
-    key: g.key,
-    label: g.label,
-    color: TREND_GROUP_COLORS[gi],
-    value: portfolioGroups[gi],
-  })).filter((it) => it.value > 0);
+  // Per-family cumulative curves (one small multiple each, no combined chart,
+  // no "Other" bucket). Families whose objects never carry creation tags stay
+  // flat at 0 — they're skipped and listed in the footnote instead.
+  const detailCumulative = DETAIL_GROUPS.map((group, gi) => {
+    let running = 0;
+    const values = creationTrend.map((p) => (running += p.detail[gi] ?? 0));
+    return { group, color: DETAIL_GROUP_COLORS[gi], values, total: running };
+  });
+  const detailCharts = detailCumulative.filter((d) => d.total > 0);
+  const detailEmpty = detailCumulative.filter((d) => d.total === 0);
+  const creationMonthsAxis = creationTrend.map((p) => p.month);
 
   const busFactor = inventoryView?.busFactor;
   const singleSharePct =
@@ -1056,27 +862,6 @@ export function AdoptionPage() {
       ]
     : EMPTY;
 
-  // License joins: creators per profile + idle designer seats.
-  const creatorsByProfile = new Map<string, number>();
-  for (const row of inventoryView?.seatTypes ?? [])
-    creatorsByProfile.set(row.profile, row.creators);
-  const sessionRef = recency.reduce(
-    (max, r) => (r.lastSessionActivity != null ? Math.max(max, r.lastSessionActivity) : max),
-    0,
-  );
-  const idleDesigners = inventoryView
-    ? recency
-        .filter((r) => r.userProfile && isDesignerProfile(r.userProfile))
-        .filter((r) => (inventoryView.inventory.creators[r.login]?.created ?? 0) === 0)
-        .filter(
-          (r) =>
-            r.lastSessionActivity == null ||
-            (sessionRef > 0 && sessionRef - r.lastSessionActivity > ACTIVE_DAYS * DAY_MS),
-        )
-        .map((r) => ({ login: r.login, lastSessionMs: r.lastSessionActivity ?? null }))
-        .sort((a, b) => (a.lastSessionMs ?? 0) - (b.lastSessionMs ?? 0))
-    : EMPTY;
-
   // Onboarding quarters: cohorts + TTFB share one quarter axis. Complete
   // quarters only; the running quarter is footnoted, never plotted.
   const prevQuarter = prevQuarterKey(currentQuarterKey);
@@ -1107,6 +892,20 @@ export function AdoptionPage() {
     };
   });
   const showTtfb = !!ttfb && ttfb.usersMeasured >= MIN_TTFB_USERS;
+  // Direction of time-to-first-build: DOWN is the win (people reach their
+  // first build faster) — say so explicitly, a falling line reads as "decline"
+  // everywhere else on this page.
+  const ttfbMeasured = onboardingPoints.filter((p) => p.medianDays != null);
+  const ttfbFirst = ttfbMeasured[0]?.medianDays ?? null;
+  const ttfbLast = ttfbMeasured[ttfbMeasured.length - 1]?.medianDays ?? null;
+  const ttfbDirection =
+    showTtfb && ttfbMeasured.length >= 2 && ttfbFirst != null && ttfbLast != null
+      ? ttfbLast < ttfbFirst
+        ? ('faster' as const)
+        : ttfbLast > ttfbFirst
+          ? ('slower' as const)
+          : ('flat' as const)
+      : null;
   const onboardingTotal = onboardingPoints.reduce((s, p) => s + p.newUsers, 0);
   // Two slab bars on a 0–2 axis look broken — below the floors, say it in a
   // sentence instead.
@@ -1227,57 +1026,32 @@ export function AdoptionPage() {
       <>Not recently — no git activity in the last {last12.length} complete months.</>
     );
 
-  const portfolioTotal = portfolioGroups.reduce((s, v) => s + v, 0);
-  const topPortfolioIdx = portfolioGroups.reduce(
-    (best, v, i) => (v > portfolioGroups[best] ? i : best),
-    0,
+  // Leading family for the ch2 answer — by TAGGED creations (composition is
+  // sorted by count desc, but counts include untagged families; the charts
+  // below are tagged-only, so the answer matches what the reader sees).
+  const taggedTotal = detailCumulative.reduce((s, d) => s + d.total, 0);
+  const topDetail = detailCharts.reduce<(typeof detailCharts)[number] | null>(
+    (best, d) => (best == null || d.total > best.total ? d : best),
+    null,
   );
   const ch2Answer =
-    inventoryView && portfolioTotal > 0 ? (
+    inventoryView && topDetail && taggedTotal > 0 ? (
       <>
         <strong>{inventoryView.objectsBuilt.toLocaleString()}</strong> surviving objects by{' '}
         <strong>{inventoryView.allTimeCreators}</strong> human{' '}
         {inventoryView.allTimeCreators === 1 ? 'creator' : 'creators'} —{' '}
-        {TREND_GROUPS[topPortfolioIdx].label.toLowerCase()} lead (
-        {pctLabel(portfolioGroups[topPortfolioIdx], portfolioTotal)}).
+        {topDetail.group.label.toLowerCase()} lead ({pctLabel(topDetail.total, taggedTotal)} of
+        tagged objects).
       </>
     ) : null;
 
-  const expiresDaysHdr =
-    licensing?.expiresOnMs != null ? Math.floor((licensing.expiresOnMs - nowMs) / DAY_MS) : null;
-  const ch3Answer = (
-    <>
-      {licensing &&
-        (licensing.expired ? (
-          <>
-            License <strong>EXPIRED</strong>
-          </>
-        ) : expiresDaysHdr != null ? (
-          <>
-            License expires in <strong>{expiresDaysHdr}d</strong>
-          </>
-        ) : (
-          <>License has no expiry date</>
-        ))}
-      {inventoryView && (
-        <>
-          {licensing ? ' · ' : ''}
-          <strong>{idleDesigners.length}</strong> idle designer{' '}
-          {idleDesigners.length === 1 ? 'seat' : 'seats'}
-        </>
-      )}
-      {busFactor && busFactor.measuredProjects > 0 && (
-        <>
-          {' · '}
-          <strong>{busFactor.singleCreator}</strong> of{' '}
-          <strong>{busFactor.measuredProjects}</strong> measured projects single-creator
-        </>
-      )}
-    </>
-  );
-
-  // Roster axis: the last 24 complete months that actually have a trend point.
-  const rosterAxis = gitTrendComplete.slice(-ROSTER_MONTHS).map((p) => p.month);
+  const ch3Answer =
+    busFactor && busFactor.measuredProjects > 0 ? (
+      <>
+        <strong>{busFactor.singleCreator}</strong> of{' '}
+        <strong>{busFactor.measuredProjects}</strong> measured projects single-creator
+      </>
+    ) : null;
 
   const columns: ColumnDef<AdoptionProjectRow>[] = [
     {
@@ -1580,24 +1354,6 @@ export function AdoptionPage() {
             </div>
             <CumulativeAdoptionChart points={cumulativePoints} />
           </div>
-          {builderMonthly && rosterAxis.length >= 2 && builders.length > 0 && (
-            <div className="chart-container">
-              <div className="chart-header flex items-center justify-between gap-3">
-                <h4 title="One row per builder, colored by monthly git commits (darker = more, relative to that person's own peak). Named people ARE the adoption story at this scale.">
-                  Builder roster — who's been active, month by month
-                </h4>
-                <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
-                  last {rosterAxis.length} complete months
-                </span>
-              </div>
-              <BuilderRoster
-                builders={builders}
-                builderMonthly={builderMonthly}
-                monthsAxis={rosterAxis}
-                nowMs={nowMs}
-              />
-            </div>
-          )}
           {pulse && <PulseCard pulse={pulse} nowMs={nowMs} />}
         </motion.div>
 
@@ -1610,155 +1366,109 @@ export function AdoptionPage() {
               answer={ch2Answer}
               caption={`surviving objects only — deleted work is invisible · ${inventoryView.taggedObjects.toLocaleString()} of ${inventoryView.objectsBuilt.toLocaleString()} carry creator tags`}
             />
-            {/* What gets built — cumulative racing lines per family group. */}
-            {inventoryView.trendPoints.length > 0 && (
+            {/* What gets built — one cumulative small multiple per family, no
+                combined chart and no "Other" bucket: every family is named. */}
+            {detailCharts.length > 0 && (
               <div className="chart-container">
                 <div className="chart-header flex items-center justify-between gap-3">
                   <h4
-                    title={`Cumulative surviving objects by family group across the whole config history. Counts tagged objects only — ${inventoryView.taggedObjects.toLocaleString()} of ${inventoryView.objectsBuilt.toLocaleString()} objects carry creation tags (scenarios, notebooks and wikis are untagged and appear in totals, never in these curves).`}
+                    title={`Cumulative surviving objects across the whole config history, one curve per family. Counts tagged objects only — ${inventoryView.taggedObjects.toLocaleString()} of ${inventoryView.objectsBuilt.toLocaleString()} objects carry creation tags; untagged families (scenarios, notebooks, wikis…) appear in totals, never in these curves.`}
                   >
                     What gets built here — cumulative, by family
                   </h4>
                 </div>
-                <CumulativeCreationChart points={inventoryView.trendPoints} />
+                <div className="grid grid-cols-1 gap-x-6 gap-y-4 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {detailCharts.map((d) => (
+                    <div key={d.group.key}>
+                      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+                          <span
+                            className="h-1.5 w-1.5 rounded-[2px]"
+                            style={{ background: d.color }}
+                          />
+                          {d.group.label}
+                        </span>
+                        <span className="font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]">
+                          {d.total.toLocaleString()} all time
+                        </span>
+                      </div>
+                      <MiniCumulative
+                        values={d.values}
+                        months={creationMonthsAxis}
+                        color={d.color}
+                        unitLabel={d.group.label.toLowerCase()}
+                      />
+                    </div>
+                  ))}
+                </div>
                 <div className="border-t border-[var(--border-glass)] px-4 py-2 text-[10px] text-[var(--text-tertiary)]">
                   surviving tagged objects only ({inventoryView.taggedObjects.toLocaleString()} of{' '}
                   {inventoryView.objectsBuilt.toLocaleString()}) — deleted work is invisible
+                  {detailEmpty.length > 0 &&
+                    ` · no tagged creations yet: ${detailEmpty.map((d) => d.group.label.toLowerCase()).join(', ')}`}
                 </div>
               </div>
             )}
-            {/* Monthly creation rhythm — one small multiple per family group. */}
-            {rhythmPoints.length > 0 && (
-              <div className="chart-container">
-                <div className="chart-header flex items-center justify-between gap-3">
-                  <h4 title="Objects created per complete month, one chart per family group — same slot colors as everywhere else. The running month is excluded (rate charts only plot complete months).">
-                    Monthly creation rhythm — last {rhythmPoints.length} complete months
-                  </h4>
-                </div>
-                <div className="grid grid-cols-1 gap-x-6 gap-y-4 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {TREND_GROUPS.map((group, gi) => {
-                    const groupTotal = rhythmPoints.reduce((s, p) => s + (p.groups[gi] ?? 0), 0);
-                    const cols: ColPoint[] = rhythmPoints.map((p) => ({
-                      key: p.month,
-                      value: p.groups[gi] ?? 0,
-                      title: `${monthLabel(p.month)} · ${(p.groups[gi] ?? 0).toLocaleString()} ${group.label.toLowerCase()}`,
-                    }));
-                    return (
-                      <div key={group.key}>
-                        <div className="mb-1.5 flex items-baseline justify-between gap-2">
-                          <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
-                            <span
-                              className="h-1.5 w-1.5 rounded-[2px]"
-                              style={{ background: TREND_GROUP_COLORS[gi] }}
-                            />
-                            {group.label}
-                          </span>
-                          <span className="font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]">
-                            {groupTotal.toLocaleString()} in window
-                          </span>
-                        </div>
-                        <MiniColumns
-                          points={cols}
-                          color={TREND_GROUP_COLORS[gi]}
-                          height={56}
-                          gap={2}
-                          showValues={false}
-                          axisLeft={monthLabel(rhythmPoints[0].month)}
-                          axisRight={monthLabel(rhythmPoints[rhythmPoints.length - 1].month)}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+            <div className="chart-container">
+              <div className="chart-header flex items-center justify-between gap-3">
+                <h4 title="Top 10 creators per family, from config-history creation tags — surviving objects only, service accounts excluded. Bar widths are relative within each family.">
+                  Top builders — by family
+                </h4>
               </div>
-            )}
-            <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
-              <div className="chart-container">
-                <div className="chart-header flex items-center justify-between gap-3">
-                  <h4 title="Everything that exists on the instance today, by family group. A survivorship-biased snapshot by construction: deleted work is invisible.">
-                    Current surviving portfolio
-                  </h4>
-                </div>
-                <div className="px-4 py-3">
-                  <div className="mb-3 flex items-baseline gap-4">
-                    <BigStat
-                      value={inventoryView.objectsBuilt.toLocaleString()}
-                      label="Surviving objects"
-                    />
-                    <BigStat value={inventoryView.allTimeCreators} label="Human creators" />
-                  </div>
-                  <LinkedMix items={portfolioItems} />
-                  {inventoryView.automationCreated > 0 && (
-                    <div className="pt-2 text-[10px] text-[var(--text-tertiary)]">
-                      +{inventoryView.automationCreated.toLocaleString()} objects created by
-                      service accounts (excluded from creator counts)
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="chart-container">
-                <div className="chart-header flex items-center justify-between gap-3">
-                  <h4 title="Top creators per family group, from config-history creation tags — surviving objects only, service accounts excluded. Bar widths are relative within each family.">
-                    Top builders — by family
-                  </h4>
-                </div>
-                <div className="px-4 py-3">
-                  <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
-                    {inventoryView.topCreatorsByGroup.map((board, gi) => {
-                      const group = TREND_GROUPS[gi];
+              <div className="px-4 py-3">
+                <div className="grid grid-cols-1 items-start gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {inventoryView.topCreatorsByGroup
+                    .map((board, gi) => ({ board, group: DETAIL_GROUPS[gi], color: DETAIL_GROUP_COLORS[gi] }))
+                    .filter(({ board }) => board.creators.length > 0)
+                    .map(({ board, group, color }) => {
                       const max = Math.max(1, ...board.creators.map((c) => c.created));
                       return (
                         <div key={board.key}>
                           <div className="mb-1 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
                             <span
                               className="h-1.5 w-1.5 rounded-[2px]"
-                              style={{ background: TREND_GROUP_COLORS[gi] }}
+                              style={{ background: color }}
                             />
                             {group.label}
                           </div>
-                          {board.creators.length === 0 ? (
-                            <div className="text-[10px] text-[var(--text-muted)]">
-                              no tagged creations
-                            </div>
-                          ) : (
-                            <div className="space-y-0.5">
-                              {board.creators.map((c) => (
-                                <div
-                                  key={c.login}
-                                  className="adk-hover-row -mx-1 flex items-center gap-2 px-1 py-0.5"
-                                  title={`${c.created.toLocaleString()} surviving ${group.label.toLowerCase()} created by ${c.login}`}
-                                >
-                                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--text-secondary)]">
-                                    {c.login}
-                                  </span>
-                                  <span className="h-1 w-14 flex-shrink-0 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
-                                    <span
-                                      className="block h-full rounded-full transition-[width] duration-500"
-                                      style={{
-                                        width: `${(c.created / max) * 100}%`,
-                                        background: TREND_GROUP_COLORS[gi],
-                                      }}
-                                    />
-                                  </span>
-                                  <span className="w-12 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
-                                    {c.created.toLocaleString()}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          <div className="space-y-0.5">
+                            {board.creators.map((c) => (
+                              <div
+                                key={c.login}
+                                className="adk-hover-row -mx-1 flex items-center gap-2 px-1 py-0.5"
+                                title={`${c.created.toLocaleString()} surviving ${group.label.toLowerCase()} created by ${c.login}`}
+                              >
+                                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--text-secondary)]">
+                                  {c.login}
+                                </span>
+                                <span className="h-1 w-14 flex-shrink-0 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+                                  <span
+                                    className="block h-full rounded-full transition-[width] duration-500"
+                                    style={{
+                                      width: `${(c.created / max) * 100}%`,
+                                      background: color,
+                                    }}
+                                  />
+                                </span>
+                                <span className="w-12 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-primary)]">
+                                  {c.created.toLocaleString()}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       );
                     })}
-                  </div>
                 </div>
               </div>
             </div>
           </motion.div>
         )}
 
-        {/* Groups + onboarding — who the activity belongs to, how people start. */}
-        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+        {/* Groups + onboarding — who the activity belongs to, how people start.
+            Full-width rows: both cards carry per-row detail that was cramped
+            at half width. */}
+        <div className="flex flex-col gap-6">
           <motion.div {...blockProps} className="chart-container">
             <div className="chart-header flex items-center justify-between gap-3">
               <h4 title="Git activity rolled up to DSS groups. A builder in several groups counts in each, so shares can overlap. The sparkline is the group's monthly commits over the last complete year.">
@@ -1847,9 +1557,29 @@ export function AdoptionPage() {
                 Onboarding &amp; activation — quarterly
               </h4>
               {showTtfb && ttfb && (
-                <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
-                  median {ttfb.overallMedianDays ?? '—'}d to first build · {ttfb.usersMeasured}{' '}
-                  users measured
+                <span className="flex flex-wrap items-center gap-x-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+                  <span>
+                    median {ttfb.overallMedianDays ?? '—'}d to first build · {ttfb.usersMeasured}{' '}
+                    users measured
+                  </span>
+                  {ttfbDirection && ttfbFirst != null && ttfbLast != null && (
+                    <span
+                      className={
+                        ttfbDirection === 'faster'
+                          ? 'text-[var(--neon-green)]'
+                          : ttfbDirection === 'slower'
+                            ? 'text-[var(--neon-amber)]'
+                            : ''
+                      }
+                      title={`Median days from signup to first build moved from ${ttfbFirst}d (earliest measured cohort) to ${ttfbLast}d (latest). Down is the win: new people reach their first build sooner.`}
+                    >
+                      {ttfbDirection === 'faster'
+                        ? `↓ ${ttfbFirst}d → ${ttfbLast}d — onboarding got faster (good)`
+                        : ttfbDirection === 'slower'
+                          ? `↑ ${ttfbFirst}d → ${ttfbLast}d — onboarding got slower`
+                          : `→ steady at ${ttfbLast}d`}
+                    </span>
+                  )}
                 </span>
               )}
             </div>
@@ -1895,25 +1625,15 @@ export function AdoptionPage() {
         </div>
 
         {/* ── 03 · What's at risk? ───────────────────────────────────────── */}
-        {(licensing || busFactor) && (
+        {busFactor && busFactor.measuredProjects > 0 && (
           <motion.div {...blockProps} className="flex flex-col gap-4">
             <ChapterHeader
               no="03"
               title="What's at risk?"
               answer={ch3Answer}
-              caption="seat caps from the DSS license · creator joins from surviving objects only"
+              caption="creator joins from surviving objects only"
             />
             <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
-              {licensing && (
-                <LicenseCard
-                  licensing={licensing}
-                  profileCounts={profileCounts}
-                  creatorsByProfile={creatorsByProfile}
-                  idleDesigners={idleDesigners}
-                  hasInventory={!!inventoryView}
-                  nowMs={nowMs}
-                />
-              )}
               {busFactor && busFactor.measuredProjects > 0 && (
                 <div className="chart-container">
                   <div className="chart-header flex items-center justify-between gap-3">

@@ -66,7 +66,7 @@ export function OnboardingChart({
           ? [
               {
                 type: 'line' as const,
-                label: 'Median days to first build',
+                label: 'Median days to first build (lower = better)',
                 data: points.map((p) => p.medianDays),
                 borderColor: TTFB_LINE,
                 borderWidth: 2,
@@ -160,7 +160,7 @@ export function OnboardingChart({
                 },
                 title: {
                   display: true,
-                  text: 'Days to first build',
+                  text: 'Days to first build — down is the win',
                   color: tickColor,
                   font: { size: 10 },
                 },

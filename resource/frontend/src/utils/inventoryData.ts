@@ -123,6 +123,33 @@ export const TREND_GROUP_COLORS = [
   'var(--text-tertiary)', // Other — grey (recedes; red = warnings only)
 ];
 
+// Granular family groups for the per-family small multiples and builder
+// boards — no catch-all "Other": every family is named. Each group renders in
+// its OWN titled card (single series), so hues may repeat across cards
+// without violating the CVD adjacency rule (that rule binds stacked marks —
+// SegmentBar/legend keep the 6-slot TREND_GROUPS above).
+export const DETAIL_GROUPS: TrendGroupDef[] = [
+  { key: 'datasets', label: 'Datasets', families: ['dataset'] },
+  { key: 'visual', label: 'Visual recipes', families: ['recipe-visual'] },
+  {
+    key: 'code',
+    label: 'Code recipes',
+    families: ['recipe-python', 'recipe-sql', 'recipe-r', 'recipe-plugin', 'recipe-other'],
+  },
+  { key: 'ml', label: 'ML recipes', families: ['recipe-ml'] },
+  { key: 'models', label: 'ML models & analyses', families: ['saved-model', 'mes', 'analysis'] },
+  { key: 'bi', label: 'Dashboards & insights', families: ['dashboard', 'insight'] },
+  { key: 'genai', label: 'Webapps & GenAI', families: ['webapp', 'prompt-studio'] },
+  { key: 'automation', label: 'Scenarios', families: ['scenario'] },
+  { key: 'notebooks', label: 'Notebooks', families: ['notebook', 'sql-notebook'] },
+  { key: 'org', label: 'Wiki & flow zones', families: ['wiki', 'zone'] },
+  { key: 'misc', label: 'Uncategorized', families: ['other'] },
+];
+
+export const DETAIL_GROUP_COLORS = DETAIL_GROUPS.map(
+  (_, i) => `var(--viz-cat-${(i % 5) + 1})`, // cycle the 5 non-red hues
+);
+
 const FAMILY_GROUP_INDEX = new Map<ObjectFamily, number>();
 TREND_GROUPS.forEach((g, gi) => g.families.forEach((f) => FAMILY_GROUP_INDEX.set(f, gi)));
 
@@ -147,6 +174,8 @@ export interface InventoryTrendPoint {
   distinctCreators: number;
   /** Stacked series values aligned with TREND_GROUPS order. */
   groups: number[];
+  /** Granular values aligned with DETAIL_GROUPS order (per-family charts). */
+  detail: number[];
 }
 
 export interface InventoryTtfbCohort {
@@ -203,9 +232,9 @@ export function isAutomationLogin(login: string): boolean {
   return login.startsWith('api:') || login.startsWith('no:');
 }
 
-/** Top creators for one TREND_GROUPS slot (per-family builder leaderboards). */
+/** Top creators for one DETAIL_GROUPS slot (per-family builder leaderboards). */
 export interface InventoryGroupCreators {
-  key: string; // TREND_GROUPS key
+  key: string; // DETAIL_GROUPS key
   creators: Array<{ login: string; created: number }>;
 }
 
@@ -223,7 +252,7 @@ export interface InventoryView {
   ttfb: InventoryTtfb;
   busFactor: InventoryBusFactor;
   seatTypes: InventorySeatTypeRow[];
-  /** Aligned with TREND_GROUPS — top creators per family group. */
+  /** Aligned with DETAIL_GROUPS — top creators per family group. */
   topCreatorsByGroup: InventoryGroupCreators[];
   projectRows: InventoryProjectViewRow[];
 }
@@ -528,20 +557,21 @@ export function buildInventoryView(
       total: m?.total ?? 0,
       distinctCreators: m ? Object.keys(m.creators).length : 0,
       groups: TREND_GROUPS.map((g) => (m ? sumFamilies(m.byFamily, g.families) : 0)),
+      detail: DETAIL_GROUPS.map((g) => (m ? sumFamilies(m.byFamily, g.families) : 0)),
     };
   });
   const { busFactor, projectRows } = collapseProjects(inventory);
 
-  // Per-family-group builder leaderboards — one ranked list per TREND_GROUPS
+  // Per-family builder leaderboards — one ranked list per DETAIL_GROUPS
   // slot, from each creator's byFamily counts.
-  const topCreatorsByGroup: InventoryGroupCreators[] = TREND_GROUPS.map((group) => ({
+  const topCreatorsByGroup: InventoryGroupCreators[] = DETAIL_GROUPS.map((group) => ({
     key: group.key,
     creators: Object.entries(inventory.creators)
       .filter(([login]) => !isAutomationLogin(login))
       .map(([login, stats]) => ({ login, created: sumFamilies(stats.byFamily, group.families) }))
       .filter((c) => c.created > 0)
       .sort((a, b) => b.created - a.created || a.login.localeCompare(b.login))
-      .slice(0, 5),
+      .slice(0, 10),
   }));
 
   return {

@@ -837,10 +837,15 @@ def plan_admin_action(client, host='local', action=None, target=None, params=Non
                           'message': 'Plan built, but no master password is configured — '
                                      'no confirm token can be minted and execution is impossible.'}}
     token, exp = confirm.mint(password, action, host, canonical)
-    return shaping.enforce_budget({
+    # Budget-trim the DISPLAY envelope only, then attach canonicalTarget WHOLE:
+    # the confirm token is minted over `canonical`, so a trimmed canonicalTarget
+    # (e.g. a multi-step custom-code scenario whose steps list gets halved) would
+    # no longer match the token and execute would refuse. The full step code
+    # therefore always survives here for the human to review, even if the plan's
+    # display copy was truncated (which enforce_budget notes).
+    out = shaping.enforce_budget({
         'action': action,
         'host': host,
-        'canonicalTarget': canonical,
         'plan': plan,
         'confirm_token': token,
         'expiresInSeconds': confirm.TOKEN_TTL_SECONDS,
@@ -848,6 +853,8 @@ def plan_admin_action(client, host='local', action=None, target=None, params=Non
                      'in the conversation. Only then call execute-admin-action with this exact '
                      'action/host/target, confirm=true, and the confirm_token.'),
     })
+    out['canonicalTarget'] = canonical
+    return out
 
 
 def _execute_batch(client, host, action, batch_targets):

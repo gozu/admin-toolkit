@@ -10,6 +10,7 @@ import {
   completeMonthsOnly,
   familyGroupIndex,
   fillQuarterRange,
+  monthKeyUTC,
   monthToQuarter,
   quarterKeyUTC,
   quarterLabel,
@@ -22,9 +23,8 @@ import { DataGrid } from '../common/DataGrid';
 import { ProgressIndicator } from '../common/ProgressIndicator';
 import { BigStat, SegmentBar, UsageBar } from './missionControl/microViz';
 import { TILE_VARIANTS } from './missionControl/tokens';
-import { EngagementTrendChart } from './EngagementTrendChart';
-import { BuilderLifecycleChart, type LifecycleQuarterPoint } from './BuilderLifecycleChart';
-import { MonthlyCreationChart } from './MonthlyCreationChart';
+import { CumulativeAdoptionChart, type CumulativePoint } from './CumulativeAdoptionChart';
+import { CumulativeCreationChart } from './CumulativeCreationChart';
 import { OnboardingChart, type OnboardingQuarterPoint } from './OnboardingChart';
 import type { ColumnDef } from '../../utils/dataGridTypes';
 import type {
@@ -40,16 +40,15 @@ const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 
 // Rate charts show bounded recent windows — cumulative context lives in the
-// running totals, not in always-up curves.
-const CREATION_MONTHS = 24;
+// always-up flagship curves above them.
+const RHYTHM_MONTHS = 24;
 const SPARK_MONTHS = 12;
-const LIFECYCLE_QUARTERS = 12;
 // TTFB is hidden below this many measured users — "0d median, 2 users" is
 // noise dressed as a stat.
 const MIN_TTFB_USERS = 5;
 // "Recently active" window for the funnel and idle-seat detection.
 const ACTIVE_DAYS = 90;
-// Momentum compares mean active builders over this many complete months vs
+// Momentum compares human commit volume over this many complete months vs
 // the same span before.
 const MOMENTUM_MONTHS = 12;
 // A licensed cap this large (or ≥20× assigned seats) is a sentinel, not a
@@ -59,29 +58,40 @@ const UNMETERED_CAP = 1000;
 const MIN_ONBOARDING_QUARTERS = 3;
 const MIN_ONBOARDING_USERS = 5;
 
-/** Chapter header: the page reads as three questions, not eight coequal
- * sections. Bigger than a card h4, quieter than the page title. */
+/** Chapter header: the page reads as three questions, each with a COMPUTED
+ * answer — the question is the loudest text in its section, and it never
+ * goes unanswered. */
 function ChapterHeader({
   no,
   title,
+  answer,
   caption,
   right,
 }: {
   no: string;
   title: string;
+  /** One computed sentence answering the question — never marketing copy. */
+  answer?: ReactNode;
   caption?: string;
   right?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-[var(--border-glass)] px-4 pb-2">
-      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
-        <span className="font-mono text-[10px] tracking-[0.2em] text-[var(--text-muted)]">
-          {no}
-        </span>
-        <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">{title}</h3>
-        {caption && <span className="text-[10px] text-[var(--text-tertiary)]">{caption}</span>}
+    <div className="border-b border-[var(--border-glass)] px-4 pb-2.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+          <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--text-muted)]">
+            {no}
+          </span>
+          <h3 className="text-[17px] font-semibold text-[var(--text-primary)]">{title}</h3>
+          {caption && <span className="text-[10px] text-[var(--text-tertiary)]">{caption}</span>}
+        </div>
+        {right}
       </div>
-      {right}
+      {answer && (
+        <div className="mt-1 pl-[34px] text-[12px] leading-relaxed text-[var(--text-secondary)] [&_strong]:font-semibold [&_strong]:text-[var(--text-primary)]">
+          {answer}
+        </div>
+      )}
     </div>
   );
 }
@@ -332,6 +342,13 @@ function isDesignerProfile(profile: string): boolean {
   return p.includes('DESIGNER') || p === 'DATA_SCIENTIST';
 }
 
+/** First ms of the month AFTER a 'YYYY-MM' key — cumulative cut points. */
+function monthEndMsUTC(month: string): number {
+  const y = Number(month.slice(0, 4));
+  const m = Number(month.slice(5, 7));
+  return m === 12 ? Date.UTC(y + 1, 0, 1) : Date.UTC(y, m, 1);
+}
+
 /** 'YYYY-Qn' → the quarter before it. */
 function prevQuarterKey(q: string): string {
   const y = Number(q.slice(0, 4));
@@ -575,9 +592,6 @@ function PulseCard({ pulse, nowMs }: { pulse: AdoptionPulseData; nowMs: number }
           <div className="flex flex-col gap-3">
             <div className="flex items-baseline gap-4">
               <BigStat value={totalEvents.toLocaleString()} label="Audit events (human)" />
-              {pulse.humansActive != null && (
-                <BigStat value={pulse.humansActive} label="People active" />
-              )}
             </div>
             <LinkedMix items={mixItems} />
             {runRows.length > 0 && (
@@ -644,6 +658,93 @@ function PulseCard({ pulse, nowMs }: { pulse: AdoptionPulseData; nowMs: number }
               · {pulse.filesRead ?? 0} {pulse.filesRead === 1 ? 'file' : 'files'} read
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const ROSTER_MONTHS = 24;
+const ROSTER_MAX_ROWS = 15;
+
+/** Builder roster: one row per person, a month-by-month git-activity strip —
+ * at single-digit headcounts, named people ARE the adoption story; aggregate
+ * charts just blur them. Scales by capping to the top rows and stating the
+ * cut. Fully derived from per-builder monthly commits (full git span). */
+function BuilderRoster({
+  builders,
+  builderMonthly,
+  monthsAxis,
+  nowMs,
+}: {
+  builders: Array<{
+    login: string;
+    commits: number;
+    projectCount: number;
+    lastCommitMs: number | null;
+  }>;
+  builderMonthly: Record<string, Record<string, number>>;
+  monthsAxis: string[];
+  nowMs: number;
+}) {
+  const rows = builders.slice(0, ROSTER_MAX_ROWS);
+  return (
+    <div className="px-4 py-3">
+      <div className="mb-1 flex items-center gap-3">
+        <span className="w-44 flex-shrink-0" />
+        <div className="flex min-w-0 flex-1 items-center justify-between font-mono text-[9px] leading-none text-[var(--text-tertiary)]">
+          <span>{monthLabel(monthsAxis[0])}</span>
+          <span>{monthLabel(monthsAxis[monthsAxis.length - 1])}</span>
+        </div>
+        <span className="w-24 flex-shrink-0" />
+      </div>
+      <div className="space-y-1">
+        {rows.map((b) => {
+          const months = builderMonthly[b.login] ?? {};
+          const rowMax = Math.max(1, ...monthsAxis.map((m) => months[m] ?? 0));
+          const active = b.lastCommitMs != null && nowMs - b.lastCommitMs <= ACTIVE_DAYS * DAY_MS;
+          return (
+            <div key={b.login} className="adk-hover-row -mx-1 flex items-center gap-3 px-1 py-1">
+              <span className="flex w-44 flex-shrink-0 items-center gap-1.5">
+                <span
+                  className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${active ? 'bg-[var(--neon-green)]' : 'bg-[var(--text-muted)] opacity-40'}`}
+                  title={active ? `Committed within ${ACTIVE_DAYS}d` : 'No recent commits'}
+                />
+                <span className="min-w-0 truncate font-mono text-[11px] text-[var(--text-secondary)]">
+                  {b.login}
+                </span>
+              </span>
+              <div className="flex min-w-0 flex-1 gap-[2px]">
+                {monthsAxis.map((m) => {
+                  const v = months[m] ?? 0;
+                  return (
+                    <span
+                      key={m}
+                      title={`${b.login} · ${monthLabel(m)} · ${v.toLocaleString()} ${v === 1 ? 'commit' : 'commits'}`}
+                      className="h-3 min-w-0 flex-1 rounded-[1px]"
+                      style={{
+                        background:
+                          v > 0
+                            ? `color-mix(in srgb, var(--viz-cat-1) ${Math.round(35 + 65 * (v / rowMax))}%, transparent)`
+                            : 'var(--bg-elevated)',
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              <span
+                className="w-24 flex-shrink-0 text-right font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]"
+                title={`${b.commits.toLocaleString()} commits across ${b.projectCount} ${b.projectCount === 1 ? 'project' : 'projects'}, all time`}
+              >
+                {b.commits.toLocaleString()} · {b.projectCount}p
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {builders.length > rows.length && (
+        <div className="pt-1.5 text-[10px] text-[var(--text-tertiary)]">
+          +{builders.length - rows.length} more builders (by all-time commits) not shown
         </div>
       )}
     </div>
@@ -846,7 +947,7 @@ export function AdoptionPage() {
   const gitTrendComplete = completeMonthsOnly(trend, nowMs);
 
   // The people funnel — one reconciled account of "how many people":
-  // accounts on the instance → ever built (git) → built in the last 90d.
+  // accounts on the instance → ever built (git).
   // Git history remembers departed builders, so "ever built" can EXCEED the
   // current account count — the subset framing (funnel arrows, "X of Y
   // accounts") is only honest when it actually holds.
@@ -856,48 +957,49 @@ export function AdoptionPage() {
   ).length;
   const buildersAreSubset = totals != null && accountCount >= totals.builderCount;
 
-  // Momentum (customer's "is usage increasing?"): mean active builders over the
-  // last 12 complete months vs the 12 before.
-  let momentumPct: number | null = null;
-  if (gitTrendComplete.length >= MOMENTUM_MONTHS * 2) {
-    const mean = (pts: AdoptionMonthPoint[]) =>
-      pts.reduce((s, p) => s + p.activeBuilders, 0) / pts.length;
-    const recent = mean(gitTrendComplete.slice(-MOMENTUM_MONTHS));
-    const prior = mean(gitTrendComplete.slice(-MOMENTUM_MONTHS * 2, -MOMENTUM_MONTHS));
-    momentumPct = prior > 0 ? ((recent - prior) / prior) * 100 : null;
-  }
+  // Momentum on COMMIT VOLUME (the highest-base series we have), always with
+  // the absolute before/after visible. A percentage over a tiny base is a
+  // coin flip dressed as a trend — below the floor we show only absolutes.
+  const sum = (pts: AdoptionMonthPoint[]) => pts.reduce((s, p) => s + p.commits, 0);
+  const commitsRecent12 =
+    gitTrendComplete.length >= MOMENTUM_MONTHS ? sum(gitTrendComplete.slice(-MOMENTUM_MONTHS)) : null;
+  const commitsPrior12 =
+    gitTrendComplete.length >= MOMENTUM_MONTHS * 2
+      ? sum(gitTrendComplete.slice(-MOMENTUM_MONTHS * 2, -MOMENTUM_MONTHS))
+      : null;
+  const MOMENTUM_MIN_BASE = 50;
+  const momentumPct =
+    commitsRecent12 != null && commitsPrior12 != null && commitsPrior12 >= MOMENTUM_MIN_BASE
+      ? ((commitsRecent12 - commitsPrior12) / commitsPrior12) * 100
+      : null;
 
-  // Builder lifecycle by quarter: new / returning / lapsed, complete quarters
-  // only, from per-builder monthly git activity.
+  // Flagship cumulative series: people who ever built / projects ever active /
+  // total commits, month by month (current month included — a cumulative line
+  // plots the running month honestly: the last point is simply mid-climb).
   const currentQuarterKey = quarterKeyUTC(nowMs);
-  const lifecyclePoints: LifecycleQuarterPoint[] = (() => {
-    if (!builderMonthly) return [];
-    const activeByQ = new Map<string, Set<string>>();
-    const firstQ = new Map<string, string>();
-    for (const [login, months] of Object.entries(builderMonthly)) {
-      for (const m of Object.keys(months)) {
-        const q = monthToQuarter(m);
-        if (q >= currentQuarterKey) continue;
-        let set = activeByQ.get(q);
-        if (!set) {
-          set = new Set();
-          activeByQ.set(q, set);
-        }
-        set.add(login);
-        const cur = firstQ.get(login);
-        if (cur == null || q < cur) firstQ.set(login, q);
-      }
-    }
-    if (activeByQ.size < 2) return [];
-    const axis = fillQuarterRange([...activeByQ.keys()]).slice(-LIFECYCLE_QUARTERS);
-    return axis.map((quarter) => {
-      const active = activeByQ.get(quarter) ?? new Set<string>();
-      const prev = activeByQ.get(prevQuarterKey(quarter)) ?? new Set<string>();
-      let newBuilders = 0;
-      for (const login of active) if (firstQ.get(login) === quarter) newBuilders++;
-      let lapsed = 0;
-      for (const login of prev) if (!active.has(login)) lapsed++;
-      return { quarter, newBuilders, returning: active.size - newBuilders, lapsed };
+  const currentMonthKey = monthKeyUTC(nowMs);
+  const cumulativePoints: CumulativePoint[] = (() => {
+    if (trend.length === 0) return [];
+    const months = trend.map((p) => p.month);
+    if (months[months.length - 1] < currentMonthKey) months.push(currentMonthKey);
+    const commitsByMonth = new Map(trend.map((p) => [p.month, p.commits]));
+    const builderFirsts = builders
+      .map((b) => b.firstCommitMs)
+      .filter((ms): ms is number => ms != null)
+      .sort((a, b) => a - b);
+    const projectFirsts = projects
+      .map((p) => p.firstCommitMs)
+      .filter((ms): ms is number => ms != null)
+      .sort((a, b) => a - b);
+    let bi = 0;
+    let pi = 0;
+    let commitSum = 0;
+    return months.map((month) => {
+      const end = monthEndMsUTC(month);
+      while (bi < builderFirsts.length && builderFirsts[bi] < end) bi++;
+      while (pi < projectFirsts.length && projectFirsts[pi] < end) pi++;
+      commitSum += commitsByMonth.get(month) ?? 0;
+      return { month, builders: bi, projects: pi, commits: commitSum };
     });
   })();
 
@@ -905,7 +1007,7 @@ export function AdoptionPage() {
   const inventoryView = buildInventoryView(invState.data, recency);
   const invGeneratedMs = invState.data?.generatedAtMs ?? nowMs;
   const invTrendComplete = completeMonthsOnly(inventoryView?.trendPoints ?? EMPTY, invGeneratedMs);
-  const creationPoints = invTrendComplete.slice(-CREATION_MONTHS);
+  const rhythmPoints = invTrendComplete.slice(-RHYTHM_MONTHS);
 
   // Current surviving portfolio, rolled up to the family groups.
   const portfolioGroups: number[] = TREND_GROUPS.map(() => 0);
@@ -1035,35 +1137,65 @@ export function AdoptionPage() {
   // The generated verdict — the page states its own conclusion instead of
   // making the reader reverse-engineer it from charts. Every clause is
   // computed and omitted when unmeasurable.
+  // The verdict opens with an ASSESSMENT, not a fact recital — the reader
+  // should be able to repeat one sentence in a meeting and defend it.
+  const breadthWord =
+    totals && totals.builderCount > 0
+      ? activeRecently === 0
+        ? 'stalled'
+        : activeRecently / totals.builderCount <= 0.34
+          ? 'narrow'
+          : activeRecently / totals.builderCount <= 0.67
+            ? 'moderate'
+            : 'broad'
+      : null;
   const verdict: ReactNode[] = [];
-  if (totals) {
+  if (totals && breadthWord) {
     verdict.push(
-      buildersAreSubset ? (
-        <span key="funnel">
-          <strong>{totals.builderCount}</strong> of <strong>{accountCount}</strong> accounts have
-          built on this instance, <strong>{activeRecently}</strong> of them in the last{' '}
-          {ACTIVE_DAYS} days.
-        </span>
-      ) : (
-        <span key="funnel">
-          <strong>{totals.builderCount}</strong> people have built on this instance over its
-          history (incl. departed accounts) — <strong>{activeRecently}</strong> in the last{' '}
-          {ACTIVE_DAYS} days. It currently hosts <strong>{accountCount || '—'}</strong> accounts.
-        </span>
-      ),
+      <span key="assessment">
+        Adoption is{' '}
+        <strong>
+          {activeRecently > 0 ? 'active' : 'quiet'}
+          {activeRecently > 0 ? ` but ${breadthWord}` : ''}
+        </strong>
+        :{' '}
+        {buildersAreSubset ? (
+          <>
+            <strong>{activeRecently}</strong> of <strong>{totals.builderCount}</strong> all-time
+            builders (from <strong>{accountCount}</strong> accounts) committed in the last{' '}
+            {ACTIVE_DAYS} days
+          </>
+        ) : (
+          <>
+            <strong>{activeRecently}</strong> of <strong>{totals.builderCount}</strong> all-time
+            builders committed in the last {ACTIVE_DAYS} days (the instance currently hosts{' '}
+            <strong>{accountCount || '—'}</strong> accounts; git history remembers departed
+            builders)
+          </>
+        )}
+        {busFactor && busFactor.measuredProjects > 0 ? (
+          <>
+            , and <strong>{busFactor.singleCreator}</strong> of{' '}
+            <strong>{busFactor.measuredProjects}</strong> measured projects rely on a single
+            creator
+          </>
+        ) : null}
+        .
+      </span>,
     );
-    if (momentumPct != null) {
+    if (commitsRecent12 != null && commitsPrior12 != null) {
       verdict.push(
         <span key="momentum">
           {' '}
-          Monthly building activity is{' '}
-          <strong>
-            {momentumPct >= 2 ? 'up' : momentumPct <= -2 ? 'down' : 'flat at'}{' '}
-            {momentumPct >= 2 || momentumPct <= -2
-              ? `${Math.abs(momentumPct).toFixed(0)}%`
-              : `${momentumPct >= 0 ? '+' : ''}${momentumPct.toFixed(0)}%`}
-          </strong>{' '}
-          year over year.
+          Commit volume moved from <strong>{commitsPrior12.toLocaleString()}</strong> to{' '}
+          <strong>{commitsRecent12.toLocaleString()}</strong> over the last two 12-month spans
+          {momentumPct != null ? (
+            <>
+              {' '}
+              (<strong>{`${momentumPct >= 0 ? '+' : ''}${momentumPct.toFixed(0)}%`}</strong>)
+            </>
+          ) : null}
+          .
         </span>,
       );
     }
@@ -1071,20 +1203,81 @@ export function AdoptionPage() {
       verdict.push(
         <span key="objects">
           {' '}
-          The platform holds <strong>{inventoryView.objectsBuilt.toLocaleString()}</strong>{' '}
-          surviving objects across <strong>{totals.projectCount}</strong> projects
-          {busFactor && busFactor.measuredProjects > 0 ? (
-            <>
-              ; <strong>{busFactor.singleCreator}</strong> of{' '}
-              <strong>{busFactor.measuredProjects}</strong> measured projects rely on a single
-              creator
-            </>
-          ) : null}
-          .
+          The instance holds <strong>{inventoryView.objectsBuilt.toLocaleString()}</strong>{' '}
+          surviving objects across <strong>{totals.projectCount}</strong> projects.
         </span>,
       );
     }
   }
+
+  // Computed chapter answers — the question headers never go unanswered.
+  const last12 = gitTrendComplete.slice(-12);
+  const monthsWithActivity = last12.filter((p) => p.commits > 0).length;
+  const commitsLast12 = last12.reduce((s, p) => s + p.commits, 0);
+  const ch1Answer =
+    last12.length === 0 ? null : monthsWithActivity > 0 ? (
+      <>
+        Yes — building happened in{' '}
+        <strong>
+          {monthsWithActivity} of the last {last12.length}
+        </strong>{' '}
+        complete months (<strong>{commitsLast12.toLocaleString()}</strong> human commits).
+      </>
+    ) : (
+      <>Not recently — no git activity in the last {last12.length} complete months.</>
+    );
+
+  const portfolioTotal = portfolioGroups.reduce((s, v) => s + v, 0);
+  const topPortfolioIdx = portfolioGroups.reduce(
+    (best, v, i) => (v > portfolioGroups[best] ? i : best),
+    0,
+  );
+  const ch2Answer =
+    inventoryView && portfolioTotal > 0 ? (
+      <>
+        <strong>{inventoryView.objectsBuilt.toLocaleString()}</strong> surviving objects by{' '}
+        <strong>{inventoryView.allTimeCreators}</strong> human{' '}
+        {inventoryView.allTimeCreators === 1 ? 'creator' : 'creators'} —{' '}
+        {TREND_GROUPS[topPortfolioIdx].label.toLowerCase()} lead (
+        {pctLabel(portfolioGroups[topPortfolioIdx], portfolioTotal)}).
+      </>
+    ) : null;
+
+  const expiresDaysHdr =
+    licensing?.expiresOnMs != null ? Math.floor((licensing.expiresOnMs - nowMs) / DAY_MS) : null;
+  const ch3Answer = (
+    <>
+      {licensing &&
+        (licensing.expired ? (
+          <>
+            License <strong>EXPIRED</strong>
+          </>
+        ) : expiresDaysHdr != null ? (
+          <>
+            License expires in <strong>{expiresDaysHdr}d</strong>
+          </>
+        ) : (
+          <>License has no expiry date</>
+        ))}
+      {inventoryView && (
+        <>
+          {licensing ? ' · ' : ''}
+          <strong>{idleDesigners.length}</strong> idle designer{' '}
+          {idleDesigners.length === 1 ? 'seat' : 'seats'}
+        </>
+      )}
+      {busFactor && busFactor.measuredProjects > 0 && (
+        <>
+          {' · '}
+          <strong>{busFactor.singleCreator}</strong> of{' '}
+          <strong>{busFactor.measuredProjects}</strong> measured projects single-creator
+        </>
+      )}
+    </>
+  );
+
+  // Roster axis: the last 24 complete months that actually have a trend point.
+  const rosterAxis = gitTrendComplete.slice(-ROSTER_MONTHS).map((p) => p.month);
 
   const columns: ColumnDef<AdoptionProjectRow>[] = [
     {
@@ -1312,38 +1505,33 @@ export function AdoptionPage() {
                   }
                 />
               </div>
-              <span className="pb-3 font-mono text-[var(--text-muted)]">→</span>
-              <div title={`Builders with a git commit in the last ${ACTIVE_DAYS} days.`}>
-                <BigStat
-                  value={totals ? activeRecently : '—'}
-                  label={`Built in last ${ACTIVE_DAYS}d`}
-                  sub={
-                    totals && totals.builderCount > 0
-                      ? pctLabel(activeRecently, totals.builderCount)
-                      : undefined
-                  }
-                />
-              </div>
               {!buildersAreSubset && (
                 <>
                   <span className="pb-3 font-mono text-[var(--text-muted)]">·</span>
                   <div title="Accounts in the current user snapshot — smaller than all-time builders when people have left.">
-                    <BigStat value={accountCount || '—'} label="Accounts today" />
+                    <BigStat value={accountCount || '—'} label="Accounts exist today" />
                   </div>
                 </>
               )}
             </div>
             <div className="hidden h-8 w-px bg-[var(--border-glass)] sm:block" />
             <div
-              title={`Mean monthly active builders, last ${MOMENTUM_MONTHS} complete months vs the ${MOMENTUM_MONTHS} before — the in-progress month is excluded.`}
+              title={`Human commit volume, last ${MOMENTUM_MONTHS} complete months vs the ${MOMENTUM_MONTHS} before. The percentage is suppressed when the prior-year base is under ${'50'} commits — a % over a tiny base is a coin flip, not a trend.`}
             >
               <BigStat
                 value={
-                  momentumPct == null
-                    ? '—'
-                    : `${momentumPct >= 0 ? '+' : ''}${momentumPct.toFixed(0)}%`
+                  momentumPct != null
+                    ? `${momentumPct >= 0 ? '+' : ''}${momentumPct.toFixed(0)}%`
+                    : commitsRecent12 != null && commitsPrior12 != null
+                      ? `${commitsPrior12.toLocaleString()}→${commitsRecent12.toLocaleString()}`
+                      : '—'
                 }
-                label="Momentum (yr vs prior yr)"
+                label="Commits — 12mo vs prior"
+                sub={
+                  momentumPct != null && commitsRecent12 != null && commitsPrior12 != null
+                    ? `${commitsPrior12.toLocaleString()} → ${commitsRecent12.toLocaleString()}`
+                    : undefined
+                }
                 tone={
                   momentumPct == null
                     ? undefined
@@ -1366,8 +1554,8 @@ export function AdoptionPage() {
             {repeatBuilders && repeatBuilders.total > 0 && (
               <div title="Builders active in at least two distinct months — they came back after their first build.">
                 <BigStat
-                  value={`${repeatBuilders.repeat}/${repeatBuilders.total}`}
-                  label="Builders who returned"
+                  value={`${repeatBuilders.repeat} of ${repeatBuilders.total}`}
+                  label="Builders returned (≥2 months)"
                   sub={pctLabel(repeatBuilders.repeat, repeatBuilders.total)}
                 />
               </div>
@@ -1380,24 +1568,34 @@ export function AdoptionPage() {
           <ChapterHeader
             no="01"
             title="Is it being used?"
-            caption="full git history · complete months & quarters only"
+            answer={ch1Answer}
+            caption="full git history · cumulative curves include the running month"
           />
+          {/* Flagship: cumulative adoption — only goes up, at different speeds. */}
           <div className="chart-container">
             <div className="chart-header flex items-center justify-between gap-3">
-              <h4 title="Distinct people committing per complete month (top) and commit volume (bottom) — two aligned panels, one shared time axis, no dual-axis tricks. A decline is visible here; cumulative curves structurally hide it.">
-                Building activity — people &amp; commits by month
+              <h4 title="Running totals from each project's full git history: distinct people who ever committed, projects ever touched, and commit volume. Cumulative lines include the running month honestly — the last point is simply mid-climb.">
+                Cumulative adoption — people, projects &amp; commits
               </h4>
             </div>
-            <EngagementTrendChart points={gitTrendComplete} />
+            <CumulativeAdoptionChart points={cumulativePoints} />
           </div>
-          {lifecyclePoints.length >= 2 && (
+          {builderMonthly && rosterAxis.length >= 2 && builders.length > 0 && (
             <div className="chart-container">
               <div className="chart-header flex items-center justify-between gap-3">
-                <h4 title="Every active builder each quarter is either new (first-ever commit) or returning (had built before). Lapsed = built the previous quarter but not this one. Complete quarters only.">
-                  Builder lifecycle — new, returning &amp; lapsed by quarter
+                <h4 title="One row per builder, colored by monthly git commits (darker = more, relative to that person's own peak). Named people ARE the adoption story at this scale.">
+                  Builder roster — who's been active, month by month
                 </h4>
+                <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+                  last {rosterAxis.length} complete months
+                </span>
               </div>
-              <BuilderLifecycleChart points={lifecyclePoints} />
+              <BuilderRoster
+                builders={builders}
+                builderMonthly={builderMonthly}
+                monthsAxis={rosterAxis}
+                nowMs={nowMs}
+              />
             </div>
           )}
           {pulse && <PulseCard pulse={pulse} nowMs={nowMs} />}
@@ -1409,16 +1607,69 @@ export function AdoptionPage() {
             <ChapterHeader
               no="02"
               title="What's being made, and by whom?"
+              answer={ch2Answer}
               caption={`surviving objects only — deleted work is invisible · ${inventoryView.taggedObjects.toLocaleString()} of ${inventoryView.objectsBuilt.toLocaleString()} carry creator tags`}
             />
-            {creationPoints.length > 0 && (
+            {/* What gets built — cumulative racing lines per family group. */}
+            {inventoryView.trendPoints.length > 0 && (
               <div className="chart-container">
                 <div className="chart-header flex items-center justify-between gap-3">
-                  <h4 title="Objects created per complete month, stacked by family group — one shared axis, actual magnitudes. Counts tagged objects only; scenarios, notebooks and wikis carry no creation tag and appear in totals, never here.">
-                    Objects created by month — last {creationPoints.length} complete months
+                  <h4
+                    title={`Cumulative surviving objects by family group across the whole config history. Counts tagged objects only — ${inventoryView.taggedObjects.toLocaleString()} of ${inventoryView.objectsBuilt.toLocaleString()} objects carry creation tags (scenarios, notebooks and wikis are untagged and appear in totals, never in these curves).`}
+                  >
+                    What gets built here — cumulative, by family
                   </h4>
                 </div>
-                <MonthlyCreationChart points={creationPoints} />
+                <CumulativeCreationChart points={inventoryView.trendPoints} />
+                <div className="border-t border-[var(--border-glass)] px-4 py-2 text-[10px] text-[var(--text-tertiary)]">
+                  surviving tagged objects only ({inventoryView.taggedObjects.toLocaleString()} of{' '}
+                  {inventoryView.objectsBuilt.toLocaleString()}) — deleted work is invisible
+                </div>
+              </div>
+            )}
+            {/* Monthly creation rhythm — one small multiple per family group. */}
+            {rhythmPoints.length > 0 && (
+              <div className="chart-container">
+                <div className="chart-header flex items-center justify-between gap-3">
+                  <h4 title="Objects created per complete month, one chart per family group — same slot colors as everywhere else. The running month is excluded (rate charts only plot complete months).">
+                    Monthly creation rhythm — last {rhythmPoints.length} complete months
+                  </h4>
+                </div>
+                <div className="grid grid-cols-1 gap-x-6 gap-y-4 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {TREND_GROUPS.map((group, gi) => {
+                    const groupTotal = rhythmPoints.reduce((s, p) => s + (p.groups[gi] ?? 0), 0);
+                    const cols: ColPoint[] = rhythmPoints.map((p) => ({
+                      key: p.month,
+                      value: p.groups[gi] ?? 0,
+                      title: `${monthLabel(p.month)} · ${(p.groups[gi] ?? 0).toLocaleString()} ${group.label.toLowerCase()}`,
+                    }));
+                    return (
+                      <div key={group.key}>
+                        <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                          <span className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+                            <span
+                              className="h-1.5 w-1.5 rounded-[2px]"
+                              style={{ background: TREND_GROUP_COLORS[gi] }}
+                            />
+                            {group.label}
+                          </span>
+                          <span className="font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]">
+                            {groupTotal.toLocaleString()} in window
+                          </span>
+                        </div>
+                        <MiniColumns
+                          points={cols}
+                          color={TREND_GROUP_COLORS[gi]}
+                          height={56}
+                          gap={2}
+                          showValues={false}
+                          axisLeft={monthLabel(rhythmPoints[0].month)}
+                          axisRight={monthLabel(rhythmPoints[rhythmPoints.length - 1].month)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
             <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
@@ -1649,6 +1900,7 @@ export function AdoptionPage() {
             <ChapterHeader
               no="03"
               title="What's at risk?"
+              answer={ch3Answer}
               caption="seat caps from the DSS license · creator joins from surviving objects only"
             />
             <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">

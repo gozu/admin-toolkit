@@ -160,7 +160,7 @@ export function AgentSettingsPage() {
               rel="noopener noreferrer"
               className="text-[var(--accent)] hover:underline"
             >
-              agentic-actions master switch ↗
+              Master kill-switch ↗
             </a>{' '}
             and per-plan human approval — this page only decides which actions exist for the
             agents at all.

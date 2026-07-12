@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.736",
+    "version": "0.4.737",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -249,8 +249,8 @@
         },
         {
             "name": "enable_red_actions",
-            "label": "Enable agentic actions",
-            "description": "Master kill-switch. OFF = execute-admin-action always refuses, regardless of per-agent settings.",
+            "label": "Master kill-switch",
+            "description": "OFF = execute-admin-action always refuses, regardless of per-agent settings. LLMs can be unpredictable. Do not trust blindly & thoroughly verify proposed actions.",
             "type": "BOOLEAN",
             "mandatory": false,
             "defaultValue": false

@@ -943,7 +943,6 @@ export function AdoptionPage() {
   const trend = data?.monthlyTrend ?? EMPTY;
   const cohorts = data?.cohorts ?? EMPTY;
   const recency = data?.builderRecency ?? EMPTY;
-  const repeatBuilders = data?.repeatBuilders;
   // Reference "now": the payload's own timestamp (never the wall clock — the
   // React Compiler purity rule bans Date.now() in render, and server time is
   // the honest reference anyway). Falls back across the three payloads.
@@ -1543,15 +1542,6 @@ export function AdoptionPage() {
                 label={`Active projects (${totals?.inactiveThresholdDays ?? '—'}d)`}
               />
             </div>
-            {repeatBuilders && repeatBuilders.total > 0 && (
-              <div title="Builders active in at least two distinct months — they came back after their first build.">
-                <BigStat
-                  value={`${repeatBuilders.repeat} of ${repeatBuilders.total}`}
-                  label="Builders returned (≥2 months)"
-                  sub={pctLabel(repeatBuilders.repeat, repeatBuilders.total)}
-                />
-              </div>
-            )}
           </div>
         </motion.div>
 

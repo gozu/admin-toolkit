@@ -442,6 +442,102 @@ function CapabilityTimeline({
   );
 }
 
+// ── The tech stack ───────────────────────────────────────────────────────────
+// What the estate actually runs on: storage/connection types (dataset
+// subtypes), languages (code-recipe types), and app frameworks (webapp kinds),
+// ranked by surviving object count. Languages and frameworks go through
+// curated maps so internal type ids (plugin recipe ids, engine noise) never
+// leak into the UI; dataset subtypes ARE the storage vocabulary and pass
+// through with a light prettifier.
+type TechCategory = 'storage' | 'language' | 'framework';
+
+const TECH_CATEGORY_META: Record<TechCategory, { noun: string; color: string }> = {
+  storage: { noun: 'datasets on', color: 'var(--viz-cat-1)' },
+  language: { noun: 'code recipes in', color: 'var(--viz-cat-3)' },
+  framework: { noun: 'webapps built with', color: 'var(--viz-cat-5)' },
+};
+
+const CODE_RECIPE_LANGUAGES: Record<string, string> = {
+  python: 'Python',
+  custom_python: 'Python',
+  streaming_python: 'Python (streaming)',
+  pyspark: 'PySpark',
+  sql_query: 'SQL',
+  sql_script: 'SQL',
+  spark_sql_query: 'Spark SQL',
+  hive: 'Hive',
+  impala: 'Impala',
+  r: 'R',
+  custom_r: 'R',
+  shell: 'Shell',
+  spark_scala: 'Scala',
+  code_studio: 'Code Studio',
+};
+
+const WEBAPP_FRAMEWORKS: Record<string, string> = {
+  STANDARD: 'HTML/JS webapps',
+  BOKEH: 'Bokeh',
+  DASH: 'Dash',
+  SHINY: 'Shiny',
+  GRADIO: 'Gradio',
+  STREAMLIT: 'Streamlit',
+};
+
+const DATASET_TYPE_LABELS: Record<string, string> = {
+  UploadedFiles: 'Uploaded files',
+  Filesystem: 'Server filesystem',
+  FilesInFolder: 'Files in folder',
+  ManagedFolder: 'Managed folder',
+  SQLServer: 'SQL Server',
+  hiveserver2: 'Hive',
+  Inline: 'Editable (inline)',
+  ElasticSearch: 'Elasticsearch',
+  GCS: 'Google Cloud Storage',
+  S3: 'Amazon S3',
+};
+
+interface TechStackItem {
+  label: string;
+  cat: TechCategory;
+  count: number;
+}
+
+/** Ranked technology rows — category dot, relative bar, mono count. */
+function TechStackList({ items }: { items: TechStackItem[] }) {
+  const max = Math.max(1, ...items.map((i) => i.count));
+  return (
+    <div className="space-y-0.5">
+      {items.map((it) => (
+        <div
+          key={`${it.cat}:${it.label}`}
+          className="adk-hover-row -mx-1 flex items-center gap-2 px-1 py-0.5"
+          title={`${it.count.toLocaleString()} surviving ${TECH_CATEGORY_META[it.cat].noun} ${it.label}`}
+        >
+          <span
+            className="h-2 w-2 flex-shrink-0 rounded-[2px]"
+            style={{ background: TECH_CATEGORY_META[it.cat].color }}
+          />
+          <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-secondary)]">
+            {it.label}
+          </span>
+          <span className="h-1 min-w-14 max-w-[200px] flex-1 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+            <span
+              className="block h-full rounded-full transition-[width] duration-500"
+              style={{
+                width: `${(it.count / max) * 100}%`,
+                background: TECH_CATEGORY_META[it.cat].color,
+              }}
+            />
+          </span>
+          <span className="w-14 flex-shrink-0 text-right font-mono text-xs tabular-nums text-[var(--text-primary)]">
+            {it.count.toLocaleString()}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const MONTH_ABBR = [
   'Jan',
   'Feb',
@@ -967,28 +1063,40 @@ export function AdoptionPage() {
     .filter((f): f is NonNullable<typeof f> => f != null)
     .sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : 0));
 
-  // Project depth histogram: surviving objects per project (order-of-magnitude
-  // buckets) — how much of the estate is skeleton vs substance.
-  const projectDepthCols: ColPoint[] = (() => {
-    const buckets = [
-      { label: '1–9', min: 1, max: 9 },
-      { label: '10–49', min: 10, max: 49 },
-      { label: '50–199', min: 50, max: 199 },
-      { label: '200+', min: 200, max: Number.POSITIVE_INFINITY },
-    ];
-    const counts = buckets.map(() => 0);
-    for (const row of inventoryView?.projectRows ?? []) {
-      const bi = buckets.findIndex((b) => row.objectCount >= b.min && row.objectCount <= b.max);
-      if (bi >= 0) counts[bi]++;
+  // The tech stack: top technologies by surviving object count — storage from
+  // dataset subtypes, languages from code-recipe types, frameworks from
+  // webapp kinds. Curated label maps keep internal ids out of the UI.
+  const techStack: TechStackItem[] = (() => {
+    const fams = inventoryView?.inventory.families;
+    if (!fams) return [];
+    const agg = new Map<string, TechStackItem>();
+    const add = (label: string, cat: TechCategory, count: number) => {
+      const k = `${cat}:${label}`;
+      const cur = agg.get(k);
+      if (cur) cur.count += count;
+      else agg.set(k, { label, cat, count });
+    };
+    for (const [sub, n] of Object.entries(fams.dataset?.subtypes ?? {})) {
+      // Unmapped dataset types read fine after a camelCase → spaced pass.
+      add(DATASET_TYPE_LABELS[sub] ?? sub.replace(/([a-z0-9])([A-Z])/g, '$1 $2'), 'storage', n);
     }
-    return buckets.map((b, i) => ({
-      key: b.label,
-      value: counts[i],
-      label: b.label,
-      title: `${counts[i].toLocaleString()} ${counts[i] === 1 ? 'project' : 'projects'} with ${b.label} surviving objects`,
-    }));
+    for (const fam of [
+      'recipe-python',
+      'recipe-sql',
+      'recipe-r',
+      'recipe-plugin',
+      'recipe-other',
+    ] as const) {
+      for (const [sub, n] of Object.entries(fams[fam]?.subtypes ?? {})) {
+        const label = CODE_RECIPE_LANGUAGES[sub];
+        if (label) add(label, 'language', n); // plugin/internal ids stay out
+      }
+    }
+    for (const [sub, n] of Object.entries(fams.webapp?.subtypes ?? {})) {
+      add(WEBAPP_FRAMEWORKS[sub] ?? sub.charAt(0) + sub.slice(1).toLowerCase(), 'framework', n);
+    }
+    return [...agg.values()].sort((a, b) => b.count - a.count).slice(0, 10);
   })();
-  const projectDepthMeasured = projectDepthCols.reduce((s, c) => s + c.value, 0);
 
   const busFactor = inventoryView?.busFactor;
   const singleSharePct =
@@ -1586,9 +1694,8 @@ export function AdoptionPage() {
             )}
             {/* Decline-proof pair: when each capability arrived (firsts) and
                 how deep the surviving projects run. */}
-            {/* Default grid stretch keeps the pair the same height; the depth
-                histogram fills whatever the firsts list dictates. */}
-            {(capabilityFirsts.length > 0 || projectDepthMeasured > 0) && (
+            {/* Default grid stretch keeps the pair the same height. */}
+            {(capabilityFirsts.length > 0 || techStack.length > 0) && (
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 {capabilityFirsts.length > 0 && (
                   <div className="chart-container">
@@ -1606,25 +1713,21 @@ export function AdoptionPage() {
                     </div>
                   </div>
                 )}
-                {projectDepthMeasured > 0 && (
+                {techStack.length > 0 && (
                   <div className="chart-container flex flex-col">
                     <div className="chart-header flex items-center justify-between gap-3">
-                      <h4 title="How many surviving objects each project holds, bucketed by order of magnitude — how much of the estate is skeleton vs substance.">
-                        Project depth — surviving objects per project
+                      <h4 title="Top technologies by surviving object count: storage/connection types from dataset subtypes, languages from code-recipe types, app frameworks from webapp kinds.">
+                        Tech stack — what the estate runs on
                       </h4>
                     </div>
-                    <div className="min-h-[110px] min-w-0 flex-1 px-4 py-3">
-                      <MiniColumns
-                        points={projectDepthCols}
-                        color="var(--viz-cat-2)"
-                        gap={6}
-                        fill
-                      />
+                    <div className="min-w-0 flex-1 px-4 py-3">
+                      <TechStackList items={techStack} />
                     </div>
                     <div className="border-t border-[var(--border-glass)] px-4 py-2 text-xs text-[var(--text-tertiary)]">
-                      surviving objects only ({projectDepthMeasured.toLocaleString()}{' '}
-                      {projectDepthMeasured === 1 ? 'project' : 'projects'} measured) — deleted work
-                      is invisible
+                      top 10 by surviving objects —{' '}
+                      <span style={{ color: 'var(--viz-cat-1)' }}>■</span> storage ·{' '}
+                      <span style={{ color: 'var(--viz-cat-3)' }}>■</span> code languages ·{' '}
+                      <span style={{ color: 'var(--viz-cat-5)' }}>■</span> webapp frameworks
                     </div>
                   </div>
                 )}

@@ -3,8 +3,10 @@ import { Chart } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   LineController,
+  BarController,
   LineElement,
   PointElement,
+  BarElement,
   LinearScale,
   CategoryScale,
   Filler,
@@ -13,17 +15,22 @@ import {
   type TooltipItem,
 } from 'chart.js';
 import { CHART_PALETTE } from '../../utils/chartColors';
-import { BASE_TOOLTIP_STYLE, baseLegendLabels } from '../../utils/chartConfig';
+import { BASE_TOOLTIP_STYLE, baseLegendLabels, lineTraceAnimation } from '../../utils/chartConfig';
+import { quarterLabel } from '../../utils/inventoryData';
 
 // Flagship: cumulative "only goes up" adoption lines — people who ever built,
 // projects ever touched, total commits. A partial month on a cumulative line
 // is just the last point mid-climb (never a fake decline), so the current
 // month is plotted honestly, unlike the rate charts elsewhere on the page.
-// No date adapter is bundled — plain CategoryScale over 'YYYY-MM' buckets.
+// Trimester mode re-plots the SAME series as per-quarter deltas (bars) —
+// complete quarters only, and "new builders" is a first-commit cohort, never
+// an active-user count. No date adapter is bundled — plain CategoryScale.
 ChartJS.register(
   LineController,
+  BarController,
   LineElement,
   PointElement,
+  BarElement,
   LinearScale,
   CategoryScale,
   Filler,
@@ -32,6 +39,7 @@ ChartJS.register(
 );
 
 const COMMITS_LINE = 'rgba(153, 123, 224, 0.9)';
+const COMMITS_FILL = 'rgba(153, 123, 224, 0.78)';
 const PROJECTS_LINE = CHART_PALETTE.mintBorder;
 
 const MONTH_ABBR = [
@@ -62,12 +70,68 @@ export interface CumulativePoint {
   commits: number; // total human commits by then
 }
 
-export function CumulativeAdoptionChart({ points }: { points: CumulativePoint[] }) {
+export interface QuarterlyAdoptionPoint {
+  quarter: string; // 'YYYY-Qn' — complete quarters only
+  newBuilders: number; // first-commit cohort: people whose FIRST commit fell here
+  newProjects: number; // projects first touched this quarter
+  commits: number; // commit volume this quarter
+}
+
+const BAR_STYLE = {
+  type: 'bar' as const,
+  borderWidth: 0,
+  borderRadius: 2,
+  barPercentage: 0.7,
+  categoryPercentage: 0.9,
+  maxBarThickness: 48,
+};
+
+export function CumulativeAdoptionChart({
+  points,
+  mode = 'cumulative',
+  quarterly = [],
+}: {
+  points: CumulativePoint[];
+  mode?: 'cumulative' | 'trimester';
+  quarterly?: QuarterlyAdoptionPoint[];
+}) {
   const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
   const tickColor = isDark ? 'rgba(160,160,176,0.85)' : 'rgba(60,60,80,0.7)';
   const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const trimester = mode === 'trimester';
 
   const chartData = useMemo(() => {
+    if (trimester) {
+      return {
+        labels: quarterly.map((q) => q.quarter),
+        datasets: [
+          {
+            ...BAR_STYLE,
+            label: 'New builders (first commit)',
+            data: quarterly.map((q) => q.newBuilders),
+            backgroundColor: CHART_PALETTE.blue,
+            yAxisID: 'y',
+            order: 0,
+          },
+          {
+            ...BAR_STYLE,
+            label: 'Newly touched projects',
+            data: quarterly.map((q) => q.newProjects),
+            backgroundColor: CHART_PALETTE.mint,
+            yAxisID: 'y',
+            order: 1,
+          },
+          {
+            ...BAR_STYLE,
+            label: 'Commits',
+            data: quarterly.map((q) => q.commits),
+            backgroundColor: COMMITS_FILL,
+            yAxisID: 'y1',
+            order: 2,
+          },
+        ],
+      };
+    }
     const lineBase = {
       type: 'line' as const,
       tension: 0.25,
@@ -87,6 +151,7 @@ export function CumulativeAdoptionChart({ points }: { points: CumulativePoint[] 
           fill: 'origin' as const,
           yAxisID: 'y',
           order: 0,
+          animations: lineTraceAnimation(points.length, 'y'),
         },
         {
           ...lineBase,
@@ -95,6 +160,7 @@ export function CumulativeAdoptionChart({ points }: { points: CumulativePoint[] 
           borderColor: PROJECTS_LINE,
           yAxisID: 'y',
           order: 1,
+          animations: lineTraceAnimation(points.length, 'y'),
         },
         {
           ...lineBase,
@@ -104,10 +170,11 @@ export function CumulativeAdoptionChart({ points }: { points: CumulativePoint[] 
           borderDash: [5, 3],
           yAxisID: 'y1',
           order: 2,
+          animations: lineTraceAnimation(points.length, 'y1'),
         },
       ],
     };
-  }, [points]);
+  }, [points, quarterly, trimester]);
 
   const options = useMemo(
     () => ({
@@ -119,9 +186,14 @@ export function CumulativeAdoptionChart({ points }: { points: CumulativePoint[] 
         tooltip: {
           ...BASE_TOOLTIP_STYLE,
           callbacks: {
-            title: (items: TooltipItem<'line'>[]) =>
-              items.length ? `${monthLabel(String(items[0].label))} · running totals` : '',
-            label: (ctx: TooltipItem<'line'>) => `${ctx.dataset.label}: ${ctx.formattedValue}`,
+            title: (items: TooltipItem<'line' | 'bar'>[]) =>
+              items.length
+                ? trimester
+                  ? `${quarterLabel(String(items[0].label))} · new this quarter`
+                  : `${monthLabel(String(items[0].label))} · running totals`
+                : '',
+            label: (ctx: TooltipItem<'line' | 'bar'>) =>
+              `${ctx.dataset.label}: ${ctx.formattedValue}`,
           },
         },
       },
@@ -135,7 +207,9 @@ export function CumulativeAdoptionChart({ points }: { points: CumulativePoint[] 
             maxTicksLimit: 12,
             font: { size: 10, family: "'JetBrains Mono', monospace" },
             callback(_value: unknown, index: number) {
-              return monthLabel(points[index]?.month ?? '');
+              return trimester
+                ? quarterLabel(quarterly[index]?.quarter ?? '')
+                : monthLabel(points[index]?.month ?? '');
             },
           },
         },
@@ -148,7 +222,12 @@ export function CumulativeAdoptionChart({ points }: { points: CumulativePoint[] 
             precision: 0,
             font: { size: 10, family: "'JetBrains Mono', monospace" },
           },
-          title: { display: true, text: 'People / projects', color: tickColor, font: { size: 10 } },
+          title: {
+            display: true,
+            text: trimester ? 'New people / projects' : 'People / projects',
+            color: tickColor,
+            font: { size: 10 },
+          },
         },
         y1: {
           beginAtZero: true,
@@ -163,20 +242,20 @@ export function CumulativeAdoptionChart({ points }: { points: CumulativePoint[] 
         },
       },
     }),
-    [points, tickColor, gridColor],
+    [points, quarterly, trimester, tickColor, gridColor],
   );
 
-  if (points.length === 0) {
+  if (trimester ? quarterly.length === 0 : points.length === 0) {
     return (
       <div className="flex h-[300px] items-center justify-center text-sm text-[var(--text-muted)]">
-        No git history yet.
+        {trimester ? 'No complete quarters yet.' : 'No git history yet.'}
       </div>
     );
   }
 
   return (
     <div className="chart-body" style={{ height: '300px' }}>
-      <Chart type="line" data={chartData} options={options} />
+      <Chart type={trimester ? 'bar' : 'line'} data={chartData} options={options} />
     </div>
   );
 }

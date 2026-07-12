@@ -511,7 +511,7 @@ def api_tools_inactive_projects():
     def _load():
         client = g.client
         catalog = _list_projects_catalog(client)
-        inactive_threshold_days = _outreach_thresholds.get('inactive_project_days', 180)
+        inactive_threshold_days = _outreach_thresholds.get('inactive_project_days', 365)
         now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
         results = []
         for entry in catalog:

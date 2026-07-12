@@ -24,10 +24,14 @@ import { DataGrid } from '../common/DataGrid';
 import { ProgressIndicator } from '../common/ProgressIndicator';
 import { BigStat, SegmentBar, UsageBar } from './missionControl/microViz';
 import { TILE_VARIANTS } from './missionControl/tokens';
-import { CumulativeAdoptionChart, type CumulativePoint } from './CumulativeAdoptionChart';
+import {
+  CumulativeAdoptionChart,
+  type CumulativePoint,
+  type QuarterlyAdoptionPoint,
+} from './CumulativeAdoptionChart';
 import { OnboardingChart, type OnboardingQuarterPoint } from './OnboardingChart';
 import type { ColumnDef } from '../../utils/dataGridTypes';
-import type { AdoptionMonthPoint, AdoptionProjectRow, AdoptionPulseData } from '../../types';
+import type { AdoptionProjectRow, AdoptionPulseData } from '../../types';
 import './adoption.css';
 
 const EMPTY: never[] = [];
@@ -40,9 +44,6 @@ const SPARK_MONTHS = 12;
 const MIN_TTFB_USERS = 5;
 // "Recently active" window for the funnel and idle-seat detection.
 const ACTIVE_DAYS = 90;
-// Momentum compares human commit volume over this many complete months vs
-// the same span before.
-const MOMENTUM_MONTHS = 12;
 // Below these floors, onboarding renders a sentence instead of slab bars.
 const MIN_ONBOARDING_QUARTERS = 3;
 const MIN_ONBOARDING_USERS = 5;
@@ -210,6 +211,7 @@ function MiniColumns({
   axisRight,
   valueSuffix = '',
   showValues = true,
+  fill = false,
 }: {
   points: ColPoint[];
   color?: string;
@@ -220,6 +222,9 @@ function MiniColumns({
   valueSuffix?: string;
   /** Hide the hover value row (dense sparklines). */
   showValues?: boolean;
+  /** Fill the parent's height (needs a definite flex/grid height) instead of
+   * a fixed pixel height — percent bar heights resolve against the flexed row. */
+  fill?: boolean;
 }) {
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -230,8 +235,11 @@ function MiniColumns({
   const max = Math.max(1, ...points.map((p) => p.value));
   const hasLabels = points.some((p) => p.label);
   return (
-    <div>
-      <div className="flex items-end" style={{ height, gap: `${gap}px` }}>
+    <div className={fill ? 'flex h-full min-h-0 flex-col' : undefined}>
+      <div
+        className={`flex items-end${fill ? ' min-h-0 flex-1' : ''}`}
+        style={fill ? { gap: `${gap}px` } : { height, gap: `${gap}px` }}
+      >
         {points.map((p, i) => (
           <div
             key={p.key}
@@ -296,6 +304,13 @@ function MiniCumulative({
   unitLabel: string;
   height?: number;
 }) {
+  // Trace-in: the line draws itself left-to-right on mount (dashoffset sweep),
+  // the area fill fades up behind it.
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
   if (values.length === 0) return null;
   const max = Math.max(1, values[values.length - 1]);
   const n = values.length;
@@ -315,7 +330,12 @@ function MiniCumulative({
         preserveAspectRatio="none"
         role="img"
       >
-        <path d={area} fill={color} opacity={0.12} />
+        <path
+          d={area}
+          fill={color}
+          opacity={ready ? 0.12 : 0}
+          style={{ transition: 'opacity 500ms ease-out 300ms' }}
+        />
         <path
           d={line}
           fill="none"
@@ -323,6 +343,10 @@ function MiniCumulative({
           strokeWidth={1.5}
           vectorEffect="non-scaling-stroke"
           strokeLinejoin="round"
+          pathLength={1}
+          strokeDasharray="1"
+          strokeDashoffset={ready ? 0 : 1}
+          style={{ transition: 'stroke-dashoffset 700ms ease-out' }}
         />
         {values.map((v, i) => (
           <rect
@@ -341,6 +365,75 @@ function MiniCumulative({
         <span>{monthLabel(months[0])}</span>
         <span>{monthLabel(months[n - 1])}</span>
       </div>
+    </div>
+  );
+}
+
+type TrendMode = 'cumulative' | 'trimester';
+
+/** Two-button pill switching the trend cards between all-time cumulative
+ * curves and per-quarter bars. One page-level state — every card that carries
+ * the toggle stays in sync. Trimester mode plots complete quarters only
+ * (matching the page's partial-period honesty); cumulative keeps the running
+ * month, where the last point is simply mid-climb. */
+function TrendModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: TrendMode;
+  onChange: (mode: TrendMode) => void;
+}) {
+  return (
+    <div className="flex flex-shrink-0 overflow-hidden rounded border border-[var(--border-glass)]">
+      {(
+        [
+          ['cumulative', 'Cumulative'],
+          ['trimester', 'Per quarter'],
+        ] as const
+      ).map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={mode === value}
+          onClick={() => onChange(value)}
+          className={`px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] transition-colors ${
+            mode === value
+              ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+              : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Chronological "firsts" list — the month each capability (family) first
+ * shows a surviving tagged creation. Survivorship caveat applies: deleted
+ * early work is invisible, so a first can only be later than reality. */
+function CapabilityTimeline({
+  items,
+}: {
+  items: Array<{ key: string; label: string; color: string; month: string }>;
+}) {
+  return (
+    <div className="space-y-0.5">
+      {items.map((it) => (
+        <div
+          key={it.key}
+          title={`First surviving ${it.label.toLowerCase()} created in ${monthLabel(it.month)}. Earlier, since-deleted work would be invisible — this is the latest the capability can have arrived.`}
+          className="adk-hover-row -mx-1 flex items-center gap-2 px-1 py-0.5"
+        >
+          <span className="w-14 flex-shrink-0 font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]">
+            {monthLabel(it.month)}
+          </span>
+          <span className="h-2 w-2 flex-shrink-0 rounded-[2px]" style={{ background: it.color }} />
+          <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]">
+            first {it.label.toLowerCase()}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -631,7 +724,7 @@ function PulseCard({ pulse, nowMs }: { pulse: AdoptionPulseData; nowMs: number }
           No human audit events in the last {pulse.windowHours ?? 72}h.
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-x-6 gap-y-3 px-4 py-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-x-6 gap-y-3 px-4 py-4 lg:grid-cols-2">
           <div className="flex flex-col gap-3">
             <div className="flex items-baseline gap-4">
               <BigStat value={totalEvents.toLocaleString()} label="Audit events (human)" />
@@ -674,23 +767,27 @@ function PulseCard({ pulse, nowMs }: { pulse: AdoptionPulseData; nowMs: number }
               </div>
             )}
           </div>
-          <div className="min-w-0">
-            <MiniColumns
-              points={pulseCols}
-              height={110}
-              gap={1}
-              showValues={false}
-              axisLeft={
-                pulse.firstEventMs != null
-                  ? `${Math.max(1, Math.round((nowMs - pulse.firstEventMs) / HOUR_MS))}h ago`
-                  : undefined
-              }
-              axisRight={
-                pulse.lastEventMs != null
-                  ? `newest ${Math.round((nowMs - pulse.lastEventMs) / HOUR_MS) <= 0 ? 'this hour' : `${Math.round((nowMs - pulse.lastEventMs) / HOUR_MS)}h ago`}`
-                  : undefined
-              }
-            />
+          <div className="flex min-w-0 flex-col">
+            {/* Grid stretch gives this cell the left column's height; the
+                chart flexes to fill it (min-h floor keeps sparse cards sane). */}
+            <div className="min-h-[110px] flex-1">
+              <MiniColumns
+                points={pulseCols}
+                fill
+                gap={1}
+                showValues={false}
+                axisLeft={
+                  pulse.firstEventMs != null
+                    ? `${Math.max(1, Math.round((nowMs - pulse.firstEventMs) / HOUR_MS))}h ago`
+                    : undefined
+                }
+                axisRight={
+                  pulse.lastEventMs != null
+                    ? `newest ${Math.round((nowMs - pulse.lastEventMs) / HOUR_MS) <= 0 ? 'this hour' : `${Math.round((nowMs - pulse.lastEventMs) / HOUR_MS)}h ago`}`
+                    : undefined
+                }
+              />
+            </div>
             <div className="pt-1.5 text-[10px] text-[var(--text-tertiary)]">
               human events per hour ·{' '}
               {pulse.exhaustedFiles
@@ -714,6 +811,7 @@ export function AdoptionPage() {
   const evState = adoptionEventsScan.use();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [showAllProjects, setShowAllProjects] = useState(false);
+  const [trendMode, setTrendMode] = useState<TrendMode>('cumulative');
 
   useEffect(() => {
     if (!scanStarted) void adoptionScan.load();
@@ -765,24 +863,6 @@ export function AdoptionPage() {
   ).length;
   const buildersAreSubset = totals != null && accountCount >= totals.builderCount;
 
-  // Momentum on COMMIT VOLUME (the highest-base series we have), always with
-  // the absolute before/after visible. A percentage over a tiny base is a
-  // coin flip dressed as a trend — below the floor we show only absolutes.
-  const sum = (pts: AdoptionMonthPoint[]) => pts.reduce((s, p) => s + p.commits, 0);
-  const commitsRecent12 =
-    gitTrendComplete.length >= MOMENTUM_MONTHS
-      ? sum(gitTrendComplete.slice(-MOMENTUM_MONTHS))
-      : null;
-  const commitsPrior12 =
-    gitTrendComplete.length >= MOMENTUM_MONTHS * 2
-      ? sum(gitTrendComplete.slice(-MOMENTUM_MONTHS * 2, -MOMENTUM_MONTHS))
-      : null;
-  const MOMENTUM_MIN_BASE = 50;
-  const momentumPct =
-    commitsRecent12 != null && commitsPrior12 != null && commitsPrior12 >= MOMENTUM_MIN_BASE
-      ? ((commitsRecent12 - commitsPrior12) / commitsPrior12) * 100
-      : null;
-
   // Flagship cumulative series: people who ever built / projects ever active /
   // total commits, month by month (current month included — a cumulative line
   // plots the running month honestly: the last point is simply mid-climb).
@@ -813,21 +893,101 @@ export function AdoptionPage() {
     });
   })();
 
+  // Trimester view of the same flagship series: last cumulative point per
+  // COMPLETE quarter, diffed against the previous one. "New builders" is a
+  // first-commit cohort (people whose first commit fell in that quarter) — a
+  // throughput measure, never an active-user count. The earliest history
+  // quarter can be partial at its start (git history simply begins there).
+  const quarterlyPoints: QuarterlyAdoptionPoint[] = (() => {
+    const lastByQuarter = new Map<string, CumulativePoint>();
+    for (const p of cumulativePoints) {
+      const q = monthToQuarter(p.month);
+      if (q >= currentQuarterKey) continue;
+      lastByQuarter.set(q, p); // months ascend, so the last write wins
+    }
+    let prev: CumulativePoint | undefined;
+    return [...lastByQuarter.entries()].map(([quarter, cum]) => {
+      const point = {
+        quarter,
+        newBuilders: cum.builders - (prev?.builders ?? 0),
+        newProjects: cum.projects - (prev?.projects ?? 0),
+        commits: cum.commits - (prev?.commits ?? 0),
+      };
+      prev = cum;
+      return point;
+    });
+  })();
+
   // ── inventory-fed derivations (all null-safe) ─────────────────────────────
   const inventoryView = buildInventoryView(invState.data, recency);
   const creationTrend = inventoryView?.trendPoints ?? EMPTY;
 
   // Per-family cumulative curves (one small multiple each, no combined chart,
   // no "Other" bucket). Families whose objects never carry creation tags stay
-  // flat at 0 — they're skipped and listed in the footnote instead.
+  // flat at 0 — they're skipped and listed in the footnote instead. Each card
+  // also carries a per-quarter view (complete quarters only) summed from the
+  // same monthly detail series; the earliest quarter can be partial at its
+  // start, where config history simply begins.
+  const creationQuarterAxis = (() => {
+    const axis: string[] = [];
+    for (const p of creationTrend) {
+      const q = monthToQuarter(p.month);
+      if (q >= currentQuarterKey) continue;
+      if (axis[axis.length - 1] !== q) axis.push(q);
+    }
+    return axis;
+  })();
+  const creationQuarterIndex = new Map(creationQuarterAxis.map((q, i) => [q, i]));
   const detailCumulative = DETAIL_GROUPS.map((group, gi) => {
     let running = 0;
-    const values = creationTrend.map((p) => (running += p.detail[gi] ?? 0));
-    return { group, color: DETAIL_GROUP_COLORS[gi], values, total: running };
+    const values: number[] = [];
+    const quarterly = creationQuarterAxis.map(() => 0);
+    for (const p of creationTrend) {
+      const created = p.detail[gi] ?? 0;
+      running += created;
+      values.push(running);
+      const qi = creationQuarterIndex.get(monthToQuarter(p.month));
+      if (qi != null) quarterly[qi] += created;
+    }
+    return { group, color: DETAIL_GROUP_COLORS[gi], values, quarterly, total: running };
   });
   const detailCharts = detailCumulative.filter((d) => d.total > 0);
   const detailEmpty = detailCumulative.filter((d) => d.total === 0);
   const creationMonthsAxis = creationTrend.map((p) => p.month);
+
+  // Capability firsts: the first month each family shows a surviving tagged
+  // creation, sorted chronologically — the order capabilities arrived here.
+  const capabilityFirsts = DETAIL_GROUPS.map((group, gi) => {
+    const first = creationTrend.find((p) => (p.detail[gi] ?? 0) > 0);
+    return first == null
+      ? null
+      : { key: group.key, label: group.label, color: DETAIL_GROUP_COLORS[gi], month: first.month };
+  })
+    .filter((f): f is NonNullable<typeof f> => f != null)
+    .sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : 0));
+
+  // Project depth histogram: surviving objects per project (order-of-magnitude
+  // buckets) — how much of the estate is skeleton vs substance.
+  const projectDepthCols: ColPoint[] = (() => {
+    const buckets = [
+      { label: '1–9', min: 1, max: 9 },
+      { label: '10–49', min: 10, max: 49 },
+      { label: '50–199', min: 50, max: 199 },
+      { label: '200+', min: 200, max: Number.POSITIVE_INFINITY },
+    ];
+    const counts = buckets.map(() => 0);
+    for (const row of inventoryView?.projectRows ?? []) {
+      const bi = buckets.findIndex((b) => row.objectCount >= b.min && row.objectCount <= b.max);
+      if (bi >= 0) counts[bi]++;
+    }
+    return buckets.map((b, i) => ({
+      key: b.label,
+      value: counts[i],
+      label: b.label,
+      title: `${counts[i].toLocaleString()} ${counts[i] === 1 ? 'project' : 'projects'} with ${b.label} surviving objects`,
+    }));
+  })();
+  const projectDepthMeasured = projectDepthCols.reduce((s, c) => s + c.value, 0);
 
   const busFactor = inventoryView?.busFactor;
   const singleSharePct =
@@ -936,6 +1096,50 @@ export function AdoptionPage() {
   const topProjects = [...projects].sort((a, b) => b.commits - a.commits).slice(0, 20);
   const gridRows = showAllProjects ? projects : topProjects;
 
+  // Creator depth of the top-10 projects by commits: tagged-creator counts
+  // from the inventory where available, git author counts as fallback — do
+  // the projects carrying the most activity survive their busiest person?
+  const top10Projects = topProjects.slice(0, 10);
+  const topDepth = { single: 0, few: 0, many: 0 };
+  for (const p of top10Projects) {
+    const creators = invProjectByKey.get(p.projectKey)?.creatorCount || p.authorCount;
+    if (creators >= 4) topDepth.many++;
+    else if (creators >= 2) topDepth.few++;
+    else topDepth.single++;
+  }
+  const topDepthMulti = topDepth.few + topDepth.many;
+  // Same bucket semantics and colors as the single-author concentration card.
+  const topDepthItems: MixItem[] = [
+    {
+      key: 'single',
+      label: 'Single creator',
+      value: topDepth.single,
+      color: 'var(--neon-amber)',
+      hint: 'All context leaves with one person.',
+    },
+    { key: 'few', label: '2–3 creators', value: topDepth.few, color: 'var(--viz-cat-1)' },
+    { key: 'many', label: '4+ creators', value: topDepth.many, color: 'var(--neon-green)' },
+  ];
+
+  // Builder tenure — the "seasoned bench": span from each builder's first to
+  // last commit, all time. An experience measure, explicitly NOT an activity
+  // window (a builder who left two years ago still counts at full tenure).
+  const TENURE_BUCKETS = ['<1y', '1–2y', '2–3y', '3y+'];
+  const tenureCounts = TENURE_BUCKETS.map(() => 0);
+  let tenureMeasured = 0;
+  for (const b of builders) {
+    if (b.firstCommitMs == null || b.lastCommitMs == null) continue;
+    tenureMeasured++;
+    const years = (b.lastCommitMs - b.firstCommitMs) / (365 * DAY_MS);
+    tenureCounts[years < 1 ? 0 : years < 2 ? 1 : years < 3 ? 2 : 3]++;
+  }
+  const tenureCols: ColPoint[] = TENURE_BUCKETS.map((label, i) => ({
+    key: label,
+    value: tenureCounts[i],
+    label,
+    title: `${tenureCounts[i].toLocaleString()} ${tenureCounts[i] === 1 ? 'builder' : 'builders'} with ${label} between first and last commit`,
+  }));
+
   // The generated verdict — the page states its own conclusion instead of
   // making the reader reverse-engineer it from charts. Every clause is
   // computed and omitted when unmeasurable.
@@ -984,22 +1188,6 @@ export function AdoptionPage() {
         .
       </span>,
     );
-    if (commitsRecent12 != null && commitsPrior12 != null) {
-      verdict.push(
-        <span key="momentum">
-          {' '}
-          Commit volume moved from <strong>{commitsPrior12.toLocaleString()}</strong> to{' '}
-          <strong>{commitsRecent12.toLocaleString()}</strong> over the last two 12-month spans
-          {momentumPct != null ? (
-            <>
-              {' '}
-              (<strong>{`${momentumPct >= 0 ? '+' : ''}${momentumPct.toFixed(0)}%`}</strong>)
-            </>
-          ) : null}
-          .
-        </span>,
-      );
-    }
     if (inventoryView) {
       verdict.push(
         <span key="objects">
@@ -1292,34 +1480,6 @@ export function AdoptionPage() {
             </div>
             <div className="hidden h-8 w-px bg-[var(--border-glass)] sm:block" />
             <div
-              title={`Human commit volume, last ${MOMENTUM_MONTHS} complete months vs the ${MOMENTUM_MONTHS} before. The percentage is suppressed when the prior-year base is under ${'50'} commits — a % over a tiny base is a coin flip, not a trend.`}
-            >
-              <BigStat
-                value={
-                  momentumPct != null
-                    ? `${momentumPct >= 0 ? '+' : ''}${momentumPct.toFixed(0)}%`
-                    : commitsRecent12 != null && commitsPrior12 != null
-                      ? `${commitsPrior12.toLocaleString()}→${commitsRecent12.toLocaleString()}`
-                      : '—'
-                }
-                label="Commits — 12mo vs prior"
-                sub={
-                  momentumPct != null && commitsRecent12 != null && commitsPrior12 != null
-                    ? `${commitsPrior12.toLocaleString()} → ${commitsRecent12.toLocaleString()}`
-                    : undefined
-                }
-                tone={
-                  momentumPct == null
-                    ? undefined
-                    : momentumPct >= 2
-                      ? 'ok'
-                      : momentumPct <= -2
-                        ? 'warn'
-                        : undefined
-                }
-              />
-            </div>
-            <div
               title={`Projects with a git commit within ${totals?.inactiveThresholdDays ?? '—'} days vs all projects.`}
             >
               <BigStat
@@ -1345,16 +1505,34 @@ export function AdoptionPage() {
             no="01"
             title="Is it being used?"
             answer={ch1Answer}
-            caption="full git history · cumulative curves include the running month"
+            caption={
+              trendMode === 'trimester'
+                ? 'full git history · per-quarter bars exclude the running quarter'
+                : 'full git history · cumulative curves include the running month'
+            }
           />
-          {/* Flagship: cumulative adoption — only goes up, at different speeds. */}
+          {/* Flagship: cumulative adoption — only goes up, at different speeds.
+              Trimester mode re-plots the same series as per-quarter deltas. */}
           <div className="chart-container">
             <div className="chart-header flex items-center justify-between gap-3">
-              <h4 title="Running totals from each project's full git history: distinct people who ever committed, projects ever touched, and commit volume. Cumulative lines include the running month honestly — the last point is simply mid-climb.">
-                Cumulative adoption — people, projects &amp; commits
+              <h4
+                title={
+                  trendMode === 'trimester'
+                    ? 'Per-quarter deltas from each project’s full git history: people whose FIRST commit fell in the quarter, projects first touched, and commit volume. Complete quarters only — the running quarter is excluded, and the earliest bar can be partial where history begins.'
+                    : 'Running totals from each project’s full git history: distinct people who ever committed, projects ever touched, and commit volume. Cumulative lines include the running month honestly — the last point is simply mid-climb.'
+                }
+              >
+                {trendMode === 'trimester'
+                  ? 'Adoption per quarter — new builders, projects & commits'
+                  : 'Cumulative adoption — people, projects & commits'}
               </h4>
+              <TrendModeToggle mode={trendMode} onChange={setTrendMode} />
             </div>
-            <CumulativeAdoptionChart points={cumulativePoints} />
+            <CumulativeAdoptionChart
+              points={cumulativePoints}
+              mode={trendMode}
+              quarterly={quarterlyPoints}
+            />
           </div>
           {pulse && <PulseCard pulse={pulse} nowMs={nowMs} />}
         </motion.div>
@@ -1374,10 +1552,13 @@ export function AdoptionPage() {
               <div className="chart-container">
                 <div className="chart-header flex items-center justify-between gap-3">
                   <h4
-                    title={`Cumulative surviving objects across the whole config history, one curve per family. Counts tagged objects only — ${inventoryView.taggedObjects.toLocaleString()} of ${inventoryView.objectsBuilt.toLocaleString()} objects carry creation tags; untagged families (scenarios, notebooks, wikis…) appear in totals, never in these curves.`}
+                    title={`${trendMode === 'trimester' ? 'Surviving objects created per complete quarter' : 'Cumulative surviving objects across the whole config history'}, one small multiple per family. Counts tagged objects only — ${inventoryView.taggedObjects.toLocaleString()} of ${inventoryView.objectsBuilt.toLocaleString()} objects carry creation tags; untagged families (scenarios, notebooks, wikis…) appear in totals, never in these charts.`}
                   >
-                    What gets built here — cumulative, by family
+                    {trendMode === 'trimester'
+                      ? 'What gets built here — per quarter, by family'
+                      : 'What gets built here — cumulative, by family'}
                   </h4>
+                  <TrendModeToggle mode={trendMode} onChange={setTrendMode} />
                 </div>
                 <div className="grid grid-cols-1 gap-x-6 gap-y-4 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
                   {detailCharts.map((d) => {
@@ -1409,12 +1590,30 @@ export function AdoptionPage() {
                             {d.total.toLocaleString()} all time
                           </span>
                         </div>
-                        <MiniCumulative
-                          values={d.values}
-                          months={creationMonthsAxis}
-                          color={d.color}
-                          unitLabel={d.group.label.toLowerCase()}
-                        />
+                        {trendMode === 'trimester' && creationQuarterAxis.length > 0 ? (
+                          <MiniColumns
+                            points={creationQuarterAxis.map((q, qi) => ({
+                              key: q,
+                              value: d.quarterly[qi],
+                              title: `${quarterLabel(q)} · ${d.quarterly[qi].toLocaleString()} ${d.group.label.toLowerCase()} created`,
+                            }))}
+                            color={d.color}
+                            height={64}
+                            gap={1}
+                            showValues={false}
+                            axisLeft={quarterLabel(creationQuarterAxis[0])}
+                            axisRight={quarterLabel(
+                              creationQuarterAxis[creationQuarterAxis.length - 1],
+                            )}
+                          />
+                        ) : (
+                          <MiniCumulative
+                            values={d.values}
+                            months={creationMonthsAxis}
+                            color={d.color}
+                            unitLabel={d.group.label.toLowerCase()}
+                          />
+                        )}
                       </div>
                     );
                   })}
@@ -1424,7 +1623,53 @@ export function AdoptionPage() {
                   {inventoryView.objectsBuilt.toLocaleString()}) — deleted work is invisible
                   {detailEmpty.length > 0 &&
                     ` · no tagged creations yet: ${detailEmpty.map((d) => d.group.label.toLowerCase()).join(', ')}`}
+                  {trendMode === 'trimester' &&
+                    creationQuarterAxis.length > 0 &&
+                    ' · per-quarter view excludes the running quarter'}
                 </div>
+              </div>
+            )}
+            {/* Decline-proof pair: when each capability arrived (firsts) and
+                how deep the surviving projects run. */}
+            {(capabilityFirsts.length > 0 || projectDepthMeasured > 0) && (
+              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+                {capabilityFirsts.length > 0 && (
+                  <div className="chart-container">
+                    <div className="chart-header flex items-center justify-between gap-3">
+                      <h4 title="The month each family first shows a surviving tagged creation — the order capabilities were adopted on this instance. A first can only be later than reality: deleted early work is invisible.">
+                        Capability adoption — firsts
+                      </h4>
+                    </div>
+                    <div className="px-4 py-3">
+                      <CapabilityTimeline items={capabilityFirsts} />
+                    </div>
+                    <div className="border-t border-[var(--border-glass)] px-4 py-2 text-[10px] text-[var(--text-tertiary)]">
+                      first surviving tagged object per family — deleted early work is invisible
+                    </div>
+                  </div>
+                )}
+                {projectDepthMeasured > 0 && (
+                  <div className="chart-container">
+                    <div className="chart-header flex items-center justify-between gap-3">
+                      <h4 title="How many surviving objects each project holds, bucketed by order of magnitude — how much of the estate is skeleton vs substance.">
+                        Project depth — surviving objects per project
+                      </h4>
+                    </div>
+                    <div className="px-4 py-3">
+                      <MiniColumns
+                        points={projectDepthCols}
+                        color="var(--viz-cat-2)"
+                        height={72}
+                        gap={6}
+                      />
+                    </div>
+                    <div className="border-t border-[var(--border-glass)] px-4 py-2 text-[10px] text-[var(--text-tertiary)]">
+                      surviving objects only ({projectDepthMeasured.toLocaleString()}{' '}
+                      {projectDepthMeasured === 1 ? 'project' : 'projects'} measured) — deleted work
+                      is invisible
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <div className="chart-container">
@@ -1434,7 +1679,7 @@ export function AdoptionPage() {
                 </h4>
               </div>
               <div className="px-4 py-3">
-                <div className="grid grid-cols-1 items-start gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="grid grid-cols-1 items-start gap-x-6 gap-y-4 lg:grid-cols-2">
                   {inventoryView.topCreatorsByGroup
                     .map((board, gi) => ({
                       board,
@@ -1463,7 +1708,7 @@ export function AdoptionPage() {
                                 <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--text-secondary)]">
                                   {c.login}
                                 </span>
-                                <span className="h-1 w-14 flex-shrink-0 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+                                <span className="h-1 min-w-14 max-w-[200px] flex-1 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
                                   <span
                                     className="block h-full rounded-full transition-[width] duration-500"
                                     style={{
@@ -1518,7 +1763,7 @@ export function AdoptionPage() {
                   )}
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 gap-x-6 gap-y-2 lg:grid-cols-2">
                   {topGroups.map((g) => {
                     const sparkCols: ColPoint[] = sparkAxis.map((month) => ({
                       key: month,
@@ -1547,10 +1792,10 @@ export function AdoptionPage() {
                           </span>
                         </div>
                         {sparkCols.length > 0 && (
-                          <div className="mt-1 max-w-[240px]">
+                          <div className="mt-1 max-w-[480px]">
                             <MiniColumns
                               points={sparkCols}
-                              height={20}
+                              height={60}
                               gap={2}
                               showValues={false}
                             />
@@ -1560,7 +1805,7 @@ export function AdoptionPage() {
                     );
                   })}
                   {(activeGroups.length > topGroups.length || quietGroups > 0) && (
-                    <div className="pt-0.5 text-[10px] text-[var(--text-tertiary)]">
+                    <div className="pt-0.5 text-[10px] text-[var(--text-tertiary)] lg:col-span-2">
                       {activeGroups.length > topGroups.length &&
                         `+${activeGroups.length - topGroups.length} more active ${activeGroups.length - topGroups.length === 1 ? 'group' : 'groups'}`}
                       {activeGroups.length > topGroups.length && quietGroups > 0 && ' · '}
@@ -1679,6 +1924,44 @@ export function AdoptionPage() {
                       </span>
                     </div>
                     <LinkedMix items={busItems} />
+                  </div>
+                </div>
+              )}
+              {top10Projects.length > 0 && (
+                <div className="chart-container">
+                  <div className="chart-header flex items-center justify-between gap-3">
+                    <h4 title="Creator depth of the 10 most-committed projects: distinct creators from config-history tags (surviving objects), falling back to git authors where no tags exist. The projects carrying the most activity should survive their busiest person.">
+                      Top 10 projects (by commits) — creator depth
+                    </h4>
+                  </div>
+                  <div className="px-4 py-3">
+                    <div className="mb-3 flex items-baseline gap-3">
+                      <BigStat
+                        value={`${topDepthMulti} of ${top10Projects.length}`}
+                        label="Top projects with 2+ creators"
+                      />
+                    </div>
+                    <LinkedMix items={topDepthItems} />
+                  </div>
+                </div>
+              )}
+              {tenureMeasured > 0 && (
+                <div className="chart-container">
+                  <div className="chart-header flex items-center justify-between gap-3">
+                    <h4 title="Span from each builder's first to last commit, all time — how seasoned the bench is. An experience measure, not an activity count: a builder who left long ago still counts at full tenure.">
+                      Builder tenure — seasoned bench
+                    </h4>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+                      {tenureMeasured.toLocaleString()}{' '}
+                      {tenureMeasured === 1 ? 'builder' : 'builders'}
+                    </span>
+                  </div>
+                  <div className="px-4 py-3">
+                    <MiniColumns points={tenureCols} color="var(--viz-cat-1)" height={72} gap={6} />
+                  </div>
+                  <div className="border-t border-[var(--border-glass)] px-4 py-2 text-[10px] text-[var(--text-tertiary)]">
+                    span from each builder&rsquo;s first to last commit, all time — an experience
+                    measure, not an activity count
                   </div>
                 </div>
               )}

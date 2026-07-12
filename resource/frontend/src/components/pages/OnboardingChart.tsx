@@ -12,9 +12,10 @@ import {
   Tooltip,
   Legend,
   type TooltipItem,
+  type ScriptableLineSegmentContext,
 } from 'chart.js';
 import { CHART_PALETTE } from '../../utils/chartColors';
-import { BASE_TOOLTIP_STYLE, baseLegendLabels } from '../../utils/chartConfig';
+import { BASE_TOOLTIP_STYLE, baseLegendLabels, lineTraceAnimation } from '../../utils/chartConfig';
 import { quarterLabel } from '../../utils/inventoryData';
 
 // Onboarding & activation on ONE trimester axis: bars = new accounts per
@@ -35,7 +36,11 @@ ChartJS.register(
   Legend,
 );
 
-const TTFB_LINE = 'rgba(153, 123, 224, 0.95)';
+// Neutral fallback for the TTFB line: legend swatch, flat segments, and
+// spanGaps joins. Direction is painted per segment — green when the median
+// drops (faster onboarding = the win), red when it climbs (a warning use of
+// red, the only one this page allows).
+const TTFB_NEUTRAL = 'rgba(148, 148, 166, 0.9)';
 
 export interface OnboardingQuarterPoint {
   quarter: string; // 'YYYY-Qn'
@@ -58,25 +63,60 @@ export function OnboardingChart({
   const tickColor = isDark ? 'rgba(160,160,176,0.85)' : 'rgba(60,60,80,0.7)';
   const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
 
-  const chartData = useMemo(
-    () => ({
+  const chartData = useMemo(() => {
+    // Per-point marker colors mirror the incoming segment (walking back over
+    // null quarters, same path spanGaps joins); the first measured point has
+    // no direction yet, so it stays neutral.
+    const pointColors: string[] = [];
+    let prev: number | null = null;
+    for (const p of points) {
+      const v = p.medianDays;
+      if (v == null) {
+        pointColors.push(TTFB_NEUTRAL);
+        continue;
+      }
+      pointColors.push(
+        prev == null || v === prev
+          ? TTFB_NEUTRAL
+          : v < prev
+            ? CHART_PALETTE.mintBorder
+            : CHART_PALETTE.roseBorder,
+      );
+      prev = v;
+    }
+    return {
       labels: points.map((p) => p.quarter),
       datasets: [
         ...(showTtfb
           ? [
               {
                 type: 'line' as const,
-                label: 'Median days to first build (lower = better)',
+                label: 'Median days to first build (green ↓ = faster)',
                 data: points.map((p) => p.medianDays),
-                borderColor: TTFB_LINE,
+                borderColor: TTFB_NEUTRAL,
+                segment: {
+                  // undefined = fall back to the neutral dataset color.
+                  borderColor: (ctx: ScriptableLineSegmentContext) => {
+                    const y0 = ctx.p0.parsed.y;
+                    const y1 = ctx.p1.parsed.y;
+                    if (y0 == null || y1 == null) return undefined;
+                    return y1 < y0
+                      ? CHART_PALETTE.mintBorder
+                      : y1 > y0
+                        ? CHART_PALETTE.roseBorder
+                        : undefined;
+                  },
+                },
                 borderWidth: 2,
                 tension: 0.25,
                 spanGaps: true,
                 pointRadius: 3,
                 pointHoverRadius: 5,
-                pointBackgroundColor: TTFB_LINE,
+                pointBackgroundColor: pointColors,
+                pointBorderColor: pointColors,
                 yAxisID: 'y1',
                 order: 0,
+                animations: lineTraceAnimation(points.length, 'y1'),
               },
             ]
           : []),
@@ -84,7 +124,7 @@ export function OnboardingChart({
           type: 'bar' as const,
           label: 'New accounts',
           data: points.map((p) => p.newUsers),
-          backgroundColor: CHART_PALETTE.blue,
+          backgroundColor: CHART_PALETTE.mint,
           borderWidth: 0,
           borderRadius: 2,
           barPercentage: 0.7,
@@ -94,9 +134,8 @@ export function OnboardingChart({
           order: 2,
         },
       ],
-    }),
-    [points, showTtfb],
-  );
+    };
+  }, [points, showTtfb]);
 
   const options = useMemo(
     () => ({

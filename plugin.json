@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.721",
+    "version": "0.4.722",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -350,7 +350,7 @@
             "description": "Projects inactive longer than this are flagged.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 180,
+            "defaultValue": 365,
             "visibilityCondition": "false"
         },
         {

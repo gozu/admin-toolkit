@@ -14,7 +14,7 @@
   "healthCriticalCapScore": 49,
   "healthWarningBelow": 80,
   "highFreqScenarioMinutes": 30,
-  "inactiveProjectDays": 180,
+  "inactiveProjectDays": 365,
   "javaHeapMinimumMB": 2048,
   "largeFileThresholdGB": 100,
   "largeFlowObjects": 100,

@@ -253,7 +253,7 @@ export function InactiveProjectCleaner() {
             Inactive Project Cleaner
           </h3>
           <p className="text-sm text-[var(--text-muted)] mt-1">
-            No inactive projects found. Projects with 180+ days of inactivity, no active scenarios,
+            No inactive projects found. Projects with 365+ days of inactivity, no active scenarios,
             and no deployed bundles will appear here.
           </p>
         </section>
@@ -270,7 +270,7 @@ export function InactiveProjectCleaner() {
             Inactive Project Cleaner
           </h3>
           <p className="text-sm text-[var(--text-muted)]">
-            Projects inactive for 180+ days with no active scenarios or deployed bundles. A backup
+            Projects inactive for 365+ days with no active scenarios or deployed bundles. A backup
             is uploaded to the selected managed folder before deletion.
           </p>
           <div className="mt-3 flex items-center gap-2">

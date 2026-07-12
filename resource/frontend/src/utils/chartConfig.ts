@@ -25,6 +25,57 @@ export function baseLegendLabels(overrides?: Record<string, unknown>) {
   };
 }
 
+/** Animation-callback context (chart.js passes a richer object than the
+ * Scriptable typings admit — per-element `index`, mutable started flags). */
+interface TraceAnimationCtx {
+  type: string;
+  index: number;
+  datasetIndex: number;
+  chart: Chart;
+  xStarted?: boolean;
+  yStarted?: boolean;
+}
+
+const TRACE_TOTAL_MS = 900;
+
+/** Left-to-right trace reveal for a line dataset (the chart.js progressive
+ * pattern): each point animates in after the previous one, so the line draws
+ * itself across the chart. Attach per-dataset (`animations:`) so co-plotted
+ * bar datasets keep the default grow-in sweep. */
+export function lineTraceAnimation(pointCount: number, axisId = 'y') {
+  const perPoint = TRACE_TOTAL_MS / Math.max(1, pointCount);
+  const previousY = (raw: unknown): number => {
+    const ctx = raw as TraceAnimationCtx;
+    const base = ctx.chart.scales[axisId]?.getPixelForValue(0) ?? 0;
+    if (ctx.index === 0) return base;
+    const prev = ctx.chart.getDatasetMeta(ctx.datasetIndex).data[ctx.index - 1];
+    const y = prev?.getProps(['y'], true).y;
+    return typeof y === 'number' && Number.isFinite(y) ? y : base;
+  };
+  const staggerDelay = (flag: 'xStarted' | 'yStarted') => (raw: unknown) => {
+    const ctx = raw as TraceAnimationCtx;
+    if (ctx.type !== 'data' || ctx[flag]) return 0;
+    ctx[flag] = true;
+    return ctx.index * perPoint;
+  };
+  return {
+    x: {
+      type: 'number' as const,
+      easing: 'linear' as const,
+      duration: perPoint,
+      from: Number.NaN, // point is skipped until its slot in the trace
+      delay: staggerDelay('xStarted'),
+    },
+    y: {
+      type: 'number' as const,
+      easing: 'linear' as const,
+      duration: perPoint,
+      from: previousY,
+      delay: staggerDelay('yStarted'),
+    },
+  };
+}
+
 /* Chart draw-in: the first render of each chart sweeps in (650ms easeOutQuart,
  * small per-bar stagger); subsequent data/theme updates use a fast 200ms
  * transition. Applied by mutating Chart.defaults so every chart component

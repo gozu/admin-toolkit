@@ -88,7 +88,7 @@ def _adoption_data(client: Any) -> Dict[str, Any]:
 
     # Active vs total projects (#5) — same rule as /api/tools/inactive-projects so
     # the headline KPI matches that tool exactly (last activity within threshold).
-    threshold_days = _outreach_thresholds.get('inactive_project_days', 180)
+    threshold_days = _outreach_thresholds.get('inactive_project_days', 365)
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     active_count = 0
     for row in project_rows:

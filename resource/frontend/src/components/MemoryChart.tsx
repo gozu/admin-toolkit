@@ -2,12 +2,13 @@ import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, type TooltipItem, type Plugin } from 'chart.js';
-import { useDiag } from '../context/DiagContext';
 import { useTableFilter } from '../hooks/useTableFilter';
 import { parseNumericValue, formatMemory } from '../utils/formatters';
 import { CHART_PALETTE } from '../utils/chartColors';
 import { BASE_TOOLTIP_STYLE, baseLegendLabels } from '../utils/chartConfig';
+import { memoryInfoFromSample, resourceSamplesStore } from '../state/resourceSamples';
 import { LiveRefreshToggle } from './common/LiveRefreshToggle';
+import { ProgressIndicator } from './common/ProgressIndicator';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -64,11 +65,10 @@ const MEMORY_CENTER_PLUGIN: Plugin<'doughnut'> = {
 };
 
 export function MemoryChart() {
-  const { state } = useDiag();
   const { isVisible } = useTableFilter();
-  const { parsedData } = state;
-  const memoryInfo = parsedData.memoryInfo ?? EMPTY_OBJ;
-  const canRefresh = state.dataSource === 'api';
+  const { status, samples } = resourceSamplesStore.use();
+  const latestSample = samples[samples.length - 1];
+  const memoryInfo = latestSample ? memoryInfoFromSample(latestSample.mem) : EMPTY_OBJ;
 
   const chartData = useMemo(() => {
     const parseMemory = (value: string | undefined): number => {
@@ -104,9 +104,18 @@ export function MemoryChart() {
     };
   }, [memoryInfo]);
 
-  if (!isVisible('memory-chart') || Object.keys(memoryInfo).length === 0) {
+  if (!isVisible('memory-chart')) {
     return null;
   }
+
+  const waitMessage =
+    status === 'unsupported'
+      ? 'Live memory unavailable'
+      : status === 'idle'
+        ? 'Live memory sampling stopped'
+        : status === 'paused'
+          ? 'Live memory sampling paused'
+          : 'Waiting for live memory sample';
 
   const options = {
     responsive: true,
@@ -143,39 +152,53 @@ export function MemoryChart() {
     >
       <div className="chart-header flex items-center justify-between gap-3">
         <h4>System Memory</h4>
-        {canRefresh && <LiveRefreshToggle />}
+        <LiveRefreshToggle />
       </div>
 
-      <div className="chart-body" style={{ height: '280px' }}>
-        <Doughnut data={chartData} options={options} plugins={[MEMORY_CENTER_PLUGIN]} />
-      </div>
+      {!latestSample ? (
+        <div className="chart-body flex items-center justify-center" style={{ height: '440px' }}>
+          <div className="w-full max-w-sm">
+            <ProgressIndicator
+              active={status === 'polling' || status === 'paused'}
+              message={waitMessage}
+              phase={status}
+            />
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="chart-body" style={{ height: '280px' }}>
+            <Doughnut data={chartData} options={options} plugins={[MEMORY_CENTER_PLUGIN]} />
+          </div>
 
-      {/* Summary table */}
-      <div className="chart-summary">
-        <table>
-          <tbody>
-            <MemoryRow label="Total Memory" value={memoryInfo.total} />
-            <MemoryRow label="Used Memory" value={memoryInfo.used} color="text-[#e06d83]" />
-            <MemoryRow label="Free Memory" value={memoryInfo.free} color="text-[#63c69d]" />
-            <MemoryRow label="Available Memory" value={memoryInfo.available} />
-            {memoryInfo['buff/cache'] && (
-              <MemoryRow
-                label="Buffers/Cache"
-                value={memoryInfo['buff/cache']}
-                color="text-[#6da3e0]"
-              />
-            )}
-            {memoryInfo['Swap total'] &&
-              memoryInfo['Swap total'] !== 'Not configured' && (
-                <>
-                  <MemoryRow label="Swap Total" value={memoryInfo['Swap total']} />
-                  <MemoryRow label="Swap Used" value={memoryInfo['Swap used']} />
-                  <MemoryRow label="Swap Free" value={memoryInfo['Swap free']} />
-                </>
-              )}
-          </tbody>
-        </table>
-      </div>
+          {/* Summary table */}
+          <div className="chart-summary">
+            <table>
+              <tbody>
+                <MemoryRow label="Total Memory" value={memoryInfo.total} />
+                <MemoryRow label="Used Memory" value={memoryInfo.used} color="text-[#e06d83]" />
+                <MemoryRow label="Free Memory" value={memoryInfo.free} color="text-[#63c69d]" />
+                <MemoryRow label="Available Memory" value={memoryInfo.available} />
+                {memoryInfo['buff/cache'] && (
+                  <MemoryRow
+                    label="Buffers/Cache"
+                    value={memoryInfo['buff/cache']}
+                    color="text-[#6da3e0]"
+                  />
+                )}
+                {memoryInfo['Swap total'] &&
+                  memoryInfo['Swap total'] !== 'Not configured' && (
+                    <>
+                      <MemoryRow label="Swap Total" value={memoryInfo['Swap total']} />
+                      <MemoryRow label="Swap Used" value={memoryInfo['Swap used']} />
+                      <MemoryRow label="Swap Free" value={memoryInfo['Swap free']} />
+                    </>
+                  )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </motion.div>
   );
 }

@@ -8,6 +8,7 @@ import {
   type FMComparison,
 } from '../utils/fmMemoryDefaults';
 import { computeJekConcurrency } from '../utils/jekConcurrency';
+import { parseSizeToGB } from '../utils/formatters';
 
 function fmAnnotationColor(cmp: FMComparison): string {
   if (cmp === 'match') return 'var(--neon-green)';
@@ -35,7 +36,7 @@ export function MemoryAnalysisCard() {
   const cgroupLimitStr = String(parsedData.cgroupSettings?.['Memory Limit'] || '0');
 
   // Parse numeric values (all to GB)
-  const totalVm = parseInt(totalVmStr.replace(/[^0-9]/g, '')) || 0;
+  const totalVm = Math.round(parseSizeToGB(totalVmStr)) || 0;
   const backendGB = parseInt(backendStr.replace(/[^0-9]/g, '')) || 0;
   const jekGB = parseInt(jekStr.replace(/[^0-9]/g, '')) || 0;
   const cgroupLimit = parseInt(cgroupLimitStr.replace(/[^0-9]/g, '')) || 0;
@@ -132,7 +133,7 @@ export function MemoryAnalysisCard() {
       <div className="chart-summary" style={{ marginTop: '0.5rem' }}>
         <table>
           <tbody>
-            <tr><td className="text-[var(--text-secondary)]">Instance total</td><td className="text-right font-mono">{totalVmStr}</td></tr>
+            <tr><td className="text-[var(--text-secondary)]">Instance total</td><td className="text-right font-mono">{totalVm} GB</td></tr>
             <tr><td colSpan={2} className="py-1"><div className="border-t border-[var(--border-color)] opacity-50" /></td></tr>
             <tr>
               <td className="text-[var(--text-secondary)] pl-2">
@@ -229,7 +230,7 @@ export function MemoryAnalysisCard() {
 
         {hasCgroupLimit && status === 'critical' && cgroupExceedsInstance && (
           <div className="mt-2 p-2 rounded text-xs" style={{ backgroundColor: 'color-mix(in srgb, var(--neon-red) 10%, transparent)', border: '1px solid color-mix(in srgb, var(--neon-red) 30%, transparent)', color: 'var(--neon-red)' }}>
-            Workloads cgroup ({cgroupLimitStr}) exceeds DSS instance total ({totalVmStr}) — the cap cannot be enforced by the kernel.
+            Workloads cgroup ({cgroupLimitStr}) exceeds DSS instance total ({totalVm} GB) — the cap cannot be enforced by the kernel.
           </div>
         )}
 

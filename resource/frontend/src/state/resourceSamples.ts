@@ -4,7 +4,7 @@ import { getActiveHostId } from './hostStore';
 import { subscribeSessionEpoch } from './sessionCache';
 import { applyStreamedProcessSnapshot, type StreamedProcessSnapshot } from './processMetrics';
 import { formatMemory } from '../utils/formatters';
-import type { MemoryInfo, ParsedData } from '../types';
+import type { MemoryInfo } from '../types';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Live resource sampling for the Resources page: one long-lived SSE
@@ -13,6 +13,8 @@ import type { MemoryInfo, ParsedData } from '../types';
 // `processes` (per-PID snapshot) frames. The cadence is server-driven: 1s
 // /proc reads locally, 15s/60s macro runs on remote hosts (each remote
 // sample is a DSS macro job — the interval constants here are display-only).
+// Samples stay in this store; parsedData.memoryInfo remains the one-shot
+// diagnostic snapshot used by configuration analysis and reports.
 // ─────────────────────────────────────────────────────────────────────────
 
 export interface ResourceCpuCounters {
@@ -86,7 +88,6 @@ let _chain = 0;
 let _timer: ReturnType<typeof setTimeout> | null = null;
 let _streamRetries = 0;
 let _streamAbort: AbortController | null = null;
-let _applyParsedData: ((data: Partial<ParsedData>) => void) | null = null;
 let _visibilityHooked = false;
 
 function clearTimer(): void {
@@ -130,7 +131,7 @@ function appendSample(data: ResourceSampleResponse): void {
  * doughnut/summary render, so they go live without re-running host commands.
  * Key set and semantics match sysinfo._parse_memory_info (used = total −
  * free − buff/cache). */
-function memoryInfoFromSample(mem: ResourceMemCounters): MemoryInfo {
+export function memoryInfoFromSample(mem: ResourceMemCounters): MemoryInfo {
   const fmt = (kb: number) => formatMemory(Math.max(0, Math.round(kb / 1024)));
   const buffCacheKb = mem.buffersKb + mem.cachedKb;
   const info: MemoryInfo = {
@@ -173,9 +174,6 @@ async function runStream(chainId: number): Promise<void> {
         if (!data.ok) throw new Error(data.error || 'resource sample unavailable');
         _streamRetries = 0;
         appendSample(data);
-        if (data.mem && _applyParsedData) {
-          _applyParsedData({ memoryInfo: memoryInfoFromSample(data.mem) });
-        }
       } else if (frame.event === 'processes') {
         applyStreamedProcessSnapshot(frame.payload as StreamedProcessSnapshot);
       }
@@ -198,8 +196,7 @@ async function runStream(chainId: number): Promise<void> {
 /** Start (or re-start) live sampling for the active host. Idempotent while
  * active. Existing same-session samples are kept so navigating away and back
  * doesn't lose the history window. */
-export function startResourcePolling(applyParsedData: (data: Partial<ParsedData>) => void): void {
-  _applyParsedData = applyParsedData;
+export function startResourcePolling(): void {
   if (_active) return;
   _active = true;
   _streamRetries = 0;

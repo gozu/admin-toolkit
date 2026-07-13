@@ -1,5 +1,4 @@
 import { useSyncExternalStore } from 'react';
-import { useDiag } from '../../context/DiagContext';
 import {
   resourceSamplesStore,
   startResourcePolling,
@@ -20,7 +19,6 @@ function formatClock(epochMs: number): string {
 }
 
 export function LiveRefreshToggle() {
-  const { setParsedData } = useDiag();
   const { status, samples } = resourceSamplesStore.use();
   const scan = useSyncExternalStore(subscribeProcessMetrics, getProcessMetrics, getProcessMetrics);
 
@@ -38,7 +36,7 @@ export function LiveRefreshToggle() {
         type="button"
         onClick={() => {
           if (running) stopResourcePolling();
-          else startResourcePolling(setParsedData);
+          else startResourcePolling();
         }}
         title={running ? 'Stop live sampling on this page' : 'Resume live sampling'}
         className="rounded px-2 py-1 text-[var(--text-secondary)] hover:bg-[var(--bg-glass-hover)] hover:text-[var(--text-primary)]"

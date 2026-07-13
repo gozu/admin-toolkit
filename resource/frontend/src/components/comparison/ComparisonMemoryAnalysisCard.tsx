@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import type { ParsedData } from '../../types';
+import { parseSizeToGB } from '../../utils/formatters';
 
 interface ComparisonMemoryAnalysisCardProps {
   beforeData: ParsedData;
@@ -8,7 +9,6 @@ interface ComparisonMemoryAnalysisCardProps {
 
 interface MemoryValues {
   totalVm: number;
-  totalVmStr: string;
   recommendedMax: number;
   cgroupLimit: number;
   cgroupLimitStr: string;
@@ -27,7 +27,7 @@ function parseMemoryValues(data: ParsedData): MemoryValues | null {
   const maxActivitiesRaw = data.maxRunningActivities?.['Max Running Activities'];
   const cgroupLimitStr = String(data.cgroupSettings?.['Memory Limit'] || '0');
 
-  const totalVm = parseInt(totalVmStr.replace(/[^0-9]/g, '')) || 0;
+  const totalVm = Math.round(parseSizeToGB(totalVmStr)) || 0;
   const jekGB = parseInt(jekStr.replace(/[^0-9]/g, '')) || 0;
   const maxActivities = typeof maxActivitiesRaw === 'number' ? maxActivitiesRaw : 0;
   const cgroupLimit = parseInt(cgroupLimitStr.replace(/[^0-9]/g, '')) || 0;
@@ -60,7 +60,6 @@ function parseMemoryValues(data: ParsedData): MemoryValues | null {
 
   return {
     totalVm,
-    totalVmStr,
     recommendedMax,
     cgroupLimit,
     cgroupLimitStr,
@@ -144,9 +143,9 @@ export function ComparisonMemoryAnalysisCard({ beforeData, afterData }: Comparis
             <tbody>
               <tr>
                 <td className="text-[var(--text-secondary)] py-1">VM Total</td>
-                <td className="text-right font-mono text-[var(--text-muted)]">{before?.totalVmStr || '—'}</td>
+                <td className="text-right font-mono text-[var(--text-muted)]">{before?.totalVm ? `${before.totalVm} GB` : '—'}</td>
                 <td className="text-right font-mono text-[var(--text-primary)]">
-                  {after?.totalVmStr || '—'}
+                  {after?.totalVm ? `${after.totalVm} GB` : '—'}
                   {before && after && <DeltaIndicator before={before.totalVm} after={after.totalVm} />}
                 </td>
               </tr>

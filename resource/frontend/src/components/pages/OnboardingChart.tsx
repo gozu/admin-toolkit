@@ -16,7 +16,7 @@ import { CHART_PALETTE } from '../../utils/chartColors';
 import { BASE_TOOLTIP_STYLE, baseLegendLabels, lineTraceAnimation } from '../../utils/chartConfig';
 import { quarterLabel } from '../../utils/inventoryData';
 
-// Onboarding & activation on ONE trimester axis: white line = new accounts
+// Onboarding & activation on ONE trimester axis: blue line = new accounts
 // per quarter (persistent user snapshot), directional line = median days from
 // signup to first surviving build for that signup cohort. Complete
 // quarters only — the running quarter is footnoted by the caller, never
@@ -58,8 +58,8 @@ export function OnboardingChart({
   const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
   const tickColor = isDark ? 'rgba(160,160,176,0.85)' : 'rgba(60,60,80,0.7)';
   const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-  // "White" tracks the theme's ink — pure white vanishes on the light canvas.
-  const accountsLine = isDark ? 'rgba(255,255,255,0.92)' : 'rgba(35,35,50,0.9)';
+  // Blue stays distinct from the green/red directional activation segments.
+  const accountsLine = CHART_PALETTE.blueBorder;
 
   const chartData = useMemo(() => {
     // Per-point marker colors mirror the incoming segment (walking back over

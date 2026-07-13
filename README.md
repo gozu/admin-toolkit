@@ -6,7 +6,7 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.671-blue)
+![Version](https://img.shields.io/badge/version-0.4.741-blue)
 ![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-plugin-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -33,11 +33,11 @@ It scores what it finds, explains *why* something is unhealthy, and — behind a
 
 ## Feature tour
 
-The toolkit is organized into 9 sidebar sections covering 32 pages. Pages marked **tool** perform mutations and are hidden behind the [Advanced Actions unlock](#advanced-actions-red-unlock).
+The toolkit is organized into 9 sidebar sections covering 33 pages. Pages marked **tool** perform mutations and are hidden behind the [Advanced Actions unlock](#advanced-actions-red-unlock).
 
 ### Overview
 
-Instance vitals at a glance. **Mission Control** is the dense operations wall for watching the whole instance. **Summary** shows the composite health score, per-category breakdown, detected issues with expandable detail, and instance facts (DSS version, Python, cores, RAM, OS). **Filesystem** charts every mount point and drills into the DSS data directory with an interactive treemap and directory tree. **Memory** and **CPU** show live process-level usage by user and component, with workload headroom analysis.
+Instance vitals at a glance. **Mission Control** is the dense operations wall for watching the whole instance. **Summary** shows the composite health score, per-category breakdown, detected issues with expandable detail, and instance facts (DSS version, Python, cores, RAM, OS). **Filesystem** charts every mount point and drills into the DSS data directory with an interactive treemap and directory tree. **Resources** combines live memory, CPU, and process usage with configuration-based workload headroom analysis.
 
 <div align="center"><img src="docs/screenshots/filesystem.png" alt="Filesystem usage — mount points, treemap and directory tree of the DSS data dir" width="850" /></div>
 
@@ -94,10 +94,10 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 | Overview | Mission Control | Dense operations wall for fleet-wide health |
 | Agents | Agents | Chat with the triage/scoping/actuator agents; plan → approve → execute cards |
 | Agents | Tuning | Versioned prompt overrides + model override for the agents |
+| Agents | Permissions | Per-action agent read/write/execute permissions and safety gates |
 | Overview | Summary | Composite health score, issues, instance facts |
 | Overview | Filesystem | Mount usage, data-dir treemap + directory tree |
-| Overview | Memory | System/process RAM, workload headroom |
-| Overview | CPU | Process-level CPU usage |
+| Overview | Resources | Live system/process memory and CPU, workload headroom |
 | Connections | Inventory | All connections, types, trends |
 | Connections | Insights | Usage/audit/health matrix per connection |
 | Connections | Health | Live connection tests |
@@ -107,6 +107,7 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 | Projects | Compute | Compute usage by project |
 | Projects | Cost | CRU and project spend analysis |
 | Users | Users | Ownership, activity, accountability |
+| Users | Activity | Adoption, engagement, retention, and activity trends |
 | Plugins | Installed | Plugin inventory with usage |
 | Plugins | Plugin Sync 🔴 | Compare/push plugins across hosts |
 | Code Envs | Cleaner 🔴 | Delete unused envs, migrate usages |
@@ -149,11 +150,11 @@ flowchart LR
         SPA["React 19 SPA<br/>Vite + Tailwind + Chart.js"]
     end
     subgraph Webapp["DSS plugin webapp"]
-        API["Flask backend<br/>32 route groups, SSE streaming,<br/>caching + prewarm"]
+        API["Flask backend<br/>35 route groups, SSE streaming,<br/>caching + prewarm"]
     end
     subgraph DSS["Dataiku DSS (local or remote)"]
         PYAPI["DSS Python API<br/>(reads + gated writes)"]
-        MACROS["12 privileged macros<br/>(ADMINTOOLKIT project)"]
+        MACROS["15 privileged macros<br/>(ADMINTOOLKIT project)"]
         HOST["Host resources:<br/>filesystem, /proc, kubectl,<br/>Docker registries, runtimedb"]
     end
     SPA -->|"fetch + SSE, X-DSS-Host-Id"| API
@@ -332,8 +333,8 @@ In addition, Under Settings, you can create python notebooks with the same algor
 ```
 plugin.json                  # plugin manifest (params, version, secrets)
 webapps/admin-toolkit/       # Flask webapp entrypoint
-python-lib/                  # backend: adk_backend/ (32 route groups) + shared libs
-python-runnables/            # 12 host-bound macros (metrics, process, k8s, images, db, cs, cru, agent-triage, log-cleaner, docker-governor, k8s-apply, fs-cleanup)
+python-lib/                  # backend: adk_backend/ (35 route groups) + shared libs
+python-runnables/            # 15 host-bound macros (host/resource/process metrics, adoption, K8s, images, DB, CS, CRU, triage, and cleanup/governance actions)
 python-lib/atk_agent_common/ # agents layer shared lib (tools impl, actuator, triage, audit)
 python-agents/               # 3 plugin agents (health-triage, scoping-architect, ops-actuator)
 python-agent-tools/          # 11 agent tools over the toolkit's sensor APIs

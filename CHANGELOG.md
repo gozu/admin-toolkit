@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.741] - 2026-07-13
+
+### Added
+- **Configuration-based Memory Analysis on Resources**: shows instance RAM, backend heap, workloads cgroup, local JEK budget/headroom, Fleet Manager baselines, execution defaults, and invalid-memory warnings.
+
+### Fixed
+- **System Memory and Memory Analysis no longer fight over one state field**: the live SSE sampler now owns only its resource-sample store, while the overview snapshot remains stable for configuration analysis and reports. System Memory waits visibly for its first live sample and then populates every value from that single source, eliminating the `31 GB` → `30.72 GB` handoff and the decimal-parser `3072 GB` failure mode.
+
 ## [0.4.682] - 2026-07-07
 
 ### Fixed

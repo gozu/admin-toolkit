@@ -11,10 +11,19 @@ from atk_agent_common.errors import ToolkitError
 
 PASSWORD = 'test-master-pw'
 
+# Agent Settings gates (v0.4.732) default every actuator action OFF until an
+# admin enables it, so plan/execute refuse before any planning. The FakeClient
+# answers the gate endpoint with these enabled — the real action_gates code then
+# resolves them open, exactly as it would for an admin who ticked them on. We
+# configure the gate's state rather than stub the gate function, so the real
+# resolution path still runs (test_disabled_action_refused pins the OFF case).
+_ENABLED_ACTIONS = {'settings-set': True, 'code-env-consolidate': True}
+
 
 class FakeClient:
-    def __init__(self, raw_settings=None):
+    def __init__(self, raw_settings=None, gates=None):
         self.settings = {'master_password': PASSWORD, 'enable_red_actions': True}
+        self._gates = dict(_ENABLED_ACTIONS) if gates is None else gates
         self.raw = raw_settings if raw_settings is not None else {
             'sparkSettings': {'sparkEnabled': False},
             'containerSettings': {'k8sEnabled': False},
@@ -24,6 +33,8 @@ class FakeClient:
     def get(self, path, host='local', **kwargs):
         if path == '/api/settings/raw':
             return self.raw
+        if path == '/api/agents/action-settings':
+            return {'gates': self._gates}
         raise AssertionError('unexpected GET %s' % path)
 
     def post(self, path, **kwargs):
@@ -103,6 +114,20 @@ def test_target_and_targets_both_refused():
     with pytest.raises(ToolkitError, match='not both'):
         actuator.plan_admin_action(client, action='settings-set',
                                    target=_targets()[0], targets=_targets())
+
+
+def test_disabled_action_refused():
+    # The gate is enforced, not bypassed: with nothing enabled in Agent
+    # Settings, plan refuses before any planning (no canonical, no token) — and
+    # execute refuses on the same check.
+    client = FakeClient(gates={})
+    plan = actuator.plan_admin_action(client, action='settings-set', target=_targets()[0])
+    assert plan['error']['code'] == 'action-disabled'
+    assert 'canonicalTarget' not in plan
+    ex = actuator.execute_admin_action(client, action='settings-set',
+                                       target=_targets()[0], confirm_flag=True,
+                                       confirm_token='irrelevant')
+    assert ex['error']['code'] == 'action-disabled'
 
 
 # ---- execution ----

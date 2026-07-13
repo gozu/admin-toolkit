@@ -58,17 +58,35 @@ _install_dateutil_stub()
 @pytest.fixture(autouse=True)
 def _reset_backend_singletons_between_tests():
     yield
+    # action_gates caches the resolved {action: enabled} map for 30s in a module
+    # global; a test that opens gates would otherwise leak the open map to the
+    # next test (and file) inside that window. Reset it so every test re-resolves
+    # from its own client. Unconditional — it lives in atk_agent_common and is
+    # exercised by tests that never import backend.py.
+    try:
+        from atk_agent_common import action_gates as _action_gates
+        _action_gates._cache['ts'] = 0.0
+        _action_gates._cache['gates'] = None
+    except Exception:
+        pass
     backend = sys.modules.get('backend')
     if backend is None:
         return
     try:
         from adk_backend import caching as _adk_caching
+        from adk_backend import context as _adk_context
         from adk_backend import footprint as _adk_footprint
         _adk_caching._CACHE.clear()
         _adk_caching._CACHE_INFLIGHT.clear()
         _adk_caching._CACHE_INFLIGHT_ERRORS.clear()
         _adk_footprint._FOOTPRINT_STATES.clear()
         _adk_footprint._FOOTPRINT_STATES['local'] = _adk_footprint._new_footprint_state()
-        backend._THREAD_LOCAL.__dict__.clear()
+        # Drop per-thread state (host_id, dss_client, and the clients_by_host
+        # pool _resolve_client fills) so each test resolves g.client afresh from
+        # its own mocked dataiku.api_client instead of reusing a prior test's
+        # cached client. This was `backend._THREAD_LOCAL`, but the blueprint
+        # refactor moved the thread-local to adk_backend.context and dropped the
+        # backend re-export, so the clear silently AttributeError'd for tests.
+        _adk_context._THREAD_LOCAL.__dict__.clear()
     except Exception:
         pass

@@ -3,12 +3,22 @@ import sys
 from unittest import mock
 
 import conftest  # noqa: F401
+import pytest
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.insert(0, os.path.join(ROOT, 'webapps', 'admin-toolkit'))
 
 import backend  # noqa: E402
 from adk_backend.routes import code_env_replace  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _unlock_advanced(monkeypatch):
+    # /api/code-envs/replace is @advanced-gated: the _check_red_unlock
+    # before_request 403s any @advanced route without a valid unlock cookie, and
+    # the test env has no master password configured to mint one. These tests
+    # exercise the replace logic, not the unlock gate, so satisfy it directly.
+    monkeypatch.setattr(backend, '_verify_red_token', lambda token: True)
 
 
 class FakeSettings:

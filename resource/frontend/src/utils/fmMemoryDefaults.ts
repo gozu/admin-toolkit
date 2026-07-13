@@ -1,8 +1,9 @@
 // Fleet Manager memory defaults.
 //
-// Mirrors the brackets in FM's setup_memory_settings.py — strict `>`, not `>=`,
-// for every cut-off except backend's 12 GiB floor. See that script for the
-// canonical source; any drift here should be reconciled against it.
+// Mirrors the brackets in FM's setup_memory_settings.py, with the public DSS
+// cgroups recommendation applied to the top bracket: 120 GiB and up uses 70%
+// of physical memory. Round up to whole GiB values so 256 GiB maps to 180g,
+// matching the documented example.
 
 export function fmBackendXmxGB(instanceGB: number): number {
   if (instanceGB > 95) return 16;
@@ -12,7 +13,7 @@ export function fmBackendXmxGB(instanceGB: number): number {
 }
 
 export function fmCgroupGB(instanceGB: number): number {
-  if (instanceGB > 120) return Math.trunc(instanceGB * 0.75);
+  if (instanceGB >= 120) return Math.ceil(instanceGB * 0.7);
   if (instanceGB > 60) return Math.trunc(instanceGB * 0.66);
   if (instanceGB > 30) return instanceGB - 20;
   return Math.trunc(instanceGB * 0.5);

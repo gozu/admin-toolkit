@@ -173,6 +173,11 @@ export class GeneralSettingsParser extends BaseJSONParser<GeneralSettingsResult>
       data.maxRunningActivities ?? 'Not set';
     result.maxRunningActivities['Max Running Activities Per Job'] =
       data.maxRunningActivitiesPerJob ?? 'Not set';
+    // maxRunningJobs lives under jekSettings in current DSS; older builds may
+    // omit it entirely. 0 is a real value ("no job-level cap, rely on activity
+    // limits"), so use ?? to preserve it rather than ||.
+    result.maxRunningActivities['Max Running Jobs'] =
+      data.jekSettings?.maxRunningJobs ?? 'Not set';
 
     result.jekSettings = data.jekSettings ?? {};
 

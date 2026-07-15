@@ -46,11 +46,63 @@ from __future__ import annotations
 import argparse, concurrent.futures as cf, math, os, sys, threading, time
 from collections import Counter
 
-try:
-    import dataikuapi
-except ImportError:
-    sys.exit("dataikuapi not importable — run with the repo .venv:\n"
-             "  ./.venv/bin/python scripts/populate_dummy_instance.py ...")
+def _bootstrap_dataikuapi():
+    """Import dataikuapi, re-exec'ing under a Python that has it if needed.
+
+    Run straight as `python3 populate_dummy_instance.py` on a DSS host the
+    system interpreter usually lacks the client. Rather than demand a specific
+    venv, locate an interpreter that can import dataikuapi (the DSS bundle ships
+    one) and re-exec under it. The _REEXEC guard prevents an interpreter that
+    still lacks it from looping.
+    """
+    try:
+        import dataikuapi  # noqa: F401
+        return
+    except ImportError:
+        pass
+
+    if os.environ.get("_DUMMY_POP_REEXEC"):
+        sys.exit(
+            "dataikuapi not importable, and re-exec did not help.\n"
+            "Install the client into this Python and re-run, e.g.:\n"
+            f"  {sys.executable} -m pip install dataiku-api-client\n"
+            f"  {sys.executable} {' '.join(sys.argv)}\n"
+            "or run under a DSS-bundled interpreter that already has it "
+            "(e.g. $DIP_HOME/bin/python).")
+
+    # Candidate interpreters, in priority order, that commonly carry dataikuapi.
+    dip = os.environ.get("DIP_HOME", "")
+    install = os.environ.get("DKUINSTALLDIR", "")
+    candidates = [
+        os.path.join(dip, "bin", "python") if dip else "",
+        os.path.join(install, "python", "bin", "python") if install else "",
+        os.path.join(os.path.dirname(sys.argv[0]) or ".", ".venv", "bin", "python"),
+        os.path.join(os.getcwd(), ".venv", "bin", "python"),
+    ]
+    for py in candidates:
+        if not py or not os.path.isfile(py) or os.path.realpath(py) == os.path.realpath(sys.executable):
+            continue
+        try:
+            has = __import__("subprocess").run(
+                [py, "-c", "import dataikuapi"],
+                capture_output=True, timeout=30).returncode == 0
+        except Exception:
+            has = False
+        if has:
+            print(f"# dataikuapi missing here — re-exec under {py}", file=sys.stderr)
+            env = {**os.environ, "_DUMMY_POP_REEXEC": "1"}
+            os.execve(py, [py, os.path.abspath(sys.argv[0]), *sys.argv[1:]], env)
+
+    sys.exit(
+        "dataikuapi not importable and no DSS-bundled Python found.\n"
+        "Install the client into this Python and re-run, e.g.:\n"
+        f"  {sys.executable} -m pip install dataiku-api-client\n"
+        f"  {sys.executable} {' '.join(sys.argv)}\n"
+        "or run under $DIP_HOME/bin/python (the DSS bundle ships the client).")
+
+
+_bootstrap_dataikuapi()
+import dataikuapi  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # Reference profile — captured from the tam-global diagnostics export.
@@ -532,6 +584,35 @@ class Populator:
 STAGES = ["groups", "users", "connections", "projects",
           "datasets", "folders", "saved_models", "code_envs"]
 
+# Consumer-tier profiles DSS forbids from writing project content. A run with
+# one of these can create groups/users/connections/projects but every dataset,
+# folder and saved-model create fails with UnauthorizedException — so preflight
+# it instead of grinding through hundreds of buried errors into a hollow instance.
+CONTENT_STAGES = {"datasets", "folders", "saved_models"}
+NON_WRITER_PROFILES = {"READER", "AI_CONSUMER", "DATA_CONSUMER"}
+
+def preflight_profile(client, stages, dry):
+    """Abort early if the running identity can't write the project content it's
+    about to create. Silent when it can't determine the profile (non-admin key)."""
+    if dry or not (set(stages) & CONTENT_STAGES):
+        return
+    try:
+        login = client.get_auth_info().get("authIdentifier")
+        profile = client.get_user(login).get_settings().get_raw().get("userProfile")
+    except Exception:
+        return  # can't introspect (e.g. non-admin key) — let the stages surface it
+    if profile in NON_WRITER_PROFILES:
+        sys.exit(
+            f"Refusing to run: identity {login!r} has userProfile {profile}, which "
+            "DSS forbids from writing project content — datasets, folders and saved "
+            "models would all fail.\n"
+            "Give this account a designer profile (e.g. FULL_DESIGNER), then re-run. "
+            "With an admin key:\n"
+            f"  u = client.get_user({login!r}); s = u.get_settings()\n"
+            "  s.get_raw()['userProfile'] = 'FULL_DESIGNER'; s.save()\n"
+            "or skip content: --skip datasets,folders,saved_models")
+
+
 def resolve_creds(args):
     url = args.url or os.environ.get("DSS_URL")
     key = args.api_key or os.environ.get("DSS_API_KEY")
@@ -591,6 +672,8 @@ def main():
     stages = STAGES
     if args.only:  stages = [s for s in STAGES if s in args.only.split(",")]
     if args.skip:  stages = [s for s in stages if s not in args.skip.split(",")]
+
+    preflight_profile(client, stages, args.dry_run)
 
     t0 = time.time()
     for stage in stages:

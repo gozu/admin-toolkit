@@ -1103,7 +1103,7 @@ Snapshot failures become a digest warning, never a sweep failure.
 | `host_allowlist` | CSV of allowed host ids. Empty = all. |
 | `default_llm_id` | Mesh LLM for agents when the instance doesn't set one. Full precedence: Agent Tuning `llm_override` > per-agent `llm_id` > this default. |
 | `enable_red_actions` | **Master kill-switch** for execute-admin-action. Default false. Only a human admin flips it. |
-| `verify_tls` / `http_timeout_s` / `heavy_timeout_s` | Client knobs (default true / 30 / 420). |
+| `verify_tls` / `http_timeout_s` / `heavy_timeout_s` | Client knobs (default true / 30 / 900). Managed from webapp Settings → Agents & Outreach. |
 | `triage_connection` | Postgres connection for triage rows + the audit trail (same as the toolkit's Agents Audit setting). |
 | `triage_score_threshold` / `triage_mail_channel` / `triage_recipient` | Daily sweep knobs. |
 

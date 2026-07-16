@@ -904,6 +904,14 @@ def execute_admin_action(client, host='local', action=None, target=None,
                           'message': 'execute requires confirm=true, sent only after the user '
                                      'explicitly approved the plan in the conversation.'}}
     password = settings.get('master_password') or ''
+    if action == 'python-run':
+        # A cross-completion agent often only holds its prose plan, so the
+        # execute call may carry the full code instead of the canonical sha.
+        # Normalizing (code → its TRUE sha, cache seeded) happens BEFORE the
+        # HMAC verify, which therefore still binds execution to the exact
+        # code the human acknowledged.
+        from .actions import python_run as _python_run_mod
+        target = _python_run_mod.normalize_execute_target(target)
     try:
         confirm.verify(password, confirm_token, action, host, target)
     except confirm.ConfirmTokenError as exc:
@@ -911,6 +919,12 @@ def execute_admin_action(client, host='local', action=None, target=None,
                           'remediation': 'Re-run plan_admin_action and present the fresh plan '
                                          'for a new confirmation — tokens are single-use, '
                                          'expire after 15 minutes, and die on any drift.'}}
+    exec_target = target
+    if action == 'python-run' and isinstance(target, dict):
+        # Executor-side single-use redemption is keyed by the token, not the
+        # code sha, so re-planning the same code stays legitimate. The key is
+        # attached to a COPY — the audited/signed target stays untouched.
+        exec_target = dict(target, _tokenHash=confirm.token_hash(confirm_token))
 
     from . import audit
     batch_targets = target.get('batchTargets') if isinstance(target, dict) else None
@@ -920,7 +934,7 @@ def execute_admin_action(client, host='local', action=None, target=None,
         if isinstance(batch_targets, list):
             status, result, batch_changes = _execute_batch(client, host, action, batch_targets)
         else:
-            result = _EXECUTORS[action](client, host, target)
+            result = _EXECUTORS[action](client, host, exec_target)
             status = 'ok'
         snippet = json.dumps(result, default=str)[:500]
     except RedLocked as exc:

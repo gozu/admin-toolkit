@@ -62,6 +62,39 @@ def _cache_pop(sha):
     return code
 
 
+# Redeemed confirm-token hashes (kernel-local, TTL-pruned): a python-run
+# token is SINGLE-USE — a retry or revision is a new plan + a new ack.
+_REDEEMED = {}
+
+
+def _redeem(token_hash):
+    now = time.time()
+    for key in [k for k, ts in _REDEEMED.items() if now - ts > _CACHE_TTL_S]:
+        _REDEEMED.pop(key, None)
+    if token_hash in _REDEEMED:
+        return False
+    _REDEEMED[token_hash] = now
+    return True
+
+
+def normalize_execute_target(target):
+    """Executes may carry the FULL code instead of (or alongside) the sha —
+    the model often only has its prose plan across completions. Cache the
+    code under its TRUE sha (never under a claimed sha: seeding a mismatched
+    claim would let edited code ride an old ack) and default codeSha256 to
+    it. The HMAC verify still runs on the result, so only a target hashing
+    to the PLANNED sha can ever execute."""
+    if not isinstance(target, dict):
+        return target
+    code = target.get('code')
+    out = {k: v for k, v in target.items() if k != 'code'}
+    if isinstance(code, str) and code.strip():
+        sha = hashlib.sha256(code.encode('utf-8')).hexdigest()
+        _cache_put(sha, code)
+        out.setdefault('codeSha256', sha)
+    return out
+
+
 def _timeout_s(client):
     try:
         return max(5, min(int(client.settings.get('python_run_timeout_seconds')
@@ -111,6 +144,9 @@ def _plan_python_run(client, host, target, params):
         'venue': ('subprocess of the agent kernel\'s Python on the local DSS host; '
                   'environment inherited (dataiku.api_client() authenticates as the '
                   'toolkit\'s admin identity)'),
+        'executeNote': ('At execute, pass the canonicalTarget {codeSha256, purpose}; '
+                        'passing {code, purpose} with the EXACT same code also works '
+                        '(it must hash to the planned sha).'),
         'warnings': [
             'This script runs with ADMIN credentials. Read the code itself before '
             'approving — the purpose line is the agent\'s claim, not a guarantee.',
@@ -124,6 +160,12 @@ def _exec_python_run(client, host, target):
     _require_local(host)
     sha = str((target or {}).get('codeSha256') or '')
     purpose = str((target or {}).get('purpose') or '')
+    token_hash = str((target or {}).get('_tokenHash') or '')
+    if token_hash and not _redeem(token_hash):
+        raise ToolkitError(
+            'This python-run confirm token was already redeemed — tokens are single-use.',
+            remediation='Re-plan (same code is fine) to mint a fresh token, and get a '
+                        'fresh user acknowledgment.')
     code = _cache_pop(sha)
     if code is None:
         raise ToolkitError(

@@ -8,7 +8,7 @@ import type { PlanCardData } from '../../state/agentsChatStore';
 
 const PLAN_HIDDEN_KEYS = new Set([
   'summary', 'warning', 'warnings', 'irreversible', 'backupFolder', 'note',
-  'targets', 'targetCount', 'code', 'venue',
+  'targets', 'targetCount', 'code', 'venue', 'executeNote',
 ]);
 
 /** Power-Up plan payloads carry the exact script — render it verbatim and

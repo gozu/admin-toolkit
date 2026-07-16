@@ -1,12 +1,41 @@
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import hljs from 'highlight.js';
+import 'highlight.js/styles/monokai-sublime.css';
 import { InfoDot } from '../common/InfoDot';
 import { dssLinkForAction, humanTarget } from '../../utils/agentLinks';
 import type { PlanCardData } from '../../state/agentsChatStore';
 
 const PLAN_HIDDEN_KEYS = new Set([
   'summary', 'warning', 'warnings', 'irreversible', 'backupFolder', 'note',
-  'targets', 'targetCount',
+  'targets', 'targetCount', 'code', 'venue',
 ]);
+
+/** Power-Up plan payloads carry the exact script — render it verbatim and
+ *  syntax-highlighted (the FileViewer/K8s hljs pattern) so the per-run
+ *  "I have read this code" ack means something. */
+function PowerUpCode({ code }: { code: string }) {
+  const codeRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = codeRef.current;
+    if (!el) return;
+    el.textContent = code;
+    delete el.dataset.highlighted;
+    el.className = 'language-python hljs bg-transparent p-0';
+    try {
+      hljs.highlightElement(el);
+    } catch {
+      /* leave plain text on failure */
+    }
+  }, [code]);
+  return (
+    <div className="rounded-md border border-[var(--border-default)] bg-[#23241f] max-h-72 overflow-auto">
+      <pre className="p-2.5 text-[11px] leading-relaxed whitespace-pre">
+        <code ref={codeRef} />
+      </pre>
+    </div>
+  );
+}
 
 const BATCH_TARGETS_SHOWN = 8;
 
@@ -28,6 +57,9 @@ export function PlanCard({
 }) {
   const secondsLeft = Math.max(0, Math.floor((plan.expiresAt - now) / 1000));
   const expired = secondsLeft <= 0 && !plan.decision;
+  // Power-Up gate 2: the exact code + an explicit read-ack that arms Approve.
+  const code = typeof plan.plan.code === 'string' ? plan.plan.code : null;
+  const [codeAck, setCodeAck] = useState(false);
   const warnings: string[] = [];
   const rawWarning = plan.plan.warning || plan.plan.warnings;
   if (typeof rawWarning === 'string') warnings.push(rawWarning);
@@ -133,6 +165,18 @@ export function PlanCard({
         </div>
       )}
 
+      {code !== null && (
+        <div className="space-y-1.5">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--danger)]">
+            Power-Up script — runs with admin credentials
+          </div>
+          <PowerUpCode code={code} />
+          {typeof plan.plan.venue === 'string' && (
+            <div className="text-[10px] text-[var(--text-muted)]">{plan.plan.venue}</div>
+          )}
+        </div>
+      )}
+
       {warnings.map((warning, i) => (
         <div key={i} className="text-xs text-[var(--neon-amber)] flex items-start gap-1.5">
           <span className="mt-px">⚠</span>
@@ -149,6 +193,21 @@ export function PlanCard({
         <div className="text-xs text-[var(--text-tertiary)]">Backup destination: {backup.name}</div>
       )}
 
+      {code !== null && !plan.decision && !expired && (
+        <label className="flex items-start gap-2 rounded-md border border-[var(--danger)]/40 bg-[var(--danger)]/5 px-2.5 py-1.5 text-xs text-[var(--text-primary)] cursor-pointer">
+          <input
+            type="checkbox"
+            checked={codeAck}
+            onChange={(e) => setCodeAck(e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--danger)]"
+          />
+          <span>
+            I have read this code and understand it runs with the toolkit&apos;s admin
+            credentials.
+          </span>
+        </label>
+      )}
+
       <div className="flex items-center gap-2 pt-1">
         {plan.decision === 'approved' ? (
           <span className="text-xs font-medium text-[var(--accent)]">✓ Approved — executing</span>
@@ -162,7 +221,8 @@ export function PlanCard({
           <>
             <button
               onClick={() => onDecide('approved')}
-              disabled={disabled}
+              disabled={disabled || (code !== null && !codeAck)}
+              title={code !== null && !codeAck ? 'Read the code and tick the acknowledgment first.' : undefined}
               className="px-3 py-1 text-xs font-semibold rounded-md bg-[var(--accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Approve &amp; execute

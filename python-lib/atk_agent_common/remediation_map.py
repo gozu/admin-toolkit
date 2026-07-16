@@ -239,6 +239,12 @@ def is_documented_gap(issue_id):
     return False
 
 
+# Actions that can NEVER run autonomously, whatever the admin's CSV says —
+# python-run's whole safety story is the per-run human code ack, which an
+# autonomous tier structurally cannot provide.
+AUTO_EXCLUDED = frozenset({'python-run'})
+
+
 def auto_candidates(issues, enabled_actions, settings):
     """Autonomous-fix candidates for one host's finding list.
 
@@ -249,6 +255,7 @@ def auto_candidates(issues, enabled_actions, settings):
     """
     out = []
     seen_actions = set()
+    enabled_actions = set(enabled_actions or ()) - AUTO_EXCLUDED
     for issue in issues or []:
         issue_id = (issue or {}).get('id') or ''
         for spec in remediations_for(issue_id):

@@ -181,11 +181,19 @@ export function AgentsPage() {
   }, [hasPendingPlan]);
 
   // Undecided, unexpired plans across the conversation → batch approvals bar.
+  // python-run is hard-excluded: its per-run "I have read this code" ack only
+  // exists on the individual plan card, so it can never ride a batch approval.
   const pendingPlans = useMemo(() => {
     const out: PlanCardData[] = [];
     for (const msg of messages) {
       for (const seg of msg.segments) {
-        if (seg.type === 'plan' && !seg.plan.decision && seg.plan.expiresAt > now) out.push(seg.plan);
+        if (
+          seg.type === 'plan' &&
+          !seg.plan.decision &&
+          seg.plan.expiresAt > now &&
+          seg.plan.action !== 'python-run'
+        )
+          out.push(seg.plan);
       }
     }
     return out;

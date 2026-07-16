@@ -428,6 +428,13 @@ export const EDU: Record<string, EduEntry> = {
       'The plan shows the full message text verbatim — what you approve is exactly what leaves the instance, and sends cannot be recalled.',
     ],
   },
+  'action.python-run': {
+    title: 'python-run (Power-Up)',
+    body: [
+      'Runs a Python script the agent wrote for a task nothing in the catalog covers. The script executes in a subprocess on the local DSS host with the toolkit\'s ADMIN credentials, under a wall-clock timeout.',
+      'The confirm token is bound to the exact code (sha256) and is single-use: any edit or retry needs a fresh plan and a fresh "I have read this code" acknowledgment. Excluded from batch approvals and from the autonomous remediation tier.',
+    ],
+  },
   'action.toolkit-scenario-write': {
     title: 'toolkit-scenario-write',
     body: [

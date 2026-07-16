@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.747",
+    "version": "0.4.748",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -321,6 +321,14 @@
             "type": "INT",
             "mandatory": false,
             "defaultValue": 25
+        },
+        {
+            "name": "python_run_timeout_seconds",
+            "label": "Power-Up script timeout (seconds)",
+            "description": "Wall-clock limit for agent-authored python-run scripts (Power-Up). The subprocess is killed when it elapses. Clamped to 5-600.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 120
         },
         {
             "name": "log_cleanup_min_age_days",

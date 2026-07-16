@@ -9,6 +9,8 @@ import {
 } from '../../state/agentActionGatesStore';
 import { useRedState } from '../../state/redUnlockStore';
 import { UnlockModal } from '../UnlockModal';
+import { Modal } from '../Modal';
+import { Button } from '../common/Button';
 
 /**
  * Agent Permissions — the per-action enablement catalog. Every capability the
@@ -171,6 +173,7 @@ export function AgentSettingsPage() {
   const { authed: unlocked } = useRedState();
   const [showUnlock, setShowUnlock] = useState(false);
   const [pending, setPending] = useState<{ names: string[]; enabled: boolean } | null>(null);
+  const [powerUpConfirm, setPowerUpConfirm] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loaded) void loadActionGates();
@@ -191,7 +194,10 @@ export function AgentSettingsPage() {
   };
 
   const readWrite = actions.filter((a: ActionRow) => a.mode === 'read/write');
-  const execute = actions.filter((a: ActionRow) => a.mode === 'execute');
+  const powerUp = actions.filter((a: ActionRow) => a.action === 'python-run');
+  const execute = actions.filter(
+    (a: ActionRow) => a.mode === 'execute' && a.action !== 'python-run',
+  );
 
   if (loading && !loaded) {
     return (
@@ -286,6 +292,28 @@ export function AgentSettingsPage() {
           ))}
         </SectionCard>
 
+        {powerUp.length > 0 && (
+          <SectionCard
+            title="Power-Up (dangerous)"
+            subtitle="Agent-authored Python — scripts run with the toolkit's admin credentials. On top of this gate, EVERY run requires a per-run 'I have read this code' acknowledgment on the plan card; excluded from batch approvals and auto-remediation."
+            enabledCount={powerUp.filter((a) => a.enabled).length}
+            total={powerUp.length}
+          >
+            {powerUp.map((a) => (
+              <GateRow
+                key={a.action}
+                name={a.action}
+                enabled={a.enabled}
+                risk={a.risk}
+                detail={a.shape}
+                chips={a.localOnly ? ['local-only'] : []}
+                saving={saving === a.action}
+                onToggle={(v) => (v ? setPowerUpConfirm(a.action) : requestToggle([a.action], false))}
+              />
+            ))}
+          </SectionCard>
+        )}
+
         <SectionCard
           title="Execute actions"
           subtitle="Run, stop, clean, delete, send — the plan → approve → confirm-token flow still applies to every one. Disabled by default."
@@ -306,6 +334,35 @@ export function AgentSettingsPage() {
           ))}
         </SectionCard>
       </div>
+
+      <Modal
+        isOpen={powerUpConfirm !== null}
+        onClose={() => setPowerUpConfirm(null)}
+        title="Enable Power-Up?"
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="modalCancel" onClick={() => setPowerUpConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="modalDanger"
+              onClick={() => {
+                if (powerUpConfirm) requestToggle([powerUpConfirm], true);
+                setPowerUpConfirm(null);
+              }}
+            >
+              Enable anyway
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+          LLMs can make mistakes. Power-Up scripts run with the toolkit&apos;s{' '}
+          <strong>admin credentials</strong> on the DSS host. Every run will still show you the
+          exact code and require an explicit &quot;I have read this code&quot; acknowledgment
+          before it executes. Enable anyway?
+        </p>
+      </Modal>
 
       <UnlockModal
         isOpen={showUnlock}

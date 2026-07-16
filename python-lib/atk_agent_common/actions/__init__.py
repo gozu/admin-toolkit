@@ -14,10 +14,12 @@ the batch gate cover the whole catalog.
 """
 
 from . import (clusters, connections, db, messaging, plugins_domain,
-               projects_domain, runtime, storage, toolkit_scenarios, users)
+               projects_domain, python_run, runtime, storage,
+               toolkit_scenarios, users)
 
 _DOMAIN_MODULES = (connections, clusters, plugins_domain, projects_domain,
-                   runtime, users, storage, db, messaging, toolkit_scenarios)
+                   runtime, users, storage, db, messaging, toolkit_scenarios,
+                   python_run)
 
 SPECS = [spec for module in _DOMAIN_MODULES for spec in module.SPECS]
 
@@ -201,6 +203,7 @@ MODES = {
     'dataset-delete': 'execute',
     'api-key-delete': 'execute',
     'notification-send': 'execute',
+    'python-run': 'execute',
 }
 assert set(MODES) == set(REQUIRED_TARGET_KEYS), (
     'MODES out of sync with the catalog: missing %s / stale %s'

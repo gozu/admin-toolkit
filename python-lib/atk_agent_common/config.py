@@ -60,6 +60,8 @@ def resolve(plugin_config=None):
                                                cfg.get('auto_remediate_max_objects') or 25)),
         'log_cleanup_min_age_days': int(pick('log_cleanup_min_age_days',
                                              cfg.get('log_cleanup_min_age_days') or 3)),
+        'python_run_timeout_seconds': int(pick('python_run_timeout_seconds',
+                                               cfg.get('python_run_timeout_seconds') or 120)),
         'settings_set_blocked_extra': pick('settings_set_blocked_extra'),
         # Per-action enablement map (Agent Settings page). JSON {name: bool};
         # kernel-start snapshot only — action_gates.py fetches the live map

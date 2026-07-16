@@ -364,6 +364,7 @@ MODULE_COVERAGE = {
     'project-cost': 'domain:cost-detail',
     'users': 'domain:users',
     'adoption': 'domain:adoption',
+    'user-churn': 'domain:users (churn/reassignment roll-ups are UI-side derivations of the same user+activity snapshot)',
     'plugins-installed': 'domain:plugins',
     'plugins': 'domain:plugins + action:plugin-deploy',
     'code-envs': 'domain:code-envs',

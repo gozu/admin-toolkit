@@ -182,6 +182,7 @@ export interface ParsedData {
   adoptionInventoryLoading?: Lifecycle;
   adoptionEventsLoading?: Lifecycle;
   usersLoading?: Lifecycle;
+  userChurnLoading?: Lifecycle;
   pluginsLoading?: Lifecycle;
   pluginSyncLoading?: Lifecycle;
   codeEnvCleanerLoading?: Lifecycle;
@@ -305,6 +306,7 @@ export type PageId =
   | 'projects'
   | 'users'
   | 'adoption'
+  | 'user-churn'
   | 'code-envs'
   | 'code-envs-cleaner'
   | 'code-envs-comparison'

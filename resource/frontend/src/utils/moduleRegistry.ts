@@ -102,6 +102,9 @@ export const MODULES: readonly ModuleDefinition[] = [
   // adoptionLoading out of SHARED_LOADING_FIELDS so the global "Analysis
   // complete" aggregate never waits on a page the user may not visit.
   { id: 'adoption', label: 'Activity', section: 'Users', navSection: 'USERS', keywords: ['adoption', 'activity', 'engagement', 'usage', 'logins', 'active', 'trend', 'cohort', 'retention', 'builders', 'people', 'commits', 'growth'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['adoptionLoading', 'adoptionInventoryLoading', 'adoptionEventsLoading'] } },
+  // On-demand deep dive (loads on mount, like adoption): noLoadGlyph keeps
+  // userChurnLoading out of the global "Analysis complete" aggregate.
+  { id: 'user-churn', label: 'Churn & Seats', navLabel: 'Churn', section: 'Users', navSection: 'USERS', keywords: ['churn', 'license', 'seat', 'reassign', 'reassignment', 'disabled', 'dormant', 'reclaim', 'turnover', 'offboard', 'lifecycle', 'lifespan'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['userChurnLoading'] } },
 
   // PLUGINS
   { id: 'plugins-installed', label: 'Installed', section: 'Plugins', navSection: 'PLUGINS', keywords: ['plugin', 'installed', 'list', 'version', 'projects', 'usage'], availability: 'always', lifecycle: { fields: ['pluginsLoading'] } },
@@ -146,7 +149,7 @@ export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'AGENTS', items: ['agents', 'agent-tuning', 'agent-settings'], experimental: true },
   { title: 'CONNECTIONS', items: ['connections-inventory', 'connections-insights', 'connections-health', 'connections-fs-migration'] },
   { title: 'PROJECTS', items: ['project-cleaner', 'projects', 'project-compute', 'project-cost'] },
-  { title: 'USERS', items: ['users', 'adoption'] },   // restored from ['users']
+  { title: 'USERS', items: ['users', 'adoption', 'user-churn'] },   // 'adoption' restored from ['users']
   { title: 'PLUGINS', items: ['plugins-installed', 'plugins'] },
   { title: 'CODE ENVS', items: ['code-envs', 'code-envs-cleaner', 'code-envs-comparison'] },
   { title: 'AI COMPUTE', items: ['container-execs', 'image-cleaner', 'cs-template-replacement', 'llm-audit', 'k8s-insights'] },

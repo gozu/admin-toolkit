@@ -38,6 +38,7 @@ import { ProjectComputePage } from '../pages/ProjectComputePage';
 import { ProjectCostPage } from '../pages/ProjectCostPage';
 import { UsersPage } from '../pages/UsersPage';
 import { AdoptionPage } from '../pages/AdoptionPage';
+import { UserChurnPage } from '../pages/UserChurnPage';
 import { CodeEnvsInsightsPage } from '../pages/CodeEnvsPage';
 import { CodeEnvsComparisonPage } from '../pages/CodeEnvsComparisonPage';
 import { ConnectionsInventoryPage } from '../pages/ConnectionsInventoryPage';
@@ -131,6 +132,8 @@ function renderPage(activePage: PageId, adoptionVisible: boolean): React.ReactNo
       return <UsersPage />;
     case 'adoption':
       return adoptionVisible ? <AdoptionPage /> : <SummaryPage />;
+    case 'user-churn':
+      return <UserChurnPage />;
     case 'code-envs':
       return <CodeEnvsInsightsPage />;
     case 'code-envs-cleaner':

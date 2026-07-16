@@ -14,6 +14,7 @@ Field names and parsing here follow shapes recorded live from the backend
 import re
 
 from . import domain_registry as _registry
+from . import read_registry as _read_registry
 from . import shaping
 from .errors import ToolkitError
 
@@ -664,14 +665,24 @@ def config_inspect(client, host='local', domain='connections', detail=None,
     return shaping.enforce_budget(out)
 
 
-# ── log-errors ───────────────────────────────────────────────────────────────
+# ── log-errors / log-tail ────────────────────────────────────────────────────
+
+
+def _raw_tail_text(client, host):
+    """backend.log tail text (last ~100K chars). /api/logs/raw-tail is a JSON
+    route ({text, chars}) — reading it as plain text would hand the model one
+    giant JSON-escaped line."""
+    data = client.get('/api/logs/raw-tail', host=host)
+    if isinstance(data, dict):
+        return data.get('text') or ''
+    return str(data or '')
 
 
 def log_errors(client, host='local', top_n=10, pattern=None, raw=False):
     """Grouped backend.log error signatures; optional raw-tail grep."""
     out = {'host': host or 'local'}
     if raw or pattern:
-        text = client.get_text('/api/logs/raw-tail', host=host)
+        text = _raw_tail_text(client, host)
         lines = text.splitlines()
         if pattern:
             import re as re_mod
@@ -700,6 +711,147 @@ def log_errors(client, host='local', top_n=10, pattern=None, raw=False):
     out['stats'] = stats
     out['errorGroups'] = groups
     return shaping.enforce_budget(out)
+
+
+def log_tail(client, host='local', lines=200, pattern=None, log='backend.log'):
+    """Raw backend.log tail / grep (v1: backend.log only)."""
+    if log != 'backend.log':
+        return {'error': {'code': 'bad-input',
+                          'message': "log %r is not available — this tool serves "
+                                     "'backend.log' only (v1)." % log}}
+    try:
+        lines = max(1, min(int(lines or 200), 1000))
+    except (TypeError, ValueError):
+        lines = 200
+    text = _raw_tail_text(client, host)
+    all_lines = text.splitlines()
+    out = {'host': host or 'local', 'log': log,
+           'windowNote': 'Window = the last ~100K characters of the log '
+                         '(%d lines available).' % len(all_lines)}
+    if pattern:
+        try:
+            rx = re.compile(pattern, re.IGNORECASE)
+        except re.error as exc:
+            return {'error': {'code': 'bad-input', 'message': 'Invalid pattern: %s' % exc}}
+        hits = [l for l in all_lines if rx.search(l)]
+        out['grep'] = {'pattern': pattern, 'matchCount': len(hits), 'lines': hits[-lines:]}
+    else:
+        out['lines'] = all_lines[-lines:]
+    return shaping.enforce_budget(out)
+
+
+# ── toolkit-get (registry-backed: atk_agent_common.read_registry) ───────────
+
+
+def _paged_lists(payload, top_n, page):
+    """Window every top-level list to the (page, top_n) slice, recording true
+    lengths; summarize oversized dicts (the _compact_unknown doctrine, paged)."""
+    out = {}
+    start = (page - 1) * top_n
+    for k, v in (payload or {}).items():
+        if isinstance(v, list):
+            window = v[start:start + top_n]
+            out[k] = window
+            if len(v) > len(window) or start:
+                out['%sCount' % k] = len(v)
+        elif isinstance(v, dict) and len(v) > top_n * 3:
+            out['%sKeys' % k] = sorted(str(x) for x in v)[:top_n]
+            out['%sCount' % k] = len(v)
+        else:
+            out[k] = v
+    return out
+
+
+_READ_ENDPOINTS = {row['name']: row for row in _read_registry.ENDPOINTS}
+
+
+def toolkit_get(client, endpoint='list', host='local', params=None, fields=None,
+                top_n=15, page=1):
+    """Registry-backed read bridge. endpoint='list' returns the manifest;
+    every other endpoint fetches its whitelisted backend route and windows
+    the result (fields[] projection, top_n/page list paging, output budget)."""
+    if endpoint in ('list', 'manifest'):
+        return shaping.enforce_budget({
+            'endpoints': _read_registry.manifest(),
+            'note': ('Call toolkit_get(endpoint=<name>) to fetch one. heavy=true '
+                     'endpoints run scans (minutes, possibly scan_running). '
+                     'localOnly endpoints reject host≠local.')})
+    row = _READ_ENDPOINTS.get(endpoint)
+    if row is None:
+        return {'error': {'code': 'bad-input',
+                          'message': "endpoint must be one of: %s — or 'list' for "
+                                     'the manifest' % ', '.join(sorted(_READ_ENDPOINTS))}}
+    if row['local_only'] and (host or 'local') != 'local':
+        return {'error': {'code': 'bad-input',
+                          'message': 'endpoint %r is local-only — drop the host '
+                                     'argument.' % endpoint}}
+    params = params if isinstance(params, dict) else {}
+    unknown = sorted(set(params) - set(row['params']))
+    if unknown:
+        return {'error': {'code': 'bad-input',
+                          'message': 'endpoint %r does not accept param(s): %s. '
+                                     'Allowed: %s'
+                                     % (endpoint, ', '.join(unknown),
+                                        ', '.join(row['params']) or '(none)')}}
+    try:
+        top_n = max(1, min(int(top_n or 15), 100))
+    except (TypeError, ValueError):
+        top_n = 15
+    try:
+        page = max(1, int(page or 1))
+    except (TypeError, ValueError):
+        page = 1
+    data = client.get(row['path'], host=host, params=params or None,
+                      heavy=row['heavy'], progress_path=row['progress_path'])
+    if not isinstance(data, dict):
+        data = {'data': data}
+    out = {'host': host or 'local', 'endpoint': endpoint}
+    out.update(_paged_lists(data, top_n, page))
+    if page > 1:
+        out['page'] = page
+    if fields:
+        keep = {str(f) for f in fields} | {'host', 'endpoint', 'page', 'note',
+                                           'truncated', 'truncation_note'}
+        out = {k: v for k, v in out.items() if k in keep or k.endswith('Count')}
+    return shaping.enforce_budget(out)
+
+
+# ── list-capabilities (meta) ─────────────────────────────────────────────────
+
+
+def list_capabilities(client):
+    """Ground-truth capability map: sensors + actions with their LIVE gate
+    states, the master kill-switch, and the toolkit page map."""
+    # Deferred imports: actuator/actions pull the whole action layer, which
+    # tools_impl must not load at import time (webapp backend imports us).
+    from . import action_gates
+    from . import actions as actions_registry
+    from . import actuator as actuator_mod
+    gates = action_gates.gates(client)
+    sensors = [{'name': name, 'enabled': bool(gates.get(name, True))}
+               for name in SENSOR_DESCRIPTIONS]
+    local_only = set(actuator_mod._LOCAL_ONLY_ACTIONS)
+    actions = [{'action': action,
+                'mode': actions_registry.MODES[action],
+                'risk': actions_registry.ALL_RISKS[action],
+                'enabled': bool(gates.get(action, False)),
+                'batchable': action in actions_registry.BATCHABLE,
+                'localOnly': action in local_only}
+               for action in actuator_mod.ACTIONS]
+    out = {
+        'killSwitchOn': bool(client.settings.get('enable_red_actions')),
+        'sensors': sensors,
+        'actions': actions,
+        'toolkitPages': dict(_read_registry.TOOLKIT_PAGES),
+        'note': ('Sensors are read-only and need no confirmation. Disabled actions '
+                 'can be enabled by an admin in Agents → Permissions. '
+                 'killSwitchOn=false means NO action can execute regardless of '
+                 'per-action gates. toolkitPages maps webapp pages for pointing '
+                 'users at the right screen.'),
+    }
+    # Deliberately roomier budget than data sensors: trimming this list would
+    # make the ground-truth map lie about what exists.
+    return shaping.enforce_budget(out, budget=shaping.MAX_OUTPUT_BYTES * 2)
 
 
 # ── storage-footprint ────────────────────────────────────────────────────────
@@ -891,6 +1043,10 @@ SENSOR_DESCRIPTIONS = {
         'raw=true returns the raw log tail verbatim; pattern=<regex> greps the raw '
         'tail (case-insensitive). Use raw/pattern whenever the user asks to see or '
         'search backend.log itself.'),
+    'log_tail': (
+        'Raw backend.log tail (host, lines≤1000, pattern=<regex> to grep, log — v1 '
+        "serves backend.log only). Window = the log's last ~100K characters. Use "
+        'log_errors for grouped error signatures.'),
     'storage_footprint': (
         'Project storage totals, largest projects, inactive+large cleanup candidates '
         '(host, top_n, min_size_gb). Heavy scan — may return scan_running.'),
@@ -898,4 +1054,10 @@ SENSOR_DESCRIPTIONS = {
         'K8s clusters for a host: states + reachability sweep; cluster=<id> runs a deep audit.'),
     'db_health': (
         'RuntimeDB PostgreSQL health (host, view=overview|tables|per-project, connection, top_n).'),
+    'toolkit_get': _read_registry.tool_description(),
+    'list_capabilities': (
+        'Ground-truth capability map: every sensor and admin action with its LIVE '
+        'enablement gate state, the master kill-switch, and a map of every toolkit '
+        'webapp page. Answer "can you X?" / "what can you do?" from this — never '
+        "claim a capability is missing without checking it first."),
 }

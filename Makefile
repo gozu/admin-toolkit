@@ -244,6 +244,7 @@ deploy-all:
 contracts:
 	@node scripts/check_frontend_contracts.mjs
 	@node scripts/check_agent_domain_coverage.mjs
+	@node scripts/check_agent_read_coverage.mjs
 
 # ----------------------------
 # Main deploy target

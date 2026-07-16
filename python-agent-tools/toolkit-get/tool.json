@@ -1,0 +1,9 @@
+/* Agent tool: generic whitelisted read bridge over toolkit endpoints */
+{
+    "meta": {
+        "label": "Admin Toolkit: Toolkit get",
+        "description": "Fetch one whitelisted Admin Toolkit read endpoint (registry-curated): churn, CRU detail, LLM audit, DB health, audit timeline, settings, version, resources.",
+        "icon": "icon-download-alt"
+    },
+    "params": []
+}

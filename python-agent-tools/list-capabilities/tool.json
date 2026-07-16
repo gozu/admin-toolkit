@@ -1,0 +1,9 @@
+/* Agent tool: ground-truth capability map (sensors + actions + live gates + pages) */
+{
+    "meta": {
+        "label": "Admin Toolkit: List capabilities",
+        "description": "Every sensor and admin action with its live enablement gate state, the master kill-switch, and the toolkit webapp page map.",
+        "icon": "icon-list"
+    },
+    "params": []
+}

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   agentActionGatesStore,
   loadActionGates,
   toggleActionGate,
+  toggleGatesBulk,
   type ActionRow,
   type SensorRow,
 } from '../../state/agentActionGatesStore';
@@ -80,6 +81,64 @@ function GateRow({
   );
 }
 
+/** The "Read access — all toolkit data" master switch: checked when every
+ *  sensor is on, indeterminate when only some are. One click flips them all
+ *  in a single request; per-sensor rows below stay individually toggleable. */
+function MasterReadRow({
+  enabledCount,
+  total,
+  saving,
+  onToggle,
+}: {
+  enabledCount: number;
+  total: number;
+  saving: boolean;
+  onToggle: (enabled: boolean) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const allOn = enabledCount === total && total > 0;
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = enabledCount > 0 && !allOn;
+  }, [enabledCount, allOn]);
+  return (
+    <label
+      className={`flex items-start gap-3 rounded-lg border border-[var(--border-default)]/60 bg-[var(--bg-surface)]/60 px-3 py-2 transition-colors hover:bg-[var(--bg-hover)] ${
+        saving ? 'opacity-60' : 'cursor-pointer'
+      }`}
+    >
+      <input
+        ref={ref}
+        type="checkbox"
+        checked={allOn}
+        disabled={saving}
+        onChange={(e) => onToggle(e.target.checked)}
+        className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
+      />
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-[var(--text-primary)]">
+            Read access — all toolkit data
+          </span>
+          {!allOn && enabledCount > 0 && (
+            <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+              partial
+            </span>
+          )}
+          {enabledCount === 0 && (
+            <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+              disabled
+            </span>
+          )}
+        </div>
+        <p className="text-[11px] leading-relaxed text-[var(--text-muted)] break-words">
+          Everything the toolkit surfaces — health, config, cost, storage, logs, churn, audits —
+          is readable by the agents. Flip this to grant or revoke all sensors at once.
+        </p>
+      </div>
+    </label>
+  );
+}
+
 function SectionCard({
   title,
   subtitle,
@@ -111,19 +170,24 @@ export function AgentSettingsPage() {
   const { sensors, actions, loading, loaded, saving, error } = agentActionGatesStore.use();
   const { authed: unlocked } = useRedState();
   const [showUnlock, setShowUnlock] = useState(false);
-  const [pending, setPending] = useState<{ name: string; enabled: boolean } | null>(null);
+  const [pending, setPending] = useState<{ names: string[]; enabled: boolean } | null>(null);
 
   useEffect(() => {
     if (!loaded) void loadActionGates();
   }, [loaded]);
 
-  const requestToggle = (name: string, enabled: boolean) => {
+  const applyToggle = (names: string[], enabled: boolean) => {
+    if (names.length === 1) void toggleActionGate(names[0], enabled).catch(() => undefined);
+    else void toggleGatesBulk(names, enabled).catch(() => undefined);
+  };
+
+  const requestToggle = (names: string[], enabled: boolean) => {
     if (!unlocked) {
-      setPending({ name, enabled });
+      setPending({ names, enabled });
       setShowUnlock(true);
       return;
     }
-    void toggleActionGate(name, enabled).catch(() => undefined);
+    applyToggle(names, enabled);
   };
 
   const readWrite = actions.filter((a: ActionRow) => a.mode === 'read/write');
@@ -179,14 +243,25 @@ export function AgentSettingsPage() {
           enabledCount={sensors.filter((s: SensorRow) => s.enabled).length}
           total={sensors.length}
         >
+          <MasterReadRow
+            enabledCount={sensors.filter((s: SensorRow) => s.enabled).length}
+            total={sensors.length}
+            saving={saving === '__bulk__'}
+            onToggle={(v) =>
+              requestToggle(
+                sensors.map((s: SensorRow) => s.name),
+                v,
+              )
+            }
+          />
           {sensors.map((s: SensorRow) => (
             <GateRow
               key={s.name}
               name={s.name}
               enabled={s.enabled}
               detail={s.description}
-              saving={saving === s.name}
-              onToggle={(v) => requestToggle(s.name, v)}
+              saving={saving === s.name || saving === '__bulk__'}
+              onToggle={(v) => requestToggle([s.name], v)}
             />
           ))}
         </SectionCard>
@@ -206,7 +281,7 @@ export function AgentSettingsPage() {
               detail={a.shape}
               chips={[...(a.batchable ? ['batchable'] : []), ...(a.localOnly ? ['local-only'] : [])]}
               saving={saving === a.action}
-              onToggle={(v) => requestToggle(a.action, v)}
+              onToggle={(v) => requestToggle([a.action], v)}
             />
           ))}
         </SectionCard>
@@ -226,7 +301,7 @@ export function AgentSettingsPage() {
               detail={a.shape}
               chips={[...(a.batchable ? ['batchable'] : []), ...(a.localOnly ? ['local-only'] : [])]}
               saving={saving === a.action}
-              onToggle={(v) => requestToggle(a.action, v)}
+              onToggle={(v) => requestToggle([a.action], v)}
             />
           ))}
         </SectionCard>
@@ -241,7 +316,7 @@ export function AgentSettingsPage() {
         onUnlocked={() => {
           setShowUnlock(false);
           if (pending) {
-            void toggleActionGate(pending.name, pending.enabled).catch(() => undefined);
+            applyToggle(pending.names, pending.enabled);
             setPending(null);
           }
         }}

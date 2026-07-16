@@ -33,7 +33,8 @@ WEBAPP_TYPE = 'webapp_%s_%s' % (PLUGIN_ID, PLUGIN_ID)
 # Canonical component ids. scripts/agents/{test_tools,test_agent}.py import
 # these, so the CLI harnesses and in-product provisioning cannot drift.
 TOOL_COMPONENTS = ['list-hosts', 'instance-health', 'compute-cost',
-                   'config-inspect', 'log-errors', 'storage-footprint',
+                   'config-inspect', 'log-errors', 'log-tail', 'toolkit-get',
+                   'list-capabilities', 'storage-footprint',
                    'k8s-health', 'db-health', 'plan-admin-action',
                    'execute-admin-action']
 AGENT_COMPONENTS = {'ATK Health Triage': 'health-triage',

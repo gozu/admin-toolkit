@@ -1,7 +1,7 @@
 {
   "name": "diag-parser",
   "private": true,
-  "version": "0.4.745",
+  "version": "0.4.746",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "test": "playwright test",
-    "check:contracts": "node ../../scripts/check_frontend_contracts.mjs && node ../../scripts/check_agent_domain_coverage.mjs",
+    "check:contracts": "node ../../scripts/check_frontend_contracts.mjs && node ../../scripts/check_agent_domain_coverage.mjs && node ../../scripts/check_agent_read_coverage.mjs",
     "test:live:profile": "playwright test tests/live-webapp-timelapse.spec.ts",
     "test:live:timelapse": "playwright test tests/live-webapp-timelapse.spec.ts",
     "test:smoke": "node live-card-smoke.mjs",

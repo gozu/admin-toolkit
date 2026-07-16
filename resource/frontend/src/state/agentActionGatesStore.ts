@@ -66,6 +66,39 @@ export async function loadActionGates(): Promise<void> {
   }
 }
 
+/** Persist one bulk flip over many gates in a single request (the "Read
+ *  access — all toolkit data" master toggle). Optimistic like the single. */
+export async function toggleGatesBulk(names: string[], enabled: boolean): Promise<void> {
+  const prev = agentActionGatesStore.get();
+  const nameSet = new Set(names);
+  agentActionGatesStore.patch({
+    saving: '__bulk__',
+    error: null,
+    sensors: prev.sensors.map((s) => (nameSet.has(s.name) ? { ...s, enabled } : s)),
+    actions: prev.actions.map((a) => (nameSet.has(a.action) ? { ...a, enabled } : a)),
+  });
+  try {
+    const res = await fetchJson<ActionSettingsResponse>('/api/agents/action-settings/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gates: Object.fromEntries(names.map((n) => [n, enabled])) }),
+    });
+    agentActionGatesStore.patch({
+      sensors: res.sensors ?? [],
+      actions: res.actions ?? [],
+      saving: null,
+    });
+  } catch (e) {
+    agentActionGatesStore.patch({
+      sensors: prev.sensors,
+      actions: prev.actions,
+      saving: null,
+      error: e instanceof Error ? e.message : 'Failed to save the toggles.',
+    });
+    throw e;
+  }
+}
+
 /** Persist one toggle (optimistic; server response is authoritative). */
 export async function toggleActionGate(name: string, enabled: boolean): Promise<void> {
   const prev = agentActionGatesStore.get();

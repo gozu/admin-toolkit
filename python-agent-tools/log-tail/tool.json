@@ -1,0 +1,9 @@
+/* Agent tool: raw backend.log tail / grep */
+{
+    "meta": {
+        "label": "Admin Toolkit: Log tail",
+        "description": "Raw tail (or regex grep) of a DSS host's backend.log — the last ~100K characters, up to 1000 lines.",
+        "icon": "icon-file-text"
+    },
+    "params": []
+}

@@ -699,6 +699,12 @@ function persistWhere(conv: Conversation, match: (msg: ChatMessage) => boolean):
   persistMessages(conv, positions);
 }
 
+/** One-click agents provisioning (the Agents page empty-state CTA) — creates
+ * the ADMINTOOLKIT tool + agent instances on the active host, no CLI. */
+export async function provisionAgents(): Promise<ProvisionResult> {
+  return fetchJson<ProvisionResult>('/api/agents/provision', { method: 'POST' });
+}
+
 export async function provisionTraceExplorer(): Promise<ProvisionResult> {
   const result = await fetchJson<ProvisionResult>('/api/agents/trace-explorer/provision', {
     method: 'POST',

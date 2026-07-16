@@ -14,15 +14,17 @@ import argparse
 import json
 import os
 import pathlib
+import sys
 import time
 
 import dataikuapi
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-PLUGIN_ID = "admin-toolkit"
-TOOLS = ["list-hosts", "instance-health", "compute-cost",
-         "config-inspect", "log-errors", "storage-footprint",
-         "k8s-health", "db-health", "plan-admin-action", "execute-admin-action"]
+sys.path.insert(0, str(REPO / "python-lib"))
+
+# Canonical component ids live in the backend module (which also powers the
+# in-product POST /api/agents/provision) so CLI and webapp can't drift.
+from adk_backend.agent_provision import PLUGIN_ID, TOOL_COMPONENTS as TOOLS  # noqa: E402
 
 
 def get_client():

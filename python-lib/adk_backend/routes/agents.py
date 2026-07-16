@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, g, jsonify, request
 
-from adk_backend import agents_db, trace_explorer
+from adk_backend import agent_provision, agents_db, trace_explorer
 from adk_backend.utils import _sse_response, advanced, local_only
 from db_adapter import load_agents_audit_config
 
@@ -112,6 +112,16 @@ def api_agents_list():
                      getattr(g, 'host_id', 'local'), str(exc)[:200])
         return jsonify({'available': False, 'projectKey': AGENTS_PROJECT_KEY,
                         'agents': [], 'reason': str(exc)[:200]})
+
+
+@bp.route('/api/agents/provision', methods=['POST'])
+def api_agents_provision():
+    """One-click agents provisioning — the Agents page's empty-state CTA (the
+    no-CLI replacement for scripts/agents/provision_prod.py). Idempotent;
+    ungated like the other bootstrap routes (/api/hosts/macro-project,
+    install-toolkit): it only creates the toolkit's own standard objects, and
+    the agents stay inert until an admin picks an LLM and enables actions."""
+    return jsonify(agent_provision.ensure_agents_provisioned(g.client))
 
 
 @bp.route('/api/agents/chat', methods=['POST'])

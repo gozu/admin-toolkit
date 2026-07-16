@@ -16,12 +16,11 @@ import sys
 import dataikuapi
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / 'python-lib'))
 
-AGENT_TYPES = {
-    'ATK Health Triage': 'health-triage',
-    'ATK Scoping Architect': 'scoping-architect',
-    'ATK Ops Actuator': 'ops-actuator',
-}
+# Canonical agent names/components live in the backend module (which also
+# powers the in-product POST /api/agents/provision) so CLI and webapp can't drift.
+from adk_backend.agent_provision import AGENT_COMPONENTS as AGENT_TYPES  # noqa: E402
 
 
 def get_client():

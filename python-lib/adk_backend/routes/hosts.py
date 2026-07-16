@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from flask import Blueprint, jsonify, request
 
 from adk_backend import hostkeys
+from adk_backend.agent_provision import ensure_agents_provisioned
 from adk_backend.clients import (
     ADMIN_TOOLKIT_GIT_BRANCH,
     ADMIN_TOOLKIT_GIT_REPO_URL,
@@ -140,9 +141,17 @@ def api_hosts_macro_project():
         return jsonify({'ok': False, 'error': f'{type(exc).__name__}: {str(exc)[:200]}'}), 400
     try:
         client.create_project(MACRO_PROJECT_KEY, name, owner='admin')
-        return jsonify({'ok': True, 'projectKey': MACRO_PROJECT_KEY, 'name': name})
     except Exception as exc:
         return jsonify({'ok': False, 'error': f'{type(exc).__name__}: {str(exc)[:300]}'}), 500
+    # First-run bootstrap doubles as agents provisioning (tool + agent
+    # instances in the fresh project) — best-effort: a failure never blocks
+    # the project flow, the Agents page CTA can retry it.
+    try:
+        agents = ensure_agents_provisioned(client)
+    except Exception as exc:
+        agents = {'ok': False, 'error': f'{type(exc).__name__}: {str(exc)[:200]}'}
+    return jsonify({'ok': True, 'projectKey': MACRO_PROJECT_KEY, 'name': name,
+                    'agents': agents})
 
 
 @bp.route('/api/hosts/install-toolkit', methods=['POST'])
@@ -159,12 +168,14 @@ def api_hosts_install_toolkit():
         the backend streams it to install_plugin_from_archive / update_from_zip.
         Used when the remote can't reach the repo (private / air-gapped).
 
-    Three steps total — only step 1 branches on the source; steps 2 & 3 are
+    Four steps total — only step 1 branches on the source; the rest are
     source-agnostic:
 
       1. install  — install (or update) the plugin on the remote,
       2. codeenv  — build + select the plugin's managed code env on the remote,
-      3. project  — create the ADMINTOOLKIT support project if absent.
+      3. project  — create the ADMINTOOLKIT support project if absent,
+      4. agents   — provision the agents layer (tool + agent instances);
+                    best-effort, never fails the install.
 
     Streams one SSE `step` event per phase: {step, status, msg?, error?} where
     status ∈ active|done|error, then a terminal {step:'complete', status:'done'}.
@@ -330,6 +341,22 @@ def api_hosts_install_toolkit():
         except Exception as exc:
             yield sse('project', 'error', error=f'{type(exc).__name__}: {str(exc)[:300]}')
             return
+
+        # ── Step 4: provision the agents layer (tool + agent instances) ──
+        # Never fails the install: a pre-Agent-Hub DSS still gets a working
+        # toolkit, and the Agents page's "Set up agents" CTA can retry later.
+        yield sse('agents', 'active', 'Provisioning agents…')
+        try:
+            result = ensure_agents_provisioned(remote_client)
+            if result.get('ok'):
+                yield sse('agents', 'done', result.get('summary') or 'Agents ready')
+            else:
+                reason = next((s.get('message') for s in result.get('steps') or []
+                               if s.get('status') == 'error'), 'unknown error')
+                yield sse('agents', 'done', f'Skipped — {reason} (retry from the Agents page)')
+        except Exception as exc:
+            yield sse('agents', 'done',
+                      f'Skipped — {type(exc).__name__}: {str(exc)[:200]} (retry from the Agents page)')
 
         yield sse('complete', 'done', 'Admin Toolkit installed')
 

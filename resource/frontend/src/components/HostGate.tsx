@@ -13,7 +13,7 @@ interface HostGateProps {
 type ProbeState = DssHostStatus | 'loading' | undefined;
 
 // ── Install-toolkit flow (one-click bootstrap of a plugin-less remote) ──
-type InstallStepKey = 'install' | 'codeenv' | 'project';
+type InstallStepKey = 'install' | 'codeenv' | 'project' | 'agents';
 type StepStatus = 'queued' | 'active' | 'done' | 'error';
 interface StepView {
   status: StepStatus;
@@ -26,6 +26,7 @@ const INSTALL_STEPS: { key: InstallStepKey; label: string }[] = [
   { key: 'install', label: 'Install plugin' },
   { key: 'codeenv', label: 'Build code env' },
   { key: 'project', label: 'Create project' },
+  { key: 'agents', label: 'Provision agents' },
 ];
 
 // Cosmetic mirror of the backend constants (clients.py) — prefilled into the
@@ -40,6 +41,7 @@ function initialInstallSteps(): Record<InstallStepKey, StepView> {
     install: { status: 'queued', message: 'Queued' },
     codeenv: { status: 'queued', message: 'Queued' },
     project: { status: 'queued', message: 'Queued' },
+    agents: { status: 'queued', message: 'Queued' },
   };
 }
 
@@ -422,7 +424,8 @@ export function HostGate({ onEnter }: HostGateProps) {
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">Create remote support project</h2>
             <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
               {setupHost.label} has the plugin installed, but it is missing the support project this toolkit
-              needs on that host. Create it once and the scan can continue.
+              needs on that host. Create it once — this also provisions the toolkit's agents — and the
+              scan can continue.
             </p>
             {setupError && (
               <div className="mt-3 rounded border border-[var(--neon-red)]/40 bg-[var(--neon-red)]/10 px-3 py-2 text-sm text-[var(--neon-red)]">
@@ -459,7 +462,7 @@ export function HostGate({ onEnter }: HostGateProps) {
             <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
               {installHost.label} is reachable but the Admin Toolkit plugin isn't installed. Install it from git
               (default) or upload the plugin <code className="text-[var(--neon-cyan)]">.zip</code>, then this builds
-              its code env and creates the support project on that host.
+              its code env, creates the support project and provisions the agents on that host.
             </p>
 
             {!installReady && (

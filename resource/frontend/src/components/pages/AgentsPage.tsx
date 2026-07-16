@@ -24,6 +24,7 @@ import {
   clearAllConversations,
   deriveTitle,
   ensureChatBootstrapped,
+  provisionAgents,
   provisionTraceExplorer,
   rejectPlans,
   selectAgent,
@@ -90,6 +91,8 @@ export function AgentsPage() {
   const [provisioning, setProvisioning] = useState(false);
   const [provisionResult, setProvisionResult] = useState<ProvisionResult | null>(null);
   const [provisionError, setProvisionError] = useState<string | null>(null);
+  // The steps card serves both one-click setups — this picks its wording.
+  const [provisionKind, setProvisionKind] = useState<'agents' | 'trace-explorer'>('trace-explorer');
   const [focusAuditId, setFocusAuditId] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -137,24 +140,31 @@ export function AgentsPage() {
     if (!chatState.persistence.loaded) void ensureChatBootstrapped();
   }, [chatState.persistence.loaded]);
 
-  useEffect(() => {
-    fetchJson<AgentsListResponse>('/api/agents')
-      .then((data) => {
-        setAgents(data.agents);
-        if (!data.available) setUnavailableReason(data.reason || 'Agents plugin not provisioned');
-        if (data.agents.length > 0) {
-          const current = agentsChatStore.get().selectedAgentId;
-          if (!current || !data.agents.some((a) => a.id === current)) {
-            // Fresh sessions start on the triage generalist (it has every
-            // sensor tool); free-form messages continue the visible thread.
-            const preferred = findByRole(data.agents, 'triage') || data.agents[0];
-            selectAgent(preferred.id);
+  const loadAgents = useCallback(
+    () =>
+      fetchJson<AgentsListResponse>('/api/agents')
+        .then((data) => {
+          setAgents(data.agents);
+          setUnavailableReason(
+            data.available ? null : data.reason || 'Agents plugin not provisioned',
+          );
+          if (data.agents.length > 0) {
+            const current = agentsChatStore.get().selectedAgentId;
+            if (!current || !data.agents.some((a) => a.id === current)) {
+              // Fresh sessions start on the triage generalist (it has every
+              // sensor tool); free-form messages continue the visible thread.
+              const preferred = findByRole(data.agents, 'triage') || data.agents[0];
+              selectAgent(preferred.id);
+            }
           }
-        }
-      })
-      .catch((err) => setUnavailableReason(String(err)))
-      .finally(() => setLoadingAgents(false));
-  }, []);
+        })
+        .catch((err) => setUnavailableReason(String(err))),
+    [],
+  );
+
+  useEffect(() => {
+    void loadAgents().finally(() => setLoadingAgents(false));
+  }, [loadAgents]);
 
   // Tick for plan-expiry countdowns — only while an undecided plan is visible.
   const hasPendingPlan = useMemo(
@@ -254,10 +264,25 @@ export function AgentsPage() {
     [selectedId, actuator],
   );
 
+  const onProvisionAgents = useCallback(() => {
+    setProvisioning(true);
+    setProvisionError(null);
+    setProvisionResult(null);
+    setProvisionKind('agents');
+    provisionAgents()
+      .then((result) => {
+        setProvisionResult(result);
+        if (result.ok) void loadAgents();
+      })
+      .catch((err) => setProvisionError(String(err)))
+      .finally(() => setProvisioning(false));
+  }, [loadAgents]);
+
   const onProvisionTraceExplorer = useCallback(() => {
     setProvisioning(true);
     setProvisionError(null);
     setProvisionResult(null);
+    setProvisionKind('trace-explorer');
     provisionTraceExplorer()
       .then(setProvisionResult)
       .catch((err) => {
@@ -360,11 +385,11 @@ export function AgentsPage() {
           <div className="glass-card p-3 space-y-1.5 text-xs border-l-2 border-l-[var(--accent)]">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-[var(--text-primary)]">
-                {provisionError
-                  ? 'Trace Explorer setup failed'
-                  : provisionResult?.ok
-                    ? 'Trace Explorer is ready'
-                    : 'Trace Explorer setup incomplete'}
+                {(() => {
+                  const label = provisionKind === 'agents' ? 'Agents' : 'Trace Explorer';
+                  if (provisionError) return `${label} setup failed`;
+                  return provisionResult?.ok ? `${label} ready` : `${label} setup incomplete`;
+                })()}
               </span>
               <button
                 onClick={() => {
@@ -403,13 +428,20 @@ export function AgentsPage() {
         </div>
       ) : agents.length === 0 ? (
         <div className={COLUMN}>
-          <div className="glass-card p-6 max-w-lg space-y-2">
+          <div className="glass-card p-6 max-w-lg space-y-3">
             <h3 className="text-sm font-semibold text-[var(--text-primary)]">No agents on this host</h3>
             <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-              The Admin Toolkit agents are not provisioned here (no agent instances found in the
-              ADMINTOOLKIT project — run scripts/agents/provision_prod.py against this host).
-              {unavailableReason ? ` — ${unavailableReason}` : ''}
+              The Admin Toolkit agents are not provisioned here yet. One click creates the agent
+              and tool instances in the ADMINTOOLKIT project on this host — no CLI needed.
+              {unavailableReason ? ` (${unavailableReason})` : ''}
             </p>
+            <button
+              onClick={onProvisionAgents}
+              disabled={provisioning}
+              className="px-3 py-1.5 text-xs font-semibold rounded-md bg-[var(--accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-60"
+            >
+              {provisioning ? 'Setting up…' : 'Set up agents'}
+            </button>
           </div>
         </div>
       ) : (

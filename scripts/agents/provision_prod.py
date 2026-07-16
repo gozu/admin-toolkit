@@ -3,6 +3,12 @@
 where the plugin zip is already installed (e.g. tam-global via the secure
 wrapper). Idempotent — safe to re-run.
 
+No longer required for normal installs: the webapp self-provisions via
+adk_backend/agent_provision.py (Agents page "Set up agents" CTA, the one-click
+host installer, and the ADMINTOOLKIT bootstrap). This script remains the
+headless ops path — it additionally builds the code env, sets llm-id /
+master-password, and runs smoke checks.
+
     DSS_API_KEY=<admin key> .venv/bin/python scripts/agents/provision_prod.py \
         --url https://tam-global.fe-aws.dkucloud-dev.com \
         [--key-file <path>] [--red-password <pw>] [--keys-password <pw>] \

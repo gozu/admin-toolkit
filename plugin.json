@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.750",
+    "version": "0.4.751",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -53,13 +53,13 @@
         {
             "name": "sep_toolkit_stores",
             "label": "Toolkit Data Stores",
-            "description": "Two connections the toolkit uses to store its own data. One database serves the agents audit trail, the daily-triage store, and (if Remote SQL chat is on) chat history. One storage connection holds archive/export folders and UI tables saved as datasets. Per-feature overrides still exist (hidden) for existing installs, but new setups only need these two.",
+            "description": "One database and one storage connection cover all toolkit-owned data, including agent chat history.",
             "type": "SEPARATOR"
         },
         {
             "name": "toolkit_db_connection",
             "label": "Toolkit database (PostgreSQL)",
-            "description": "One PostgreSQL connection for the toolkit's own tables: agents audit trail (agents.agent_actions), daily-triage store, and Remote SQL chat history. Overrides the per-feature database connections when set. Select (None) to fall back to those per-feature connections.",
+            "description": "Agents audit trail, daily-triage store, and chat history. (None) = legacy per-feature connections.",
             "type": "SELECT",
             "getChoicesFromPython": true,
             "mandatory": false,
@@ -68,11 +68,52 @@
         {
             "name": "toolkit_storage_connection",
             "label": "Toolkit storage (managed folders)",
-            "description": "One folder-capable connection for the toolkit's artifacts: the auto-created 'admin-toolkit-archive' folder (cleaner backups + export zips) and UI tables saved as managed datasets. Overrides the per-feature storage connections when set. Select (None) to fall back to those.",
+            "description": "Archive/export folders and tables saved as datasets. (None) = legacy per-feature connections.",
             "type": "SELECT",
             "getChoicesFromPython": true,
             "mandatory": false,
             "defaultValue": ""
+        },
+        {
+            "name": "chat_storage",
+            "label": "Chat storage",
+            "description": "Where agent chats persist. Remote SQL uses the Toolkit database; changes apply on the next backend restart.",
+            "type": "SELECT",
+            "selectChoices": [
+                {
+                    "value": "OFF",
+                    "label": "Off (browser only)"
+                },
+                {
+                    "value": "LOCAL",
+                    "label": "Built-in (SQLite)"
+                },
+                {
+                    "value": "REMOTE",
+                    "label": "Remote SQL Database"
+                }
+            ],
+            "mandatory": false,
+            "defaultValue": "OFF"
+        },
+        {
+            "name": "chat_db_connection",
+            "label": "Chat SQL connection (legacy override, hidden)",
+            "description": "Superseded by 'Toolkit database' above (Remote SQL chat now stores in the toolkit database). Kept declared (hidden) so DSS does not prune an existing value; still used when Toolkit database is unset.",
+            "type": "SELECT",
+            "getChoicesFromPython": true,
+            "mandatory": false,
+            "defaultValue": "",
+            "visibilityCondition": "false"
+        },
+        {
+            "name": "chat_tables_prefix",
+            "label": "Chat tables prefix",
+            "description": "Physical table-name prefix (lowercase letters, digits, underscores).",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": "atk_chat_",
+            "visibilityCondition": "model.chat_storage == 'REMOTE'"
         },
         {
             "name": "sep_dbhealth",
@@ -116,17 +157,13 @@
             "visibilityCondition": "false"
         },
         {
-            "name": "sep_outreach",
-            "label": "Outreach",
-            "type": "SEPARATOR"
-        },
-        {
             "name": "outreach_mail_channel",
-            "label": "Mail Channel ID",
-            "description": "DSS messaging channel ID used for outreach emails (e.g. 'mail-channel-1'). Leave empty to auto-select the first available channel.",
+            "label": "Outreach mail channel (webapp-managed)",
+            "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value.",
             "type": "STRING",
             "mandatory": false,
-            "defaultValue": ""
+            "defaultValue": "",
+            "visibilityCondition": "false"
         },
         {
             "name": "agents_audit_postgres_connection",
@@ -139,126 +176,71 @@
             "visibilityCondition": "false"
         },
         {
-            "name": "sep_chat_persistence",
-            "label": "Agents \u2014 Chat persistence",
-            "description": "Optionally persist webapp agent conversations server-side (per user, per fleet host). Off = browser-only, as before. Built-in = SQLite in the webapp's workload folder. Remote SQL = stored in the 'Toolkit database' connection above. Storage changes apply on the next webapp backend restart.",
-            "type": "SEPARATOR"
-        },
-        {
-            "name": "chat_storage",
-            "label": "Chat storage",
-            "type": "SELECT",
-            "selectChoices": [
-                {
-                    "value": "OFF",
-                    "label": "Off (browser only)"
-                },
-                {
-                    "value": "LOCAL",
-                    "label": "Built-in (SQLite)"
-                },
-                {
-                    "value": "REMOTE",
-                    "label": "Remote SQL Database"
-                }
-            ],
-            "mandatory": false,
-            "defaultValue": "OFF"
-        },
-        {
-            "name": "chat_db_connection",
-            "label": "Chat SQL connection (legacy override, hidden)",
-            "description": "Superseded by 'Toolkit database' above (Remote SQL chat now stores in the toolkit database). Kept declared (hidden) so DSS does not prune an existing value; still used when Toolkit database is unset.",
-            "type": "SELECT",
-            "getChoicesFromPython": true,
-            "mandatory": false,
-            "defaultValue": "",
-            "visibilityCondition": "false"
-        },
-        {
-            "name": "chat_tables_prefix",
-            "label": "Chat tables prefix",
-            "description": "Physical table-name prefix (lowercase letters, digits, underscores).",
-            "type": "STRING",
-            "mandatory": false,
-            "defaultValue": "atk_chat_",
-            "visibilityCondition": "model.chat_storage == 'REMOTE'"
-        },
-        {
             "name": "sep_backend",
-            "label": "Agents \u2014 Admin Toolkit Backend",
+            "label": "Agents",
             "type": "SEPARATOR"
         },
         {
             "name": "backend_url",
             "label": "Backend base URL",
-            "description": "Admin Toolkit webapp backend base, e.g. https://dss.example.com/web-apps-backends/PROJECT/webappId \u2014 leave empty to auto-discover the webapp on the local DSS.",
+            "description": "e.g. https://dss.example.com/web-apps-backends/PROJECT/webappId. Empty = auto-discover the webapp on the local DSS.",
             "type": "STRING",
             "mandatory": false,
             "defaultValue": ""
-        },
-        {
-            "name": "host_allowlist",
-            "label": "Host allowlist",
-            "description": "Comma-separated host ids agents may target (from the toolkit's host list). Empty = all configured hosts.",
-            "type": "STRING",
-            "mandatory": false,
-            "defaultValue": ""
-        },
-        {
-            "name": "verify_tls",
-            "label": "Verify TLS",
-            "type": "BOOLEAN",
-            "mandatory": false,
-            "defaultValue": true
-        },
-        {
-            "name": "http_timeout_s",
-            "label": "HTTP timeout (s)",
-            "description": "Timeout for normal backend endpoints.",
-            "type": "INT",
-            "mandatory": false,
-            "defaultValue": 30
-        },
-        {
-            "name": "heavy_timeout_s",
-            "label": "Heavy-scan timeout (s)",
-            "description": "Timeout for heavy scan endpoints (code envs, project footprint, CRU). On timeout, tools report scan_running with re-invoke advice.",
-            "type": "INT",
-            "mandatory": false,
-            "defaultValue": 420
-        },
-        {
-            "name": "sep_agents",
-            "label": "Agents \u2014 LLM",
-            "type": "SEPARATOR"
-        },
-        {
-            "name": "default_llm_id",
-            "label": "Default LLM",
-            "description": "LLM Mesh model used by the plugin agents unless overridden per agent.",
-            "type": "SELECT",
-            "getChoicesFromPython": true,
-            "mandatory": false,
-            "defaultValue": ""
-        },
-        {
-            "name": "sep_actuator",
-            "label": "Agents \u2014 Actuator (agentic actions)",
-            "type": "SEPARATOR"
         },
         {
             "name": "enable_red_actions",
             "label": "Master kill-switch",
-            "description": "OFF = execute-admin-action always refuses, regardless of per-agent settings. LLMs can be unpredictable. Do not trust blindly & thoroughly verify proposed actions.",
+            "description": "OFF = every agentic action refuses, regardless of per-action gates. Verify what agents propose \u2014 don't trust blindly.",
             "type": "BOOLEAN",
             "mandatory": false,
             "defaultValue": false
         },
         {
-            "name": "sep_triage",
-            "label": "Agents \u2014 Daily triage",
-            "type": "SEPARATOR"
+            "name": "host_allowlist",
+            "label": "Host allowlist (webapp-managed)",
+            "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value.",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": "",
+            "visibilityCondition": "false"
+        },
+        {
+            "name": "verify_tls",
+            "label": "Verify TLS (webapp-managed)",
+            "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value.",
+            "type": "BOOLEAN",
+            "mandatory": false,
+            "defaultValue": true,
+            "visibilityCondition": "false"
+        },
+        {
+            "name": "http_timeout_s",
+            "label": "HTTP timeout (webapp-managed)",
+            "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 30,
+            "visibilityCondition": "false"
+        },
+        {
+            "name": "heavy_timeout_s",
+            "label": "Heavy-scan timeout (webapp-managed)",
+            "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value.",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 900,
+            "visibilityCondition": "false"
+        },
+        {
+            "name": "default_llm_id",
+            "label": "Default LLM (webapp-managed)",
+            "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value.",
+            "type": "SELECT",
+            "getChoicesFromPython": true,
+            "mandatory": false,
+            "defaultValue": "",
+            "visibilityCondition": "false"
         },
         {
             "name": "triage_connection",
@@ -272,79 +254,77 @@
         },
         {
             "name": "triage_score_threshold",
-            "label": "Triage score threshold",
-            "description": "Hosts scoring below this get an LLM-drafted recommendation in the daily sweep.",
+            "label": "Triage score threshold (webapp-managed)",
+            "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value.",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 75
+            "defaultValue": 75,
+            "visibilityCondition": "false"
         },
         {
             "name": "triage_mail_channel",
-            "label": "Triage mail channel ID",
+            "label": "Triage mail channel (webapp-managed)",
             "type": "STRING",
             "mandatory": false,
-            "defaultValue": ""
+            "defaultValue": "",
+            "visibilityCondition": "false"
         },
         {
             "name": "triage_recipient",
-            "label": "Triage digest recipient",
+            "label": "Triage digest recipient (webapp-managed)",
             "type": "STRING",
             "mandatory": false,
-            "defaultValue": ""
-        },
-        {
-            "name": "sep_auto_remediate",
-            "label": "Agents \u2014 Auto-remediation",
-            "description": "Actions listed below run AUTONOMOUSLY during the daily triage sweep when their finding fires \u2014 no per-run human approval. Listing an action here is the admin's standing approval for that action, within the caps; everything else stays plan \u2192 approve \u2192 execute. The agentic-actions kill-switch still gates every run, and every run is audited (agent='triage-auto') and reported in the digest.",
-            "type": "SEPARATOR"
+            "defaultValue": "",
+            "visibilityCondition": "false"
         },
         {
             "name": "auto_remediate_actions",
-            "label": "Auto-remediate actions (CSV)",
-            "description": "Comma-separated action names the triage loop may execute autonomously. Only reversible capped cleanups are eligible: log-cleanup, docker-prune. Empty = tier off (the digest still reports what WOULD have run).",
+            "label": "Auto-remediate actions (webapp-managed)",
+            "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value.",
             "type": "STRING",
             "mandatory": false,
-            "defaultValue": ""
+            "defaultValue": "",
+            "visibilityCondition": "false"
         },
         {
             "name": "auto_remediate_max_gb",
-            "label": "Auto-remediate cap (GB per sweep)",
-            "description": "Cumulative reclaim cap across all autonomous fixes in one sweep.",
+            "label": "Auto-remediate cap GB (webapp-managed)",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 20
+            "defaultValue": 20,
+            "visibilityCondition": "false"
         },
         {
             "name": "auto_remediate_max_objects",
-            "label": "Auto-remediate cap (objects per sweep)",
-            "description": "Cumulative deleted-object cap across all autonomous fixes in one sweep.",
+            "label": "Auto-remediate cap objects (webapp-managed)",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 25
+            "defaultValue": 25,
+            "visibilityCondition": "false"
         },
         {
             "name": "python_run_timeout_seconds",
-            "label": "Power-Up script timeout (seconds)",
-            "description": "Wall-clock limit for agent-authored python-run scripts (Power-Up). The subprocess is killed when it elapses. Clamped to 5-600.",
+            "label": "Power-Up script timeout (webapp-managed)",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 120
+            "defaultValue": 120,
+            "visibilityCondition": "false"
         },
         {
             "name": "log_cleanup_min_age_days",
-            "label": "Log cleanup minimum age (days)",
-            "description": "Rotated logs younger than this are never deleted (applies to agent-planned and autonomous log-cleanup).",
+            "label": "Log cleanup minimum age (webapp-managed)",
             "type": "INT",
             "mandatory": false,
-            "defaultValue": 3
+            "defaultValue": 3,
+            "visibilityCondition": "false"
         },
         {
             "name": "settings_set_blocked_extra",
-            "label": "Extra blocked settings paths (CSV)",
-            "description": "Additional DSS general-settings path prefixes the settings-set action must refuse, on top of the built-in security/auth/licensing blacklist.",
+            "label": "Extra blocked settings paths (webapp-managed)",
             "type": "STRING",
             "mandatory": false,
-            "defaultValue": ""
+            "defaultValue": "",
+            "visibilityCondition": "false"
         },
         {
             "name": "agent_action_gates",

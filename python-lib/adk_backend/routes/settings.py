@@ -16,7 +16,7 @@ from adk_backend.settings import (
     _BACKEND_SETTINGS_DEFAULTS,
     _BACKEND_SETTINGS_LOCK,
 )
-from adk_backend.utils import advanced
+from adk_backend.utils import advanced, local_only
 
 bp = Blueprint('settings', __name__)
 
@@ -79,6 +79,118 @@ def api_settings_update():
             persist_error = f'{type(exc).__name__}: {str(exc)[:200]}'
     return jsonify({'updated': updated, 'rejected': rejected, 'current': current,
                     'persisted': persisted, 'persistError': persist_error})
+
+
+# ── Agents & Outreach knobs ──────────────────────────────────────────────────
+# Plugin params managed by the webapp Settings page ("Agents & Outreach" card)
+# instead of the DSS plugin-settings screen. Each stays declared (hidden) in
+# plugin.json so DSS never prunes the saved value, and agents/runnables keep
+# reading them through atk_agent_common.config.resolve unchanged. Defaults here
+# must mirror plugin.json.
+_AGENT_KNOB_DEFAULTS = {
+    'outreach_mail_channel': '',
+    'host_allowlist': '',
+    'verify_tls': True,
+    'http_timeout_s': 30,
+    'heavy_timeout_s': 900,
+    'default_llm_id': '',
+    'triage_score_threshold': 75,
+    'triage_mail_channel': '',
+    'triage_recipient': '',
+    'auto_remediate_actions': '',
+    'auto_remediate_max_gb': 20,
+    'auto_remediate_max_objects': 25,
+    'python_run_timeout_seconds': 120,
+    'log_cleanup_min_age_days': 3,
+    'settings_set_blocked_extra': '',
+}
+
+
+def _auto_eligible_actions():
+    from atk_agent_common.remediation_map import AUTO_EXCLUDED, REMEDIATIONS
+    return sorted({spec['action'] for _glob, specs in REMEDIATIONS
+                   for spec in (specs or []) if spec['auto']} - set(AUTO_EXCLUDED))
+
+
+def _knob_cast(key, value):
+    default = _AGENT_KNOB_DEFAULTS[key]
+    if isinstance(default, bool):
+        if isinstance(value, bool):
+            return value
+        return str(value).lower() not in ('false', '0', 'no', '')
+    if isinstance(default, int):
+        return int(value)
+    return str(value or '').strip()
+
+
+def _read_agent_knobs(config):
+    values = {}
+    for key, default in _AGENT_KNOB_DEFAULTS.items():
+        raw = config.get(key)
+        if raw is None or raw == '':
+            values[key] = default
+            continue
+        try:
+            values[key] = _knob_cast(key, raw)
+        except (TypeError, ValueError):
+            values[key] = default
+    return values
+
+
+@bp.route('/api/settings/agents', methods=['GET'])
+@local_only
+def api_agent_knobs_get():
+    from adk_backend.mail import _list_mail_channels
+    client = _local_thread_client()
+    raw = client.get_plugin(_PLUGIN_ID).get_settings().get_raw()
+    config = raw.get('config', {}) if isinstance(raw, dict) else {}
+    try:
+        channels = _list_mail_channels(client)
+    except Exception:
+        channels = []
+    llms = []
+    try:
+        from adk_backend.clients import _local_toolkit_project
+        llms = [{'id': llm['id'], 'label': llm.get('friendlyName') or llm['id']}
+                for llm in _local_toolkit_project().list_llms()
+                if llm.get('type') != 'RETRIEVAL_AUGMENTED']
+    except Exception:
+        pass
+    return jsonify({'ok': True, 'values': _read_agent_knobs(config),
+                    'mailChannels': channels, 'llms': llms,
+                    'autoRemediateEligible': _auto_eligible_actions()})
+
+
+@bp.route('/api/settings/agents/update', methods=['POST'])
+@advanced
+@local_only
+def api_agent_knobs_update():
+    body = request.get_json(force=True, silent=True) or {}
+    updates = body.get('values')
+    if not isinstance(updates, dict) or not updates:
+        return jsonify({'ok': False, 'error': 'values must be a non-empty map'}), 400
+    unknown = sorted(str(k) for k in updates if k not in _AGENT_KNOB_DEFAULTS)
+    if unknown:
+        return jsonify({'ok': False, 'error': 'unknown setting(s): %s' % ', '.join(unknown)}), 400
+    casted = {}
+    for key, value in updates.items():
+        try:
+            casted[key] = _knob_cast(key, value)
+        except (TypeError, ValueError):
+            return jsonify({'ok': False, 'error': '%s must be a number' % key}), 400
+    if 'auto_remediate_actions' in casted:
+        tokens = [t.strip() for t in casted['auto_remediate_actions'].split(',') if t.strip()]
+        bad = sorted(set(tokens) - set(_auto_eligible_actions()))
+        if bad:
+            return jsonify({'ok': False,
+                            'error': 'not auto-eligible: %s' % ', '.join(bad)}), 400
+        casted['auto_remediate_actions'] = ','.join(tokens)
+    settings = _local_thread_client().get_plugin(_PLUGIN_ID).get_settings()
+    settings.get_raw().setdefault('config', {}).update(casted)
+    settings.save()
+    config = settings.get_raw().get('config', {})
+    return jsonify({'ok': True, 'values': _read_agent_knobs(config),
+                    'written': sorted(casted)})
 
 
 # Worker-pool sizes swept by the benchmark. Synthetic probes (metadata or even

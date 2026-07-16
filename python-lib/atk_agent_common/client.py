@@ -46,7 +46,7 @@ class ToolkitClient:
         self.session.headers['Connection'] = 'close'
         self.session.verify = settings.get('verify_tls', True)
         self.timeout = settings.get('http_timeout_s', 30)
-        self.heavy_timeout = settings.get('heavy_timeout_s', 420)
+        self.heavy_timeout = settings.get('heavy_timeout_s', 900)
         self._hosts_cache = None
         self._hosts_cache_ts = 0.0
         self._red_unlocked = False

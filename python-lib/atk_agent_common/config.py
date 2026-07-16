@@ -40,7 +40,7 @@ def resolve(plugin_config=None):
         'host_allowlist': [h.strip() for h in (pick('host_allowlist') or '').split(',') if h.strip()],
         'verify_tls': str(pick('verify_tls', cfg.get('verify_tls', True))).lower() not in ('false', '0', 'no'),
         'http_timeout_s': int(pick('http_timeout_s', cfg.get('http_timeout_s') or 30)),
-        'heavy_timeout_s': int(pick('heavy_timeout_s', cfg.get('heavy_timeout_s') or 420)),
+        'heavy_timeout_s': int(pick('heavy_timeout_s', cfg.get('heavy_timeout_s') or 900)),
         'default_llm_id': pick('default_llm_id'),
         'enable_red_actions': str(pick('enable_red_actions', cfg.get('enable_red_actions', False))).lower() in ('true', '1', 'yes'),
         'triage_connection': _toolkit_db or pick('triage_connection'),

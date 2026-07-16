@@ -4,6 +4,7 @@ import { loadFromStorage, saveToStorage } from '../../utils/storage';
 import { useToggleFlag } from '../../hooks/useToggleFlag';
 import { useRedState, forgetRed } from '../../state/redUnlockStore';
 import { UnlockModal } from '../UnlockModal';
+import { AgentsOutreachCard } from '../AgentsOutreachCard';
 import { RemoteHostsCard } from '../RemoteHostsCard';
 import { FindingWhitelistCard } from '../FindingWhitelistCard';
 import { AlgorithmReviewCard } from '../AlgorithmReviewCard';
@@ -142,6 +143,8 @@ export function SettingsPage() {
           agents.
         </p>
       </section>
+
+      <AgentsOutreachCard />
 
       <RemoteHostsCard />
 

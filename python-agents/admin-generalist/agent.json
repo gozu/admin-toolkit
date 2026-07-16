@@ -1,0 +1,58 @@
+/* Plugin agent: the single Admin Toolkit generalist (triage + scoping + gated actions) */
+{
+    "meta": {
+        "label": "ATK Admin Agent",
+        "description": "One generalist for the whole toolkit: fleet health triage (deterministic sweep), scoping/architecture answers, and human-in-the-loop admin actions (plan with blast radius, explicit confirmation, gated execute, audit id).",
+        "icon": "icon-magic"
+    },
+    "supportsImageInputs": false,
+    "params": [
+        {
+            "name": "llm_id",
+            "label": "LLM",
+            "type": "STRING",
+            "description": "LLM Mesh id (empty = plugin default).",
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
+            "name": "allow_red_actions",
+            "label": "Allow agentic actions",
+            "type": "BOOLEAN",
+            "description": "Per-agent gate: OFF = this agent may plan but never execute.",
+            "mandatory": false,
+            "defaultValue": false
+        },
+        {
+            "name": "allowed_actions",
+            "label": "Allowed actions",
+            "type": "STRING",
+            "description": "Comma-separated allowlist (empty = all catalog actions). Highest-blast actions worth trimming first: user-disable, api-key-delete, connection-delete, cluster-detach, cluster-stop, plugin-uninstall, project-delete.",
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
+            "name": "hosts",
+            "label": "Hosts",
+            "type": "STRING",
+            "description": "Comma-separated host ids for fleet sweeps (empty = all configured hosts).",
+            "mandatory": false,
+            "defaultValue": ""
+        },
+        {
+            "name": "score_threshold",
+            "label": "Score threshold",
+            "type": "INT",
+            "description": "Hosts scoring below this are flagged in sweeps.",
+            "mandatory": false,
+            "defaultValue": 75
+        },
+        {
+            "name": "max_recommendations",
+            "label": "Max recommendations",
+            "type": "INT",
+            "mandatory": false,
+            "defaultValue": 5
+        }
+    ]
+}

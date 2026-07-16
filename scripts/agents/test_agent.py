@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Smoke-test a plugin agent through the LLM Mesh (agent = virtual LLM).
 
-    .venv/bin/python scripts/agents/test_agent.py [--agent "ATK Health Triage"] \
+    .venv/bin/python scripts/agents/test_agent.py [--agent "ATK Admin Agent"] \
         [--project AGENTSSANDBOX] [--prompt "..."] [--llm-id <mesh id>]
 
 Creates (or reuses) the agent instance in the sandbox project, then runs a
@@ -60,7 +60,7 @@ def ensure_agent(project, name, component, llm_id):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--agent', default='ATK Health Triage')
+    ap.add_argument('--agent', default='ATK Admin Agent')
     ap.add_argument('--project', default='AGENTSSANDBOX')
     ap.add_argument('--prompt', default='Run a fleet health sweep and give me the triage report.')
     ap.add_argument('--llm-id', default='')

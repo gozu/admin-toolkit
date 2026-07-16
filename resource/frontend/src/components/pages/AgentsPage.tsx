@@ -44,11 +44,12 @@ interface AgentsListResponse {
   projectKey: string;
 }
 
-/** The UI presents ONE agent; the three provisioned specialists stay behind
- * the curtain and are picked per message (name substring = stable identity). */
-function findByRole(agents: AgentInfo[], role: AgentRole): AgentInfo | undefined {
-  const pattern = { triage: /triage/i, scoping: /scoping/i, actuator: /actuator/i }[role];
-  return agents.find((a) => pattern.test(a.name));
+/** ONE provisioned generalist since 4c — prefer it by name so a host mid-
+ * migration (stale specialist instances still listed) never grabs a retired
+ * one. Library-prompt roles are pure FLAVOR now: they shape the prompt text,
+ * never the routing. */
+function findAgent(agents: AgentInfo[]): AgentInfo | undefined {
+  return agents.find((a) => /admin agent|generalist/i.test(a.name)) || agents[0];
 }
 
 /** First prompt of each section, then seconds, until `count` — a spread of
@@ -98,9 +99,6 @@ export function AgentsPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const stickToBottomRef = useRef(true);
-  // A prompt inserted from the library keeps its group's routing until it is
-  // sent or the composer is cleared — editing the text keeps the intent.
-  const pendingRoleRef = useRef<AgentRole | null>(null);
 
   const chatState = agentsChatStore.use();
   const selectedId = chatState.selectedAgentId;
@@ -118,20 +116,24 @@ export function AgentsPage() {
   );
   const streaming = conversation?.streaming ?? false;
 
-  const actuator = useMemo(() => findByRole(agents, 'actuator'), [agents]);
-  const triage = useMemo(() => findByRole(agents, 'triage'), [agents]);
+  const agent = useMemo(() => findAgent(agents), [agents]);
+  // A conversation whose agent no longer exists (a retired pre-4c specialist)
+  // stays readable but cannot continue — its kernel is gone.
+  const conversationOrphaned = Boolean(
+    conversation && agents.length > 0 && !agents.some((a) => a.id === conversation.agentId),
+  );
 
   // Deep link to the conversation agent's DSS config screen — powers the
   // gate-hint callout when an execute is refused for allow_red_actions=false.
   const agentConfigUrl = useMemo(() => {
-    const gateAgent = agents.find((a) => a.id === conversation?.agentId) || actuator;
+    const gateAgent = agents.find((a) => a.id === conversation?.agentId) || agent;
     if (!gateAgent) return undefined;
     return dssUrls.agentConfig(
       gateAgent.projectKey ?? 'ADMINTOOLKIT',
       gateAgent.id,
       gateAgent.activeVersion ?? 'v1',
     );
-  }, [agents, conversation, actuator]);
+  }, [agents, conversation, agent]);
 
   // Chat persistence config + trace-explorer status, once per host — the
   // session epoch (host switch / in-app Refresh) resets `persistence.loaded`,
@@ -151,10 +153,8 @@ export function AgentsPage() {
           if (data.agents.length > 0) {
             const current = agentsChatStore.get().selectedAgentId;
             if (!current || !data.agents.some((a) => a.id === current)) {
-              // Fresh sessions start on the triage generalist (it has every
-              // sensor tool); free-form messages continue the visible thread.
-              const preferred = findByRole(data.agents, 'triage') || data.agents[0];
-              selectAgent(preferred.id);
+              const preferred = findAgent(data.agents);
+              if (preferred) selectAgent(preferred.id);
             }
           }
         })
@@ -211,47 +211,34 @@ export function AgentsPage() {
     stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }, []);
 
-  /** Route one message: an explicit role (library prompt) picks its
-   * specialist; free-form text continues the visible thread, or starts a
-   * fresh one on the triage generalist. */
+  /** One agent, one thread: every message — free-form or library prompt of
+   * any flavor — goes to the generalist. The role argument survives only as
+   * the library's grouping concept. */
   const send = useCallback(
-    (text: string, role?: AgentRole) => {
+    (text: string, _role?: AgentRole) => {
       const trimmed = text.trim();
-      if (!trimmed || streaming || agents.length === 0) return;
-      const routed = role ? findByRole(agents, role) : undefined;
-      const fallback = agents.find((a) => a.id === selectedId) || triage || agents[0];
-      const target = routed || fallback;
+      if (!trimmed || streaming || !agent || conversationOrphaned) return;
       setDraft('');
-      pendingRoleRef.current = null;
       stickToBottomRef.current = true;
-      if (target.id !== selectedId) selectAgent(target.id);
-      void sendAgentMessage(target.id, trimmed);
+      if (agent.id !== selectedId) selectAgent(agent.id);
+      void sendAgentMessage(agent.id, trimmed);
     },
-    [agents, selectedId, streaming, triage],
+    [agent, selectedId, streaming, conversationOrphaned],
   );
 
-  const sendDraft = useCallback(
-    (text: string) => send(text, pendingRoleRef.current ?? undefined),
-    [send],
-  );
+  const sendDraft = send;
 
-  const insertPrompt = useCallback((prompt: string, role?: AgentRole) => {
-    pendingRoleRef.current = role ?? null;
+  const insertPrompt = useCallback((prompt: string, _role?: AgentRole) => {
     setDraft(prompt);
     composerRef.current?.focus();
   }, []);
 
-  // Settings-history "Restore…": restores are the actuator specialist's job —
-  // prefill the composer for review and route the send to it.
-  const onRestore = useCallback(
-    (prompt: string) => {
-      if (actuator && actuator.id !== selectedId) selectAgent(actuator.id);
-      pendingRoleRef.current = 'actuator';
-      setDraft(prompt);
-      composerRef.current?.focus();
-    },
-    [actuator, selectedId],
-  );
+  // Settings-history "Restore…": prefill the composer for review; the
+  // generalist's write protocol takes it from there.
+  const onRestore = useCallback((prompt: string) => {
+    setDraft(prompt);
+    composerRef.current?.focus();
+  }, []);
 
   const onPlanDecision = useCallback(
     (plan: PlanCardData, decision: 'approved' | 'rejected') => {
@@ -265,11 +252,12 @@ export function AgentsPage() {
 
   const onSubmitActionItems = useCallback(
     (batchId: string, items: ActionItemData[]) => {
-      if (!selectedId || !actuator) return;
+      if (!selectedId || !agent) return;
       stickToBottomRef.current = true;
-      submitActionItemsToActuator(selectedId, actuator.id, batchId, items);
+      // Single agent: the "handoff" is just the next message in this thread.
+      submitActionItemsToActuator(selectedId, agent.id, batchId, items);
     },
-    [selectedId, actuator],
+    [selectedId, agent],
   );
 
   const onProvisionAgents = useCallback(() => {
@@ -514,7 +502,7 @@ export function AgentsPage() {
                       traceExplorer={traceExplorer}
                       now={now}
                       streaming={streaming}
-                      actuatorAvailable={Boolean(actuator)}
+                      actuatorAvailable={Boolean(agent) && !conversationOrphaned}
                       agentConfigUrl={agentConfigUrl}
                       onPlanDecision={onPlanDecision}
                       onShowAudit={setFocusAuditId}
@@ -540,6 +528,14 @@ export function AgentsPage() {
               onRejectAll={(plans) => selectedId && rejectPlans(selectedId, plans)}
             />
 
+            {conversationOrphaned && (
+              <div className="glass-card p-3 text-xs text-[var(--text-secondary)] border-l-2 border-l-[var(--neon-amber)]">
+                This conversation belongs to a retired specialist agent from before the
+                single-agent migration. It stays readable, but new messages need a new
+                conversation with the Admin Agent.
+              </div>
+            )}
+
             {conversation?.error && (
               <div className="card-alert-critical p-3 text-sm text-[var(--danger)] flex items-start gap-1.5">
                 <span className="flex-1">{conversation.error}</span>
@@ -560,10 +556,7 @@ export function AgentsPage() {
               <textarea
                 ref={composerRef}
                 value={draft}
-                onChange={(e) => {
-                  setDraft(e.target.value);
-                  if (!e.target.value) pendingRoleRef.current = null;
-                }}
+                onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -571,8 +564,14 @@ export function AgentsPage() {
                   }
                 }}
                 rows={Math.min(8, Math.max(1, draft.split('\n').length))}
-                placeholder={streaming ? 'Agent is working…' : 'Message the agent… (Enter to send)'}
-                disabled={streaming}
+                placeholder={
+                  conversationOrphaned
+                    ? 'Read-only conversation (retired agent) — start a new conversation to continue.'
+                    : streaming
+                      ? 'Agent is working…'
+                      : 'Message the agent… (Enter to send)'
+                }
+                disabled={streaming || conversationOrphaned}
                 className="flex-1 px-3 py-2 text-sm rounded-lg bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] resize-none disabled:opacity-60"
               />
               {streaming ? (

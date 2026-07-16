@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Phase C groundedness gate: run golden_questions.json against the live
-scoping-architect agent (virtual LLM through the Mesh) and check that every
+admin generalist agent (virtual LLM through the Mesh) and check that every
 answer contains the expected facts AND cites its sources.
 
     .venv/bin/python scripts/agents/golden_check.py [--project AGENTSSANDBOX] [--limit N]
@@ -21,7 +21,7 @@ from test_agent import ensure_agent, get_client  # noqa: E402
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--project', default='AGENTSSANDBOX')
-    ap.add_argument('--agent', default='ATK Scoping Architect')
+    ap.add_argument('--agent', default='ATK Admin Agent')
     ap.add_argument('--limit', type=int, default=0)
     ap.add_argument('--llm-id', default='')
     args = ap.parse_args()
@@ -31,7 +31,7 @@ def main():
 
     client = get_client()
     project = client.get_project(args.project)
-    agent = ensure_agent(project, args.agent, 'scoping-architect', args.llm_id)
+    agent = ensure_agent(project, args.agent, 'admin-generalist', args.llm_id)
     llm = agent.as_llm()
 
     passed = failed = 0

@@ -82,6 +82,10 @@ def _state_payload(rows) -> dict:
     overrides = store.latest_overrides(rows)
     prompt_types = []
     for entry in prompts.prompt_type_registry():
+        # Retired specialist prompts keep their dataset columns (history stays
+        # readable) but never reach the Tuning UI.
+        if entry.get('hidden'):
+            continue
         prompt_types.append({
             'key': entry['key'],
             'label': entry['label'],

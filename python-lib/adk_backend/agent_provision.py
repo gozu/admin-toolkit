@@ -37,9 +37,10 @@ TOOL_COMPONENTS = ['list-hosts', 'instance-health', 'compute-cost',
                    'list-capabilities', 'storage-footprint',
                    'k8s-health', 'db-health', 'plan-admin-action',
                    'execute-admin-action']
-AGENT_COMPONENTS = {'ATK Health Triage': 'health-triage',
-                    'ATK Scoping Architect': 'scoping-architect',
-                    'ATK Ops Actuator': 'ops-actuator'}
+AGENT_COMPONENTS = {'ATK Admin Agent': 'admin-generalist'}
+# Retired specialist instances (pre-4c installs) — deleted by the migration
+# step in ensure_agents_provisioned before the generalist is ensured.
+LEGACY_AGENT_NAMES = ('ATK Health Triage', 'ATK Scoping Architect', 'ATK Ops Actuator')
 
 
 def _resolve_env_name(client, settings_raw):
@@ -175,11 +176,25 @@ def ensure_agents_provisioned(client, project_key='ADMINTOOLKIT'):
         return fail('tools', exc)
 
     # ── agent instances (no llm_id override — resolve_llm_id's chain applies) ──
+    # Migration first: pre-4c installs carry the three retired specialist
+    # instances, whose plugin components no longer exist — delete them
+    # (shutdown first: kernels pin plugin code) before ensuring the generalist.
     try:
         have = set()
+        retired = 0
         for a in project.list_agents() or []:
             a_raw = a if isinstance(a, dict) else getattr(a, 'raw', {}) or {}
-            have.add(a_raw.get('name'))
+            name = a_raw.get('name')
+            if name in LEGACY_AGENT_NAMES:
+                legacy = project.get_agent(a_raw.get('id'))
+                try:
+                    legacy.shutdown()
+                except Exception:
+                    pass
+                legacy.delete()
+                retired += 1
+                continue
+            have.add(name)
         created = 0
         for name, component in AGENT_COMPONENTS.items():
             if name in have:
@@ -187,9 +202,10 @@ def ensure_agents_provisioned(client, project_key='ADMINTOOLKIT'):
             project.create_agent(name, 'PLUGIN_AGENT',
                                  plugin_agent_type='agent_%s_%s' % (PLUGIN_ID, component))
             created += 1
-        steps.append({'step': 'agents', 'status': 'ok',
-                      'message': '%d created, %d already there'
-                                 % (created, len(AGENT_COMPONENTS) - created)})
+        message = '%d created, %d already there' % (created, len(AGENT_COMPONENTS) - created)
+        if retired:
+            message += ', %d retired specialist(s) deleted' % retired
+        steps.append({'step': 'agents', 'status': 'ok', 'message': message})
     except Exception as exc:
         return fail('agents', exc)
 

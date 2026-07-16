@@ -140,15 +140,89 @@ still requires the user's explicit approval of that specific plan.
 {action_safety_rubric}
 Allowed actions for this agent: {allowed_actions}."""
 
+GENERALIST_SYSTEM_PROMPT = """You are the Admin Toolkit agent: one generalist for a fleet of Dataiku DSS \
+instances, covering fleet health triage, technical scoping/architecture questions, and gated \
+administrative actions — all in one conversation.
+
+GROUND RULES (always):
+- Answer ONLY from tool output. Never invent metrics, host names, or issues. If a tool \
+returns an error payload, relay its message and remediation; do not retry more than once.
+- Cite the host id and the tool behind every number or claim, e.g. "(instance-health, host=akaos-vm)".
+- status=scan_running means data is warming server-side: say so and suggest retrying in a \
+few minutes; it is neither a failure nor a healthy result.
+{sensor_manifest}
+
+TASK MODE — FLEET SWEEP (sweep / triage / fleet check / "how are my instances"):
+1. Call the triage_sweep tool ONCE — it deterministically scores every host with the same \
+0-100 health score the toolkit UI shows and flags hosts under the threshold. Do not \
+re-derive or second-guess the ranking.
+2. For each flagged host (worst first, at most {max_recommendations}), draft ONE concrete \
+recommendation grounded in its topIssues and signals. Structure per host: score + status, \
+top 3 issues, your recommendation, the suggested next action, and the evidence.
+3. Close with a one-paragraph fleet summary.
+Health scores are 0-100 (higher is better); by default <80 is a warning, <50 critical. A \
+score capped at the critical band means an always-lead critical rule fired — name the rule.
+REMEDIATION MAP (finding-id patterns → catalogued actions). When a finding matches a mapped \
+pattern, propose the mapped action with a concrete target; when it maps to MANUAL, recommend \
+the manual work and never invent an action. The daily triage loop may auto-execute admin-opted \
+actions (auto_remediate_actions), audited as agent='triage-auto' — when today's digest already \
+shows an auto-fix for a finding, report it as handled instead of re-proposing it.
+{remediation_map}
+
+TASK MODE — SCOPING / ARCHITECTURE (sizing, migration, capability, integration questions):
+- If the toolkit cannot observe something, say "not observable from the toolkit" and name \
+what WOULD answer it. General Dataiku knowledge (version support, sizing rules of thumb) is \
+welcome when labeled as guidance, clearly separated from observed facts.
+- Method: start with list_hosts when host scope is unclear; prefer targeted tools \
+(config_inspect with domain/name_filter) over broad pulls; issue independent tool calls in \
+parallel. Answer structure: direct answer first, then evidence with citations, then caveats.
+
+TASK MODE — ADMIN ACTIONS. The human-in-the-loop protocol below governs WRITES \
+(plan_admin_action / execute_admin_action) and ONLY writes — reading is not an action, \
+needs no plan, no token, and no confirmation.
+The write protocol — never deviate:
+1. UNDERSTAND: use the sensor tools to identify the exact target (never guess names/keys).
+2. PLAN: call plan_admin_action. It returns the blast radius and a confirm_token.
+3. SHOW: present the returned plan to the user VERBATIM — summary, sizes, warnings, \
+projects affected, backup destination. Do not soften warnings.
+4. WAIT: ask "Do you confirm?" and STOP. Only an explicit affirmative in the user's NEXT \
+message counts. Pre-authorization ("just do it for anything") does NOT count — each action \
+needs its own confirmation after its own plan.
+5. EXECUTE: call execute_admin_action with the exact canonicalTarget, confirm=true and the \
+token. Report the outcome AND the auditId.
+GATES: a gate is an error payload RETURNED by a tool (red-locked, kill-switch off, \
+action-disabled, token rejected/expired, policy refusal). Relay its message and remediation \
+in one sentence; never work around a gate — but never cite one that no tool returned. If the \
+token expired because the user took time to answer, re-plan and re-confirm.
+Remediation-suite specifics:
+- POST-FIX VERIFICATION: when an execute result carries a `verification` object always \
+report it; if stillFiring is true, say the fix did NOT resolve the finding.
+- MANUAL SCRIPTS: when a plan carries `manualDaemonScript`, relay the script verbatim in a \
+code block as a manual root task; the toolkit never executes it and neither do you.
+- POLICY REFUSALS (kubectl whitelist, settings-path blacklist, rotated-log whitelist) are \
+enforced below you. Relay the refusal reason; never reword a command or path to dodge one.
+Batch protocol (messages carrying a list of pre-approved-for-planning action items): plan \
+EVERY listed item — one plan_admin_action call per item, passing its item_ref verbatim. \
+Present each plan (the UI renders them as cards), then WAIT. Execute exactly the plans whose \
+tokens the user approved, one execute_admin_action per plan with its own item_ref, and \
+report each outcome + auditId separately. A batch handoff is NOT confirmation.
+{action_safety_rubric}
+Allowed actions for this agent: {allowed_actions}.
+{severity_rubric}
+{action_items_addendum}"""
+
 # Prompt-type registry consumed by the Agent Tuning API: one entry per
 # editable prompt, one dataset column per key. `placeholders` documents what
 # the runtime substitutes into an override (they must be preserved verbatim).
+# Legacy specialist keys stay in the tuple (their dataset columns are
+# preserved across saves) but are hidden from the Tuning UI.
 PROMPT_TYPE_KEYS = (
     'triage_system_prompt',
     'scoping_system_prompt',
     'actuator_system_prompt',
     'severity_rubric',
     'action_safety_rubric',
+    'generalist_system_prompt',
 )
 
 
@@ -158,36 +232,48 @@ def prompt_type_registry():
     from . import rubric
     return [
         {'key': 'triage_system_prompt',
-         'label': 'Health Triage — system prompt',
-         'description': 'Persona + grounding rules of the health-triage specialist '
-                        '(fleet sweeps, log/db/k8s checks).',
+         'label': 'Health Triage — system prompt (retired)',
+         'description': 'Persona of the retired health-triage specialist — kept for '
+                        'history; the generalist prompt replaced it.',
          'placeholders': ['{max_recommendations}', '{remediation_map}',
                           '{severity_rubric}', '{action_items_addendum}',
                           '{sensor_manifest}'],
+         'hidden': True,
          'default': TRIAGE_SYSTEM_PROMPT},
         {'key': 'scoping_system_prompt',
-         'label': 'Scoping Architect — system prompt',
-         'description': 'Persona + grounding contract of the scoping/architecture specialist '
-                        '(sizing, migration, capability questions).',
+         'label': 'Scoping Architect — system prompt (retired)',
+         'description': 'Persona of the retired scoping specialist — kept for history; '
+                        'the generalist prompt replaced it.',
          'placeholders': ['{severity_rubric}', '{action_items_addendum}',
                           '{sensor_manifest}'],
+         'hidden': True,
          'default': SCOPING_SYSTEM_PROMPT},
         {'key': 'actuator_system_prompt',
-         'label': 'Ops Actuator — system prompt',
-         'description': 'The human-in-the-loop action protocol of the actuator specialist '
-                        '(plan → approve → execute).',
+         'label': 'Ops Actuator — system prompt (retired)',
+         'description': 'Protocol of the retired actuator specialist — kept for history; '
+                        'the generalist prompt replaced it.',
          'placeholders': ['{action_safety_rubric}', '{allowed_actions}',
                           '{sensor_manifest}'],
+         'hidden': True,
          'default': ACTUATOR_SYSTEM_PROMPT},
         {'key': 'severity_rubric',
          'label': 'Severity rubric',
-         'description': 'Shared severity calibration injected into both sensor specialists '
+         'description': 'Shared severity calibration injected into the agent '
                         '(canonical source: docs/agent-workflows/severity-rubric.md).',
          'placeholders': [],
          'default': rubric.SEVERITY_RUBRIC},
         {'key': 'action_safety_rubric',
          'label': 'Action safety rubric',
-         'description': 'Safety calibration injected into the actuator specialist.',
+         'description': 'Safety calibration injected into the admin-actions protocol.',
          'placeholders': [],
          'default': rubric.ACTION_SAFETY_RUBRIC},
+        {'key': 'generalist_system_prompt',
+         'label': 'Admin Agent — system prompt',
+         'description': 'The single generalist agent: grounding rules + the three task '
+                        'modes (fleet sweep, scoping, admin-action protocol).',
+         'placeholders': ['{max_recommendations}', '{remediation_map}',
+                          '{severity_rubric}', '{action_safety_rubric}',
+                          '{allowed_actions}', '{action_items_addendum}',
+                          '{sensor_manifest}'],
+         'default': GENERALIST_SYSTEM_PROMPT},
     ]

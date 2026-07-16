@@ -4,8 +4,8 @@
     .venv/bin/python scripts/agents/test_stream_events.py [--project AGENTSSANDBOX]
 
 Asserts:
-  1. health-triage emits an `action_items` event (items normalized, ids server-assigned)
-  2. ops-actuator emits `plan` event(s) echoing item_ref (kill-switch state
+  1. a sensor turn emits an `action_items` event (items normalized, ids server-assigned)
+  2. a handoff turn emits `plan` event(s) echoing item_ref (kill-switch state
      irrelevant — plans are read-only)
 """
 
@@ -40,18 +40,18 @@ def main():
     project = client.get_project(args.project)
     failures = []
 
-    # 1. health-triage → action_items event
-    triage = ensure_agent(project, 'ATK Health Triage', 'health-triage', args.llm_id)
+    # 1. generalist (sensor turn) → action_items event
+    agent = ensure_agent(project, 'ATK Admin Agent', 'admin-generalist', args.llm_id)
     t0 = time.time()
-    events, text = stream_events(triage.as_llm(), (
+    events, text = stream_events(agent.as_llm(), (
         'Check backend log errors and db health on the local host only (skip the sweep), then '
         'call propose_action_items with at least 2 items covering what you found — include one '
         'db-analyze item with a real connection/table target if the runtime DB is observable.'))
     kinds = [k for k, _ in events]
-    print('[triage %.0fs] events: %s' % (time.time() - t0, kinds))
+    print('[sensor-turn %.0fs] events: %s' % (time.time() - t0, kinds))
     ai = [d for k, d in events if k == 'action_items']
     if not ai:
-        failures.append('no action_items event from health-triage')
+        failures.append('no action_items event from the generalist sensor turn')
     else:
         batch = ai[0]
         items = batch.get('items') or []
@@ -61,10 +61,9 @@ def main():
         if not batch.get('batchId', '').startswith('aib-') or not items or not ok_ids:
             failures.append('action_items payload malformed: %s' % json.dumps(batch)[:300])
 
-    # 2. ops-actuator → plan event echoing item_ref
-    actuator = ensure_agent(project, 'ATK Ops Actuator', 'ops-actuator', args.llm_id)
+    # 2. generalist (handoff turn) → plan event echoing item_ref
     t0 = time.time()
-    events, text = stream_events(actuator.as_llm(), (
+    events, text = stream_events(agent.as_llm(), (
         'Action-item batch handoff (batch aib-test0001, 1 item selected by the user).\n'
         'Plan EVERY item below — one plan_admin_action call per item, passing its item_ref '
         'verbatim. Present each plan and WAIT for my approval. Do NOT execute anything.\n\n'
@@ -74,10 +73,10 @@ def main():
         'the exact name of the smallest table it lists>} '
         'item_ref={"batchId": "aib-test0001", "itemId": "ai-test0001"}'))
     kinds = [k for k, _ in events]
-    print('[actuator %.0fs] events: %s' % (time.time() - t0, kinds))
+    print('[handoff-turn %.0fs] events: %s' % (time.time() - t0, kinds))
     plans = [d for k, d in events if k == 'plan']
     if not plans:
-        failures.append('no plan event from ops-actuator (text: %s)' % text[:200])
+        failures.append('no plan event from the handoff turn (text: %s)' % text[:200])
     else:
         ref = plans[0].get('itemRef')
         print('  plan action=%s itemRef=%s token=%s...' % (
@@ -85,7 +84,7 @@ def main():
         if not ref or ref.get('itemId') != 'ai-test0001':
             failures.append('plan did not echo item_ref: %r' % (ref,))
         if [k for k, d in events if k == 'execution']:
-            failures.append('actuator EXECUTED during a plan-only handoff!')
+            failures.append('agent EXECUTED during a plan-only handoff!')
 
     if failures:
         print('\nFAILURES:\n- ' + '\n- '.join(failures))

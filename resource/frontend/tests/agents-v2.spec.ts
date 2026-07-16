@@ -6,11 +6,7 @@ import { test, expect, type Page, type Route } from '@playwright/test';
  * batch approve → execution cards. No live DSS needed.
  */
 
-const AGENTS = [
-  { id: 'triage1', name: 'ATK Health Triage' },
-  { id: 'scoping1', name: 'ATK Scoping Architect' },
-  { id: 'actuator1', name: 'ATK Ops Actuator' },
-];
+const AGENTS = [{ id: 'agent1', name: 'ATK Admin Agent' }];
 
 function sse(event: string, payload: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
@@ -123,13 +119,9 @@ async function mockAgentsBackend(page: Page) {
     };
     const lastMessage = body.messages[body.messages.length - 1]?.content || '';
     let frames: string;
-    if (body.agentId !== 'actuator1') {
-      // Sensor turn → text + checklist.
-      frames =
-        sse('chunk', { text: 'Sweep done — two DB maintenance items and one advisory.' }) +
-        ACTION_ITEMS_EVENT +
-        sse('done', { finishReason: 'stop', durationMs: 1200 });
-    } else if (lastMessage.startsWith('Action-item batch handoff')) {
+    // Single agent since 4c — the turn's INTENT (sweep / handoff / approval)
+    // is read from the message, not from which agent id it went to.
+    if (lastMessage.startsWith('Action-item batch handoff')) {
       // Handoff → two plans carrying item_ref.
       frames =
         sse('chunk', { text: 'Planning both items now.' }) +
@@ -145,7 +137,11 @@ async function mockAgentsBackend(page: Page) {
         sse('chunk', { text: 'Both actions executed. Audit rows #101 and #102.' }) +
         sse('done', { finishReason: 'stop', durationMs: 800 });
     } else {
-      frames = sse('chunk', { text: `Unexpected turn ${chatCalls}.` }) + sse('done', {});
+      // Sensor turn → text + checklist.
+      frames =
+        sse('chunk', { text: 'Sweep done — two DB maintenance items and one advisory.' }) +
+        ACTION_ITEMS_EVENT +
+        sse('done', { finishReason: 'stop', durationMs: 1200 });
     }
     await route.fulfill({
       status: 200,
@@ -395,7 +391,7 @@ test.describe('Agents chat persistence (mocked backend)', () => {
       title: string;
       messages: StoredTurnMessage[];
     };
-    expect(turn.agentId).toBe('triage1');
+    expect(turn.agentId).toBe('agent1');
     expect(turn.title).toBe('Sweep the fleet.');
     expect(turn.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
     expect(turn.messages[1].segments?.length).toBeGreaterThan(0);
@@ -531,5 +527,108 @@ test.describe('Agent Tuning (mocked backend)', () => {
     await expect(page.getByText(/Unsaved changes: 1 prompt/)).toBeVisible();
     await page.getByRole('button', { name: 'Load', exact: true }).click();
     await expect(editor).toHaveValue('CUSTOM RUBRIC v2');
+  });
+
+  test('python-run plan card requires the code ack before Approve arms', async ({ page }) => {
+    await mockAgentsBackend(page);
+    await page.route('**/api/agents/chat', async (route: Route) => {
+      const frames =
+        sse('chunk', { text: 'Power-Up plan ready.' }) +
+        sse('agent_event', {
+          eventKind: 'plan',
+          eventData: {
+            action: 'python-run',
+            host: 'local',
+            canonicalTarget: { codeSha256: 'a'.repeat(64), purpose: 'List 5 largest datasets' },
+            plan: {
+              summary: 'POWER-UP: run an agent-authored Python script.',
+              purpose: 'List 5 largest datasets',
+              code: "import dataiku\nprint('largest datasets…')\n",
+              warnings: ['This script runs with ADMIN credentials.'],
+            },
+            confirm_token: 'tok-python.sig9',
+            expiresInSeconds: 900,
+          },
+        }) +
+        sse('done', { finishReason: 'stop', durationMs: 500 });
+      await route.fulfill({
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+        body: frames,
+      });
+    });
+    await enterAgentsPage(page);
+    const composer = page.getByPlaceholder(/Message the agent/);
+    await composer.fill('List the 5 largest datasets with owners.');
+    await composer.press('Enter');
+
+    // The card shows the exact code and a red ack row; Approve starts disabled.
+    await expect(page.getByText('Power-Up script — runs with admin credentials')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByText("print('largest datasets…')")).toBeVisible();
+    const approve = page.getByRole('button', { name: /Approve & execute/ });
+    await expect(approve).toBeDisabled();
+    // Ticking "I have read this code" arms it.
+    await page.getByText(/I have read this code/).click();
+    await expect(approve).toBeEnabled();
+    // And a lone python-run plan never raises the batch approvals bar.
+    await expect(page.getByText(/awaiting your decision/)).toHaveCount(0);
+  });
+
+  test('gate refusal card deep-links to Agent Permissions', async ({ page }) => {
+    await mockAgentsBackend(page);
+    // The deep-link target page loads its catalog on mount.
+    await page.route('**/api/agents/action-settings', (route: Route) =>
+      route.fulfill({ json: { ok: true, sensors: [], actions: [], gates: {} } }),
+    );
+    // Override the chat mock (last-registered route wins): this turn hits the
+    // action-disabled gate and the tool_result error carries the deep link.
+    await page.route('**/api/agents/chat', async (route: Route) => {
+      const frames =
+        sse('chunk', { text: 'Trying to plan the cleanup.' }) +
+        sse('agent_event', {
+          eventKind: 'tool_call',
+          eventData: { name: 'plan_admin_action', args: { action: 'log-cleanup' } },
+        }) +
+        sse('agent_event', {
+          eventKind: 'tool_result',
+          eventData: {
+            name: 'plan_admin_action',
+            durationMs: 40,
+            ok: false,
+            error: {
+              code: 'action-disabled',
+              message:
+                "Action 'log-cleanup' is disabled in Agent Settings — every non-read action " +
+                'is off until an administrator enables it.',
+              link: { page: 'agent-settings', label: 'Enable in Agents → Permissions' },
+            },
+          },
+        }) +
+        sse('chunk', { text: 'That action is disabled; an admin can enable it.' }) +
+        sse('done', { finishReason: 'stop', durationMs: 300 });
+      await route.fulfill({
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+        body: frames,
+      });
+    });
+    await enterAgentsPage(page);
+    const composer = page.getByPlaceholder(/Message the agent/);
+    await composer.fill('Clean up rotated logs.');
+    await composer.press('Enter');
+
+    // The refusal renders as a card with the backend's deep link…
+    await expect(page.getByText('Action disabled in Agent Permissions')).toBeVisible({
+      timeout: 15_000,
+    });
+    const linkBtn = page.getByRole('button', { name: /Enable in Agents → Permissions/ });
+    await expect(linkBtn).toBeVisible();
+    // …and clicking it navigates to the Agent Permissions page in-app.
+    await linkBtn.click();
+    await expect(page.getByRole('heading', { name: 'Agent Permissions' })).toBeVisible({
+      timeout: 15_000,
+    });
   });
 });

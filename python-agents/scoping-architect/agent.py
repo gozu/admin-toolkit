@@ -18,9 +18,9 @@ class ScopingArchitectAgent(BaseLLM):
             client = adapter.build_client(self.plugin_config)
             # Agent Tuning override > per-agent llm_id > plugin default_llm_id.
             llm_id = agent_runtime.resolve_llm_id(client, self.config)
-            tools = agent_tools.build_langchain_tools(
-                client, names=['list_hosts', 'config_inspect', 'instance_health', 'k8s_health',
-                               'db_health', 'compute_cost', 'storage_footprint'])
+            # Full sensor set (post Agent Settings gating) — a hardcoded subset
+            # here made the agent deny reads it actually had (Tier 1 root cause).
+            tools = agent_tools.build_langchain_tools(client)
             tools.append(action_items.build_tool(client))
             llm = agent_runtime.build_llm(llm_id)
         except ToolkitError as exc:
@@ -30,7 +30,8 @@ class ScopingArchitectAgent(BaseLLM):
         base = prompt_overrides.get(client, 'scoping_system_prompt', prompts.SCOPING_SYSTEM_PROMPT)
         severity = prompt_overrides.get(client, 'severity_rubric', rubric.SEVERITY_RUBRIC)
         prompt = base.replace('{severity_rubric}', severity) \
-                     .replace('{action_items_addendum}', action_items.PROMPT_ADDENDUM)
+                     .replace('{action_items_addendum}', action_items.PROMPT_ADDENDUM) \
+                     .replace('{sensor_manifest}', agent_tools.sensor_manifest(tools))
         messages = agent_runtime.messages_from_query(query, prompt)
         async for chunk in agent_runtime.run_tool_loop(llm, tools, messages, trace):
             yield chunk

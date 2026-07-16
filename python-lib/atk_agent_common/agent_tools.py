@@ -42,3 +42,24 @@ def build_langchain_tools(client, names=None):
                                          name=n, description=specs[n])
             for n in wanted
             if n in specs and action_gates.sensor_enabled(client, n)]
+
+
+def sensor_manifest(tools):
+    """The `{sensor_manifest}` prompt block, generated from the tools ACTUALLY
+    bound this turn (post Agent Settings gating) — the prompt can only ever
+    claim capabilities the agent really has. Non-sensor tools (plan/execute,
+    triage_sweep, propose_action_items) are excluded: they carry their own
+    prompt sections."""
+    from . import prompts
+    lines = []
+    for tool in tools:
+        if tool.name not in tools_impl.SENSOR_DESCRIPTIONS:
+            continue
+        first = (tool.description or '').split('. ')[0].strip().rstrip('.')
+        if len(first) > 220:
+            first = first[:217] + '...'
+        lines.append('- %s: %s.' % (tool.name, first))
+    if not lines:
+        return ('\n(Every read-only sensor is currently disabled in Agent Settings — '
+                'you cannot read instance data until an admin re-enables them there.)')
+    return prompts.SENSOR_MANIFEST_TEMPLATE.replace('{sensor_lines}', '\n'.join(lines))

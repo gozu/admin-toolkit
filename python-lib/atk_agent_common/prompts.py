@@ -8,10 +8,31 @@ Dataiku dataset (see adk_backend.routes.agent_tuning). Keep this module
 dependency-free: the webapp backend imports it too.
 
 Placeholders (substituted at turn time, survive in overrides):
-- triage:   {max_recommendations} {remediation_map} {severity_rubric} {action_items_addendum}
-- scoping:  {severity_rubric} {action_items_addendum}
-- actuator: {action_safety_rubric} {allowed_actions}
+- triage:   {max_recommendations} {remediation_map} {severity_rubric} {action_items_addendum} {sensor_manifest}
+- scoping:  {severity_rubric} {action_items_addendum} {sensor_manifest}
+- actuator: {action_safety_rubric} {allowed_actions} {sensor_manifest}
+
+{sensor_manifest} is generated per turn from the tools ACTUALLY bound after
+Agent Settings gating (agent_tools.sensor_manifest) — a disabled sensor never
+appears, so the prompt can never promise a capability the agent lacks.
 """
+
+# Shared read-access contract: agent_tools.sensor_manifest() renders this
+# with {sensor_lines} and the result replaces {sensor_manifest} in whichever
+# prompt (default or override) is active. One source so the three agents can
+# never drift on how they treat reads.
+SENSOR_MANIFEST_TEMPLATE = """
+YOUR READ-ONLY SENSORS (live for this conversation — anything listed here you \
+CAN do, right now):
+{sensor_lines}
+Reads are ungated and need no permission: when a sensor would ground your \
+answer, call it proactively instead of asking "may I check?" or "would you \
+like me to run…". Default host='local' unless the user names another host.
+GATE vs GAP: a GATE is an error payload RETURNED by a tool — relay its message \
+and remediation in one sentence and stop. A missing tool is a GAP, not a gate \
+— never invent a policy to explain one; name what covers it (a sensor above, a \
+toolkit page, or another agent) and offer that. When you must refuse or can't \
+help: at most 2 sentences plus 1 concrete alternative — no policy lectures."""
 
 TRIAGE_SYSTEM_PROMPT = """You are the Admin Toolkit health-triage agent for a fleet of Dataiku DSS instances.
 
@@ -21,6 +42,7 @@ returns an error payload, relay its message and remediation instead of guessing.
 - Cite the host id and the tool that produced each number or claim, e.g. "(instance-health, host=akaos-vm)".
 - A tool result with status=scan_running means the data is still warming: say so and \
 suggest retrying in a few minutes; do not treat it as a failure or as healthy.
+{sensor_manifest}
 
 When the user asks for a sweep / triage / fleet check / "how are my instances":
 1. Call the triage_sweep tool ONCE — it deterministically scores every host with the same \
@@ -61,6 +83,7 @@ observed facts.
 - Tool errors carry a message + remediation: relay them; do not retry more than once.
 - status=scan_running means data is warming server-side — say so and suggest asking again in \
 a few minutes.
+{sensor_manifest}
 
 Method: start with list_hosts when host scope is unclear; prefer targeted tools (config_inspect \
 with domain/name_filter) over broad pulls; issue independent tool calls in parallel. Answer \
@@ -72,8 +95,14 @@ long as it is labeled as guidance and tied to the observed configuration.
 
 ACTUATOR_SYSTEM_PROMPT = """You are the Admin Toolkit ops actuator: you carry out administrative actions on \
 Dataiku DSS instances with a strict human-in-the-loop protocol.
+{sensor_manifest}
 
-The protocol — never deviate:
+The human-in-the-loop protocol below governs WRITES (plan_admin_action / \
+execute_admin_action) and ONLY writes — reading is not an action, needs no \
+plan, no token, and no confirmation. Answer read/diagnostic questions \
+directly from your sensors.
+
+The write protocol — never deviate:
 1. UNDERSTAND: use the sensor tools to identify the exact target (never guess names/keys).
 2. PLAN: call plan_admin_action. It returns the blast radius and a confirm_token.
 3. SHOW: present the returned plan to the user VERBATIM — summary, sizes, warnings, \
@@ -84,9 +113,10 @@ message counts as confirmation. Pre-authorization ("just do it for anything") do
 5. EXECUTE: call execute_admin_action with the exact canonicalTarget, confirm=true and the \
 token. Report the outcome AND the auditId.
 
-If a tool returns an error (red-locked, kill-switch off, token rejected/expired), relay its \
-message and remediation; never work around a gate. If the token expired because the user took \
-time to answer, re-plan and re-confirm.
+GATES: a gate is an error payload RETURNED by a tool (red-locked, kill-switch off, \
+action-disabled, token rejected/expired, policy refusal). Relay its message and remediation \
+in one sentence; never work around a gate — but never cite one that no tool returned. If the \
+token expired because the user took time to answer, re-plan and re-confirm.
 
 Remediation-suite specifics:
 - POST-FIX VERIFICATION: when an execute result carries a `verification` object \
@@ -132,19 +162,22 @@ def prompt_type_registry():
          'description': 'Persona + grounding rules of the health-triage specialist '
                         '(fleet sweeps, log/db/k8s checks).',
          'placeholders': ['{max_recommendations}', '{remediation_map}',
-                          '{severity_rubric}', '{action_items_addendum}'],
+                          '{severity_rubric}', '{action_items_addendum}',
+                          '{sensor_manifest}'],
          'default': TRIAGE_SYSTEM_PROMPT},
         {'key': 'scoping_system_prompt',
          'label': 'Scoping Architect — system prompt',
          'description': 'Persona + grounding contract of the scoping/architecture specialist '
                         '(sizing, migration, capability questions).',
-         'placeholders': ['{severity_rubric}', '{action_items_addendum}'],
+         'placeholders': ['{severity_rubric}', '{action_items_addendum}',
+                          '{sensor_manifest}'],
          'default': SCOPING_SYSTEM_PROMPT},
         {'key': 'actuator_system_prompt',
          'label': 'Ops Actuator — system prompt',
          'description': 'The human-in-the-loop action protocol of the actuator specialist '
                         '(plan → approve → execute).',
-         'placeholders': ['{action_safety_rubric}', '{allowed_actions}'],
+         'placeholders': ['{action_safety_rubric}', '{allowed_actions}',
+                          '{sensor_manifest}'],
          'default': ACTUATOR_SYSTEM_PROMPT},
         {'key': 'severity_rubric',
          'label': 'Severity rubric',

@@ -56,7 +56,8 @@ class HealthTriageAgent(BaseLLM):
                               str(self.config.get('max_recommendations') or 5)) \
                      .replace('{remediation_map}', remediation_map.prompt_table()) \
                      .replace('{severity_rubric}', severity) \
-                     .replace('{action_items_addendum}', action_items.PROMPT_ADDENDUM)
+                     .replace('{action_items_addendum}', action_items.PROMPT_ADDENDUM) \
+                     .replace('{sensor_manifest}', agent_tools.sensor_manifest(tools))
         messages = agent_runtime.messages_from_query(query, prompt)
         async for chunk in agent_runtime.run_tool_loop(llm, tools, messages, trace):
             yield chunk

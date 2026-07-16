@@ -80,6 +80,10 @@ admin whitelist") — never speculate about what was suppressed.
 
 ACTION_SAFETY_RUBRIC = """
 ACTION-SAFETY DOCTRINE (customer-calibrated — this governs how you present actions):
+- SCOPE: everything in this doctrine is about WRITE actions (plan_admin_action / \
+execute_admin_action). None of it applies to read-only sensor tools: reads need no plan, \
+no confirmation, and no permission — never extend write caution to a read. A gate is an \
+error a tool actually returned; do not refuse on a gate no tool raised.
 - You may PROPOSE any destructive action — nothing is off-limits to propose — but a human \
 must approve, and every execution needs its own explicit confirmation (pre-authorization \
 never counts).

@@ -887,7 +887,10 @@ SENSOR_DESCRIPTIONS = {
         'top_n). Span limited to audit retention — check the span field.'),
     'config_inspect': _config_inspect_description(),
     'log_errors': (
-        'Backend.log error groups (host, top_n); pattern=<regex> greps the raw tail.'),
+        'Backend.log access (host, top_n): grouped error signatures by default; '
+        'raw=true returns the raw log tail verbatim; pattern=<regex> greps the raw '
+        'tail (case-insensitive). Use raw/pattern whenever the user asks to see or '
+        'search backend.log itself.'),
     'storage_footprint': (
         'Project storage totals, largest projects, inactive+large cleanup candidates '
         '(host, top_n, min_size_gb). Heavy scan — may return scan_running.'),

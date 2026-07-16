@@ -30,9 +30,9 @@ class OpsActuatorAgent(BaseLLM):
         allowed = [a.strip() for a in (self.config.get('allowed_actions') or '').split(',') if a.strip()]
         allowed = allowed or list(actuator.ACTIONS)
 
-        tools = agent_tools.build_langchain_tools(
-            client, names=['list_hosts', 'instance_health', 'storage_footprint',
-                           'config_inspect', 'db_health', 'compute_cost'])
+        # Full sensor set (post Agent Settings gating) — a hardcoded subset here
+        # made the agent deny reads it actually had (the Tier 1 root cause).
+        tools = agent_tools.build_langchain_tools(client)
         from langchain_core.tools import StructuredTool
 
         def plan_admin_action(action, target=None, targets=None, host='local', params=None,
@@ -88,7 +88,8 @@ class OpsActuatorAgent(BaseLLM):
         base = prompt_overrides.get(client, 'actuator_system_prompt', prompts.ACTUATOR_SYSTEM_PROMPT)
         safety = prompt_overrides.get(client, 'action_safety_rubric', rubric.ACTION_SAFETY_RUBRIC)
         prompt = base.replace('{action_safety_rubric}', safety) \
-                     .replace('{allowed_actions}', ', '.join(allowed))
+                     .replace('{allowed_actions}', ', '.join(allowed)) \
+                     .replace('{sensor_manifest}', agent_tools.sensor_manifest(tools))
         messages = agent_runtime.messages_from_query(query, prompt)
         async for chunk in agent_runtime.run_tool_loop(llm, tools, messages, trace):
             yield chunk

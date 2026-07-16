@@ -54,6 +54,9 @@ class OpsActuatorAgent(BaseLLM):
                 return json.dumps(exc.to_output(), default=str)
 
         def execute_admin_action(action, target, confirm, confirm_token, host='local', item_ref=None):
+            # No `link` here: this code has its own frontend card (GateHint)
+            # deep-linking to the DSS agent-config page, which no internal
+            # toolkit page can replace.
             if not allow_execute:
                 return json.dumps({'error': {'code': 'agent-execution-disabled',
                                              'message': 'This agent instance has allow_red_actions=false: '

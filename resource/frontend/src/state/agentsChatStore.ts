@@ -91,10 +91,17 @@ export type Segment =
   | { type: 'plan'; plan: PlanCardData }
   | { type: 'execution'; execution: ExecutionCardData }
   | { type: 'action_items'; batch: ActionItemsCardData }
-  /** A safety-gate refusal that an admin can clear in DSS — rendered as an
-   *  inline callout with a deep link to the relevant config. `code` is the
-   *  structured error code from the tool result (e.g. agent-execution-disabled). */
-  | { type: 'gate_hint'; code: string };
+  /** A safety-gate refusal that an admin can clear — rendered as an inline
+   *  callout with a deep link to the config that clears it. `code` is the
+   *  structured error code from the tool result (e.g. action-disabled);
+   *  `link` is the backend's machine-readable internal deep link
+   *  ({page: PageId, label}) when the clearing surface is a toolkit page. */
+  | { type: 'gate_hint'; code: string; message?: string; link?: GateLink };
+
+export interface GateLink {
+  page: string;
+  label: string;
+}
 
 export interface ChatMessage {
   /** Client-minted uuid — the server upserts persisted messages by this id. */
@@ -350,7 +357,10 @@ function applyAgentEvent(segments: Segment[], kind: string, data: Record<string,
       segments.push({ type: 'activity', items: [item] });
     }
   } else if (kind === 'tool_result') {
-    const err = data.error as { message?: string; code?: string } | null | undefined;
+    const err = data.error as
+      | { message?: string; code?: string; link?: { page?: string; label?: string } }
+      | null
+      | undefined;
     for (let i = segments.length - 1; i >= 0; i--) {
       const seg = segments[i];
       if (seg.type !== 'activity') continue;
@@ -368,11 +378,22 @@ function applyAgentEvent(segments: Segment[], kind: string, data: Record<string,
       break;
     }
     // Admin-clearable safety-gate refusals get an inline callout with a deep
-    // link to the config (dedup so retries don't stack callouts).
-    if (err?.code === 'agent-execution-disabled') {
+    // link to the config (dedup so retries don't stack callouts): either the
+    // dedicated agent-execution-disabled card, or any error whose payload
+    // carries a machine-readable internal link {page, label}.
+    const link =
+      err?.link && err.link.page
+        ? { page: String(err.link.page), label: String(err.link.label || 'Open settings') }
+        : undefined;
+    if (err?.code && (err.code === 'agent-execution-disabled' || link)) {
       const last = segments[segments.length - 1];
       if (!(last && last.type === 'gate_hint' && last.code === err.code)) {
-        segments.push({ type: 'gate_hint', code: err.code });
+        segments.push({
+          type: 'gate_hint',
+          code: err.code,
+          message: err.message ? String(err.message) : undefined,
+          link,
+        });
       }
     }
   } else if (kind === 'plan') {

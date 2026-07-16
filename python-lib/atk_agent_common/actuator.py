@@ -835,7 +835,9 @@ def plan_admin_action(client, host='local', action=None, target=None, params=Non
         return {'plan': plan, 'canonicalTarget': canonical,
                 'error': {'code': 'red-locked',
                           'message': 'Plan built, but no master password is configured — '
-                                     'no confirm token can be minted and execution is impossible.'}}
+                                     'no confirm token can be minted and execution is impossible.',
+                          'link': {'page': 'agent-settings',
+                                   'label': 'Open Agents → Permissions'}}}
     token, exp = confirm.mint(password, action, host, canonical)
     # Budget-trim the DISPLAY envelope only, then attach canonicalTarget WHOLE:
     # the confirm token is minted over `canonical`, so a trimmed canonicalTarget
@@ -892,7 +894,9 @@ def execute_admin_action(client, host='local', action=None, target=None,
     if not settings.get('enable_red_actions'):
         return {'error': {'code': 'red-actions-disabled',
                           'message': 'The agentic-actions master switch is OFF in the plugin settings.',
-                          'remediation': 'An administrator must turn it on; agents cannot.'}}
+                          'remediation': 'An administrator must turn it on; agents cannot.',
+                          'link': {'page': 'agent-settings',
+                                   'label': 'Open Agents → Permissions'}}}
     if not action_gates.action_enabled(client, action):
         return action_gates.disabled_error(action)
     if not confirm_flag:
@@ -903,7 +907,10 @@ def execute_admin_action(client, host='local', action=None, target=None,
     try:
         confirm.verify(password, confirm_token, action, host, target)
     except confirm.ConfirmTokenError as exc:
-        return {'error': {'code': 'confirm-token-rejected', 'message': str(exc)}}
+        return {'error': {'code': 'confirm-token-rejected', 'message': str(exc),
+                          'remediation': 'Re-run plan_admin_action and present the fresh plan '
+                                         'for a new confirmation — tokens are single-use, '
+                                         'expire after 15 minutes, and die on any drift.'}}
 
     from . import audit
     batch_targets = target.get('batchTargets') if isinstance(target, dict) else None

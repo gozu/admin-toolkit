@@ -66,4 +66,5 @@ def disabled_error(action):
         'remediation': 'An administrator can enable it in the webapp under '
                        'Agents → Agent Settings. Relay this to the user; agents cannot '
                        'change their own gates.',
+        'link': {'page': 'agent-settings', 'label': 'Enable in Agents → Permissions'},
     }}

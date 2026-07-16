@@ -11,6 +11,10 @@ valid host id, ...).
 class ToolkitError(Exception):
     code = 'backend-error'
     remediation = ''
+    #: Optional {'page': <webapp PageId>, 'label': str} — the frontend renders
+    #: link-carrying tool errors as a card with an internal deep link, so an
+    #: admin-clearable refusal is one click from the page that clears it.
+    link = None
 
     def __init__(self, message, remediation=None, detail=None):
         super().__init__(message)
@@ -25,6 +29,8 @@ class ToolkitError(Exception):
             err['remediation'] = self.remediation
         if self.detail:
             err['detail'] = self.detail
+        if self.link:
+            err['link'] = dict(self.link)
         return {'error': err}
 
 
@@ -55,6 +61,7 @@ class RedLocked(ToolkitError):
     remediation = ('Mutating (red) actions are locked: no valid Advanced Actions password is '
                    'configured in the Admin Toolkit Agents plugin settings. An administrator '
                    'must set it there; agents cannot bypass this.')
+    link = {'page': 'agent-settings', 'label': 'Open Agents → Permissions'}
 
 
 class RemoteKeysLocked(ToolkitError):

@@ -8,9 +8,12 @@ import { ActivityChips } from './ActivityChips';
 import { PlanCard } from './PlanCard';
 import { ExecutionCard } from './ExecutionCard';
 import { ActionItemsCard } from './ActionItemsCard';
+import { useDiag } from '../../context/DiagContext';
+import type { PageId } from '../../types';
 import type {
   ActionItemData,
   ChatMessage,
+  GateLink,
   PlanCardData,
   Segment,
   TraceExplorerStatus,
@@ -135,27 +138,63 @@ function TraceAction({
 /** Inline callout for a safety-gate refusal an admin can clear in DSS. Today
  *  the only case is `agent-execution-disabled` (per-agent `allow_red_actions`
  *  is off), with a deep link straight to the agent's config screen. */
-function GateHint({ code, agentConfigUrl }: { code: string; agentConfigUrl?: string }) {
-  if (code !== 'agent-execution-disabled') return null;
+const GATE_TITLES: Record<string, string> = {
+  'action-disabled': 'Action disabled in Agent Permissions',
+  'red-actions-disabled': 'Master kill-switch is off',
+  'red-locked': 'Agentic actions are locked',
+};
+
+function GateHint({
+  code,
+  message,
+  link,
+  agentConfigUrl,
+}: {
+  code: string;
+  message?: string;
+  link?: GateLink;
+  agentConfigUrl?: string;
+}) {
+  const { setActivePage } = useDiag();
+  if (code === 'agent-execution-disabled') {
+    return (
+      <div className="my-1.5 rounded-lg border border-[var(--neon-yellow)]/40 bg-[var(--neon-yellow)]/5 px-3 py-2 text-xs text-[var(--text-secondary)]">
+        <div className="font-semibold text-[var(--text-primary)]">Agentic actions are disabled for this agent</div>
+        <p className="mt-0.5 leading-relaxed">
+          This agent can plan but not execute until an admin enables{' '}
+          <span className="font-medium text-[var(--text-primary)]">Allow agentic actions</span> on the agent
+          itself (it&apos;s a per-agent setting, separate from the plugin kill-switch). After enabling it,
+          recycle the agent kernel so it re-reads the config.
+        </p>
+        {agentConfigUrl && (
+          <a
+            href={agentConfigUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1.5 inline-flex items-center gap-1 font-medium text-[var(--accent)] hover:underline"
+          >
+            Open agent settings ↗
+          </a>
+        )}
+      </div>
+    );
+  }
+  // Generic admin-clearable refusal: the backend attached an internal deep
+  // link {page, label} — one click lands on the page that clears the gate.
+  if (!link) return null;
   return (
     <div className="my-1.5 rounded-lg border border-[var(--neon-yellow)]/40 bg-[var(--neon-yellow)]/5 px-3 py-2 text-xs text-[var(--text-secondary)]">
-      <div className="font-semibold text-[var(--text-primary)]">Agentic actions are disabled for this agent</div>
-      <p className="mt-0.5 leading-relaxed">
-        This agent can plan but not execute until an admin enables{' '}
-        <span className="font-medium text-[var(--text-primary)]">Allow agentic actions</span> on the agent
-        itself (it&apos;s a per-agent setting, separate from the plugin kill-switch). After enabling it,
-        recycle the agent kernel so it re-reads the config.
-      </p>
-      {agentConfigUrl && (
-        <a
-          href={agentConfigUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-1.5 inline-flex items-center gap-1 font-medium text-[var(--accent)] hover:underline"
-        >
-          Open agent settings ↗
-        </a>
-      )}
+      <div className="font-semibold text-[var(--text-primary)]">
+        {GATE_TITLES[code] ?? 'Action unavailable'}
+      </div>
+      {message && <p className="mt-0.5 leading-relaxed">{message}</p>}
+      <button
+        type="button"
+        onClick={() => setActivePage(link.page as PageId)}
+        className="mt-1.5 inline-flex items-center gap-1 font-medium text-[var(--accent)] hover:underline"
+      >
+        {link.label} →
+      </button>
     </div>
   );
 }
@@ -207,7 +246,15 @@ export function MessageView({
           return <ActivityChips key={i} items={segment.items} />;
         }
         if (segment.type === 'gate_hint') {
-          return <GateHint key={i} code={segment.code} agentConfigUrl={agentConfigUrl} />;
+          return (
+            <GateHint
+              key={i}
+              code={segment.code}
+              message={segment.message}
+              link={segment.link}
+              agentConfigUrl={agentConfigUrl}
+            />
+          );
         }
         if (segment.type === 'plan') {
           return (

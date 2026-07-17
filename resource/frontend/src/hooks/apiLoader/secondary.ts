@@ -44,32 +44,26 @@ export async function runLlmAudit(
   // The single /api/llm-audit fetch is opaque for its whole runtime, so a
   // sidecar poll of /api/llm-audit/progress feeds the backend's summary
   // (% + phase + project counts) into the running lifecycle — that is what
-  // moves the Model Audit page's progress bar. Events/rows are not consumed;
-  // the since/rowsSince cursors only keep the poll payloads tiny.
+  // moves the Model Audit page's progress bar. Only the summary is consumed:
+  // the huge since/rowsSince cursors suppress the event/partial-row backlog
+  // (38k+ rows on large instances) from every response.
   let progressActive = true;
   let progressWarned = false;
   let progressAbort: AbortController | null = null;
-  let progressSince = 0;
-  let progressRowsSince = 0;
   const pollProgress = async () => {
     while (!cancelled() && progressActive) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       if (cancelled() || !progressActive) break;
       try {
         progressAbort = new AbortController();
-        const query = new URLSearchParams();
-        query.set('since', String(progressSince));
-        query.set('rowsSince', String(progressRowsSince));
         const payload = await withTimeout(
-          fetchJson<LlmAuditProgressResponse>(`/api/llm-audit/progress?${query.toString()}`, {
-            signal: progressAbort.signal,
-          }),
+          fetchJson<LlmAuditProgressResponse>(
+            '/api/llm-audit/progress?since=999999999&rowsSince=999999999',
+            { signal: progressAbort.signal },
+          ),
           '/api/llm-audit/progress',
           LIVE_PROGRESS_TIMEOUT_MS,
         );
-        if (typeof payload.next === 'number') progressSince = payload.next;
-        if (typeof payload.partialRowsNext === 'number')
-          progressRowsSince = payload.partialRowsNext;
         const summary = payload.summary;
         const current = tracker.data.llmAuditLoading;
         // Patch only while track() holds the running phase — a late poll
@@ -107,7 +101,11 @@ export async function runLlmAudit(
       }
     }
   };
-  const progressPromise = pollProgress();
+  // Fire-and-forget: the settle path must not wait out the poll's sleep
+  // (a cache-hit response lands in <1s and the rows dispatch below would
+  // stall behind it, flashing the empty state). Late poll responses cannot
+  // clobber the settled lifecycle — the phase === 'running' guard blocks them.
+  void pollProgress();
   const llmAuditRes = await tracker.track(
     'llmAuditLoading',
     timed<LlmAuditResponse>('/api/llm-audit', beSettings.fe_timeout_llm_audit ?? 620000),
@@ -118,7 +116,6 @@ export async function runLlmAudit(
   );
   progressActive = false;
   abortPendingRequest(progressAbort);
-  await progressPromise;
   if (cancelled()) return;
   if (llmAuditRes.status === 'fulfilled' && llmAuditRes.value) {
     tracker.data = { ...tracker.data, llmAudit: llmAuditRes.value };

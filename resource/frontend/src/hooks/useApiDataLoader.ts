@@ -110,6 +110,10 @@ export function useApiDataLoader(enabled: boolean, reloadKey = 0) {
           (overview.filesystemInfo?.length ?? 0) === 0,
         );
         tracker.markDone('memoryLoading', 'Memory ready');
+        // llm-audit is staged behind the phase-3 priority gate (code envs +
+        // project footprint) — mark it queued now so the Model Audit page
+        // shows "waiting for its turn" instead of the settled empty state.
+        tracker.patchLifecycle('llmAuditLoading', { phase: 'queued' });
         log('Phase 1 complete (overview + settings)');
 
         // Phase 2: load secondary data in parallel

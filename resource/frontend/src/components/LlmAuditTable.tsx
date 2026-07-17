@@ -177,7 +177,9 @@ export function LlmAuditTable() {
   const { state } = useDiag();
   const audit = state.parsedData.llmAudit;
   const loading = state.parsedData.llmAuditLoading;
-  const isLoading = loading?.phase === 'running' || loading?.phase === 'queued';
+  const isQueued = loading?.phase === 'queued';
+  const isRunning = loading?.phase === 'running';
+  const isLoading = isRunning || isQueued;
   const loadingMessage =
     loading?.phase === 'running' || loading?.phase === 'done'
       ? loading.message
@@ -525,7 +527,18 @@ export function LlmAuditTable() {
           </div>
         )}
 
-        {isLoading && (
+        {isQueued && (
+          <div className="px-4 py-3 border-b border-[var(--border-glass)]">
+            <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+              <Spinner size="w-3 h-3" color="border-[var(--text-tertiary)]" />
+              <span>
+                Waiting for its turn — the model audit starts once the code env and project
+                footprint scans finish.
+              </span>
+            </div>
+          </div>
+        )}
+        {isRunning && (
           <div className="px-4 py-3 border-b border-[var(--border-glass)]">
             <div className="flex items-center justify-between text-xs text-[var(--text-secondary)]">
               <span>{loadingMessage || 'Scanning...'}</span>

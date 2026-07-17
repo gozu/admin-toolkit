@@ -4,21 +4,110 @@
  * Bodies moved verbatim from the old monolithic useApiDataLoader.ts.
  */
 import type { ConnectionHealthResult, LlmAuditResponse } from '../../types';
-import { fetchRaw } from '../../utils/api';
+import { fetchJson, fetchRaw } from '../../utils/api';
 import { parseSseStream } from '../../utils/sseStream';
-import type { LoaderCtx } from './context';
+import { LIVE_PROGRESS_TIMEOUT_MS, type LoaderCtx } from './context';
 import type { LifecycleTracker } from './lifecycle';
-import type { LogErrorsResponse, PluginUsagesResponse, ProjectsResponse } from './types';
+import type {
+  LlmAuditProgressResponse,
+  LogErrorsResponse,
+  PluginUsagesResponse,
+  ProjectsResponse,
+} from './types';
+
+const LLM_AUDIT_PHASE_LABEL: Record<string, string> = {
+  pricing: 'Fetching model pricing catalog',
+  connections: 'Listing LLM connections',
+  catalog: 'Listing projects',
+  scan: 'Scanning projects for LLMs',
+  usage_scan: 'Scanning LLM usage references',
+  classify: 'Classifying models',
+  done: 'Finalizing',
+};
 
 export async function runLlmAudit(
   ctx: LoaderCtx,
   tracker: LifecycleTracker,
   beSettings: Record<string, number>,
 ): Promise<void> {
-  const { dispatch, cancelled, log, timed, settledError } = ctx;
-  // The /api/llm-audit/progress poll streamed no rows (only a % the
-  // binary spinner no longer shows), so it's gone — track() drives the
-  // single fetch's running → done/error glyph.
+  const {
+    dispatch,
+    cancelled,
+    log,
+    timed,
+    settledError,
+    withTimeout,
+    isAbortError,
+    getErrorMessage,
+    abortPendingRequest,
+  } = ctx;
+  // The single /api/llm-audit fetch is opaque for its whole runtime, so a
+  // sidecar poll of /api/llm-audit/progress feeds the backend's summary
+  // (% + phase + project counts) into the running lifecycle — that is what
+  // moves the Model Audit page's progress bar. Events/rows are not consumed;
+  // the since/rowsSince cursors only keep the poll payloads tiny.
+  let progressActive = true;
+  let progressWarned = false;
+  let progressAbort: AbortController | null = null;
+  let progressSince = 0;
+  let progressRowsSince = 0;
+  const pollProgress = async () => {
+    while (!cancelled() && progressActive) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (cancelled() || !progressActive) break;
+      try {
+        progressAbort = new AbortController();
+        const query = new URLSearchParams();
+        query.set('since', String(progressSince));
+        query.set('rowsSince', String(progressRowsSince));
+        const payload = await withTimeout(
+          fetchJson<LlmAuditProgressResponse>(`/api/llm-audit/progress?${query.toString()}`, {
+            signal: progressAbort.signal,
+          }),
+          '/api/llm-audit/progress',
+          LIVE_PROGRESS_TIMEOUT_MS,
+        );
+        if (typeof payload.next === 'number') progressSince = payload.next;
+        if (typeof payload.partialRowsNext === 'number')
+          progressRowsSince = payload.partialRowsNext;
+        const summary = payload.summary;
+        const current = tracker.data.llmAuditLoading;
+        // Patch only while track() holds the running phase — a late poll
+        // response must never overwrite the done/error settle.
+        if (
+          progressActive &&
+          payload.status === 'running' &&
+          summary &&
+          current?.phase === 'running'
+        ) {
+          const phase = String(summary.phase || '');
+          const total = Number(summary.projectsTotal || 0);
+          const done = Number(summary.projectsDone || 0);
+          const counts =
+            total > 0 && (phase === 'scan' || phase === 'usage_scan')
+              ? ` (${done}/${total} projects)`
+              : '';
+          tracker.patchLifecycle('llmAuditLoading', {
+            phase: 'running',
+            startedAt: current.startedAt,
+            progressPct: Math.max(0, Math.min(100, Math.round(Number(summary.progressPct || 0)))),
+            message: `${LLM_AUDIT_PHASE_LABEL[phase] ?? 'Auditing LLMs'}${counts}`,
+            subPhase: phase || undefined,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      } catch (err) {
+        if ((!progressActive || cancelled()) && isAbortError(err)) break;
+        if (!progressWarned) {
+          progressWarned = true;
+          log(`LLM audit live progress polling unavailable: ${getErrorMessage(err)}`, 'warn');
+        }
+      } finally {
+        progressAbort = null;
+      }
+    }
+  };
+  const progressPromise = pollProgress();
   const llmAuditRes = await tracker.track(
     'llmAuditLoading',
     timed<LlmAuditResponse>('/api/llm-audit', beSettings.fe_timeout_llm_audit ?? 620000),
@@ -27,6 +116,9 @@ export async function runLlmAudit(
       isEmpty: (v) => ((v as LlmAuditResponse)?.rows?.length || 0) === 0,
     },
   );
+  progressActive = false;
+  abortPendingRequest(progressAbort);
+  await progressPromise;
   if (cancelled()) return;
   if (llmAuditRes.status === 'fulfilled' && llmAuditRes.value) {
     tracker.data = { ...tracker.data, llmAudit: llmAuditRes.value };

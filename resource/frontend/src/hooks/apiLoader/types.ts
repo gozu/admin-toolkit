@@ -115,6 +115,24 @@ export interface ProjectFootprintProgressResponse {
   partialRowsNext?: number;
 }
 
+export interface LlmAuditProgressResponse {
+  runId?: string;
+  status?: string;
+  error?: string | null;
+  next?: number;
+  summary?: {
+    progressPct?: number;
+    phase?: string;
+    projectsTotal?: number;
+    projectsDone?: number;
+    llmRowsTotal?: number;
+    totalElapsedMs?: number;
+  };
+  events?: BenchEventLike[];
+  partialRows?: Array<Record<string, unknown>>;
+  partialRowsNext?: number;
+}
+
 export interface PluginsResponse {
   plugins?: string[];
   pluginDetails?: PluginInfo[];

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import ssl
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable
@@ -127,11 +128,29 @@ class AuditFamily:
     obsolete: list[ModelGroup]
 
 
+def _read_json_response(response: Any) -> dict[str, Any]:
+    charset = response.headers.get_content_charset() or "utf-8"
+    return json.loads(response.read().decode(charset, "replace"))
+
+
 def fetch_json(url: str, timeout: int) -> dict[str, Any]:
     request = Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json,*/*"})
-    with urlopen(request, timeout=timeout) as response:
-        charset = response.headers.get_content_charset() or "utf-8"
-        return json.loads(response.read().decode(charset, "replace"))
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return _read_json_response(response)
+    except (URLError, ssl.SSLError) as exc:
+        # Customer instances behind TLS-intercepting proxies (or with an
+        # incomplete CA bundle) fail verification against the public pricing
+        # host. The catalog is public read-only data, so retry unverified —
+        # but only for cert-verification failures, never other errors.
+        reason = getattr(exc, "reason", exc)
+        if not isinstance(reason, ssl.SSLCertVerificationError):
+            raise
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        with urlopen(request, timeout=timeout, context=context) as response:
+            return _read_json_response(response)
 
 
 def _decimal_from_cost(value: Any) -> Decimal | None:

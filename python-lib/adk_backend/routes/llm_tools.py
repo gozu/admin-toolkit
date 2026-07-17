@@ -398,7 +398,9 @@ def api_llm_audit():
                             add_event('scan_project_failed', f'{pk}: {exc}', 'warn', project_key=pk)
                         done += 1
                         # Throttle progress updates every project (lightweight).
-                        scan_pct = 15.0 + 70.0 * (done / max(1, total_projects))
+                        # Scan spans 15→50 so the bar never runs backwards when
+                        # usage_scan takes over at 50 (it climbs 50→85).
+                        scan_pct = 15.0 + 35.0 * (done / max(1, total_projects))
                         set_summary(scan_pct, 'scan',
                                     projectsTotal=total_projects, projectsDone=done,
                                     llmRowsTotal=len(llm_rows))

@@ -18,7 +18,7 @@ import { MODULE_BY_ID, MODULE_NAV_SECTIONS } from '../../utils/moduleRegistry';
 import { useAppVersion } from '../../state/appVersionStore';
 import { getActiveHost } from '../../state/hostStore';
 import { useRedVisible } from '../../state/redUnlockStore';
-import { useAdoptionVisible } from '../../state/adoptionUnlockStore';
+import { EGG_GATED_PAGES, useAdoptionVisible } from '../../state/adoptionUnlockStore';
 import { ExternalLinkIcon } from '../ExternalLinkIcon';
 
 /* ------------------------------------------------------------------ */
@@ -122,6 +122,15 @@ const icons: Record<string, ReactNode> = {
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
       <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
       <polyline points="16 7 22 7 22 13" />
+    </svg>
+  ),
+  // Churn & Seats: single person with a minus — seat reclaim / offboarding,
+  // distinct from the two-person `users` group glyph above.
+  'user-churn': (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="8.5" cy="7" r="4" />
+      <line x1="23" y1="11" x2="17" y2="11" />
     </svg>
   ),
   'code-envs': (
@@ -830,7 +839,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
     .map((section) => ({
       ...section,
       items: section.items.filter((id) => {
-        if (id === 'adoption' && !adoptionVisible) return false;
+        if (EGG_GATED_PAGES.has(id) && !adoptionVisible) return false;
         if (hiddenPages.has(id)) return false;
         const m = MODULE_BY_ID[id];
         if (m.experimental && !showExperimental) return false;

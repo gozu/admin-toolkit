@@ -133,7 +133,7 @@ function renderPage(activePage: PageId, adoptionVisible: boolean): React.ReactNo
     case 'adoption':
       return adoptionVisible ? <AdoptionPage /> : <SummaryPage />;
     case 'user-churn':
-      return <UserChurnPage />;
+      return adoptionVisible ? <UserChurnPage /> : <SummaryPage />;
     case 'code-envs':
       return <CodeEnvsInsightsPage />;
     case 'code-envs-cleaner':

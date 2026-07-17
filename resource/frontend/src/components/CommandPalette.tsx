@@ -6,7 +6,7 @@ import { COMMAND_PALETTE_MODULES, EXPERIMENTAL_PAGES } from '../utils/moduleRegi
 import { SHOW_EXPERIMENTAL_STORAGE_KEY } from './pages/SettingsPage';
 import { useToggleFlag } from '../hooks/useToggleFlag';
 import { useModuleAvailability } from '../hooks/useModuleAvailability';
-import { useAdoptionVisible } from '../state/adoptionUnlockStore';
+import { EGG_GATED_PAGES, useAdoptionVisible } from '../state/adoptionUnlockStore';
 
 const IS_MAC =
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
@@ -95,7 +95,7 @@ function CommandPaletteContent({ onClose }: { onClose: () => void }) {
       PAGE_DEFS.filter(
         (d) =>
           (showExperimental || !EXPERIMENTAL_PAGES.has(d.id)) &&
-          (adoptionVisible || d.id !== 'adoption') &&
+          (adoptionVisible || !EGG_GATED_PAGES.has(d.id)) &&
           !hiddenPages.has(d.id),
       ),
     [showExperimental, adoptionVisible, hiddenPages],

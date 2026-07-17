@@ -30,6 +30,7 @@ import {
   type QuarterlyAdoptionPoint,
 } from './CumulativeAdoptionChart';
 import { OnboardingChart, type OnboardingQuarterPoint } from './OnboardingChart';
+import { GroupActivityPie, type GroupPieSlice } from './GroupActivityPie';
 import type { ColumnDef } from '../../utils/dataGridTypes';
 import type { AdoptionProjectRow, AdoptionPulseData } from '../../types';
 import './adoption.css';
@@ -38,7 +39,11 @@ const EMPTY: never[] = [];
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 
-const SPARK_MONTHS = 12;
+// Named pie slices before the tail folds into grey "Other" — the viz-cat
+// palette has 5 validated hues, but in a ring the last named slice wraps
+// around to touch the first, and violet↔blue is the one adjacency that fails
+// the CVD check. Capping at 4 named + grey keeps every adjacency validated.
+const PIE_NAMED_GROUPS = 4;
 // TTFB is hidden below this many measured users — "0d median, 2 users" is
 // noise dressed as a stat.
 const MIN_TTFB_USERS = 5;
@@ -1195,12 +1200,38 @@ export function AdoptionPage() {
   const onboardingAsChart =
     onboardingPoints.length >= MIN_ONBOARDING_QUARTERS && onboardingTotal >= MIN_ONBOARDING_USERS;
 
-  // Groups — sparse-aware: a ranked list needs ≥2 active groups to rank.
+  // Groups — sparse-aware: a share pie needs ≥2 active groups to compare.
   const activeGroups = groups.filter((g) => g.commits > 0);
-  const topGroups = activeGroups.slice(0, 10);
   const quietGroups = groups.length - activeGroups.length;
   const totalGroupCommits = totals?.commitCount ?? 0;
-  const sparkAxis = gitTrendComplete.slice(-SPARK_MONTHS).map((p) => p.month);
+  // Pie slices: top groups named, the tail folded into grey "Other" (its
+  // tooltip enumerates the folded groups). Percentages stay shares of ALL
+  // human commits — a builder in several groups counts in each, so slice
+  // shares can overlap and the tooltip is the honest denominator.
+  const namedGroups = activeGroups.slice(0, PIE_NAMED_GROUPS);
+  const foldedGroups = activeGroups.slice(PIE_NAMED_GROUPS);
+  const groupSlices: GroupPieSlice[] = namedGroups.map((g) => ({
+    label: g.name,
+    value: g.commits,
+    lines: [
+      `${g.commits.toLocaleString()} commits · ${pctLabel(g.commits, totalGroupCommits)} of all human commits`,
+      `${g.builderCount}/${g.memberCount} members building · ${g.projectCount} ${g.projectCount === 1 ? 'project' : 'projects'}`,
+      `last active ${relDays(g.lastCommitMs, nowMs).text}`,
+    ],
+  }));
+  if (foldedGroups.length > 0) {
+    const foldedCommits = foldedGroups.reduce((s, g) => s + g.commits, 0);
+    groupSlices.push({
+      label: `Other (${foldedGroups.length} ${foldedGroups.length === 1 ? 'group' : 'groups'})`,
+      value: foldedCommits,
+      muted: true,
+      lines: [
+        `${foldedCommits.toLocaleString()} commits · ${pctLabel(foldedCommits, totalGroupCommits)} of all human commits`,
+        ...foldedGroups.slice(0, 8).map((g) => `${g.name} · ${g.commits.toLocaleString()}`),
+        ...(foldedGroups.length > 8 ? [`+${foldedGroups.length - 8} more`] : []),
+      ],
+    });
+  }
 
   // Per-project inventory roll-ups keyed for the projects grid; recency on
   // config edits is measured against the inventory's own newest edit, never
@@ -1782,22 +1813,24 @@ export function AdoptionPage() {
         <div className="flex flex-col gap-6">
           <motion.div {...blockProps} className="chart-container">
             <div className="chart-header flex items-center justify-between gap-3">
-              <h4 title="Git activity rolled up to DSS groups. A builder in several groups counts in each, so shares can overlap. The sparkline is the group's monthly commits over the last complete year.">
+              <h4 title="Git activity rolled up to DSS groups, as a commit-share pie. A builder in several groups counts in each, so shares can overlap. The grey slice folds the groups beyond the top four; hover it to see them.">
                 Most active groups
               </h4>
             </div>
             <div className="px-4 py-3">
-              {topGroups.length === 0 ? (
+              {activeGroups.length === 0 ? (
                 <div className="text-xs text-[var(--text-muted)]">No group activity yet.</div>
-              ) : topGroups.length === 1 ? (
-                // One active group is a fact, not a ranking — say it compactly.
+              ) : activeGroups.length === 1 ? (
+                // One active group is a fact, not a share — say it compactly.
                 <div className="text-[12px] leading-relaxed text-[var(--text-secondary)]">
                   Git activity concentrates in one group:{' '}
-                  <span className="font-mono text-[var(--text-primary)]">{topGroups[0].name}</span>{' '}
-                  — {topGroups[0].builderCount} of {topGroups[0].memberCount} members building
-                  across {topGroups[0].projectCount}{' '}
-                  {topGroups[0].projectCount === 1 ? 'project' : 'projects'}, last active{' '}
-                  {relDays(topGroups[0].lastCommitMs, nowMs).text}.
+                  <span className="font-mono text-[var(--text-primary)]">
+                    {activeGroups[0].name}
+                  </span>{' '}
+                  — {activeGroups[0].builderCount} of {activeGroups[0].memberCount} members
+                  building across {activeGroups[0].projectCount}{' '}
+                  {activeGroups[0].projectCount === 1 ? 'project' : 'projects'}, last active{' '}
+                  {relDays(activeGroups[0].lastCommitMs, nowMs).text}.
                   {quietGroups > 0 && (
                     <span className="text-[var(--text-tertiary)]">
                       {' '}
@@ -1807,59 +1840,21 @@ export function AdoptionPage() {
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-x-6 gap-y-2 lg:grid-cols-2">
-                  {topGroups.map((g) => {
-                    const sparkCols: ColPoint[] = sparkAxis.map((month) => ({
-                      key: month,
-                      value: g.monthlyCommits?.[month] ?? 0,
-                      title: `${monthLabel(month)} · ${(g.monthlyCommits?.[month] ?? 0).toLocaleString()} commits by ${g.name}`,
-                    }));
-                    return (
-                      <div key={g.name} className="adk-hover-row -mx-1 px-1 py-1">
-                        <div className="flex items-center gap-2">
-                          <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-secondary)]">
-                            {g.name}
-                            <span className="ml-1.5 text-xs text-[var(--text-tertiary)]">
-                              {g.builderCount}/{g.memberCount} building · {g.projectCount}{' '}
-                              {g.projectCount === 1 ? 'project' : 'projects'} ·{' '}
-                              {relDays(g.lastCommitMs, nowMs).text}
-                            </span>
-                          </span>
-                          <span
-                            className="w-10 flex-shrink-0 text-right font-mono text-xs tabular-nums text-[var(--text-tertiary)]"
-                            title="Share of all human commits (group shares can overlap)."
-                          >
-                            {pctLabel(g.commits, totalGroupCommits)}
-                          </span>
-                          <span className="w-14 flex-shrink-0 text-right font-mono text-xs tabular-nums text-[var(--text-primary)]">
-                            {g.commits.toLocaleString()}
-                          </span>
-                        </div>
-                        {sparkCols.length > 0 && (
-                          <div className="mt-1 max-w-[480px]">
-                            <MiniColumns
-                              points={sparkCols}
-                              height={60}
-                              gap={2}
-                              showValues={false}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {(activeGroups.length > topGroups.length || quietGroups > 0) && (
-                    <div className="pt-0.5 text-xs text-[var(--text-tertiary)] lg:col-span-2">
-                      {activeGroups.length > topGroups.length &&
-                        `+${activeGroups.length - topGroups.length} more active ${activeGroups.length - topGroups.length === 1 ? 'group' : 'groups'}`}
-                      {activeGroups.length > topGroups.length && quietGroups > 0 && ' · '}
-                      {quietGroups > 0 &&
-                        `${quietGroups} ${quietGroups === 1 ? 'group has' : 'groups have'} no git activity yet`}
-                    </div>
-                  )}
-                </div>
+                <GroupActivityPie
+                  slices={groupSlices}
+                  centerValue={activeGroups.length.toLocaleString()}
+                  centerLabel={activeGroups.length === 1 ? 'active group' : 'active groups'}
+                />
               )}
             </div>
+            {activeGroups.length > 1 && (
+              <div className="border-t border-[var(--border-glass)] px-4 py-2 text-xs text-[var(--text-tertiary)]">
+                slice = commit volume; tooltip shares are of all human commits — a builder in
+                several groups counts in each, so shares can overlap
+                {quietGroups > 0 &&
+                  ` · ${quietGroups} ${quietGroups === 1 ? 'group has' : 'groups have'} no git activity yet`}
+              </div>
+            )}
           </motion.div>
 
           <motion.div {...blockProps} className="chart-container">

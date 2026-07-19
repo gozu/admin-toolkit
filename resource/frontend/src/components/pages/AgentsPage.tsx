@@ -17,6 +17,7 @@ import {
 import { hostBaseUrl } from '../../utils/agentLinks';
 import { dssUrls } from '../../utils/codeEnvUsageLinks';
 import { getActiveHostId } from '../../state/hostStore';
+import { AgentOrb, type OrbState } from '../agents/AgentOrb';
 import { ChatHistoryDrawer } from '../agents/ChatHistoryDrawer';
 import { ComposerPalette } from '../agents/ComposerPalette';
 import { Spinner } from '../common/Spinner';
@@ -410,11 +411,21 @@ export function AgentsPage() {
     [],
   );
 
+  // The orb mirrors the agent's live state everywhere it appears.
+  const orbState: OrbState = streaming
+    ? runningTool
+      ? 'tool'
+      : 'thinking'
+    : conversation?.error
+      ? 'error'
+      : 'idle';
+
   return (
     <div className="w-full flex-1 min-h-0 flex flex-col gap-3 py-4">
       {/* Header: one agent, one identity */}
       <div className={`${COLUMN} flex items-center gap-2 flex-wrap`}>
         <span className="inline-flex items-center gap-1.5">
+          <AgentOrb size={22} state={orbState} className="mr-0.5" />
           <span className="text-sm font-semibold text-[var(--text-primary)]">
             Admin Toolkit Agent
           </span>
@@ -553,23 +564,46 @@ export function AgentsPage() {
         <>
           {/* Transcript — centered column, bubbles never touch the edges */}
           <div className="relative flex-1 min-h-0">
+            {/* Ambient aurora — drifts behind the conversation, brightens while
+                the agent works. Purely decorative, never intercepts input. */}
+            <div className="agent-aurora" data-live={streaming ? 'true' : 'false'} aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
             <div
               ref={scrollRef}
               onScroll={handleScroll}
-              className="h-full overflow-y-auto scroll-smooth"
+              className="relative z-[1] h-full overflow-y-auto scroll-smooth"
             >
               <div className={`${COLUMN} space-y-4`}>
               {messages.length === 0 && (
-                <div className="pt-10 flex flex-col items-center gap-4 text-center">
-                  <p className="text-sm text-[var(--text-secondary)]">
-                    Ask about fleet health, sizing and scoping, or admin maintenance — or start
-                    from a sample below.
-                  </p>
+                <div className="pt-8 flex flex-col items-center gap-5 text-center">
+                  <div className="relative flex items-center justify-center w-[8.25rem] h-[8.25rem]">
+                    <span className="orb-orbit" aria-hidden="true" />
+                    <span className="orb-orbit orbit-2" aria-hidden="true" />
+                    <AgentOrb size={72} state="idle" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <h2
+                      className="hero-shimmer text-2xl font-bold tracking-tight"
+                      style={{ fontFamily: 'var(--font-display)' }}
+                    >
+                      Your fleet, on command.
+                    </h2>
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      Ask about fleet health, sizing and scoping, or admin maintenance — or start
+                      from a sample below.
+                    </p>
+                  </div>
                   <div className="grid gap-3 w-full max-w-3xl sm:grid-cols-2 text-left">
-                    {heroGroups.map((group) => (
-                      <div
+                    {heroGroups.map((group, gi) => (
+                      <motion.div
                         key={group.role}
-                        className="glass-card p-4 space-y-2 border-l-2 border-l-[var(--accent)]"
+                        initial={{ opacity: 0, y: 16, filter: 'blur(5px)' }}
+                        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                        transition={{ duration: 0.45, delay: 0.12 + gi * 0.1, ease: 'easeOut' }}
+                        className="glass-card hero-card p-4 space-y-2 border-l-2 border-l-[var(--accent)]"
                       >
                         <div className="text-xs font-bold uppercase tracking-widest text-[var(--accent)]">
                           {group.title}
@@ -595,7 +629,7 @@ export function AgentsPage() {
                             </button>
                           ))}
                         </div>
-                      </div>
+                      </motion.div>
                     ))}
                   </div>
                   <button
@@ -611,8 +645,21 @@ export function AgentsPage() {
                 {messages.map((message, i) => (
                   <motion.div
                     key={message.id ?? i}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
+                    initial={
+                      message.role === 'user'
+                        ? { opacity: 0, scale: 0.94, y: 8 }
+                        : { opacity: 0, y: 10, filter: 'blur(6px)' }
+                    }
+                    animate={
+                      message.role === 'user'
+                        ? { opacity: 1, scale: 1, y: 0 }
+                        : { opacity: 1, y: 0, filter: 'blur(0px)' }
+                    }
+                    transition={
+                      message.role === 'user'
+                        ? { type: 'spring', stiffness: 480, damping: 32 }
+                        : { duration: 0.4, ease: 'easeOut' }
+                    }
                   >
                     <MessageView
                       message={message}
@@ -620,6 +667,7 @@ export function AgentsPage() {
                       traceExplorer={traceExplorer}
                       now={now}
                       streaming={streaming}
+                      live={streaming && i === messages.length - 1}
                       actuatorAvailable={Boolean(agent) && !conversationOrphaned}
                       agentConfigUrl={agentConfigUrl}
                       onPlanDecision={onPlanDecision}
@@ -631,9 +679,9 @@ export function AgentsPage() {
               </AnimatePresence>
                 {streaming && (
                   <div className="flex items-center gap-2.5 text-xs text-[var(--text-tertiary)] pb-2">
-                    <span className="w-2 h-2 rounded-full bg-[var(--neon-yellow)] animate-pulse" />
+                    <AgentOrb size={18} state={runningTool ? 'tool' : 'thinking'} />
                     <span className="stream-beam" aria-hidden="true" />
-                    <span>
+                    <span className="working-shimmer">
                       {runningTool ? (
                         <>
                           running{' '}
@@ -769,7 +817,7 @@ export function AgentsPage() {
                       : 'Message the agent — "/" for prompts, Enter to send'
                 }
                 disabled={streaming || conversationOrphaned}
-                className="flex-1 px-3 py-2 text-sm rounded-lg bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] resize-none overflow-y-auto disabled:opacity-60"
+                className="agent-composer flex-1 px-3 py-2 text-sm rounded-lg bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] resize-none overflow-y-auto disabled:opacity-60"
               />
               {streaming ? (
                 <button
@@ -782,7 +830,7 @@ export function AgentsPage() {
                 <button
                   onClick={() => sendDraft(draft)}
                   disabled={!draft.trim()}
-                  className="px-3.5 py-2 text-sm font-medium rounded-lg bg-[var(--accent)] text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="btn-agent-send px-3.5 py-2 text-sm font-medium rounded-lg text-white disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Send
                 </button>

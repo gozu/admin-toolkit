@@ -3197,3 +3197,321 @@ h1, h2, h3, h4 {
   );
   animation: radar-sweep 3.2s linear infinite;
 }
+
+/* =============================================================================
+   Agent presence FX — the agent's living identity. An orb whose color and
+   tempo track what the agent is doing, an ambient aurora behind the
+   transcript that brightens while it works, a border-beam circling plans
+   that await a human decision, and streaming micro-FX. Dark-first; the
+   light theme damps glow strength to stay native-DSS flat.
+   ============================================================================= */
+
+@keyframes orb-rotate { to { transform: rotate(360deg); } }
+@keyframes orb-rotate-rev { to { transform: rotate(-360deg); } }
+@keyframes orb-breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.05); }
+}
+
+/* State recolors via custom props; tempo via --orb-spin/--orb-breathe.
+   --orb-blur/--orb-glow-size are set inline per instance (they scale with
+   the rendered size). */
+.agent-orb {
+  --orb-a: var(--accent);
+  --orb-b: var(--neon-purple);
+  --orb-c: var(--neon-magenta);
+  --orb-spin: 16s;
+  --orb-breathe: 5s;
+  --orb-glow-alpha: 40%;
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  border-radius: 50%;
+  isolation: isolate;
+  overflow: hidden;
+  box-shadow: 0 0 var(--orb-glow-size, 14px) color-mix(in oklab, var(--orb-a) var(--orb-glow-alpha), transparent);
+  animation: orb-breathe var(--orb-breathe) ease-in-out infinite;
+  transition: box-shadow 0.6s ease;
+}
+.agent-orb::before {
+  content: '';
+  position: absolute;
+  inset: -4%;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    var(--orb-a),
+    var(--orb-b) 30%,
+    var(--orb-c) 55%,
+    var(--orb-b) 75%,
+    var(--orb-a)
+  );
+  filter: blur(var(--orb-blur, 2px)) saturate(1.25);
+  animation: orb-rotate var(--orb-spin) linear infinite;
+}
+.agent-orb::after {
+  content: '';
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 180deg,
+    transparent,
+    color-mix(in oklab, var(--orb-c) 75%, white) 20%,
+    transparent 45%,
+    color-mix(in oklab, var(--orb-a) 65%, white) 70%,
+    transparent 90%
+  );
+  filter: blur(calc(var(--orb-blur, 2px) * 1.5));
+  mix-blend-mode: screen;
+  opacity: 0.9;
+  animation: orb-rotate-rev calc(var(--orb-spin) * 0.62) linear infinite;
+}
+.agent-orb-core {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 32% 28%,
+    rgba(255, 255, 255, 0.5),
+    rgba(255, 255, 255, 0.07) 42%,
+    transparent 60%
+  );
+  box-shadow: inset 0 0 calc(var(--orb-blur, 2px) * 3) rgba(0, 0, 0, 0.35);
+}
+.agent-orb[data-state='thinking'] {
+  --orb-spin: 2.4s;
+  --orb-breathe: 1.8s;
+  --orb-glow-alpha: 65%;
+}
+.agent-orb[data-state='tool'] {
+  --orb-a: var(--neon-amber);
+  --orb-b: var(--neon-magenta);
+  --orb-c: var(--accent);
+  --orb-spin: 1.7s;
+  --orb-breathe: 1.4s;
+  --orb-glow-alpha: 70%;
+}
+.agent-orb[data-state='error'] {
+  --orb-a: var(--neon-red);
+  --orb-b: var(--neon-magenta);
+  --orb-c: var(--neon-red);
+  --orb-spin: 22s;
+  --orb-glow-alpha: 45%;
+}
+[data-theme='light'] .agent-orb { --orb-glow-alpha: 22%; }
+
+/* Hero satellites: faint orbit rings with a bright dot each, counter-rotating. */
+.orb-orbit {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in oklab, var(--text-tertiary) 22%, transparent);
+  animation: orb-rotate 11s linear infinite;
+  pointer-events: none;
+}
+.orb-orbit::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px 1px color-mix(in oklab, var(--accent) 75%, transparent);
+}
+.orb-orbit.orbit-2 {
+  inset: 22px;
+  animation-duration: 7s;
+  animation-direction: reverse;
+}
+.orb-orbit.orbit-2::before {
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  background: var(--neon-magenta);
+  box-shadow: 0 0 8px 1px color-mix(in oklab, var(--neon-magenta) 75%, transparent);
+}
+
+/* Ambient aurora behind the transcript. Three blurred color fields drifting
+   on long alternating paths; the whole layer brightens while a turn is in
+   flight (data-live) and settles back afterwards. */
+@keyframes aurora-a { to { transform: translate3d(9rem, 5rem, 0) scale(1.18); } }
+@keyframes aurora-b { to { transform: translate3d(-7rem, -4rem, 0) scale(0.92); } }
+@keyframes aurora-c { to { transform: translate3d(5rem, -6rem, 0) scale(1.12); } }
+.agent-aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.45;
+  transition: opacity 1.4s ease;
+}
+.agent-aurora[data-live='true'] { opacity: 1; }
+.agent-aurora span {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(64px);
+  will-change: transform;
+}
+.agent-aurora span:nth-child(1) {
+  width: 34rem;
+  height: 34rem;
+  left: -9rem;
+  top: -12rem;
+  background: radial-gradient(circle, color-mix(in oklab, var(--accent) 17%, transparent), transparent 62%);
+  animation: aurora-a 21s ease-in-out infinite alternate;
+}
+.agent-aurora span:nth-child(2) {
+  width: 30rem;
+  height: 30rem;
+  right: -8rem;
+  top: -4rem;
+  background: radial-gradient(circle, color-mix(in oklab, var(--neon-purple) 15%, transparent), transparent 62%);
+  animation: aurora-b 27s ease-in-out infinite alternate;
+}
+.agent-aurora span:nth-child(3) {
+  width: 26rem;
+  height: 26rem;
+  left: 30%;
+  bottom: -14rem;
+  background: radial-gradient(circle, color-mix(in oklab, var(--neon-magenta) 12%, transparent), transparent 62%);
+  animation: aurora-c 33s ease-in-out infinite alternate;
+}
+[data-theme='light'] .agent-aurora { opacity: 0.3; }
+[data-theme='light'] .agent-aurora[data-live='true'] { opacity: 0.55; }
+
+/* Border-beam: a hot spark tracing the card's edge — reserved for plans
+   waiting on a human decision. Falls back to a static (harmless) ring where
+   @property is unsupported. */
+@property --bb-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes bb-spin { to { --bb-angle: 360deg; } }
+.border-beam { position: relative; }
+.border-beam::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--bb-angle),
+    transparent 0deg,
+    transparent 285deg,
+    color-mix(in oklab, var(--neon-amber) 85%, transparent) 325deg,
+    color-mix(in oklab, var(--neon-amber) 45%, white) 342deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: bb-spin 3.2s linear infinite;
+  pointer-events: none;
+}
+
+/* Streaming caret: the live "the agent is writing here" marker. */
+@keyframes caret-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.25; }
+}
+.stream-caret {
+  display: inline-block;
+  width: 8px;
+  height: 14px;
+  margin-left: 1px;
+  border-radius: 2px;
+  vertical-align: text-bottom;
+  background: linear-gradient(180deg, var(--accent), var(--neon-magenta));
+  box-shadow: 0 0 8px color-mix(in oklab, var(--accent) 60%, transparent);
+  animation: caret-pulse 1s ease-in-out infinite;
+}
+
+/* Gradient sheen sweeping through the hero headline / working label. */
+@keyframes text-sheen {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+.hero-shimmer {
+  background: linear-gradient(
+    100deg,
+    var(--text-primary) 30%,
+    var(--accent) 45%,
+    var(--neon-magenta) 50%,
+    var(--accent) 55%,
+    var(--text-primary) 70%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: text-sheen 7s linear infinite;
+}
+.working-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--text-tertiary) 35%,
+    var(--text-primary) 50%,
+    var(--text-tertiary) 65%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: text-sheen 2.2s linear infinite;
+}
+
+/* Hero suggestion cards lift toward the cursor and pick up an accent glow. */
+.hero-card {
+  transition:
+    transform 0.25s var(--ease-out),
+    box-shadow 0.25s var(--ease-out);
+}
+.hero-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 40px -18px color-mix(in oklab, var(--accent) 40%, transparent);
+}
+[data-theme='light'] .hero-card:hover {
+  box-shadow: 0 10px 26px -16px color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+/* Composer: focus glow; Send carries the orb's gradient. */
+.agent-composer:focus {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--accent) 55%, transparent),
+    0 8px 30px -12px color-mix(in oklab, var(--accent) 40%, transparent);
+}
+.btn-agent-send {
+  background: linear-gradient(135deg, var(--accent), var(--neon-purple));
+  transition: box-shadow 0.25s var(--ease-out), filter 0.2s ease;
+}
+.btn-agent-send:not(:disabled):hover {
+  filter: brightness(1.12);
+  box-shadow: 0 0 22px -4px color-mix(in oklab, var(--accent) 65%, transparent);
+}
+
+/* A running tool chip gets a light sweep (reuses progress-sheen-sweep). */
+.chip-live {
+  position: relative;
+  overflow: hidden;
+}
+.chip-live::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--neon-yellow) 22%, transparent),
+    transparent
+  );
+  animation: progress-sheen-sweep 1.4s ease-in-out infinite;
+}

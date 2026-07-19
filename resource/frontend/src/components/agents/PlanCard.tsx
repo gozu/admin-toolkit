@@ -81,7 +81,9 @@ export function PlanCard({
     <motion.div
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="glass-card my-2 p-3.5 border-l-2 border-l-[var(--neon-amber)] space-y-2.5"
+      className={`glass-card my-2 p-3.5 border-l-2 border-l-[var(--neon-amber)] space-y-2.5 ${
+        !plan.decision && !expired ? 'border-beam' : ''
+      }`}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">

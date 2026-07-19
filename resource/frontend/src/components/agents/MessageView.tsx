@@ -237,6 +237,7 @@ export function MessageView({
   traceExplorer,
   now,
   streaming,
+  live = false,
   actuatorAvailable,
   agentConfigUrl,
   onPlanDecision,
@@ -248,6 +249,8 @@ export function MessageView({
   traceExplorer?: TraceExplorerStatus | null;
   now: number;
   streaming: boolean;
+  /** This message is the reply currently being streamed — shows the caret. */
+  live?: boolean;
   actuatorAvailable: boolean;
   /** Deep link to the conversation agent's DSS config (for gate-hint callouts). */
   agentConfigUrl?: string;
@@ -315,6 +318,9 @@ export function MessageView({
         }
         return <ExecutionCard key={i} execution={segment.execution} onShowAudit={onShowAudit} />;
       })}
+      {live && message.segments[message.segments.length - 1]?.type === 'text' && (
+        <span className="stream-caret" aria-hidden="true" />
+      )}
       {(message.traceId || message.durationMs || message.content) && (
         <div className="flex items-center gap-3 pt-0.5">
           {message.durationMs ? (

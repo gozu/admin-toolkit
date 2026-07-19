@@ -55,7 +55,7 @@ export function ActivityChips({ items }: { items: ActivityItem[] }) {
             animate={{ opacity: 1, y: 0 }}
             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-mono border transition-colors hover:border-[var(--accent)]/50 ${
               item.running
-                ? 'border-[var(--neon-yellow)]/40 text-[var(--neon-yellow)] bg-[var(--bg-surface)]'
+                ? 'chip-live border-[var(--neon-yellow)]/40 text-[var(--neon-yellow)] bg-[var(--bg-surface)]'
                 : item.ok === false || item.error
                   ? 'border-[var(--danger)]/40 text-[var(--danger)] bg-[var(--bg-surface)]'
                   : 'border-[var(--border-default)] text-[var(--text-secondary)] bg-[var(--bg-surface)]'

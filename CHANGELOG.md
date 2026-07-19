@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.764] - 2026-07-19
+
+### Added
+- **Agent presence FX**: the agent now has a living visual identity — an animated conic-swirl orb whose palette and tempo track its state (idle breathe / fast swirl while thinking / amber flare while a tool runs / red on error). It appears in the page header, at hero scale with orbiting satellites on the empty state, and as the streaming indicator.
+- **Ambient aurora**: three blurred color fields drift behind the transcript and visibly brighten while a turn is in flight, settling back once the agent finishes (damped in the light theme).
+- **Approval border-beam**: plan cards awaiting a human decision get a hot spark tracing the card edge — undecided plans are now impossible to miss in a long transcript.
+- **Streaming micro-FX**: assistant replies materialize (blur→sharp rise) and user bubbles spring-pop in; a glowing gradient caret marks where the reply is being written; the "agent working…" label carries a light sheen; running tool chips get a sweep.
+- **Hero + composer polish**: gradient-shimmer headline ("Your fleet, on command."), suggestion cards that stagger in and lift with an accent glow on hover, a gradient Send button, and an accent focus glow on the composer.
+
 ## [0.4.763] - 2026-07-19
 
 ### Added

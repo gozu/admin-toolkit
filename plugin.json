@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.761",
+    "version": "0.4.762",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -240,6 +240,15 @@
             "getChoicesFromPython": true,
             "mandatory": false,
             "defaultValue": "",
+            "visibilityCondition": "false"
+        },
+        {
+            "name": "agent_runtime",
+            "label": "Agent runtime (webapp-managed)",
+            "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value. 'native' runs the agent loop in the webapp backend; 'dataiku' relays through the Dataiku agent kernel.",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": "native",
             "visibilityCondition": "false"
         },
         {

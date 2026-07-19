@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, g, jsonify, request
 
-from adk_backend import agent_provision, agents_db, trace_explorer
+from adk_backend import agent_native, agent_provision, agents_db, trace_explorer
 from adk_backend.utils import _sse_response, advanced, local_only
 from db_adapter import load_agents_audit_config
 
@@ -102,16 +102,26 @@ def _agent_rows(client: Any) -> List[Dict[str, Any]]:
 
 @bp.route('/api/agents')
 def api_agents_list():
+    host_id = str(getattr(g, 'host_id', 'local') or 'local')
     try:
-        return jsonify({'available': True, 'projectKey': AGENTS_PROJECT_KEY,
-                        'agents': _agent_rows(g.client)})
+        rows = _agent_rows(g.client)
     except Exception as exc:
         # No ADMINTOOLKIT project / no agents provisioned on this host is a
         # normal state, not an error — the page shows its provisioning empty-state.
-        _LOGGER.info('agents list unavailable on host %s: %s',
-                     getattr(g, 'host_id', 'local'), str(exc)[:200])
+        _LOGGER.info('agents list unavailable on host %s: %s', host_id, str(exc)[:200])
+        rows, reason = [], str(exc)[:200]
+    else:
+        reason = None
+    # The native runtime needs no provisioned instances: on the local hub it
+    # serves a virtual generalist instead of the provisioning empty-state.
+    if not rows and host_id == 'local' and agent_native.runtime_mode() == 'native':
+        return jsonify({'available': True, 'projectKey': AGENTS_PROJECT_KEY,
+                        'agents': [agent_native.virtual_agent_row()],
+                        'runtime': 'native'})
+    if not rows:
         return jsonify({'available': False, 'projectKey': AGENTS_PROJECT_KEY,
-                        'agents': [], 'reason': str(exc)[:200]})
+                        'agents': [], 'reason': reason or 'no agents provisioned'})
+    return jsonify({'available': True, 'projectKey': AGENTS_PROJECT_KEY, 'agents': rows})
 
 
 @bp.route('/api/agents/provision', methods=['POST'])
@@ -126,12 +136,18 @@ def api_agents_provision():
 
 @bp.route('/api/agents/chat', methods=['POST'])
 def api_agents_chat():
-    """SSE: relay one streamed agent completion.
+    """SSE: one streamed agent turn.
 
-    Body: {agentId, messages: [{role: 'user'|'assistant', content}, ...]}
+    Body: {agentId, messages: [{role: 'user'|'assistant', content}, ...],
+           runtime?: 'native'|'dataiku' (per-request override, e.g. drills)}
     Events out: chunk {text} · agent_event {eventKind, eventData} ·
-    done {finishReason, durationMs, traceAvailable, traceId?, traceExplorerPath?} ·
-    error {message}.
+    done {finishReason, durationMs, traceAvailable, traceId?, traceExplorerPath?,
+    runtime} · error {message} · ping {} (native keep-alives).
+
+    Two runtimes behind the same protocol: the in-process native loop
+    (agent_native, local host — the default) or the relay over the Dataiku
+    agent kernel via `agent.as_llm().execute_streamed()` (remote hosts, or
+    agent_runtime='dataiku').
     """
     body = request.get_json(silent=True) or {}
     agent_id = (body.get('agentId') or '').strip()
@@ -140,6 +156,11 @@ def api_agents_chat():
         return jsonify({'error': 'agentId and a non-empty messages list are required'}), 400
     client = g.client
     host_id = str(getattr(g, 'host_id', 'local') or 'local')
+
+    override = str(body.get('runtime') or '').strip().lower()
+    mode = override if override in ('native', 'dataiku') else agent_native.runtime_mode()
+    if mode == 'native' and host_id == 'local':
+        return _native_chat_response(client, host_id, agent_id, messages)
 
     def generate():
         def sse(event: str, payload: Dict[str, Any]) -> str:
@@ -169,7 +190,8 @@ def api_agents_chat():
             trace = (footer or {}).get('trace')
             done_payload: Dict[str, Any] = {'finishReason': (footer or {}).get('finishReason'),
                                             'durationMs': trajectory.get('durationMs'),
-                                            'traceAvailable': bool(trace)}
+                                            'traceAvailable': bool(trace),
+                                            'runtime': 'dataiku'}
             if trace:
                 done_payload['traceId'] = _remember_trace(trace)
             explorer = _trace_explorer_info(client, host_id)
@@ -180,6 +202,45 @@ def api_agents_chat():
             yield sse('done', done_payload)
         except Exception as exc:
             _LOGGER.warning('agent chat stream failed (agent %s): %s', agent_id, exc)
+            yield sse('error', {'message': '%s: %s' % (type(exc).__name__, str(exc)[:300])})
+
+    return _sse_response(generate)
+
+
+def _native_chat_response(client, host_id: str, agent_id: str, messages: List[Dict[str, Any]]):
+    """SSE response for one native-runtime turn: translate agent_native's
+    (event, payload) tuples, applying the same history caps as the relay path
+    and the same done-event enrichment (trace ring + Trace Explorer)."""
+    clipped = []
+    for msg in messages[-_MAX_MESSAGES:]:
+        role = msg.get('role') if isinstance(msg, dict) else None
+        content = (msg.get('content') or '') if isinstance(msg, dict) else ''
+        if role in ('user', 'assistant') and content:
+            clipped.append({'role': role, 'content': content[:_MAX_MESSAGE_CHARS]})
+
+    def generate():
+        def sse(event: str, payload: Dict[str, Any]) -> str:
+            return 'event: %s\ndata: %s\n\n' % (event, json.dumps(payload, default=str))
+
+        try:
+            for event, payload in agent_native.stream_native_turn(agent_id, clipped):
+                if event != 'final':
+                    yield sse(event, payload)
+                    continue
+                trace = payload.get('trace')
+                done_payload: Dict[str, Any] = {'finishReason': payload.get('finishReason'),
+                                                'durationMs': payload.get('durationMs'),
+                                                'traceAvailable': bool(trace),
+                                                'runtime': 'native'}
+                if trace:
+                    done_payload['traceId'] = _remember_trace(trace)
+                explorer = _trace_explorer_info(client, host_id)
+                if explorer:
+                    done_payload['traceExplorer'] = explorer
+                    done_payload['traceExplorerPath'] = explorer['viewPath']
+                yield sse('done', done_payload)
+        except Exception as exc:
+            _LOGGER.warning('native agent chat failed (agent %s): %s', agent_id, exc)
             yield sse('error', {'message': '%s: %s' % (type(exc).__name__, str(exc)[:300])})
 
     return _sse_response(generate)

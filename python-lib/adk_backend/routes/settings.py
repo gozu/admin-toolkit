@@ -88,6 +88,7 @@ def api_settings_update():
 # reading them through atk_agent_common.config.resolve unchanged. Defaults here
 # must mirror plugin.json.
 _AGENT_KNOB_DEFAULTS = {
+    'agent_runtime': 'native',
     'outreach_mail_channel': '',
     'host_allowlist': '',
     'verify_tls': True,
@@ -185,6 +186,9 @@ def api_agent_knobs_update():
             return jsonify({'ok': False,
                             'error': 'not auto-eligible: %s' % ', '.join(bad)}), 400
         casted['auto_remediate_actions'] = ','.join(tokens)
+    if 'agent_runtime' in casted and casted['agent_runtime'] not in ('native', 'dataiku'):
+        return jsonify({'ok': False,
+                        'error': "agent_runtime must be 'native' or 'dataiku'"}), 400
     settings = _local_thread_client().get_plugin(_PLUGIN_ID).get_settings()
     settings.get_raw().setdefault('config', {}).update(casted)
     settings.save()

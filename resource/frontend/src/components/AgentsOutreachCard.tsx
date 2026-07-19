@@ -4,6 +4,7 @@ import { useRedState } from '../state/redUnlockStore';
 import { UnlockModal } from './UnlockModal';
 
 interface AgentKnobValues {
+  agent_runtime: string;
   outreach_mail_channel: string;
   host_allowlist: string;
   verify_tls: boolean;
@@ -180,6 +181,34 @@ export function AgentsOutreachCard() {
 
       {values && (
         <div className="space-y-3 max-w-3xl">
+          <Field label="Agent runtime">
+            <div className="inline-flex rounded-lg border border-[var(--border-default)] overflow-hidden">
+              {(
+                [
+                  ['native', 'Native (in-process)'],
+                  ['dataiku', 'Dataiku agent kernel'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => set('agent_runtime', id)}
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                    values.agent_runtime === id
+                      ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
+                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <p className="text-xs text-[var(--text-muted)] -mt-1">
+            Native runs the agent loop inside the toolkit backend — instant start, parallel tools,
+            no kernel recycles, works without provisioned instances. The Dataiku kernel relay
+            remains for remote hosts and as a fallback.
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Outreach mail channel">
               <ChoiceSelect

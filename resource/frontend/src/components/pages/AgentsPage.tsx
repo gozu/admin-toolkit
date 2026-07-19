@@ -302,7 +302,13 @@ export function AgentsPage() {
     return [...chatState.conversationList, ...locals];
   }, [chatState.conversationList, chatState.conversations]);
 
-  const errorIsGate = /red|kill|locked|disabled/i.test(conversation?.error || '');
+  // Distinctive phrases from the real gate/lock messages only — a bare /red/
+  // matched "requi_red_"/"expi_red_" and lit the kill-switch dot on unrelated
+  // errors (e.g. the "…are required" 400 and confirm-token expiry).
+  const errorIsGate =
+    /kill-switch|master switch|master password|disabled in agent settings|agentic[- ]actions/i.test(
+      conversation?.error || '',
+    );
   const traceExplorer = chatState.traceExplorer;
   const explorerViewPath = traceExplorer?.viewPath || conversation?.traceExplorerPath;
   const heroGroups = useMemo(

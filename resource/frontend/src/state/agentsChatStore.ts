@@ -623,6 +623,12 @@ export async function deleteConversation(conversationId: string): Promise<void> 
   delete conversations[conversationId];
   const activeConvIdByAgent = { ...state.activeConvIdByAgent };
   if (conv && activeConvIdByAgent[conv.agentId] === conversationId) {
+    // Deleting the agent's active conversation while it streams: abort the
+    // in-flight turn first, or its next SSE frame would putConversation() the
+    // row back into state and the settle would re-persist it server-side
+    // (same guard startNewConversation / clearAllConversations already use).
+    abortControllers.get(conv.agentId)?.abort();
+    abortControllers.delete(conv.agentId);
     delete activeConvIdByAgent[conv.agentId];
   }
   agentsChatStore.patch({

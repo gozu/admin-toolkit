@@ -23,9 +23,17 @@ BLOCKED_FIRST_SEGMENT_SUBSTRINGS = (
 )
 
 # Any segment anywhere in the path matching this is blocked — secret material
-# must never flow through (or be readable via) the settings mutator.
+# must never flow through (or be readable via) the settings mutator. The same
+# regex drives _redact_secrets on the read side, so a credential key name that
+# escapes here is BOTH readable and writable via connection-update / settings-set.
+# `<word>key` catches the cloud-credential families that carry no `secret`/
+# `token` substring (Azure `accountKey`/`storageAccountKey`, S3 `accessKey`,
+# `sharedKey`, `signingKey`); `keyfile`/`keyjson` catch the leading-`key`
+# credential-file variants. Bare `key` (DSS {key,value} property lists) and
+# `keyspace`/`keyColumns` deliberately do NOT match.
 BLOCKED_SEGMENT_RE = re.compile(
-    r'(password|secret|credential|privatekey|apikey|token|keytab)', re.IGNORECASE)
+    r'(password|passphrase|secret|credential|privatekey|apikey|token|keytab'
+    r'|keyfile|keyjson|[a-z0-9]+key)', re.IGNORECASE)
 
 _SEGMENT_RE = re.compile(r'^([A-Za-z0-9_$@-]+)((\[\d+\])*)$')
 

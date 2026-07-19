@@ -50,12 +50,29 @@ def _connection() -> str:
     return configured or 'filesystem_managed'
 
 
-def _dataset_exists(project) -> bool:
+def _dataset_exists(project, strict: bool = False) -> bool:
     try:
         return DATASET_NAME in {d.get('name') for d in project.list_datasets()
                                 if isinstance(d, dict)}
     except Exception:
+        if strict:
+            raise
         return False
+
+
+def _read_rows_for_save(project):
+    """Strict read for the save path: any listing/read failure RAISES so a
+    transient error can never hand back [] and let the save overwrite (wipe)
+    the existing version history. An existing-but-never-written dataset (no
+    schema columns) is the one case that legitimately reads as empty."""
+    if not _dataset_exists(project, strict=True):
+        project.new_managed_dataset(DATASET_NAME).with_store_into(_connection()).create()
+        return []
+    schema_cols = (project.get_dataset(DATASET_NAME).get_schema() or {}).get('columns') or []
+    if not schema_cols:
+        return []
+    df = dataiku.Dataset(DATASET_NAME).get_dataframe(infer_with_pandas=False)
+    return store.normalize_rows(df.fillna('').to_dict('records'))
 
 
 def _read_rows(force: bool = False):
@@ -156,10 +173,7 @@ def api_agent_tuning_save():
         import pandas as pd
 
         with _write_lock:
-            project = _local_toolkit_project()
-            if not _dataset_exists(project):
-                project.new_managed_dataset(DATASET_NAME).with_store_into(_connection()).create()
-            rows = _read_rows(force=True) + [row]
+            rows = _read_rows_for_save(_local_toolkit_project()) + [row]
             df = pd.DataFrame([[r.get(c, '') for c in store.ALL_COLUMNS] for r in rows],
                               columns=list(store.ALL_COLUMNS), dtype=str)
             dataiku.Dataset(DATASET_NAME).write_with_schema(df)

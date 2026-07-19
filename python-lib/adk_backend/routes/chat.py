@@ -12,6 +12,7 @@ answers {enabled: false} and every other route early-returns without ever
 touching the DB layer.
 """
 
+import json
 import logging
 
 from flask import Blueprint, g, jsonify, request
@@ -27,6 +28,9 @@ _LOGGER = logging.getLogger(__name__)
 
 _MAX_TURN_MESSAGES = 50
 _MAX_CONTENT_CHARS = 200000
+# Segment[] is stored as one JSON TEXT cell; cap the serialized size so a
+# single (unauthenticated) POST can't grow the store without bound.
+_MAX_SEGMENTS_BYTES = 300000
 
 
 def _config():
@@ -118,7 +122,8 @@ def api_chat_create():
         return jsonify({'error': 'id and agentId are required'}), 400
     user_id, host_id = _scope()
     result = chat_store.upsert_turn(user_id, host_id, conversation_id, agent_id,
-                                    messages=[], title=body.get('title'))
+                                    messages=[],
+                                    title=str(body.get('title') or '').strip() or None)
     return jsonify({'enabled': True, 'conversation': result})
 
 
@@ -184,10 +189,17 @@ def api_chat_turn(conversation_id):
             continue
         entry = dict(entry)
         entry['content'] = str(entry.get('content') or '')[:_MAX_CONTENT_CHARS]
+        display = entry.get('display')
+        entry['display'] = display[:_MAX_CONTENT_CHARS] if isinstance(display, str) else None
+        segments = entry.get('segments')
+        if not isinstance(segments, list) or \
+                len(json.dumps(segments, default=str)) > _MAX_SEGMENTS_BYTES:
+            entry['segments'] = []
         cleaned.append(entry)
 
     user_id, host_id = _scope()
     trace_id = str(body.get('traceId') or '').strip() or None
+    trace_explorer_path = body.get('traceExplorerPath')
     result = chat_store.upsert_turn(
         user_id, host_id, conversation_id, agent_id,
         messages=cleaned,
@@ -195,7 +207,8 @@ def api_chat_turn(conversation_id):
         trace_id=trace_id,
         trace_getter=get_ring_trace,
         last_duration_ms=body.get('lastDurationMs'),
-        trace_explorer_path=body.get('traceExplorerPath'))
+        trace_explorer_path=(trace_explorer_path[:500]
+                             if isinstance(trace_explorer_path, str) else None))
     return jsonify({'enabled': True, 'conversation': result})
 
 

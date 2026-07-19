@@ -42,12 +42,21 @@ class ChatPersistenceError(RuntimeError):
 
 # ── URL building (Agent Hub app_paths.py, PostgreSQL + MSSQL verbatim) ──────
 
+def _dbname(conn_params):
+    """DSS PostgreSQL/MSSQL connections carry the database name under `db`,
+    but some variants use `database`/`dbname` — same fallback chain
+    agents_db.resolve_connection_params uses, so chat and audit resolve the
+    same connection to the same database."""
+    return (conn_params.get('db') or conn_params.get('database')
+            or conn_params.get('dbname') or '')
+
+
 def get_postgres_db_url(conn_params):
     user = quote_plus(conn_params.get('user', ''))
     password = quote_plus(conn_params.get('password', ''))
     host = conn_params.get('host', '')
     port = conn_params.get('port', 5432)
-    dbname = conn_params.get('db', '')
+    dbname = _dbname(conn_params)
     return 'postgresql://%s:%s@%s:%s/%s' % (user, password, host, port, dbname)
 
 
@@ -56,7 +65,7 @@ def get_mssql_db_url(conn_params):
     password = quote_plus(conn_params.get('password', ''))
     host = conn_params.get('host', 'localhost')
     port = conn_params.get('port', 1433)
-    dbname = conn_params.get('db', '')
+    dbname = _dbname(conn_params)
     charset = conn_params.get('charset', 'utf8')
     return 'mssql+pymssql://%s:%s@%s:%s/%s?charset=%s' % (
         user, password, host, port, dbname, charset)

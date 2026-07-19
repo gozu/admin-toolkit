@@ -16,6 +16,15 @@ _LOGGER = logging.getLogger(__name__)
 _MAX_TITLE_CHARS = 120
 
 
+def _as_int(value, default=0):
+    """Client-supplied numbers arrive as arbitrary JSON — never let a bad one
+    500 the whole turn upsert."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _compress(payload):
     try:
         return zlib.compress(json.dumps(payload, default=str).encode('utf-8'))
@@ -148,13 +157,13 @@ def upsert_turn(user_id, host_id, conversation_id, agent_id, messages,
             row.content = str(entry.get('content') or '')
             row.display = entry.get('display')
             row.segments = entry.get('segments') or []
-            row.position = int(entry.get('position') or 0)
+            row.position = _as_int(entry.get('position'), 0)
             if entry.get('traceId'):
                 row.trace_id = str(entry['traceId'])
             if trace_payload is not None and row.trace_id == trace_id:
                 row.trace = _compress(trace_payload)
             if role == 'assistant' and last_duration_ms is not None:
-                row.last_duration_ms = int(last_duration_ms)
+                row.last_duration_ms = _as_int(last_duration_ms, None)
 
         # Touch for list ordering (Agent Hub touches the parent the same way).
         conv.last_modified = datetime.now(timezone.utc)

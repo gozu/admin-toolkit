@@ -48,13 +48,16 @@ function provenanceLabel(params: unknown): string | null {
 export function AuditTimeline({ focusAuditId }: { focusAuditId: number | null }) {
   const [rows, setRows] = useState<AuditRow[] | null>(null);
   const [reason, setReason] = useState<string | null>(null);
-  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  // Manual toggle is stamped with the focus id it applies to, so a NEW "audit
+  // #N" click (a different focusAuditId) supersedes an earlier manual collapse
+  // and re-opens the panel — without this, manualOpen=false won forever and the
+  // click was dead. Deriving `open` (no set-state effect) keeps it pure.
+  const [manual, setManual] = useState<{ forFocus: number | null; open: boolean } | null>(null);
   const [flashId, setFlashId] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // A focus request (execution card "audit #N" click) force-opens the panel
-  // until the user toggles it themselves.
-  const open = manualOpen ?? focusAuditId != null;
+  const open = manual && manual.forFocus === focusAuditId ? manual.open : focusAuditId != null;
+  const toggle = () => setManual({ forFocus: focusAuditId, open: !open });
 
   // Refetch on every new focus request — the focused row is brand new.
   useEffect(() => {
@@ -82,13 +85,13 @@ export function AuditTimeline({ focusAuditId }: { focusAuditId: number | null })
   return (
     <div className="glass-card p-3" ref={containerRef}>
       <div className="flex w-full items-center justify-between gap-2">
-        <button onClick={() => setManualOpen(!open)} className="flex flex-1 items-center gap-1.5 text-left">
+        <button onClick={toggle} className="flex flex-1 items-center gap-1.5 text-left">
           <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
             Action audit trail
           </span>
         </button>
         <InfoDot eduId="concept.audit-trail" />
-        <button onClick={() => setManualOpen(!open)} className="text-xs text-[var(--text-tertiary)]">
+        <button onClick={toggle} className="text-xs text-[var(--text-tertiary)]">
           {rows.length} action{rows.length === 1 ? '' : 's'} {open ? '▾' : '▸'}
         </button>
       </div>

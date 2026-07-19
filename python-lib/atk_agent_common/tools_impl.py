@@ -308,8 +308,13 @@ def _domain_code_envs(client, host, domain, name_filter, detail, top_n, page):
     if flt:
         envs = [e for e in envs if flt in (e.get('name') or '').lower()]
     thresholds = client.get('/api/settings/threshold-defaults')
+    # Same fallback as the scoring twins (health.py, userMatrix.ts) and
+    # plugin.json's thresh_deprecated_python_prefixes default, so config_inspect
+    # can't report "no deprecated envs" while instance_health flags them from the
+    # same data on a host whose plugin settings were never saved.
     deprecated_prefixes = [p.strip() for p in
-                           (thresholds.get('deprecatedPythonPrefixes') or '').split(',') if p.strip()]
+                           (thresholds.get('deprecatedPythonPrefixes') or '2.,3.6,3.7').split(',')
+                           if p.strip()]
 
     def is_deprecated(env):
         v = str(env.get('version') or '')

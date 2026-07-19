@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchJson } from '../../utils/api';
 import { InfoDot } from '../common/InfoDot';
 import { hostBaseUrl } from '../../utils/agentLinks';
@@ -261,6 +261,7 @@ export function AgentTuningPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const applyState = useCallback((data: TuningState) => {
     setState(data);
@@ -323,7 +324,9 @@ export function AgentTuningPage() {
       setDrafts(next);
       setDraftOverride(version.llmOverride || '');
       setNote(`restore ${formatWhen(version.savedAt)}`);
-      window.scrollTo({ top: 0 });
+      // The page root is the overflow-y-auto scroller (not the window), so
+      // scroll it — window.scrollTo was a no-op and "Load" gave no feedback.
+      rootRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     },
     [state],
   );
@@ -352,7 +355,7 @@ export function AgentTuningPage() {
   const activeVersion = state.versions[0];
 
   return (
-    <div className="w-full flex-1 min-h-0 py-4 space-y-3 overflow-y-auto">
+    <div ref={rootRef} className="w-full flex-1 min-h-0 py-4 space-y-3 overflow-y-auto">
       <div className={`${COLUMN} space-y-3`}>
         {/* Header + guidance */}
         <div className="flex items-center gap-2">

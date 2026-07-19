@@ -13,6 +13,7 @@ this module is only the catalog + storage.
 """
 import json
 import logging
+import threading
 
 from flask import Blueprint, jsonify, request
 
@@ -26,6 +27,11 @@ _LOGGER = logging.getLogger(__name__)
 
 _PLUGIN_ID = 'admin-toolkit'
 _PARAM = 'agent_action_gates'
+
+# Serializes the read-merge-write in the update route: it applies a partial
+# delta onto the stored map, so two concurrent toggles must not each read the
+# same baseline and clobber the other's change.
+_write_lock = threading.Lock()
 
 
 def _read_gates():
@@ -82,11 +88,12 @@ def api_action_settings_update():
     rejected = sorted(str(k) for k in updates if str(k) not in known)
     if rejected:
         return jsonify({'ok': False, 'error': 'unknown action(s): %s' % ', '.join(rejected)}), 400
-    gates = _read_gates()
-    for key, value in updates.items():
-        gates[str(key)] = bool(value)
     try:
-        _write_gates(gates)
+        with _write_lock:
+            gates = _read_gates()
+            for key, value in updates.items():
+                gates[str(key)] = bool(value)
+            _write_gates(gates)
     except Exception as exc:
         _LOGGER.error('[agent-gates] write failed: %s', exc)
         return jsonify({'ok': False, 'error': '%s: %s'

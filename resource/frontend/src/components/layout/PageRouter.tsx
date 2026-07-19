@@ -9,6 +9,7 @@ import {
 import { useToggleFlag } from '../../hooks/useToggleFlag';
 import { DEPRECATED_PAGES, EXPERIMENTAL_PAGES } from '../../utils/moduleRegistry';
 import { useAdoptionVisible } from '../../state/adoptionUnlockStore';
+import { Spinner } from '../common/Spinner';
 
 function HiddenFeatureNotice({ kind }: { kind: 'experimental' | 'deprecated' }) {
   const title =
@@ -89,7 +90,7 @@ const AgentSettingsPageLazy = lazy(() =>
 function LoadingSpinner() {
   return (
     <div className="flex-1 flex items-center justify-center py-20">
-      <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+      <Spinner size="w-6 h-6" color="border-[var(--accent)]" />
     </div>
   );
 }
@@ -224,7 +225,7 @@ export function PageRouter() {
         animate="animate"
         exit="exit"
         transition={crossfadeTransition}
-        className="flex-1 flex flex-col"
+        className="page-cascade flex-1 flex flex-col"
         onAnimationStart={(definition) => {
           // AppShell restores the page's saved scroll offset on this signal:
           // content is mounted and laid out, entrance not yet visible.

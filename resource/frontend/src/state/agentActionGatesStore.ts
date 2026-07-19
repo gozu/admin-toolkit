@@ -1,5 +1,6 @@
 import { createSyncStore } from './createSyncStore';
 import { fetchJson } from '../utils/api';
+import { pushToast } from './toastStore';
 
 // Agent Permissions → per-action enablement gates. Read-only sensor tools
 // default ON; every actuator action defaults OFF until an admin enables it.
@@ -95,6 +96,9 @@ export async function toggleGatesBulk(names: string[], enabled: boolean): Promis
       saving: null,
       error: e instanceof Error ? e.message : 'Failed to save the toggles.',
     });
+    pushToast('error', 'Toggles not saved', {
+      detail: 'The switches reverted. ' + (e instanceof Error ? e.message : ''),
+    });
     throw e;
   }
 }
@@ -125,6 +129,9 @@ export async function toggleActionGate(name: string, enabled: boolean): Promise<
       actions: prev.actions,
       saving: null,
       error: e instanceof Error ? e.message : 'Failed to save the toggle.',
+    });
+    pushToast('error', 'Toggle not saved', {
+      detail: 'The switch reverted. ' + (e instanceof Error ? e.message : ''),
     });
     throw e;
   }

@@ -1,0 +1,438 @@
+{
+  "base": "https://tam-global.fe-aws.dkucloud-dev.com/web-apps-backends/DIAG_PARSER_BRANCH1/Gv9CLFn",
+  "read": [
+    {
+      "case": "domain:projects",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:connections",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:connections-usage",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:code-envs",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:plugins",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:llms",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:clusters",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:users",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:api-keys",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:scenarios",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:webapps",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:notebooks",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:jobs",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:datasets",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:continuous-activities",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:adoption",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:settings",
+      "status": "PASS"
+    },
+    {
+      "case": "domain:cost-detail",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:errors",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:users-churn",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:cost-cru-detail",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:llm-audit",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:k8s-insights",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:db-health-connections",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:db-health-overview",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:db-health-tables",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:db-health-per-project",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:audit-timeline",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:settings-snapshot",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:version",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:resources-snapshot",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:resources-processes",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:connections-audit",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:container-execs",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:cs-templates",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:cs-template-projects",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:dir-tree",
+      "status": "PASS"
+    },
+    {
+      "case": "endpoint:docker-usage",
+      "status": "PASS"
+    },
+    {
+      "case": "sensor:list_hosts",
+      "status": "PASS"
+    },
+    {
+      "case": "sensor:list_capabilities",
+      "status": "PASS"
+    },
+    {
+      "case": "sensor:instance_health",
+      "status": "PASS"
+    },
+    {
+      "case": "sensor:compute_cost",
+      "status": "PASS"
+    },
+    {
+      "case": "sensor:log_errors",
+      "status": "PASS"
+    },
+    {
+      "case": "sensor:log_tail",
+      "status": "PASS"
+    },
+    {
+      "case": "sensor:storage_footprint",
+      "status": "PASS"
+    },
+    {
+      "case": "sensor:k8s_health",
+      "status": "PASS"
+    },
+    {
+      "case": "sensor:db_health",
+      "status": "PASS"
+    }
+  ],
+  "issues": [
+    {
+      "family": "cap-data-mount-full",
+      "expected": "plan",
+      "verdict": "PASS",
+      "plans": [
+        {
+          "action": "docker-prune",
+          "confirmToken": "eyJhIjoiZG9ja2VyLXBydW5lIiwiZSI6MTc4NDQ5OTQxMCwiaCI6ImxvY2FsIiwidCI6IntcImZpbHRlclVudGlsSG91cnNcIjowLFwia2VlcFN0b3JhZ2VHQlwiOjIwLFwibW9kZVwiOlwiYnVpbGRlclwifSJ9.pumjpotO-yrO8O0bEyyRadljHA85NFniAcuozzNe4Zo",
+          "target": {
+            "mode": "builder",
+            "keepStorageGB": 20,
+            "filterUntilHours": 0
+          }
+        }
+      ],
+      "error": null,
+      "summary": "separately, on its own confirmation):\n- **Images: 201.9 GB reclaimable** \u2014 a `docker-prune mode=image` run reclaims the dangling images too (the biggest additional block after the cache).\n- **`/dss-data/tmp` = 84.9 GB** \u2014 a `tmp-cleanup` run reclaims aged temp files.\n\nFor the record, the finding is a `warning` in instance-health, not the >=75% *critical* band \u2014 and it is **not** driven by project data (only 45.8 GB across 459 projects); the space is docker cache + orphaned managed folders + tmp."
+    },
+    {
+      "family": "churn-dormant-seats",
+      "expected": "manual",
+      "verdict": "PASS",
+      "plans": [],
+      "error": null,
+      "summary": "ere the seat is used lightly.\n\nNote there's a related, actionable hygiene finding in the same data \u2014 **departed-but-enabled** accounts already exist as disabled (`majid`, `conor`, `martin3`, `avaldez`, `hela`), but several never-logged-in/long-idle real accounts remain enabled.\n\nWould you like me to prepare a batched `user-disable` plan for a specific confirmed-departed list, or an ADMINTOOLKIT scenario that periodically reports dormant seats? Nothing will execute without your explicit approval."
+    },
+    {
+      "family": "connection-audit",
+      "expected": "manual",
+      "verdict": "PASS",
+      "plans": [],
+      "error": null,
+      "summary": "fast-write target are **environment-specific decisions I cannot ground from sensor data** \u2014 an admin must supply them.\n\nI'm not proposing action items here because the remediable one (`filesystem_root` delete) is blocked pending a usage review, and the rest have no valid catalogued action. If you'd like, I can run a **targeted usage check on `filesystem_root`** to confirm whether it's safe to delete \u2014 and if it comes back unreferenced, I'll produce the `connection-delete` plan for your approval."
+    },
+    {
+      "family": "connection-broken-unverified",
+      "expected": "plan",
+      "verdict": "FAIL",
+      "plans": [],
+      "error": null,
+      "summary": " rule).\n4. Re-test after any fix; the result reports `connectionOK true/false`.\n\n**Which would you like \u2014 (1) give me the 54 names for a targeted `connection-test` plan, or (2) I plan a re-probe of all 101?** I'll produce the plan and wait for your approval either way; I won't execute anything.\n\nI'll hold off on `propose_action_items` since the only sound next step here is the `connection-test` verification (which we're deciding on live), and I have no grounded targets for any repair/delete yet."
+    },
+    {
+      "family": "cru-idle-resources",
+      "expected": "manual",
+      "verdict": "PASS",
+      "plans": [],
+      "error": null,
+      "summary": "Stop 3 idle webapp backends \u2014 batched, 3 targets.\n2. Shut down idle Jupyter kernels \u2014 note: `notebook-kernels-shutdown` is **not batchable**, so the item was kept to DKU_TSHIRTS only; CONTROLPROJECT (`t0MV3u02qXvDj2CY`, 28.7 memGBh) needs a second, separate shutdown \u2014 do it manually or hand it over individually.\n\nI did not plan or execute anything. Confirm with each webapp owner before stopping (these backends are live), and enable the action gate if you'd like me to plan the stops for approval."
+    },
+    {
+      "family": "exec-config-resources",
+      "expected": "manual",
+      "verdict": "OVERREACH",
+      "plans": [
+        {
+          "action": "k8s-exec-config-tune",
+          "confirmToken": "eyJhIjoiazhzLWV4ZWMtY29uZmlnLXR1bmUiLCJlIjoxNzg0NDk5NjY4LCJoIjoibG9jYWwiLCJ0Ijoie1wiY2hhbmdlc1wiOntcIm1lbUxpbWl0TUJcIjo0MDk2LFwibWVtUmVxdWVzdE1CXCI6MjA0OH0sXCJjb25maWdOYW1lXCI6XCJla3MtZGVmYXVsdFwifSJ9.eEBQeN53P0GPsQHf-irRuciULNBbcS9IYO9qKMroxOo",
+          "target": {
+            "configName": "eks-default",
+            "changes": {
+              "memRequestMB": 2048,
+              "memLimitMB": 4096
+            }
+          }
+        },
+        {
+          "action": "k8s-exec-config-tune",
+          "confirmToken": "eyJhIjoiazhzLWV4ZWMtY29uZmlnLXR1bmUiLCJlIjoxNzg0NDk5Njc2LCJoIjoibG9jYWwiLCJ0Ijoie1wiY2hhbmdlc1wiOntcIm1lbUxpbWl0TUJcIjo0MDk2LFwibWVtUmVxdWVzdE1CXCI6MjA0OH0sXCJjb25maWdOYW1lXCI6XCJDREUtVEVTVElORy1CUk9LRU5cIn0ifQ.Tf3HsigKsr2QwP0dGKuqGdQ1U9iodEh9fzwEbScO-nc",
+          "target": {
+            "configName": "CDE-TESTING-BROKEN",
+            "changes": {
+              "memRequestMB": 2048,
+              "memLimitMB": 4096
+            }
+          }
+        },
+        {
+          "action": "k8s-exec-config-tune",
+          "confirmToken": "eyJhIjoiazhzLWV4ZWMtY29uZmlnLXR1bmUiLCJlIjoxNzg0NDk5Njc2LCJoIjoibG9jYWwiLCJ0Ijoie1wiY2hhbmdlc1wiOntcIm1lbUxpbWl0TUJcIjo0MDk2LFwibWVtUmVxdWVzdE1CXCI6MjA0OH0sXCJjb25maWdOYW1lXCI6XCJla3MtZ3B1XCJ9In0.H3OknvzQTCH8MK-9FvH-uoihyk6wQvr78R0X8lRKrz4",
+          "target": {
+            "configName": "eks-gpu",
+            "changes": {
+              "memRequestMB": 2048,
+              "memLimitMB": 4096
+            }
+          }
+        },
+        {
+          "action": "k8s-exec-config-tune",
+          "confirmToken": "eyJhIjoiazhzLWV4ZWMtY29uZmlnLXR1bmUiLCJlIjoxNzg0NDk5Njc2LCJoIjoibG9jYWwiLCJ0Ijoie1wiY2hhbmdlc1wiOntcIm1lbUxpbWl0TUJcIjo0MDk2LFwibWVtUmVxdWVzdE1CXCI6MjA0OH0sXCJjb25maWdOYW1lXCI6XCJ0ZXN0Y29uZmlnXCJ9In0.T5RMaq4MDfyDbKdfC7udKRraM1i9GkceycakeGKMg1I",
+          "target": {
+            "configName": "testconfig",
+            "changes": {
+              "memRequestMB": 2048,
+              "memLimitMB": 4096
+            }
+          }
+        }
+      ],
+      "error": null,
+      "summary": "*Two things I need from you before executing:**\n1. The **memory values** \u2014 I used generic 2048/4096 MB placeholders; there's no observed usage to size against, so `eks-gpu` in particular likely needs more. Approve the defaults or give me per-config numbers.\n2. Your explicit **confirm** to execute the three tunes.\n\nThe remediation is also on your action-item checklist as one batched item (batchId `aib-664dfad0`) so you can route it to the ops-actuator yourself. **Do you confirm the three tunes?**"
+    },
+    {
+      "family": "features-disabled-few",
+      "expected": "plan",
+      "verdict": "FAIL",
+      "plans": [],
+      "error": null,
+      "summary": "p if sensitive**: if `details[]` marks it sensitive (e.g. impersonation) or it's an auth/SSO/security flag, leave it and handle it as a deliberate security-config decision \u2014 `settings-set` will refuse those paths.\n\nIf you paste the finding's `details[].settingsPath` here, I'll immediately plan the `settings-set` and wait for your approval.\n\nBecause the only work here is below the MEDIUM floor and is not actionable without the finding's own path, I'm not emitting an action-items checklist for it."
+    },
+    {
+      "family": "memory-low",
+      "expected": "manual",
+      "verdict": "PASS",
+      "plans": [],
+      "error": null,
+      "summary": "in `DIP_HOME/install.ini` then restart the backend; (3) retire the dormant webapp backends (0.0% CPU since June) \u2014 this one *is* catalogued via `webapp-backend-stop` once owners confirm the apps are unused; (4) add OOM alerting.\n\nI logged two checklist items (both amber): the manual swap/sizing review, and the dormant-webapp cleanup. Pick what you want to proceed with \u2014 for the webapp stops I can draw up a `webapp-backend-stop` plan for your approval once you confirm which apps are safe to stop."
+    },
+    {
+      "family": "project-codenv-critical",
+      "expected": "plan",
+      "verdict": "PASS",
+      "plans": [],
+      "error": null,
+      "summary": "n the inventory to name. You must designate/create a supported 3.10/3.11 target first; then this becomes a consolidate plan. (This is also an always-lead critical on its own.)\n3. **Delete 51 zero-usage envs** (`code-env-delete`, batched, backup-first) \u2014 directly actionable now to shrink the fragmentation.\n\nTell me which item(s) to plan and \u2014 for consolidation \u2014 the exact source\u2192target env pair, and I'll produce the plan and stop for your confirmation. I have **not** planned or executed anything."
+    },
+    {
+      "family": "project-codenv-info",
+      "expected": "plan",
+      "verdict": "FAIL",
+      "plans": [],
+      "error": null,
+      "summary": "d that you may want handled separately:\n- **Deprecated Python (3.6/3.7) in active use** \u2014 notably `py36` (Py 3.6, 116 usages, 43 projects) and several `solution_*`/`martin_*` 3.6 envs. That's an *important* migrate-now class per the version-lifecycle rubric.\n- **~50 zero-usage code envs** (config_inspect `unused` list) \u2014 3-month cleanup candidates.\n\nSay the word if you'd like me to work up those (they're real, thresholded findings) \u2014 but the `project-codenv-info` item itself needs **no action**."
+    },
+    {
+      "family": "project-codenv-warning",
+      "expected": "plan",
+      "verdict": "PASS",
+      "plans": [],
+      "error": null,
+      "summary": "tead I gave you the exact manual steps: pull the DSS code-env Usage report \u2192 group near-duplicate envs by Python version + package profile \u2192 pick a maintained shared target per cluster \u2192 validate packages \u2192 then hand me each concrete `source \u2192 target` pair, and I'll `plan_admin_action` (dry-run enumerates every recipe/notebook/webapp/scenario touched) and wait for your approval.\n\nI logged one **advisory (amber)** checklist item capturing this so it stays tracked. Nothing was planned or executed."
+    },
+    {
+      "family": "project-size-high",
+      "expected": "plan",
+      "verdict": "PASS",
+      "plans": [
+        {
+          "action": "project-clear-webapp-runs",
+          "confirmToken": "eyJhIjoicHJvamVjdC1jbGVhci13ZWJhcHAtcnVucyIsImUiOjE3ODQ0OTk5OTIsImgiOiJsb2NhbCIsInQiOiJ7XCJrZWVwRGF5c1wiOjcsXCJrZWVwTGFzdFJ1bnNcIjo1LFwicHJvamVjdEtleVwiOlwiRElBR19QQVJTRVJfQlJBTkNIMVwifSJ9.30Q1psGZkRqA83oOdsr4_LFFcTfv9HDjhnzun2KphII",
+          "target": {
+            "projectKey": "DIAG_PARSER_BRANCH1",
+            "keepDays": 7,
+            "keepLastRuns": 5
+          }
+        }
+      ],
+      "error": null,
+      "summary": "ctive) \u2014 uploaded datasets; strong `project-delete` candidate (backup-first) pending owner review.\n- **2025_GENERAL_TEST_PROJECT** (4.29 GB) \u2014 uploaded datasets; advisory, owner (arjun) must confirm before manual deletion.\n- **SOL_DKU_MONITORING** (2.61 GB, 423d inactive) \u2014 regenerable shaker caches; `project-delete` candidate pending owner (bhavik) review.\n\nI've posted all four as a checklist. Please confirm the DIAG_PARSER_BRANCH1 webapp-run clear if you'd like me to proceed with that one now."
+    },
+    {
+      "family": "python-lifecycle-cleanup",
+      "expected": "plan",
+      "verdict": "PASS",
+      "plans": [
+        {
+          "action": "code-env-delete",
+          "confirmToken": "eyJhIjoiY29kZS1lbnYtZGVsZXRlIiwiZSI6MTc4NDUwMDA0NCwiaCI6ImxvY2FsIiwidCI6IntcImJhdGNoVGFyZ2V0c1wiOlt7XCJsYW5nXCI6XCJQWVRIT05cIixcIm5hbWVcIjpcImp1cHl0ZXJsYWIzXCJ9LHtcImxhbmdcIjpcIlBZVEhPTlwiLFwibmFtZVwiOlwicHlwb3BwbGVyXCJ9LHtcImxhbmdcIjpcIlBZVEhPTlwiLFwibmFtZVwiOlwicmx0ZXN0XCJ9LHtcImxhbmdcIjpcIlBZVEhPTlwiLFwibmFtZVwiOlwidGVzdC1mb3ItbWlncmF0ZVwifV19In0.VZC7pOCr-mTK8ivqzOVB26ccgiwwQxrMc2vKw2VOvdU",
+          "target": {
+            "batchTargets": [
+              {
+                "name": "jupyterlab3",
+                "lang": "PYTHON"
+              },
+              {
+                "name": "pypoppler",
+                "lang": "PYTHON"
+              },
+              {
+                "name": "rltest",
+                "lang": "PYTHON"
+              },
+              {
+                "name": "test-for-migrate",
+                "lang": "PYTHON"
+              }
+            ]
+          }
+        }
+      ],
+      "error": null,
+      "summary": " DELETE it. |\n>\n> **Backup folder:** `admin-toolkit-archive` (id `9GgxaLwi`)\n> **Warnings:** none\n\nEach env's definition is backed up to block storage (`admin-toolkit-archive`) **before** deletion, so this is restorable. Usage is re-checked at execute time, so if any of these gains a reference before you confirm, that target will be refused.\n\n**Do you confirm?** I will not execute until you reply with an explicit affirmative. (The confirm token expires in ~15 minutes; if it lapses I'll re-plan.)"
+    },
+    {
+      "family": "python-lifecycle-critical",
+      "expected": "plan",
+      "verdict": "PASS",
+      "plans": [],
+      "error": null,
+      "summary": "r)* Manual migration of the 16 in-use envs, with the per-env usage numbers.\n2. *(actionable, red)* Batched `code-env-delete` of the 4 **unreferenced** deprecated envs (`test-for-migrate`, `rltest`, `pypoppler`, `jupyterlab3`, all usage 0) \u2014 safe to remove now, backup-first.\n\nIf you name a real supported target env for any specific cluster (e.g. \"move `py36Dash` usages to env X\"), I can then generate a `code-env-consolidate` plan with the dry-run usage table. Nothing has been planned or executed."
+    },
+    {
+      "family": "sanity-warning-WARN_APP_AS_RECIPE_HAS_ORPHAN_INSTANCES",
+      "expected": "manual",
+      "verdict": "PASS",
+      "plans": [],
+      "error": null,
+      "summary": " note\nPer the rubric this is an **info-level, single-instance** hygiene item \u2014 below the MEDIUM digest/action floor. I am **not** proposing an action item for it, and per your instruction I am **not** producing a plan (there is no valid actuator to plan against). This is advisory only.\n\nIf you'd like, tell me the project key once you've expanded the sanity detail in the UI and I can inspect that project's flow/jobs with my sensors to help you decide whether the orphaned recipe is safe to remove."
+    },
+    {
+      "family": "sanity-warning-WARN_CLUSTERS_NONE_SELECTED_PROJECT",
+      "expected": "plan",
+      "verdict": "FAIL",
+      "plans": [],
+      "error": null,
+      "summary": "sterId`, I can build a `project-set-cluster` plan (settings.k8sCluster \u2014 drift-guarded, prior value recorded and restorable from history) for that project and wait for your approval.\n\nI'm not proposing an action item here because I cannot produce a concrete, evidence-grounded target \u2014 doing so would require guessing project keys, which I won't do. If you paste the 5 project keys and the cluster you want each pinned to (or tell me they should stay on the instance default), I'll plan it precisely."
+    },
+    {
+      "family": "sanity-warning-WARN_CONNECTION_NO_HADOOP_INTERFACE",
+      "expected": "manual",
+      "verdict": "PASS",
+      "plans": [],
+      "error": null,
+      "summary": "cloud Hadoop connector libraries are installed. If you have no Spark-on-cloud-storage workloads, the safest action is to leave it as-is or **whitelist the finding** \u2014 it's purely an optimization hint. Whether the connectors are installed is **not observable from the toolkit**; you'd confirm it via `dku spark libraries` / the DSS install's Spark integration config.\n\nSince this finding is info-grade (below the MEDIUM digest floor) and not auto-remediable, I'm not proposing any action items for it."
+    },
+    {
+      "family": "sanity-warning-WARN_CONNECTION_SNOWFLAKE_NO_AUTOFASTWRITE",
+      "expected": "manual",
+      "verdict": "PASS",
+      "plans": [],
+      "error": null,
+      "summary": ", which I won't do. This is **advisory/manual**.\n\nI gave you the exact per-connection manual steps above (enable auto fast-write, point it at a reachable S3/ADLS/GCS staging location, grant STAGE, test, re-run sanity), and logged one **amber advisory item**.\n\n**If you supply a validated staging connection name + path** (and confirm the definition path for your DSS version), I can then produce a proper drift-guarded, restorable `connection-update` plan for your approval. No action has been taken."
+    },
+    {
+      "family": "sanity-warning-WARN_CONNECTION_SPARK_NO_GROUP_WITH_DETAILS_READ_ACCESS",
+      "expected": "manual",
+      "verdict": "PASS",
+      "plans": [],
+      "error": null,
+      "summary": "r some types) to the granted group \u2014 grant it to the group(s) that legitimately execute Spork/Spark jobs on that connection, not broadly.\n\nBecause this is an info-severity permission-model item below the digest MEDIUM floor and maps to no catalogued action, I'm **not** proposing an action item for it. If you'd like, I can pull `connections-usage` (host=local) to identify *which* groups actually run Spark workloads on the 21 connections so your grants are minimal and targeted \u2014 just say the word."
+    }
+  ],
+  "execute": []
+}

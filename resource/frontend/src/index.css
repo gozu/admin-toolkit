@@ -114,6 +114,9 @@
   --neon-green-dim: rgba(46, 224, 107, 0.7);
   --neon-amber: var(--warning);
   --neon-amber-dim: rgba(250, 204, 21, 0.7);
+  /* Working/active state (ProgressIndicator, running chips, streaming dots).
+     Follows --warning per theme via the alias chain. */
+  --neon-yellow: var(--warning);
   --neon-red: var(--danger);
   --neon-red-dim: rgba(239, 68, 68, 0.7);
   --neon-purple: #8b5cf6;
@@ -3063,4 +3066,134 @@ h1, h2, h3, h4 {
   .dg-scrollable .table-dark thead {
     transition: none;
   }
+}
+
+/* -------------------------------------------------------------------------
+   Instrument-panel entrance: page children cascade in on navigation.
+   Transform/opacity only (GPU-composited); ends at `none` so sticky/fixed
+   descendants regain their normal containing block after the entrance.
+   ------------------------------------------------------------------------- */
+@keyframes cascade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+/* The router wrapper's direct child is the page root (one element), so the
+   stagger targets the page's SECTIONS — the root's children. */
+.page-cascade > * > * { animation: cascade-in 0.3s var(--ease-out) both; }
+.page-cascade > * > *:nth-child(1) { animation-delay: 0ms; }
+.page-cascade > * > *:nth-child(2) { animation-delay: 28ms; }
+.page-cascade > * > *:nth-child(3) { animation-delay: 56ms; }
+.page-cascade > * > *:nth-child(4) { animation-delay: 84ms; }
+.page-cascade > * > *:nth-child(5) { animation-delay: 112ms; }
+.page-cascade > * > *:nth-child(6) { animation-delay: 140ms; }
+.page-cascade > * > *:nth-child(7) { animation-delay: 168ms; }
+.page-cascade > * > *:nth-child(n + 8) { animation-delay: 196ms; }
+
+/* Scanner beam: the agent-is-working telemetry line. Runs only while an
+   answer is streaming — activity-bound motion, not ambient. */
+@keyframes beam-slide {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(250%); }
+}
+.stream-beam {
+  position: relative;
+  width: 120px;
+  height: 2px;
+  border-radius: 1px;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--neon-yellow) 18%, transparent);
+}
+.stream-beam::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, var(--neon-yellow), transparent);
+  animation: beam-slide 1.15s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+/* Topbar elevation once the page is scrolled — the panel visibly "lifts". */
+.app-topbar {
+  transition: box-shadow 0.25s var(--ease-out), border-color 0.25s var(--ease-out);
+}
+.app-topbar[data-scrolled='true'] {
+  box-shadow: 0 10px 24px -18px rgb(0 0 0 / 0.85);
+  border-bottom-color: color-mix(in oklab, var(--border-default) 60%, var(--accent) 12%);
+}
+[data-theme='light'] .app-topbar[data-scrolled='true'] {
+  box-shadow: 0 8px 18px -14px rgb(0 0 0 / 0.28);
+}
+
+/* -------------------------------------------------------------------------
+   Toast chips: the app-wide feedback primitive (ToastHub). Compact instrument
+   chips, bottom-right; a hairline burns down over the toast's lifetime.
+   ------------------------------------------------------------------------- */
+.toast-chip {
+  position: relative;
+  overflow: hidden;
+  min-width: 240px;
+  max-width: 360px;
+  padding: 10px 14px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  box-shadow: 0 12px 32px -16px rgb(0 0 0 / 0.7);
+}
+[data-theme='light'] .toast-chip {
+  box-shadow: 0 10px 26px -14px rgb(0 0 0 / 0.25);
+}
+.toast-chip::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--toast-accent, var(--accent));
+}
+@keyframes toast-burn {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+.toast-chip .toast-burn {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: color-mix(in oklab, var(--toast-accent, var(--accent)) 55%, transparent);
+  animation: toast-burn var(--toast-duration, 4200ms) linear forwards;
+}
+.toast-chip:hover .toast-burn { animation-play-state: paused; }
+
+/* Empty states: a quiet radar sweep instead of bare grey text. */
+@keyframes radar-sweep {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.empty-radar {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in oklab, var(--text-tertiary) 45%, transparent);
+}
+.empty-radar::before {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in oklab, var(--text-tertiary) 30%, transparent);
+}
+.empty-radar::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    color-mix(in oklab, var(--accent) 35%, transparent),
+    transparent 70deg,
+    transparent
+  );
+  animation: radar-sweep 3.2s linear infinite;
 }

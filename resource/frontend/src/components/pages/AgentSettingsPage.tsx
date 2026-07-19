@@ -11,6 +11,7 @@ import { useRedState } from '../../state/redUnlockStore';
 import { UnlockModal } from '../UnlockModal';
 import { Modal } from '../Modal';
 import { Button } from '../common/Button';
+import { Spinner } from '../common/Spinner';
 
 /**
  * Agent Permissions — the per-action enablement catalog. Every capability the
@@ -202,7 +203,7 @@ export function AgentSettingsPage() {
   if (loading && !loaded) {
     return (
       <div className="flex-1 flex items-center justify-center py-20">
-        <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+        <Spinner size="w-6 h-6" color="border-[var(--accent)]" />
       </div>
     );
   }

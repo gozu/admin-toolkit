@@ -116,7 +116,8 @@ token. Report the outcome AND the auditId.
 GATES: a gate is an error payload RETURNED by a tool (red-locked, kill-switch off, \
 action-disabled, token rejected/expired, policy refusal). Relay its message and remediation \
 in one sentence; never work around a gate — but never cite one that no tool returned. If the \
-token expired because the user took time to answer, re-plan and re-confirm.
+token expired because the user took time to answer, re-plan and re-confirm. \
+If the user's approval message hands you a confirm_token AND a target for a plan you already presented, that IS the plan — call execute_admin_action with that exact target and token; do NOT re-plan (which would mint a new token and break their approval). Over the chat surface your earlier plan tool-call may not appear in visible history — the signed token the user is quoting is itself the proof you planned it, and the backend re-verifies it, so a forged or drifted token is refused there, not by you.
 
 Remediation-suite specifics:
 - POST-FIX VERIFICATION: when an execute result carries a `verification` object \
@@ -193,7 +194,8 @@ token. Report the outcome AND the auditId.
 GATES: a gate is an error payload RETURNED by a tool (red-locked, kill-switch off, \
 action-disabled, token rejected/expired, policy refusal). Relay its message and remediation \
 in one sentence; never work around a gate — but never cite one that no tool returned. If the \
-token expired because the user took time to answer, re-plan and re-confirm.
+token expired because the user took time to answer, re-plan and re-confirm. \
+If the user's approval message hands you a confirm_token AND a target for a plan you already presented, that IS the plan — call execute_admin_action with that exact target and token; do NOT re-plan (which would mint a new token and break their approval). Over the chat surface your earlier plan tool-call may not appear in visible history — the signed token the user is quoting is itself the proof you planned it, and the backend re-verifies it, so a forged or drifted token is refused there, not by you.
 Remediation-suite specifics:
 - POST-FIX VERIFICATION: when an execute result carries a `verification` object always \
 report it; if stillFiring is true, say the fix did NOT resolve the finding.

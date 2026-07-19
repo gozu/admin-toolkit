@@ -1,0 +1,57 @@
+{
+  "cases": [
+    {
+      "case": "connection-broken-unverified \u2192 connection-test EXECUTED",
+      "verdict": "FAIL",
+      "detail": {
+        "auditIds": [],
+        "tail": "each connection \u2192 \"Test\"** reproduces exactly the connectionOK true/false result for the 21 targets.\n\nNo connection was tested and nothing was changed. There is no auditId because execution never ran."
+      }
+    },
+    {
+      "case": "cap-data-mount-full \u2192 docker-prune EXECUTED",
+      "verdict": "FAIL",
+      "detail": {
+        "auditIds": [],
+        "tail": " run (execute_admin_action, host=local).\n\nThe plan and confirm_token remain valid \u2014 once an admin flips that gate on, re-issue the same confirmation and I'll execute immediately. No changes were made."
+      }
+    },
+    {
+      "case": "project-size-high \u2192 clear-webapp-runs EXECUTED",
+      "verdict": "FAIL",
+      "detail": {
+        "auditIds": [],
+        "tail": "ion, host=local).\n\nThe plan and confirm_token remain valid \u2014 once an admin enables red actions, re-issue the same confirmation and I'll execute immediately. Nothing was changed on DIAG_PARSER_BRANCH1."
+      }
+    },
+    {
+      "case": "features-disabled-few \u2192 settings-set PLAN (not executed)",
+      "verdict": "PASS",
+      "detail": {
+        "actions": [
+          "settings-set"
+        ],
+        "tail": "mber/red-class). The prior value (`false`) is recorded and restorable from history, so this is reversible.\n\nToken expires in ~15 minutes.\n\n**Do you confirm?** (I'll only execute on your explicit yes.)"
+      }
+    },
+    {
+      "case": "clusters-none-selected \u2192 project-set-cluster PLAN (not executed)",
+      "verdict": "PASS",
+      "detail": {
+        "actions": [
+          "project-set-cluster"
+        ],
+        "tail": "ecause the plan verified it is INHERIT and it has real containerized workload. If you meant a different specific project, name it and I'll re-plan.\n\n**Do you confirm?** (Token expires in ~15 minutes.)"
+      }
+    },
+    {
+      "case": "project-codenv-info judgment",
+      "verdict": "PASS",
+      "detail": {
+        "plans": 0,
+        "itemBatches": 0,
+        "tail": "e to tackle something that *is* actionable on this host, the real code-env concerns are the deprecated Python 3.6/3.7 envs in active use (e.g. `py36` at usageCount 116 across 43 projects, `py-visual-ml`, `python36local`) and the ~15 zero-usage unused envs \u2014 say the word and I'll scope those instead."
+      }
+    }
+  ]
+}

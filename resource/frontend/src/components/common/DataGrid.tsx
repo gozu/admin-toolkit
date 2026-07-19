@@ -327,7 +327,17 @@ export function DataGrid<R, C = never>({
   let body: ReactNode;
   if (rows.length === 0) {
     const msg = filtersActive ? (noMatchMessage ?? 'No matching rows.') : (emptyMessage ?? 'No rows.');
-    body = <div className="px-4 py-6 text-sm text-[var(--text-secondary)]">{msg}</div>;
+    body = (
+      <div className="flex flex-col items-center gap-3 px-4 py-10">
+        <span className="empty-radar" aria-hidden="true" />
+        <span className="text-sm text-[var(--text-secondary)]">{msg}</span>
+        {filtersActive && (
+          <span className="text-xs text-[var(--text-tertiary)]">
+            Adjust or clear the filters above to widen the sweep.
+          </span>
+        )}
+      </div>
+    );
   } else if (scroll === 'card') {
     body = (
       <div className="card-scroll-body dg-scrollable" onScroll={handleScrollShadow}>

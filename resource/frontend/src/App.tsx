@@ -32,6 +32,7 @@ import { UnlockModal } from './components/UnlockModal';
 import { hydrateHostKeyStatus, useHostKeyState } from './state/hostKeyUnlockStore';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { FxLayer } from './fx/FxLayer';
+import { ToastHub } from './components/common/ToastHub';
 
 // Lazy load comparison components
 const ComparisonUpload = lazy(() => import('./components/comparison/ComparisonUpload').then(m => ({ default: m.ComparisonUpload })));
@@ -212,7 +213,7 @@ function AppContent() {
       </div>
     );
   } else if (!hasResults) {
-    viewKey = 'main';
+    viewKey = 'boot';
     viewContent = (
       <div className="min-h-screen flex flex-col bg-[var(--bg-app)]">
         <Header />
@@ -246,11 +247,12 @@ function AppContent() {
   return (
     <>
       <FxLayer />
+      <ToastHub />
       <AnimatePresence mode="wait">
         <motion.div
           key={viewKey}
           variants={pageVariants}
-          initial={false}
+          initial="initial"
           animate="animate"
           exit="exit"
           transition={pageTransition}

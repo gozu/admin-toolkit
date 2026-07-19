@@ -4,6 +4,7 @@ import { InfoDot } from '../common/InfoDot';
 import { hostBaseUrl } from '../../utils/agentLinks';
 import { ModelPicker } from '../ModelPicker';
 import { reportLlmsStore } from '../../state/reportLlmsStore';
+import { Spinner } from '../common/Spinner';
 import type { LlmOption } from '../../types';
 
 /**
@@ -347,7 +348,7 @@ export function AgentTuningPage() {
   if (!state) {
     return (
       <div className="flex-1 flex items-center justify-center py-20">
-        <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+        <Spinner size="w-6 h-6" color="border-[var(--accent)]" />
       </div>
     );
   }

@@ -860,14 +860,21 @@ export function submitActionItemsToActuator(
 export function approvePlans(agentId: string, plans: PlanCardData[]): void {
   if (plans.length === 0) return;
   for (const plan of plans) decidePlan(agentId, plan.confirmToken, 'approved');
+  // Echo the exact canonicalTarget alongside the token. Over the chat SSE
+  // surface the prior plan's tool-call is not in the flattened history, so
+  // supplying the target here lets the agent execute this approved plan
+  // directly instead of re-planning to rebuild it (the backend still
+  // re-verifies the HMAC token over action|host|target, so a mismatch is
+  // refused server-side).
+  const targetJson = (plan: PlanCardData) => JSON.stringify(plan.canonicalTarget);
   const text =
     plans.length === 1
-      ? `Approved — I confirm. Execute the planned ${plans[0].action} on host ${plans[0].host} with the exact planned target, confirm=true and confirm_token ${plans[0].confirmToken}${plans[0].itemRef ? ` and item_ref ${JSON.stringify(plans[0].itemRef)}` : ''}. Report the outcome and the auditId.`
-      : `Approved — I confirm ALL ${plans.length} plans below. Execute each independently with its exact planned target, confirm=true, its own confirm_token (and its item_ref where given); report each outcome and auditId separately:\n` +
+      ? `Approved — I confirm. Execute the planned ${plans[0].action} on host ${plans[0].host} with target ${targetJson(plans[0])}, confirm=true and confirm_token ${plans[0].confirmToken}${plans[0].itemRef ? ` and item_ref ${JSON.stringify(plans[0].itemRef)}` : ''}. This is the plan you already presented — execute it directly with execute_admin_action; do not re-plan. Report the outcome and the auditId.`
+      : `Approved — I confirm ALL ${plans.length} plans below. Execute each directly with execute_admin_action (do NOT re-plan — these are the plans you already presented), each with its exact target, confirm=true, its own confirm_token (and its item_ref where given); report each outcome and auditId separately:\n` +
         plans
           .map(
             (plan, i) =>
-              `${i + 1}. ${plan.action} on host ${plan.host} — confirm_token ${plan.confirmToken}${plan.itemRef ? ` item_ref=${JSON.stringify(plan.itemRef)}` : ''}`,
+              `${i + 1}. ${plan.action} on host ${plan.host} — target ${targetJson(plan)} — confirm_token ${plan.confirmToken}${plan.itemRef ? ` item_ref=${JSON.stringify(plan.itemRef)}` : ''}`,
           )
           .join('\n');
   const display =

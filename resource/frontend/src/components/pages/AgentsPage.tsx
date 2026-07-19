@@ -17,6 +17,7 @@ import { hostBaseUrl } from '../../utils/agentLinks';
 import { dssUrls } from '../../utils/codeEnvUsageLinks';
 import { getActiveHostId } from '../../state/hostStore';
 import { ChatHistoryDrawer } from '../agents/ChatHistoryDrawer';
+import { Spinner } from '../common/Spinner';
 import {
   abortAgentTurn,
   agentsChatStore,
@@ -426,7 +427,7 @@ export function AgentsPage() {
 
       {loadingAgents ? (
         <div className="flex-1 flex items-center justify-center">
-          <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+          <Spinner size="w-6 h-6" color="border-[var(--accent)]" />
         </div>
       ) : agents.length === 0 ? (
         <div className={COLUMN}>
@@ -449,7 +450,11 @@ export function AgentsPage() {
       ) : (
         <>
           {/* Transcript — centered column, bubbles never touch the edges */}
-          <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto">
+          <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            className="flex-1 min-h-0 overflow-y-auto scroll-smooth"
+          >
             <div className={`${COLUMN} space-y-4`}>
               {messages.length === 0 && (
                 <div className="pt-10 flex flex-col items-center gap-4 text-center">
@@ -501,7 +506,11 @@ export function AgentsPage() {
               )}
               <AnimatePresence initial={false}>
                 {messages.map((message, i) => (
-                  <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+                  <motion.div
+                    key={message.id ?? i}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
                     <MessageView
                       message={message}
                       conversationId={conversation?.id}
@@ -518,8 +527,9 @@ export function AgentsPage() {
                 ))}
               </AnimatePresence>
               {streaming && (
-                <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)] pb-2">
+                <div className="flex items-center gap-2.5 text-xs text-[var(--text-tertiary)] pb-2">
                   <span className="w-2 h-2 rounded-full bg-[var(--neon-yellow)] animate-pulse motion-reduce:animate-none" />
+                  <span className="stream-beam" aria-hidden="true" />
                   agent working<span className="loading-ellipsis" />
                 </div>
               )}

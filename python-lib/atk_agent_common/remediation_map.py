@@ -213,13 +213,56 @@ REMEDIATIONS = [
               'maintenance window; same 1000+-user scale gate as vacuum).'),
     ]),
 
+    # ── exec configs (2026-07-19 drill: fell through unmapped; the agent
+    #    already plans k8s-exec-config-tune for these — the registry now
+    #    agrees so triage proposes it too) ───────────────────────────────────
+    ('exec-config-resources*', [
+        _spec('k8s-exec-config-tune', 'low', 'Add the missing memory/cpu requests+limits '
+              'to the flagged containerized exec config — drift-guarded, restorable.'),
+    ]),
+
+    # ── k8s rule findings that previously fell through unmapped ──────────────
+    ('node-memory-pressure', [
+        _spec('cluster-pods-cleanup', 'low', 'Clear finished pods/jobs first — the '
+              'zero-risk reclaim on a pressured node.'),
+        _spec('k8s-exec-config-tune', 'low', 'Right-size the exec configs whose pods '
+              'crowd the node (requests drive the scheduler).'),
+    ]),
+    ('node-disk-pressure', [
+        _spec('cluster-pods-cleanup', 'low', 'Finished pods pin image/log storage; '
+              'clearing them is the safe first move on a disk-pressured node.'),
+    ]),
+    ('pod-without-resources', [
+        _spec('k8s-exec-config-tune', 'low', 'Give the offending exec config explicit '
+              'requests+limits so its pods stop running unbounded.'),
+    ]),
+    ('idle-long-running-pod', [
+        _spec('k8s-apply-fix', 'medium', 'Delete the idle pod via a reviewed kubectl '
+              'plan — its controller (if any) recreates it clean.'),
+    ]),
+    ('gpu-pod-not-using-gpu', [
+        _spec('k8s-exec-config-tune', 'low', 'Move the workload to a CPU exec config '
+              '(or drop the GPU request) so the GPU node frees up.'),
+    ]),
+    ('node-over-provisioned', [
+        _spec('k8s-exec-config-tune', 'low', 'Shrink over-requested exec configs so the '
+              'autoscaler can bin-pack nodes away.'),
+    ]),
+
     # ── documented gaps: detectable but NOT agent-remediable ─────────────────
     ('cap-diphome-nfs', None),        # moving DIP_HOME off NFS is a migration project
     ('cap-runtime-db', None),         # H2 → Postgres runtime-DB migration is manual
+    ('cap-cgroups-missing', None),    # impersonation+cgroups pairing is installer-level
     ('impersonation-disabled', None),  # UIF setup is an installer-level change
     ('memory-*', None),               # host RAM sizing is infrastructure
     ('open-files-low', None),         # ulimits live in systemd/limits.conf
     ('spark-version-old', None),      # Spark upgrades are managed installs
+    ('pod-imagepull-failure', None),  # registry/image fixes live outside DSS
+    ('node-not-ready', None),         # node recovery is cloud-infra territory
+    ('gpu-node-idle', None),          # scale-down is an autoscaler/capacity decision
+    ('cluster-floor-projection', None),  # bin-pack consolidation = capacity planning
+    ('sanity-*', None),               # catch-all: un-routed sanity codes are documented
+                                      # manual (specific code routes above win first)
 ]
 
 

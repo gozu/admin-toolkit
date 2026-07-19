@@ -129,7 +129,8 @@ export function TileShell({
             <span className="line-clamp-3">{lifecycle.error}</span>
           </div>
         ) : isEmpty ? (
-          <div className="flex h-full items-center text-[11px] text-[var(--text-tertiary)]">
+          <div className="flex h-full items-center gap-2.5 text-[11px] text-[var(--text-tertiary)]">
+            <span className="empty-radar scale-[0.6] -mx-1" aria-hidden="true" />
             {emptyText ?? 'No data'}
           </div>
         ) : (

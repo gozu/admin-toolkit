@@ -421,7 +421,12 @@ def main():
     drill.unlock()
     try:
         if args.phase in ('all', 'issues', 'execute') or args.execute:
+            # Plan-time gating: a disabled action refuses at PLAN, so the
+            # issues phase needs every action remediation_map can propose.
             need = set(SAFE_EXECUTE_ACTIONS)
+            for _glob, specs in remediation_map.REMEDIATIONS:
+                for spec in specs or ():
+                    need.add(spec['action'])
             drill.enable_gates(sorted(need))
         if args.phase in ('all', 'read'):
             drill.run_read()

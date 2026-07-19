@@ -17,6 +17,7 @@ import { datasetExportConfigStore } from '../../state/datasetExportConfigStore';
 import { feedbackFromPageStore } from '../../state/feedbackFromPage';
 import { subscribeSessionEpoch } from '../../state/sessionCache';
 import { unlockAdoption, useAdoptionVisible } from '../../state/adoptionUnlockStore';
+import { pushToast } from '../../state/toastStore';
 
 const COLLAPSE_BREAKPOINT = 1280;
 const SIDEBAR_COLLAPSED = 56;
@@ -62,13 +63,17 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
   const mainRef = useRef<HTMLElement | null>(null);
   const scrollRafRef = useRef<number | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
   const handleMainScroll = useCallback(() => {
     if (scrollRafRef.current !== null) return;
     scrollRafRef.current = requestAnimationFrame(() => {
       scrollRafRef.current = null;
       const el = mainRef.current;
-      if (el) setShowScrollTop(el.scrollTop > SCROLL_TOP_THRESHOLD);
+      if (el) {
+        setShowScrollTop(el.scrollTop > SCROLL_TOP_THRESHOLD);
+        setScrolled(el.scrollTop > 4);
+      }
     });
   }, []);
 
@@ -157,6 +162,9 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
     setRefreshing(true);
     try {
       await onRefreshCache();
+      pushToast('success', 'Caches cleared', { detail: 'Fresh data is loading now.' });
+    } catch (err) {
+      pushToast('error', 'Refresh failed', { detail: String(err).slice(0, 160) });
     } finally {
       setRefreshing(false);
     }
@@ -243,6 +251,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.45, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
         style={{ gridColumn: '2', gridRow: '1' }}
+        data-scrolled={scrolled ? 'true' : undefined}
         className="app-topbar relative flex items-center justify-between px-5 py-1 border-b border-[var(--border-default)] bg-[var(--bg-surface)]">
         <div className="flex items-center gap-3 min-w-0">
           <Breadcrumb />

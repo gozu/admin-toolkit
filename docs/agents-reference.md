@@ -112,6 +112,42 @@ up to `heavy_timeout_s`; on timeout the tool returns
 in-flight scans, so a later retry hits the warm cache. The daily triage sweep
 doubles as the fleet-wide cache pre-warmer.
 
+### Native runtime (default since 0.4.762)
+
+The chat surface has **two interchangeable runtimes** behind the same
+`/api/agents/chat` SSE protocol, selected by the `agent_runtime` plugin knob
+(webapp Settings → Agents & Outreach; per-request `runtime` body field
+overrides for drills):
+
+- **`native`** (default) — the generalist loop runs **in-process in the webapp
+  backend** (`adk_backend/agent_native.py` + `atk_agent_common/native_loop.py`).
+  No Dataiku agent kernel is involved: the LLM streams straight from the Mesh
+  (`DKUChatModel`), tools execute through the same ToolkitClient HTTP surface
+  (self-calls onto the backend), and the dku-trace is synthesized with the
+  official `dataikuapi.dss.llm_tracing.SpanBuilder` (same span layout, same
+  ring buffer + Trace Explorer handoff). Wins over the kernel: instant start
+  (no kernel spin-up), no post-deploy kernel recycles, **parallel tool
+  execution** with live out-of-order `tool_result` events, `ping` keep-alive
+  frames during long tools, retry-once on pre-output stream failures, Stop
+  aborts server-side work, and chat works **without provisioned ADMINTOOLKIT
+  instances** (a "virtual" generalist whose execute gate is the plugin master
+  switch `enable_red_actions`; when instances exist their per-agent config
+  applies exactly as in the kernel).
+- **`dataiku`** — the original relay over
+  `agent.as_llm().new_completion().execute_streamed()`; still the vehicle for
+  chatting with a REMOTE host's agents (the native runtime is local-only —
+  each deployed webapp is its own local hub) and for Agent Hub / Answers /
+  API consumers, which address the registered Mesh agent directly.
+
+Both runtimes assemble the **same toolset and system prompt** from
+`atk_agent_common/generalist.py` (extracted from the kernel component so the
+two can never drift); action gates, tuning overrides, HMAC confirm tokens,
+audit rows and the master kill-switch all live server-side and apply
+identically. One parity note: native turns don't flow through the Mesh, so
+they never land in the `agent_interaction_logs` dataset — per-turn traces come
+from the ring (`/api/agents/last-trace`) and, when chat storage is enabled,
+from the persisted conversation store.
+
 ---
 
 ## 2. The three agents and their system prompts

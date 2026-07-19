@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.762] - 2026-07-19
+
+### Added
+- **Native agent runtime (default)**: the Agents chat loop now runs in-process in the webapp backend instead of relaying through a Dataiku agent kernel — same SSE protocol, same tools/gates/tokens/audit (assembled from the new shared `atk_agent_common/generalist.py`, so the kernel and native runtimes cannot drift), same dku-trace layout (built with the official `SpanBuilder`, so the Trace Explorer handoff is unchanged). What the kernel could never do: instant turn start (no kernel spin-up or post-deploy recycles), parallel tool execution with live out-of-order result chips, keep-alive `ping` frames during long tools, retry-once on pre-output model-stream failures, Stop that actually aborts server-side work, and chat that works without provisioned ADMINTOOLKIT instances (virtual generalist; execute gated by the master kill-switch). The `agent_runtime` knob (Settings → Agents & Outreach) switches back to the `dataiku` kernel relay, which also remains the automatic path for remote hosts and external Mesh consumers (Agent Hub / Answers / API).
+
 ## [0.4.741] - 2026-07-13
 
 ### Added

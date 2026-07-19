@@ -135,6 +135,38 @@ function TraceAction({
   );
 }
 
+/** Hover-revealed copy affordance for message text (user prompt / assistant
+ * markdown) — flashes confirmation, never throws on clipboard denial. */
+function CopyChip({ text, label = 'copy' }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard unavailable — leave the label as-is
+    }
+  };
+  if (copied) return <span className="text-[11px] text-[var(--text-muted)]">copied ✓</span>;
+  return (
+    <button
+      onClick={() => void copy()}
+      className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+      title="Copy message text"
+    >
+      {label}
+    </button>
+  );
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${(ms / 1000).toFixed(1)}s`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  return `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+}
+
 /** Inline callout for a safety-gate refusal an admin can clear in DSS. Today
  *  the only case is `agent-execution-disabled` (per-agent `allow_red_actions`
  *  is off), with a deep link straight to the agent's config screen. */
@@ -225,7 +257,10 @@ export function MessageView({
 }) {
   if (message.role === 'user') {
     return (
-      <div className="flex justify-end">
+      <div className="group flex items-end justify-end gap-2">
+        <span className="pb-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <CopyChip text={message.display ?? message.content} />
+        </span>
         <div className="max-w-[min(85%,40rem)] rounded-xl rounded-br-sm px-3.5 py-2 bg-[var(--accent-muted)] border border-[var(--accent)]/20 text-sm text-[var(--text-primary)] whitespace-pre-wrap">
           {message.display ?? message.content}
         </div>
@@ -233,7 +268,7 @@ export function MessageView({
     );
   }
   return (
-    <div className="space-y-0.5">
+    <div className="group space-y-0.5">
       {message.segments.map((segment: Segment, i) => {
         if (segment.type === 'text') {
           return (
@@ -280,14 +315,29 @@ export function MessageView({
         }
         return <ExecutionCard key={i} execution={segment.execution} onShowAudit={onShowAudit} />;
       })}
-      {message.traceId && (
-        <div className="pt-0.5">
-          <TraceAction
-            traceId={message.traceId}
-            conversationId={conversationId}
-            messageId={message.id}
-            traceExplorer={traceExplorer ?? null}
-          />
+      {(message.traceId || message.durationMs || message.content) && (
+        <div className="flex items-center gap-3 pt-0.5">
+          {message.durationMs ? (
+            <span
+              className="text-[11px] tabular-nums text-[var(--text-muted)]"
+              title="Turn duration"
+            >
+              {formatDuration(message.durationMs)}
+            </span>
+          ) : null}
+          {message.traceId && (
+            <TraceAction
+              traceId={message.traceId}
+              conversationId={conversationId}
+              messageId={message.id}
+              traceExplorer={traceExplorer ?? null}
+            />
+          )}
+          {message.content && (
+            <span className="opacity-0 transition-opacity group-hover:opacity-100">
+              <CopyChip text={message.content} label="copy reply" />
+            </span>
+          )}
         </div>
       )}
     </div>

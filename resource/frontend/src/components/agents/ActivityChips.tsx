@@ -62,7 +62,7 @@ export function ActivityChips({ items }: { items: ActivityItem[] }) {
             }`}
           >
             {item.running ? (
-              <span className="w-2 h-2 rounded-full bg-[var(--neon-yellow)] animate-pulse motion-reduce:animate-none" />
+              <span className="w-2 h-2 rounded-full bg-[var(--neon-yellow)] animate-pulse" />
             ) : item.ok === false || item.error ? (
               <span className="w-2 h-2 rounded-full bg-[var(--danger)]" />
             ) : (

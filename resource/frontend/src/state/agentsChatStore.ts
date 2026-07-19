@@ -44,6 +44,8 @@ export interface PlanCardData {
   plan: Record<string, unknown>;
   confirmToken: string;
   expiresAt: number; // epoch ms
+  /** Full confirm window in seconds — drives the drain bar on pending cards. */
+  ttlSeconds?: number;
   decision?: 'approved' | 'rejected';
   itemRef?: ItemRef;
 }
@@ -117,6 +119,8 @@ export interface ChatMessage {
   /** Native dku-trace id for this turn — fetchable from /api/agents/last-trace
    * while it's still in the backend's short ring buffer. */
   traceId?: string;
+  /** Wall-clock duration of the turn that produced this assistant message. */
+  durationMs?: number;
 }
 
 export interface Conversation {
@@ -126,6 +130,8 @@ export interface Conversation {
   title?: string;
   messages: ChatMessage[];
   streaming: boolean;
+  /** Epoch ms when the in-flight turn started — powers the elapsed ticker. */
+  streamStartedAt?: number;
   error: string | null;
   lastDurationMs?: number;
   /** DSS-relative path of the Trace Explorer webapp on this host, if one exists. */
@@ -407,6 +413,7 @@ function applyAgentEvent(segments: Segment[], kind: string, data: Record<string,
         plan: (data.plan as Record<string, unknown>) || {},
         confirmToken: String(data.confirm_token || ''),
         expiresAt: Date.now() + expiresIn * 1000,
+        ttlSeconds: expiresIn,
         itemRef: normalizeItemRef(data.itemRef),
       },
     });
@@ -925,21 +932,58 @@ export async function sendAgentMessage(
   const base = getConversation(agentId);
   if (base.streaming) return;
 
-  abortControllers.get(agentId)?.abort();
-  const controller = new AbortController();
-  abortControllers.set(agentId, controller);
-
   const turnIds = [newId(), newId()];
-  let conv: Conversation = {
+  const conv: Conversation = {
     ...base,
     error: null,
     streaming: true,
+    streamStartedAt: Date.now(),
     messages: [
       ...base.messages,
       { id: turnIds[0], role: 'user', content: text, display, segments: [{ type: 'text', text: display ?? text }] },
       { id: turnIds[1], role: 'assistant', content: '', segments: [] },
     ],
   };
+  return streamTurn(agentId, conv, turnIds);
+}
+
+/** Re-run the trailing turn after a failure: keeps the user message in place
+ * and reuses BOTH message ids, so the server-side upsert (keyed by message
+ * id + position) overwrites the failed rows instead of duplicating the turn. */
+export function retryLastTurn(agentId: string): void {
+  const base = getConversation(agentId);
+  if (base.streaming) return;
+  const messages = base.messages;
+  let userIdx = messages.length - 1;
+  while (userIdx >= 0 && messages[userIdx].role !== 'user') userIdx--;
+  if (userIdx < 0) return;
+  const prevAssistant = messages[userIdx + 1];
+  const assistantId = prevAssistant?.role === 'assistant' ? prevAssistant.id : newId();
+  const conv: Conversation = {
+    ...base,
+    error: null,
+    streaming: true,
+    streamStartedAt: Date.now(),
+    messages: [
+      ...messages.slice(0, userIdx + 1),
+      { id: assistantId, role: 'assistant', content: '', segments: [] },
+    ],
+  };
+  void streamTurn(agentId, conv, [messages[userIdx].id, assistantId]);
+}
+
+/** Stream one turn (the trailing user+assistant pair of `conv`, identified by
+ * `turnIds`) over the chat SSE proxy, settling and persisting at the end. */
+async function streamTurn(
+  agentId: string,
+  initial: Conversation,
+  turnIds: string[],
+): Promise<void> {
+  abortControllers.get(agentId)?.abort();
+  const controller = new AbortController();
+  abortControllers.set(agentId, controller);
+
+  let conv = initial;
   putConversation(conv);
 
   const history = conv.messages
@@ -975,11 +1019,16 @@ export async function sendAgentMessage(
             ? String(payload.traceExplorerPath)
             : conv.traceExplorerPath,
         };
-        if (payload.traceId) {
+        const doneDuration = Number(payload.durationMs) || undefined;
+        if (payload.traceId || doneDuration) {
           const messages = conv.messages.slice();
           const last = messages[messages.length - 1];
           if (last?.role === 'assistant') {
-            messages[messages.length - 1] = { ...last, traceId: String(payload.traceId) };
+            messages[messages.length - 1] = {
+              ...last,
+              traceId: payload.traceId ? String(payload.traceId) : last.traceId,
+              durationMs: doneDuration ?? last.durationMs,
+            };
             conv = { ...conv, messages };
           }
         }
@@ -1002,7 +1051,7 @@ export async function sendAgentMessage(
       const messages = conv.messages.slice();
       const last = messages[messages.length - 1];
       if (last && last.role === 'assistant' && last.segments.length === 0) messages.pop();
-      const settled = { ...conv, messages, streaming: false };
+      const settled = { ...conv, messages, streaming: false, streamStartedAt: undefined };
       putConversation(settled);
       // Auto-persist the settled turn: the user message + the assistant reply
       // (or just the user message when the reply was aborted pre-token).

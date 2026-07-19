@@ -316,3 +316,59 @@ export function roleForAgentName(agentName: string | undefined): AgentRole | nul
   if (/triage/i.test(agentName)) return 'triage';
   return null;
 }
+
+// ── composer slash-palette ──────────────────────────────────────────────────
+
+export interface PaletteEntry {
+  id: string;
+  label: string;
+  prompt: string;
+  /** Where the prompt lives in the catalog — shown as the row's origin chip. */
+  section: string;
+  mega?: boolean;
+}
+
+// Flattened catalog, megaprompts first — the palette's discovery order when
+// the query is still empty ("/" just typed).
+const PALETTE_ENTRIES: PaletteEntry[] = (() => {
+  const out: PaletteEntry[] = [];
+  for (const group of PROMPT_GROUPS) {
+    out.push({
+      id: `${group.role}-mega`,
+      label: group.megapromptTitle,
+      prompt: group.megaprompt,
+      section: group.title,
+      mega: true,
+    });
+  }
+  for (const group of PROMPT_GROUPS) {
+    for (const section of group.sections) {
+      for (const p of section.prompts) {
+        out.push({ id: p.id, label: p.label, prompt: p.prompt, section: section.title });
+      }
+    }
+  }
+  return out;
+})();
+
+const MAX_PALETTE_MATCHES = 8;
+
+/** Rank: label prefix → label substring → prompt/section substring. */
+export function filterPaletteEntries(query: string): PaletteEntry[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return PALETTE_ENTRIES.slice(0, MAX_PALETTE_MATCHES);
+  const scored: { entry: PaletteEntry; score: number }[] = [];
+  for (const entry of PALETTE_ENTRIES) {
+    const label = entry.label.toLowerCase();
+    const score = label.startsWith(needle)
+      ? 0
+      : label.includes(needle)
+        ? 1
+        : entry.prompt.toLowerCase().includes(needle) || entry.section.toLowerCase().includes(needle)
+          ? 2
+          : -1;
+    if (score >= 0) scored.push({ entry, score });
+  }
+  scored.sort((a, b) => a.score - b.score);
+  return scored.slice(0, MAX_PALETTE_MATCHES).map((s) => s.entry);
+}

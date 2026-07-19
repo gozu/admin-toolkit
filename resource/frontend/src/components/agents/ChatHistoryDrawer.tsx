@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { pushToast } from '../../state/toastStore';
 import {
   deleteConversation,
   loadConversationList,
@@ -24,19 +25,46 @@ function relativeTime(iso: string | undefined, now: number): string {
   return new Date(then).toLocaleDateString();
 }
 
+/** Calendar-aware date bucket for the grouped list. */
+function bucketFor(iso: string | undefined, now: number): string {
+  if (!iso) return 'Current session';
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return 'Older';
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfThenDay = new Date(then);
+  startOfThenDay.setHours(0, 0, 0, 0);
+  const dayDiff = Math.round((startOfToday.getTime() - startOfThenDay.getTime()) / 86400000);
+  if (dayDiff <= 0) return 'Today';
+  if (dayDiff === 1) return 'Yesterday';
+  if (dayDiff < 7) return 'This week';
+  if (dayDiff < 30) return 'This month';
+  return 'Older';
+}
+
+const BUCKET_ORDER = ['Current session', 'Today', 'Yesterday', 'This week', 'This month', 'Older'];
+
 function ConversationRow({
   conv,
   active,
+  now,
   onOpen,
 }: {
   conv: ConversationMeta;
   active: boolean;
+  now: number;
   onOpen: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(conv.title);
-  // Fresh per drawer open — the row subtree remounts with the drawer.
-  const [now] = useState(() => Date.now());
+  // Two-stage delete: first click arms, second click (within 2.6s) deletes.
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    if (!armed) return;
+    const timer = setTimeout(() => setArmed(false), 2600);
+    return () => clearTimeout(timer);
+  }, [armed]);
 
   const commitRename = () => {
     setEditing(false);
@@ -45,6 +73,17 @@ function ConversationRow({
     } else {
       setTitle(conv.title);
     }
+  };
+
+  const onDelete = () => {
+    if (!armed) {
+      setArmed(true);
+      return;
+    }
+    void deleteConversation(conv.id);
+    pushToast('info', 'Conversation deleted', {
+      detail: conv.title || 'Untitled conversation',
+    });
   };
 
   return (
@@ -93,18 +132,108 @@ function ConversationRow({
             </svg>
           </button>
           <button
-            onClick={() => void deleteConversation(conv.id)}
-            title="Delete conversation"
+            onClick={onDelete}
+            onMouseLeave={() => setArmed(false)}
+            title={armed ? 'Click again to delete' : 'Delete conversation'}
             aria-label="Delete conversation"
-            className="shrink-0 rounded p-1 text-[var(--text-muted)] opacity-0 transition-all group-hover:opacity-100 hover:text-[var(--danger)] focus:opacity-100"
+            className={`shrink-0 rounded p-1 transition-all focus:opacity-100 ${
+              armed
+                ? 'bg-[var(--danger)]/15 text-[var(--danger)] opacity-100'
+                : 'text-[var(--text-muted)] opacity-0 group-hover:opacity-100 hover:text-[var(--danger)]'
+            }`}
           >
-            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-            </svg>
+            {armed ? (
+              <span className="px-0.5 text-[10px] font-semibold leading-none">sure?</span>
+            ) : (
+              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            )}
           </button>
         </>
       )}
     </div>
+  );
+}
+
+/** Body of the open drawer — mounts fresh per open, so `now` and the filter
+ * reset with it. */
+function DrawerContent({
+  conversations,
+  persistenceEnabled,
+  activeConvIds,
+  onOpenConv,
+}: {
+  conversations: ConversationMeta[];
+  persistenceEnabled: boolean;
+  activeConvIds: string[];
+  onOpenConv: (id: string) => void;
+}) {
+  const [filter, setFilter] = useState('');
+  const [now] = useState(() => Date.now());
+
+  const groups = useMemo(() => {
+    const needle = filter.trim().toLowerCase();
+    const visible = needle
+      ? conversations.filter((c) => (c.title || 'untitled conversation').toLowerCase().includes(needle))
+      : conversations;
+    const byBucket = new Map<string, ConversationMeta[]>();
+    for (const conv of visible) {
+      const bucket = bucketFor(conv.lastModified, now);
+      const list = byBucket.get(bucket);
+      if (list) list.push(conv);
+      else byBucket.set(bucket, [conv]);
+    }
+    return BUCKET_ORDER.filter((b) => byBucket.has(b)).map((b) => ({
+      label: b,
+      items: byBucket.get(b) as ConversationMeta[],
+    }));
+  }, [conversations, filter, now]);
+
+  return (
+    <>
+      {conversations.length > 5 && (
+        <div className="px-3.5 pt-2">
+          <input
+            autoFocus
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Search conversations…"
+            className="w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none"
+          />
+        </div>
+      )}
+      <div className="flex-1 space-y-2 overflow-y-auto px-3.5 py-2.5">
+        {conversations.length === 0 ? (
+          <p className="pt-6 text-center text-xs text-[var(--text-muted)]">
+            {persistenceEnabled
+              ? 'No saved conversations on this host yet — settled chat turns are saved automatically.'
+              : 'No past conversations yet. Chats are kept in this browser; enable chat storage in the plugin settings for durable, cross-device history.'}
+          </p>
+        ) : groups.length === 0 ? (
+          <p className="pt-6 text-center text-xs text-[var(--text-muted)]">
+            No conversations match “{filter.trim()}”.
+          </p>
+        ) : (
+          groups.map((group) => (
+            <div key={group.label} className="space-y-1.5">
+              <div className="px-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                {group.label}
+              </div>
+              {group.items.map((conv) => (
+                <ConversationRow
+                  key={conv.id}
+                  conv={conv}
+                  active={activeConvIds.includes(conv.id)}
+                  now={now}
+                  onOpen={() => onOpenConv(conv.id)}
+                />
+              ))}
+            </div>
+          ))
+        )}
+      </div>
+    </>
   );
 }
 
@@ -127,8 +256,6 @@ export function ChatHistoryDrawer({
   persistenceEnabled: boolean;
   activeConvIds: string[];
 }) {
-  const reduced = useReducedMotion();
-
   useEffect(() => {
     if (!open) return;
     if (persistenceEnabled) void loadConversationList();
@@ -153,15 +280,15 @@ export function ChatHistoryDrawer({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: reduced ? 0 : 0.15 }}
+            transition={{ duration: 0.15 }}
             onClick={onClose}
           />
           <motion.aside
             className="fixed inset-y-0 right-0 z-50 flex w-[22rem] max-w-[92vw] flex-col border-l border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-2xl"
-            initial={{ x: reduced ? 0 : 360, opacity: reduced ? 0 : 1 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: reduced ? 0 : 360, opacity: reduced ? 0 : 1 }}
-            transition={reduced ? { duration: 0.1 } : { duration: 0.22, ease: EASE_OUT }}
+            initial={{ x: 360 }}
+            animate={{ x: 0 }}
+            exit={{ x: 360 }}
+            transition={{ duration: 0.22, ease: EASE_OUT }}
           >
             <div className="flex items-center gap-2 border-b border-[var(--border-default)] px-3.5 py-2.5">
               <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
@@ -179,24 +306,13 @@ export function ChatHistoryDrawer({
               </button>
             </div>
 
-            <div className="flex-1 space-y-1.5 overflow-y-auto px-3.5 py-2.5">
-              {conversations.length === 0 ? (
-                <p className="pt-6 text-center text-xs text-[var(--text-muted)]">
-                  {persistenceEnabled
-                    ? 'No saved conversations on this host yet — settled chat turns are saved automatically.'
-                    : 'No past conversations yet. Chats are kept in this browser; enable chat storage in the plugin settings for durable, cross-device history.'}
-                </p>
-              ) : (
-                conversations.map((conv) => (
-                  <ConversationRow
-                    key={conv.id}
-                    conv={conv}
-                    active={activeConvIds.includes(conv.id)}
-                    onOpen={() => openConv(conv.id)}
-                  />
-                ))
-              )}
-            </div>
+            <DrawerContent
+              conversations={conversations}
+              persistenceEnabled={persistenceEnabled}
+              activeConvIds={activeConvIds}
+              onOpenConv={openConv}
+            />
+
             {!persistenceEnabled && conversations.length > 0 && (
               <p className="border-t border-[var(--border-default)] px-3.5 py-2 text-[10px] leading-relaxed text-[var(--text-muted)]">
                 Kept in this browser only — enable chat storage in the plugin settings for

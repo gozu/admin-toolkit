@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { InfoDot } from '../common/InfoDot';
 import {
   PROMPT_GROUPS,
@@ -184,7 +184,6 @@ export function PromptLibrary({
   onSend: (prompt: string, role: AgentRole) => void;
 }) {
   const [filter, setFilter] = useState('');
-  const reduced = useReducedMotion();
 
   useEffect(() => {
     if (!open) return;
@@ -213,15 +212,15 @@ export function PromptLibrary({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: reduced ? 0 : 0.15 }}
+            transition={{ duration: 0.15 }}
             onClick={onClose}
           />
           <motion.aside
             className="fixed inset-y-0 right-0 z-50 flex w-[26rem] max-w-[92vw] flex-col border-l border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-2xl"
-            initial={{ x: reduced ? 0 : 420, opacity: reduced ? 0 : 1 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: reduced ? 0 : 420, opacity: reduced ? 0 : 1 }}
-            transition={reduced ? { duration: 0.1 } : { duration: 0.22, ease: EASE_OUT }}
+            initial={{ x: 420 }}
+            animate={{ x: 0 }}
+            exit={{ x: 420 }}
+            transition={{ duration: 0.22, ease: EASE_OUT }}
           >
             <div className="flex items-center gap-2 border-b border-[var(--border-default)] px-3.5 py-2.5">
               <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">

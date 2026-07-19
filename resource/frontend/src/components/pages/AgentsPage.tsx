@@ -9,14 +9,16 @@ import { AuditTimeline } from '../agents/AuditTimeline';
 import { SettingsHistoryCard } from '../agents/SettingsHistoryCard';
 import {
   PROMPT_GROUPS,
+  filterPaletteEntries,
   groupForRole,
-  type AgentRole,
   type CatalogGroup,
+  type PaletteEntry,
 } from '../../utils/agentPromptCatalog';
 import { hostBaseUrl } from '../../utils/agentLinks';
 import { dssUrls } from '../../utils/codeEnvUsageLinks';
 import { getActiveHostId } from '../../state/hostStore';
 import { ChatHistoryDrawer } from '../agents/ChatHistoryDrawer';
+import { ComposerPalette } from '../agents/ComposerPalette';
 import { Spinner } from '../common/Spinner';
 import {
   abortAgentTurn,
@@ -28,6 +30,7 @@ import {
   provisionAgents,
   provisionTraceExplorer,
   rejectPlans,
+  retryLastTurn,
   selectAgent,
   sendAgentMessage,
   submitActionItemsToActuator,
@@ -75,6 +78,22 @@ function samplePrompts(group: CatalogGroup, count: number) {
 // composer, and audit block all use it so the page reads as one column.
 const COLUMN = 'w-full max-w-[87.5rem] mx-auto px-4';
 
+// A typed-but-unsent draft survives navigation and reloads.
+const DRAFT_STORAGE_KEY = 'admin-toolkit:agentDraft';
+
+function readStoredDraft(): string {
+  try {
+    return globalThis.localStorage?.getItem(DRAFT_STORAGE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
 function BookIcon() {
   return (
     <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -87,7 +106,10 @@ export function AgentsPage() {
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [unavailableReason, setUnavailableReason] = useState<string | null>(null);
   const [loadingAgents, setLoadingAgents] = useState(true);
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState(readStoredDraft);
+  const [paletteDismissed, setPaletteDismissed] = useState(false);
+  const [paletteIndex, setPaletteIndex] = useState(0);
+  const [atBottom, setAtBottom] = useState(true);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [provisioning, setProvisioning] = useState(false);
@@ -116,6 +138,16 @@ export function AgentsPage() {
     [chatState.activeConvIdByAgent, chatState.conversations],
   );
   const streaming = conversation?.streaming ?? false;
+
+  // Unsent drafts survive navigation + reload (cleared on send).
+  useEffect(() => {
+    try {
+      if (draft) globalThis.localStorage?.setItem(DRAFT_STORAGE_KEY, draft);
+      else globalThis.localStorage?.removeItem(DRAFT_STORAGE_KEY);
+    } catch {
+      // storage unavailable — draft just won't survive
+    }
+  }, [draft]);
 
   const agent = useMemo(() => findAgent(agents), [agents]);
   // A conversation whose agent no longer exists (a retired pre-4c specialist)
@@ -167,7 +199,8 @@ export function AgentsPage() {
     void loadAgents().finally(() => setLoadingAgents(false));
   }, [loadAgents]);
 
-  // Tick for plan-expiry countdowns — only while an undecided plan is visible.
+  // Tick for plan-expiry countdowns and the streaming elapsed counter — only
+  // while an undecided plan is visible or a turn is in flight.
   const hasPendingPlan = useMemo(
     () =>
       messages.some((msg) =>
@@ -176,10 +209,29 @@ export function AgentsPage() {
     [messages, now],
   );
   useEffect(() => {
-    if (!hasPendingPlan) return;
+    if (!hasPendingPlan && !streaming) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [hasPendingPlan]);
+  }, [hasPendingPlan, streaming]);
+
+  // Live turn feedback: the tool currently running (last running activity
+  // item of the streaming reply) plus wall-clock elapsed.
+  const runningTool = useMemo(() => {
+    if (!streaming) return null;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant') return null;
+    for (let i = last.segments.length - 1; i >= 0; i--) {
+      const seg = last.segments[i];
+      if (seg.type !== 'activity') continue;
+      const running = seg.items.filter((it) => it.running);
+      if (running.length > 0) return running[running.length - 1].name;
+    }
+    return null;
+  }, [messages, streaming]);
+  const elapsedSec =
+    streaming && conversation?.streamStartedAt
+      ? Math.max(0, Math.floor((now - conversation.streamStartedAt) / 1000))
+      : null;
 
   // Undecided, unexpired plans across the conversation → batch approvals bar.
   // python-run is hard-excluded: its per-run "I have read this code" ack only
@@ -209,14 +261,55 @@ export function AgentsPage() {
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    stickToBottomRef.current = stick;
+    setAtBottom(stick);
   }, []);
 
+  const jumpToLatest = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickToBottomRef.current = true;
+    setAtBottom(true);
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, []);
+
+  // Slash palette: "/" at the start of the draft searches the prompt catalog
+  // inline. Esc dismisses until the draft next changes.
+  const paletteMatches = useMemo<PaletteEntry[]>(
+    () => (draft.startsWith('/') ? filterPaletteEntries(draft.slice(1)) : []),
+    [draft],
+  );
+  const paletteOpen =
+    paletteMatches.length > 0 && !paletteDismissed && !streaming && !conversationOrphaned;
+
+  const pickPrompt = useCallback((entry: PaletteEntry) => {
+    setDraft(entry.prompt);
+    setPaletteDismissed(false);
+    setPaletteIndex(0);
+    composerRef.current?.focus();
+  }, []);
+
+  // Composer grows with content (wrap-aware, capped) instead of counting '\n'.
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [draft]);
+
+  // Keyboard lands in the composer on arrival and when a turn settles.
+  useEffect(() => {
+    if (!loadingAgents && agent && !streaming && !conversationOrphaned) {
+      composerRef.current?.focus();
+    }
+  }, [loadingAgents, agent, streaming, conversationOrphaned]);
+
   /** One agent, one thread: every message — free-form or library prompt of
-   * any flavor — goes to the generalist. The role argument survives only as
-   * the library's grouping concept. */
+   * any flavor — goes to the generalist. The library's role/group concept
+   * shapes prompt text only, never the routing, so it never reaches here. */
   const send = useCallback(
-    (text: string, _role?: AgentRole) => {
+    (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || streaming || !agent || conversationOrphaned) return;
       setDraft('');
@@ -229,7 +322,7 @@ export function AgentsPage() {
 
   const sendDraft = send;
 
-  const insertPrompt = useCallback((prompt: string, _role?: AgentRole) => {
+  const insertPrompt = useCallback((prompt: string) => {
     setDraft(prompt);
     composerRef.current?.focus();
   }, []);
@@ -327,9 +420,18 @@ export function AgentsPage() {
           </span>
           <InfoDot eduId="agent.unified" />
         </span>
-        <span className="text-xs text-[var(--text-tertiary)]">
-          health · triage · scoping · admin actions
-        </span>
+        {conversation && messages.length > 0 ? (
+          <span
+            className="min-w-0 max-w-[24rem] truncate text-xs text-[var(--text-tertiary)]"
+            title={conversation.title || deriveTitle(conversation)}
+          >
+            — {conversation.title || deriveTitle(conversation)}
+          </span>
+        ) : (
+          <span className="text-xs text-[var(--text-tertiary)]">
+            health · triage · scoping · admin actions
+          </span>
+        )}
         <span className="ml-auto inline-flex items-center gap-2">
           {explorerViewPath ? (
             <a
@@ -450,12 +552,13 @@ export function AgentsPage() {
       ) : (
         <>
           {/* Transcript — centered column, bubbles never touch the edges */}
-          <div
-            ref={scrollRef}
-            onScroll={handleScroll}
-            className="flex-1 min-h-0 overflow-y-auto scroll-smooth"
-          >
-            <div className={`${COLUMN} space-y-4`}>
+          <div className="relative flex-1 min-h-0">
+            <div
+              ref={scrollRef}
+              onScroll={handleScroll}
+              className="h-full overflow-y-auto scroll-smooth"
+            >
+              <div className={`${COLUMN} space-y-4`}>
               {messages.length === 0 && (
                 <div className="pt-10 flex flex-col items-center gap-4 text-center">
                   <p className="text-sm text-[var(--text-secondary)]">
@@ -475,7 +578,7 @@ export function AgentsPage() {
                           {group.blurb}
                         </p>
                         <button
-                          onClick={() => send(group.megaprompt, group.role)}
+                          onClick={() => send(group.megaprompt)}
                           className="px-3 py-1 text-xs font-semibold rounded-md bg-[var(--accent)] text-white hover:opacity-90 transition-opacity"
                         >
                           ★ {group.megapromptTitle}
@@ -484,7 +587,7 @@ export function AgentsPage() {
                           {samplePrompts(group, 7).map((p) => (
                             <button
                               key={p.id}
-                              onClick={() => send(p.prompt, group.role)}
+                              onClick={() => send(p.prompt)}
                               className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors truncate text-left"
                               title={p.prompt}
                             >
@@ -526,14 +629,48 @@ export function AgentsPage() {
                   </motion.div>
                 ))}
               </AnimatePresence>
-              {streaming && (
-                <div className="flex items-center gap-2.5 text-xs text-[var(--text-tertiary)] pb-2">
-                  <span className="w-2 h-2 rounded-full bg-[var(--neon-yellow)] animate-pulse motion-reduce:animate-none" />
-                  <span className="stream-beam" aria-hidden="true" />
-                  agent working<span className="loading-ellipsis" />
-                </div>
-              )}
+                {streaming && (
+                  <div className="flex items-center gap-2.5 text-xs text-[var(--text-tertiary)] pb-2">
+                    <span className="w-2 h-2 rounded-full bg-[var(--neon-yellow)] animate-pulse" />
+                    <span className="stream-beam" aria-hidden="true" />
+                    <span>
+                      {runningTool ? (
+                        <>
+                          running{' '}
+                          <span className="font-mono text-[var(--text-secondary)]">{runningTool}</span>
+                        </>
+                      ) : (
+                        'agent working'
+                      )}
+                      <span className="loading-ellipsis" />
+                    </span>
+                    {elapsedSec !== null && elapsedSec >= 3 && (
+                      <span className="tabular-nums text-[var(--text-muted)]">
+                        {formatElapsed(elapsedSec)}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
+            <AnimatePresence>
+              {!atBottom && messages.length > 0 && (
+                <motion.button
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  transition={{ duration: 0.15 }}
+                  style={{ x: '-50%' }}
+                  onClick={jumpToLatest}
+                  className="absolute bottom-3 left-1/2 z-20 flex items-center gap-1.5 rounded-full border border-[var(--border-default)] bg-[var(--bg-elevated)] px-3 py-1.5 text-xs text-[var(--text-secondary)] shadow-lg transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                >
+                  {streaming && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--neon-yellow)] animate-pulse" />
+                  )}
+                  ↓ Latest
+                </motion.button>
+              )}
+            </AnimatePresence>
           </div>
 
           <div className={`${COLUMN} space-y-2`}>
@@ -556,11 +693,28 @@ export function AgentsPage() {
               <div className="card-alert-critical p-3 text-sm text-[var(--danger)] flex items-start gap-1.5">
                 <span className="flex-1">{conversation.error}</span>
                 {errorIsGate && <InfoDot eduId="concept.kill-switch" className="mt-0.5" />}
+                {!conversationOrphaned && !streaming && (
+                  <button
+                    onClick={() => selectedId && retryLastTurn(selectedId)}
+                    className="shrink-0 rounded-md border border-[var(--danger)]/40 px-2.5 py-1 text-xs font-medium text-[var(--danger)] transition-colors hover:bg-[var(--danger)]/10"
+                    title="Re-run the last message (replaces the failed reply)"
+                  >
+                    ↻ Retry
+                  </button>
+                )}
               </div>
             )}
 
             {/* Composer */}
-            <div className="flex items-end gap-2">
+            <div className="relative flex items-end gap-2">
+              {paletteOpen && (
+                <ComposerPalette
+                  matches={paletteMatches}
+                  selectedIndex={Math.min(paletteIndex, paletteMatches.length - 1)}
+                  onPick={pickPrompt}
+                  onHoverIndex={setPaletteIndex}
+                />
+              )}
               <button
                 onClick={() => setLibraryOpen(true)}
                 className="shrink-0 flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-[var(--accent)]/40 bg-[var(--accent-muted)] text-[var(--accent)] hover:brightness-110 transition-[filter]"
@@ -572,23 +726,50 @@ export function AgentsPage() {
               <textarea
                 ref={composerRef}
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  setPaletteDismissed(false);
+                  setPaletteIndex(0);
+                }}
                 onKeyDown={(e) => {
+                  if (paletteOpen) {
+                    const count = paletteMatches.length;
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setPaletteIndex((i) => (i + 1) % count);
+                      return;
+                    }
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setPaletteIndex((i) => (i - 1 + count) % count);
+                      return;
+                    }
+                    if (e.key === 'Enter' || e.key === 'Tab') {
+                      e.preventDefault();
+                      pickPrompt(paletteMatches[Math.min(paletteIndex, count - 1)]);
+                      return;
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setPaletteDismissed(true);
+                      return;
+                    }
+                  }
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     sendDraft(draft);
                   }
                 }}
-                rows={Math.min(8, Math.max(1, draft.split('\n').length))}
+                rows={1}
                 placeholder={
                   conversationOrphaned
                     ? 'Read-only conversation (retired agent) — start a new conversation to continue.'
                     : streaming
                       ? 'Agent is working…'
-                      : 'Message the agent… (Enter to send)'
+                      : 'Message the agent — "/" for prompts, Enter to send'
                 }
                 disabled={streaming || conversationOrphaned}
-                className="flex-1 px-3 py-2 text-sm rounded-lg bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] resize-none disabled:opacity-60"
+                className="flex-1 px-3 py-2 text-sm rounded-lg bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] resize-none overflow-y-auto disabled:opacity-60"
               />
               {streaming ? (
                 <button

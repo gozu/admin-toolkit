@@ -175,6 +175,7 @@ export function AgentSettingsPage() {
   const [showUnlock, setShowUnlock] = useState(false);
   const [pending, setPending] = useState<{ names: string[]; enabled: boolean } | null>(null);
   const [powerUpConfirm, setPowerUpConfirm] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     if (!loaded) void loadActionGates();
@@ -194,11 +195,22 @@ export function AgentSettingsPage() {
     applyToggle(names, enabled);
   };
 
-  const readWrite = actions.filter((a: ActionRow) => a.mode === 'read/write');
-  const powerUp = actions.filter((a: ActionRow) => a.action === 'python-run');
+  // Live capability filter over name + description/shape — with ~60 rows,
+  // finding one gate by scrolling is the page's slowest interaction.
+  const needle = query.trim().toLowerCase();
+  const matchesSensor = (s: SensorRow) =>
+    !needle || s.name.toLowerCase().includes(needle) || s.description.toLowerCase().includes(needle);
+  const matchesAction = (a: ActionRow) =>
+    !needle || a.action.toLowerCase().includes(needle) || a.shape.toLowerCase().includes(needle);
+
+  const visibleSensors = sensors.filter(matchesSensor);
+  const readWrite = actions.filter((a: ActionRow) => a.mode === 'read/write' && matchesAction(a));
+  const powerUp = actions.filter((a: ActionRow) => a.action === 'python-run' && matchesAction(a));
   const execute = actions.filter(
-    (a: ActionRow) => a.mode === 'execute' && a.action !== 'python-run',
+    (a: ActionRow) => a.mode === 'execute' && a.action !== 'python-run' && matchesAction(a),
   );
+  const nothingMatches =
+    needle && visibleSensors.length + readWrite.length + powerUp.length + execute.length === 0;
 
   if (loading && !loaded) {
     return (
@@ -216,6 +228,12 @@ export function AgentSettingsPage() {
           <span className="text-xs text-[var(--text-tertiary)]">
             per-action enablement · {sensors.length + actions.length} capabilities
           </span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Filter capabilities…"
+            className="ml-auto w-56 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none"
+          />
         </div>
 
         <div className="glass-card p-4 space-y-1.5 border-l-2 border-l-[var(--accent)]">
@@ -244,35 +262,46 @@ export function AgentSettingsPage() {
           </div>
         )}
 
-        <SectionCard
-          title="Read-only tools"
-          subtitle="Sensors — inspect health, config, cost, storage, logs. No side effects; enabled by default."
-          enabledCount={sensors.filter((s: SensorRow) => s.enabled).length}
-          total={sensors.length}
-        >
-          <MasterReadRow
+        {nothingMatches && (
+          <div className="glass-card p-6 text-center text-xs text-[var(--text-muted)]">
+            No capabilities match “{query.trim()}”.
+          </div>
+        )}
+
+        {visibleSensors.length > 0 && (
+          <SectionCard
+            title="Read-only tools"
+            subtitle="Sensors — inspect health, config, cost, storage, logs. No side effects; enabled by default."
             enabledCount={sensors.filter((s: SensorRow) => s.enabled).length}
             total={sensors.length}
-            saving={saving === '__bulk__'}
-            onToggle={(v) =>
-              requestToggle(
-                sensors.map((s: SensorRow) => s.name),
-                v,
-              )
-            }
-          />
-          {sensors.map((s: SensorRow) => (
-            <GateRow
-              key={s.name}
-              name={s.name}
-              enabled={s.enabled}
-              detail={s.description}
-              saving={saving === s.name || saving === '__bulk__'}
-              onToggle={(v) => requestToggle([s.name], v)}
-            />
-          ))}
-        </SectionCard>
+          >
+            {!needle && (
+              <MasterReadRow
+                enabledCount={sensors.filter((s: SensorRow) => s.enabled).length}
+                total={sensors.length}
+                saving={saving === '__bulk__'}
+                onToggle={(v) =>
+                  requestToggle(
+                    sensors.map((s: SensorRow) => s.name),
+                    v,
+                  )
+                }
+              />
+            )}
+            {visibleSensors.map((s: SensorRow) => (
+              <GateRow
+                key={s.name}
+                name={s.name}
+                enabled={s.enabled}
+                detail={s.description}
+                saving={saving === s.name || saving === '__bulk__'}
+                onToggle={(v) => requestToggle([s.name], v)}
+              />
+            ))}
+          </SectionCard>
+        )}
 
+        {readWrite.length > 0 && (
         <SectionCard
           title="Read / write actions"
           subtitle="Configuration mutations — drift-guarded, most land in the restorable settings history. Disabled by default."
@@ -292,6 +321,7 @@ export function AgentSettingsPage() {
             />
           ))}
         </SectionCard>
+        )}
 
         {powerUp.length > 0 && (
           <SectionCard
@@ -315,6 +345,7 @@ export function AgentSettingsPage() {
           </SectionCard>
         )}
 
+        {execute.length > 0 && (
         <SectionCard
           title="Execute actions"
           subtitle="Run, stop, clean, delete, send — the plan → approve → confirm-token flow still applies to every one. Disabled by default."
@@ -334,6 +365,7 @@ export function AgentSettingsPage() {
             />
           ))}
         </SectionCard>
+        )}
       </div>
 
       <Modal

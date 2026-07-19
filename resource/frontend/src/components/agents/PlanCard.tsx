@@ -57,6 +57,9 @@ export function PlanCard({
 }) {
   const secondsLeft = Math.max(0, Math.floor((plan.expiresAt - now) / 1000));
   const expired = secondsLeft <= 0 && !plan.decision;
+  // Confirm-window fuse: drains linearly amber → red under the header.
+  const ttl = plan.ttlSeconds && plan.ttlSeconds > 0 ? plan.ttlSeconds : 900;
+  const fusePct = Math.max(0, Math.min(100, (secondsLeft / ttl) * 100));
   // Power-Up gate 2: the exact code + an explicit read-ack that arms Approve.
   const code = typeof plan.plan.code === 'string' ? plan.plan.code : null;
   const [codeAck, setCodeAck] = useState(false);
@@ -107,6 +110,17 @@ export function PlanCard({
           </span>
         )}
       </div>
+
+      {!plan.decision && !expired && (
+        <div className="h-0.5 overflow-hidden rounded-full bg-[var(--border-default)]/50">
+          <div
+            className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${
+              secondsLeft < 120 ? 'bg-[var(--danger)]' : 'bg-[var(--neon-amber)]'
+            }`}
+            style={{ width: `${fusePct}%` }}
+          />
+        </div>
+      )}
 
       {typeof plan.plan.summary === 'string' && (
         <p className="text-sm text-[var(--text-primary)] leading-snug">

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.763] - 2026-07-19
+
+### Added
+- **Slash-command prompt palette**: typing `/` in the Agents composer opens an inline palette over the full prompt catalog (megaprompts first, ranked filtering, ↑↓ + Enter/Tab to insert, Esc to dismiss) — the fastest path from intent to a curated prompt, without opening the library drawer.
+- **Retry failed turns**: a stream/backend failure now shows a ↻ Retry button on the error card that re-runs the last message in place. The retried turn reuses both message ids, so the server-side chat store overwrites the failed rows instead of duplicating the turn.
+- **Live turn feedback**: the streaming status line names the tool currently running and shows wall-clock elapsed (after 3s); settled assistant replies carry a per-turn duration chip next to "copy trace".
+- **Composer QOL**: unsent drafts survive navigation and reloads (localStorage); the composer auto-grows wrap-aware (capped) instead of counting newlines; keyboard focus lands in the composer on arrival and when a turn settles.
+- **Jump to latest**: scrolling up during a long transcript shows a floating "↓ Latest" pill (pulsing while streaming) that smooth-scrolls back to the tail.
+- **Copy actions**: hover a user bubble or assistant reply to copy its text (assistant copies the raw markdown).
+- **Plan-expiry fuse**: pending plan cards drain a thin amber bar across the confirm window (red under 2 minutes) so expiry is visible at a glance, not just a number.
+- **History drawer upgrades**: conversations grouped by date (Current session / Today / Yesterday / This week / This month / Older), a search filter above the list (when >5), and two-stage delete ("sure?") with a deletion toast — no more single-click destructive deletes.
+- **Agent Permissions filter**: a live capability filter over all ~64 sensor/action rows (name + description), so finding one gate no longer means scrolling the whole catalog.
+
+### Changed
+- **Header shows the active conversation title** (derived from the first message when unnamed) instead of the static tagline once a chat exists.
+- **Single motion path**: removed `useReducedMotion` / `motion-reduce` opt-outs from the agents surfaces (drawers, chips, streaming dot) per the project's one-motion-path rule.
+
 ## [0.4.762] - 2026-07-19
 
 ### Added

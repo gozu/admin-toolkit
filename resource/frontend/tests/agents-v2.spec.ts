@@ -78,7 +78,6 @@ function executionEvent(n: 1 | 2): string {
 }
 
 async function mockAgentsBackend(page: Page) {
-  let chatCalls = 0;
   // Host picker gate: a healthy local host lets Enter reach the app shell.
   await page.route('**/api/hosts', (route: Route) =>
     route.fulfill({ json: [{ id: 'local', label: 'Local DSS', url: '' }] }),
@@ -112,7 +111,6 @@ async function mockAgentsBackend(page: Page) {
     }),
   );
   await page.route('**/api/agents/chat', async (route: Route) => {
-    chatCalls += 1;
     const body = JSON.parse(route.request().postData() || '{}') as {
       agentId: string;
       messages: { content: string }[];

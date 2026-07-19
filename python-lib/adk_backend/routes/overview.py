@@ -35,6 +35,7 @@ from adk_backend.sysinfo import (
 )
 from adk_backend.proc_stream import _read_proc_processes
 from adk_backend.utils import _coerce_int, _sse_response
+from atk_agent_common.policies import settings_paths
 
 bp = Blueprint('overview', __name__)
 
@@ -43,9 +44,13 @@ _LOGGER = logging.getLogger(__name__)
 
 @bp.route('/api/settings/raw')
 def api_settings_raw():
+    """Redacted: the webapp is reachable without DSS auth, and raw general
+    settings carry live credentials (internalDatabase password, deployer/govern
+    API keys). Masking is scalar-level, so every structural flag the frontend
+    parsers and the Python health scorer read survives."""
     client = g.client
     settings = client.get_general_settings().get_raw()
-    return jsonify(settings)
+    return jsonify(settings_paths.redact_secrets(settings))
 
 
 @bp.route('/api/project-standards/raw')

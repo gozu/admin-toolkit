@@ -83,6 +83,37 @@ def check_path(path, extra_blocked=()):
     return True, 'ok'
 
 
+def redact_secrets(node):
+    """Structure-preserving secret redaction for settings reads. A scalar is
+    masked when its own key matches BLOCKED_SEGMENT_RE, when its {key|name,
+    value} property-row's key/name matches, or when the row carries DSS's own
+    secret:true marker. Dicts/lists always recurse — a matching parent key
+    never hides a whole subtree, so non-secret flags under keys like
+    globalApiKeysSecurity stay readable. check_path uses the same regex on the
+    write side, so anything masked here is also immutable via settings-set."""
+    if isinstance(node, dict):
+        prop = node.get('key') if isinstance(node.get('key'), str) else None
+        if prop is None and isinstance(node.get('name'), str):
+            prop = node['name']
+        prop_secret = bool(node.get('secret')) or bool(
+            prop and BLOCKED_SEGMENT_RE.search(prop))
+        out = {}
+        for k, v in node.items():
+            if isinstance(v, (dict, list)):
+                out[k] = redact_secrets(v)
+            elif k == 'value' and prop_secret and v not in (None, '', False, True):
+                out[k] = '<redacted>'
+            elif (isinstance(k, str) and BLOCKED_SEGMENT_RE.search(k)
+                    and v not in (None, '', False, True)):
+                out[k] = '<redacted>'
+            else:
+                out[k] = v
+        return out
+    if isinstance(node, list):
+        return [redact_secrets(v) for v in node]
+    return node
+
+
 def get_at(obj, path):
     """Value at `path` in nested dict/list `obj`; None when any hop is missing."""
     current = obj

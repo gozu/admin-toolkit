@@ -598,6 +598,61 @@ def _domain_adoption(client, host, domain, name_filter, detail, top_n, page):
     }
 
 
+def _domain_settings(client, host, domain, name_filter, detail, top_n, page):
+    """Redacted read twin of settings-set: same families stripped, same secret
+    regex masking scalars, so the agent can inspect exactly what it may
+    mutate (plus the read-only operational families)."""
+    from .policies import settings_paths as _sp
+    raw = client.get('/api/settings/raw', host=host)
+    if not isinstance(raw, dict) or not raw:
+        return {'error': {'code': 'settings-unavailable',
+                          'message': 'general settings payload unavailable'}}
+    visible = {}
+    for k, v in raw.items():
+        kl = str(k).lower()
+        if any(sub in kl for sub in _sp.BLOCKED_FIRST_SEGMENT_SUBSTRINGS):
+            continue
+        if _sp.BLOCKED_SEGMENT_RE.search(str(k)):
+            continue
+        visible[k] = v
+    visible = _sp.redact_secrets(visible)
+    flt = (name_filter or '').strip().lower()
+    if flt:
+        hits = {k: visible[k] for k in visible if flt in k.lower()}
+        if not hits:
+            return {'note': 'No top-level settings key contains %r.' % name_filter,
+                    'keys': sorted(visible)}
+        return {'matched': sorted(hits),
+                'settings': _compact_unknown(hits, top_n)}
+    container = visible.get('containerSettings') or {}
+    if not isinstance(container, dict):
+        container = {}
+    execs = [e for e in (container.get('executionConfigs') or [])
+             if isinstance(e, dict)]
+    imp = visible.get('impersonation')
+    return {
+        'note': ('Redacted DSS general settings (secret values masked; '
+                 'auth/SSO/security/licensing families stripped — the same '
+                 'policy as settings-set). name_filter=<key substring> '
+                 'returns full subtrees.'),
+        'keys': sorted(visible),
+        'cgroups': visible.get('cgroupSettings'),
+        'limits': {'limits': visible.get('limits'),
+                   'maxRunningActivities': visible.get('maxRunningActivities'),
+                   'maxRunningActivitiesPerJob':
+                       visible.get('maxRunningActivitiesPerJob')},
+        'containerExec': {
+            'defaultExecutionConfig': container.get('defaultExecutionConfig'),
+            'configCount': len(execs),
+            'configs': [shaping.pick(e, ('name', 'type', 'kubernetesResources'))
+                        for e in execs[:top_n]]},
+        'spark': _compact_unknown(visible.get('sparkSettings') or {}, top_n),
+        'internalDatabase': _compact_unknown(
+            visible.get('internalDatabase') or {}, top_n),
+        'impersonation': (imp.get('enabled') if isinstance(imp, dict) else imp),
+    }
+
+
 def _domain_cost_detail(client, host, domain, name_filter, detail, top_n, page):
     data = client.get('/api/cru', host=host, heavy=True)
     if not data.get('ok', True):

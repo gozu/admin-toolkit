@@ -86,6 +86,41 @@ ENDPOINTS = (
         'resources-snapshot', '/api/host/resource-sample',
         'Instantaneous CPU/memory counter snapshot of the host (one sample '
         'of the Resources live graph; call twice to derive CPU%).'),
+    _endpoint(
+        'resources-processes', '/api/host/process-metrics',
+        'Per-process CPU + memory snapshot of the host (the Resources page '
+        'process table). fresh=1 bypasses the short cache.',
+        params=('fresh',)),
+    _endpoint(
+        'connections-audit', '/api/connections/audit',
+        'Connection configuration audit: fast-write, details readability, '
+        'HDFS interface, filesystem_root findings per connection (the '
+        'Connections → Insights audit column).'),
+    _endpoint(
+        'container-execs', '/api/container-execs',
+        'Containerized execution configs with per-project usage, requests/'
+        'limits and registry links (the Container Execs page). '
+        'projectKeys=A,B narrows the scan.',
+        params=('projectKeys',), heavy=True),
+    _endpoint(
+        'cs-templates', '/api/cs-template/templates',
+        'Code Studio template inventory (the CS Templates page). Read-only — '
+        'template migration stays a human-driven page action.'),
+    _endpoint(
+        'cs-template-projects', '/api/cs-template/projects',
+        'Per-project Code Studios with the template each one uses (the CS '
+        'Templates page). Read-only; scans every project.',
+        params=('includeState',), heavy=True),
+    _endpoint(
+        'dir-tree', '/api/dir-tree',
+        'DIP_HOME directory tree with per-directory sizes (the Filesystem '
+        "page treemap). scope=dss|project (+projectKey), path drills into a "
+        'subtree, maxDepth caps depth.',
+        params=('scope', 'projectKey', 'path', 'maxDepth'), heavy=True),
+    _endpoint(
+        'docker-usage', '/api/tools/docker/usage',
+        'Docker disk usage on the host (images/containers/build-cache — the '
+        'grounding for docker-prune).'),
 )
 
 # Webapp module id → what that page shows. MUST cover every id in

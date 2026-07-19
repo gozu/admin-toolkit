@@ -217,6 +217,23 @@ DOMAINS = (
         fields=('totals', 'licensing', 'profileCounts', 'monthlyTrend',
                 'builderStats', 'repeatBuilders')),
     _domain(
+        'settings',
+        'DSS instance general settings, redacted (secret values masked, '
+        'auth/SSO/security/licensing families stripped — the same policy as '
+        'settings-set): cgroups, limits, container exec configs, spark, '
+        'internal DB, disabled features. name_filter = top-level key '
+        'substring for the full redacted subtree.',
+        '_domain_settings',
+        parsed_fields=('enabledSettings', 'sparkSettings', 'containerSettings',
+                       'containerExecDefaults', 'execResourceConfigs',
+                       'integrationSettings', 'resourceLimits', 'cgroupSettings',
+                       'proxySettings', 'maxRunningActivities', 'jekSettings',
+                       'disabledFeatures', 'generalSettings'),
+        fix_actions=('settings-set', 'k8s-exec-config-tune'),
+        filters=('name_filter = top-level settings key substring',),
+        fields=('keys', 'cgroups', 'limits', 'containerExec', 'spark',
+                'internalDatabase', 'impersonation')),
+    _domain(
         'cost-detail',
         'Full CRU cost detail the summary compute_cost tool drops: '
         'per-connection SQL cost, idle resources, daily timeline, LLM models, '
@@ -276,36 +293,21 @@ PARSED_FIELD_COVERAGE = {
                                fix_actions=('log-cleanup', 'tmp-cleanup',
                                             'exports-cleanup', 'job-logs-cleanup',
                                             'project-clear-webapp-runs')),
-    # settings family — settings-set's drift-guard reads + instance_health
-    # partials; a dedicated settings domain is backlog.
-    'enabledSettings': _covered('deferred:settings domain', fix_actions=('settings-set',)),
-    'sparkSettings': _covered('deferred:settings domain', fix_actions=('settings-set',)),
-    'authSettings': _covered('deferred:settings domain',
+    # settings family — the 'settings' domain row above; only the
+    # auth/security families stay read-waivered.
+    'authSettings': _covered('waiver:auth/SSO family — blacklisted for agent reads',
                              fix_waiver='SSO/LDAP paths are blacklisted for agents'),
-    'containerSettings': _covered('deferred:settings domain',
-                                  fix_actions=('settings-set', 'k8s-exec-config-tune')),
-    'containerExecDefaults': _covered('deferred:settings domain',
-                                      fix_actions=('settings-set', 'k8s-exec-config-tune')),
-    'execResourceConfigs': _covered('deferred:settings domain',
-                                    fix_actions=('k8s-exec-config-tune',)),
-    'integrationSettings': _covered('deferred:settings domain', fix_actions=('settings-set',)),
-    'resourceLimits': _covered('deferred:settings domain', fix_actions=('settings-set',)),
-    'cgroupSettings': _covered('deferred:settings domain', fix_actions=('settings-set',)),
-    'proxySettings': _covered('deferred:settings domain', fix_actions=('settings-set',)),
-    'maxRunningActivities': _covered('deferred:settings domain', fix_actions=('settings-set',)),
-    'jekSettings': _covered('deferred:settings domain', fix_actions=('settings-set',)),
     'javaMemorySettings': _covered('sensor:instance_health (java section)',
                                    fix_waiver='env-default.sh is a host-level file '
                                               '— deliberately excluded'),
     'javaMemoryLimits': _covered('sensor:instance_health (java section)',
                                  fix_waiver='env-default.sh is a host-level file '
                                             '— deliberately excluded'),
-    'disabledFeatures': _covered('deferred:settings domain', fix_actions=('settings-set',)),
-    'securityDefaults': _covered('deferred:settings domain', fix_actions=('settings-set',)),
-    'ldapAuthorizedGroups': _covered('deferred:settings domain',
+    'securityDefaults': _covered('waiver:security family — blacklisted for agent reads',
+                                 fix_waiver='security paths are write-blacklisted too'),
+    'ldapAuthorizedGroups': _covered('waiver:SSO/LDAP family — blacklisted for agent reads',
                                      fix_waiver='SSO/LDAP paths are blacklisted for agents'),
-    'generalSettings': _covered('deferred:settings domain', fix_actions=('settings-set',)),
-    'connectionAudit': _covered('deferred:connection-audit domain',
+    'connectionAudit': _covered('toolkit_get:connections-audit',
                                 fix_actions=('connection-update',)),
     # sanity + logs — instance_health / log_errors sensors
     'sanityCheck': _covered('sensor:instance_health (sanity section)',
@@ -326,22 +328,26 @@ PARSED_FIELD_COVERAGE = {
     'projectFootprintSummary': _covered('sensor:storage_footprint',
                                         fix_actions=('project-delete',)),
     # AI compute
-    'llmAudit': _covered('deferred:llm-audit domain',
+    'llmAudit': _covered('toolkit_get:llm-audit',
                          fix_actions=('connection-update', 'notification-send')),
     # messaging
     'mailChannels': _covered('action:notification-send planner (channels list)',
                              fix_actions=('notification-send', 'settings-set')),
     'configuredMailChannel': _covered('action:notification-send planner',
                                       fix_actions=('settings-set',)),
-    # license — seat pressure is fixed by right-sizing profiles
-    'license': _covered('deferred:license domain (adoption licensing partially covers)',
+    # license — full license detail is a diag-upload artifact; live seat
+    # pressure is served by the adoption domain's licensing section and fixed
+    # by right-sizing profiles
+    'license': _covered('domain:adoption (licensing section; full detail is diag-only)',
                         fix_actions=('user-update', 'user-disable')),
-    'licenseInfo': _covered('deferred:license domain', fix_actions=('user-update', 'user-disable')),
-    'licenseProperties': _covered('deferred:license domain',
+    'licenseInfo': _covered('domain:adoption (licensing section; full detail is diag-only)',
+                            fix_actions=('user-update', 'user-disable')),
+    'licenseProperties': _covered('domain:adoption (licensing section; full detail is diag-only)',
                                   fix_actions=('user-update', 'user-disable')),
-    'hasLicenseUsage': _covered('deferred:license domain', fix_waiver='presence flag'),
+    'hasLicenseUsage': _covered('domain:adoption (licensing section)',
+                                fix_waiver='presence flag'),
     # directory tree
-    'dirTree': _covered('deferred:dir-tree domain',
+    'dirTree': _covered('toolkit_get:dir-tree',
                         fix_actions=('log-cleanup', 'tmp-cleanup', 'exports-cleanup',
                                      'job-logs-cleanup', 'project-clear-webapp-runs',
                                      'docker-prune')),
@@ -352,8 +358,8 @@ PARSED_FIELD_COVERAGE = {
 MODULE_COVERAGE = {
     'mission-control': 'sensor:triage_sweep + instance_health',
     'summary': 'sensor:instance_health include_score',
-    'filesystem': 'sensor:instance_health (system section)',
-    'resources': 'deferred:resources domain (live /proc stream)',
+    'filesystem': 'sensor:instance_health (system section) + toolkit_get:dir-tree',
+    'resources': 'toolkit_get:resources-snapshot + resources-processes (point samples of the live stream)',
     'connections-inventory': 'domain:connections',
     'connections-insights': 'domain:connections-usage',
     'connections-health': 'domain:connections detail=health',
@@ -370,15 +376,15 @@ MODULE_COVERAGE = {
     'code-envs': 'domain:code-envs',
     'code-envs-cleaner': 'domain:code-envs',
     'code-envs-comparison': 'domain:code-envs',
-    'container-execs': 'deferred:container-execs domain',
-    'image-cleaner': 'action:image-delete planner grounding',
-    'cs-template-replacement': 'waiver:excluded pending explicit opt-in',
-    'llm-audit': 'deferred:llm-audit domain',
+    'container-execs': 'toolkit_get:container-execs',
+    'image-cleaner': 'action:image-delete planner grounding + toolkit_get:docker-usage',
+    'cs-template-replacement': 'toolkit_get:cs-templates + cs-template-projects (read-only; migrate stays excluded)',
+    'llm-audit': 'toolkit_get:llm-audit',
     'k8s-insights': 'sensor:k8s_health',
     'agents': 'waiver:the agent surface itself',
     'agent-tuning': 'waiver:the agent surface itself',
     'agent-settings': 'waiver:the agent surface itself',
-    'settings': 'action:settings-set + notification-send channels',
+    'settings': 'domain:settings + action:settings-set + notification-send channels',
     'logs': 'sensor:log_errors',
     'sanity-check': 'sensor:instance_health (sanity section)',
     'db-health': 'sensor:db_health',

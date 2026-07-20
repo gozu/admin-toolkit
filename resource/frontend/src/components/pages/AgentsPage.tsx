@@ -39,6 +39,7 @@ import {
   type AgentInfo,
   type ConversationMeta,
   type PlanCardData,
+  type PresetMeta,
   type ProvisionResult,
 } from '../../state/agentsChatStore';
 
@@ -310,13 +311,13 @@ export function AgentsPage() {
    * any flavor — goes to the generalist. The library's role/group concept
    * shapes prompt text only, never the routing, so it never reaches here. */
   const send = useCallback(
-    (text: string) => {
+    (text: string, preset?: PresetMeta) => {
       const trimmed = text.trim();
       if (!trimmed || streaming || !agent || conversationOrphaned) return;
       setDraft('');
       stickToBottomRef.current = true;
       if (agent.id !== selectedId) selectAgent(agent.id);
-      void sendAgentMessage(agent.id, trimmed);
+      void sendAgentMessage(agent.id, trimmed, undefined, preset);
     },
     [agent, selectedId, streaming, conversationOrphaned],
   );
@@ -612,7 +613,15 @@ export function AgentsPage() {
                           {group.blurb}
                         </p>
                         <button
-                          onClick={() => send(group.megaprompt)}
+                          onClick={() =>
+                            send(group.megaprompt, {
+                              kind: 'megaprompt',
+                              title: group.megapromptTitle,
+                              group: group.title,
+                              gist: group.megapromptBlurb,
+                              icon: 'star',
+                            })
+                          }
                           className="px-3 py-1 text-xs font-semibold rounded-md bg-[var(--accent)] text-white hover:opacity-90 transition-opacity"
                         >
                           ★ {group.megapromptTitle}
@@ -621,7 +630,14 @@ export function AgentsPage() {
                           {samplePrompts(group, 7).map((p) => (
                             <button
                               key={p.id}
-                              onClick={() => send(p.prompt)}
+                              onClick={() =>
+                                send(p.prompt, {
+                                  kind: 'prompt',
+                                  title: p.label,
+                                  group: group.title,
+                                  icon: 'prompt',
+                                })
+                              }
                               className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors truncate text-left"
                               title={p.prompt}
                             >

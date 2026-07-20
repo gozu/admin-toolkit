@@ -8,6 +8,7 @@ import { ActivityChips } from './ActivityChips';
 import { PlanCard } from './PlanCard';
 import { ExecutionCard } from './ExecutionCard';
 import { ActionItemsCard } from './ActionItemsCard';
+import { PresetPromptCard } from './PresetPromptCard';
 import { useDiag } from '../../context/DiagContext';
 import type { PageId } from '../../types';
 import type {
@@ -259,14 +260,24 @@ export function MessageView({
   onSubmitActionItems: (batchId: string, items: ActionItemData[]) => void;
 }) {
   if (message.role === 'user') {
+    // Preset sends (hero megaprompts, catalog prompts, synthetic approvals)
+    // collapse to a compact card; the copy chip always yields the full text
+    // that actually went to the agent.
+    const preset = message.segments.find(
+      (s): s is Extract<Segment, { type: 'preset' }> => s.type === 'preset',
+    );
     return (
       <div className="group flex items-end justify-end gap-2">
         <span className="pb-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <CopyChip text={message.display ?? message.content} />
+          <CopyChip text={preset ? message.content : (message.display ?? message.content)} />
         </span>
-        <div className="max-w-[min(85%,40rem)] rounded-xl rounded-br-sm px-3.5 py-2 bg-[var(--accent-muted)] border border-[var(--accent)]/20 text-sm text-[var(--text-primary)] whitespace-pre-wrap">
-          {message.display ?? message.content}
-        </div>
+        {preset ? (
+          <PresetPromptCard preset={preset.preset} content={message.content} />
+        ) : (
+          <div className="chat-user-bubble max-w-[min(85%,40rem)] rounded-xl rounded-br-sm px-3.5 py-2 text-sm text-[var(--text-primary)] whitespace-pre-wrap">
+            {message.display ?? message.content}
+          </div>
+        )}
       </div>
     );
   }
@@ -275,7 +286,7 @@ export function MessageView({
       {message.segments.map((segment: Segment, i) => {
         if (segment.type === 'text') {
           return (
-            <div key={i} className="ai-analysis-markdown text-sm text-[var(--text-primary)]">
+            <div key={i} className="ai-analysis-markdown chat-markdown text-sm text-[var(--text-primary)]">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{segment.text}</ReactMarkdown>
             </div>
           );
@@ -316,6 +327,8 @@ export function MessageView({
             />
           );
         }
+        // Preset segments live on user messages; never rendered here.
+        if (segment.type === 'preset') return null;
         return <ExecutionCard key={i} execution={segment.execution} onShowAudit={onShowAudit} />;
       })}
       {live && message.segments[message.segments.length - 1]?.type === 'text' && (

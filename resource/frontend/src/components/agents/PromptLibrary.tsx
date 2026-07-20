@@ -4,10 +4,10 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { InfoDot } from '../common/InfoDot';
 import {
   PROMPT_GROUPS,
-  type AgentRole,
   type CatalogGroup,
   type CatalogSection,
 } from '../../utils/agentPromptCatalog';
+import type { PresetMeta } from '../../state/agentsChatStore';
 
 const EASE_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -52,14 +52,16 @@ function PromptRow({
 
 function Section({
   section,
+  groupTitle,
   filter,
   onInsert,
   onSend,
 }: {
   section: CatalogSection;
+  groupTitle: string;
   filter: string;
   onInsert: (prompt: string) => void;
-  onSend: (prompt: string) => void;
+  onSend: (prompt: string, meta: PresetMeta) => void;
 }) {
   const [open, setOpen] = useState(true);
   const prompts = useMemo(() => {
@@ -88,7 +90,20 @@ function Section({
         <div className="space-y-1 pb-2">
           <p className="px-0.5 pb-0.5 text-[10px] text-[var(--text-muted)]">{section.blurb}</p>
           {prompts.map((p) => (
-            <PromptRow key={p.id} label={p.label} prompt={p.prompt} onInsert={onInsert} onSend={onSend} />
+            <PromptRow
+              key={p.id}
+              label={p.label}
+              prompt={p.prompt}
+              onInsert={onInsert}
+              onSend={(prompt) =>
+                onSend(prompt, {
+                  kind: 'prompt',
+                  title: p.label,
+                  group: `${groupTitle} · ${section.title}`,
+                  icon: 'prompt',
+                })
+              }
+            />
           ))}
         </div>
       )}
@@ -104,11 +119,9 @@ function Group({
 }: {
   group: CatalogGroup;
   filter: string;
-  onInsert: (prompt: string, role: AgentRole) => void;
-  onSend: (prompt: string, role: AgentRole) => void;
+  onInsert: (prompt: string) => void;
+  onSend: (prompt: string, meta: PresetMeta) => void;
 }) {
-  const insert = (prompt: string) => onInsert(prompt, group.role);
-  const send = (prompt: string) => onSend(prompt, group.role);
   const matches = useMemo(() => {
     if (!filter) return true;
     const needle = filter.toLowerCase();
@@ -137,13 +150,21 @@ function Group({
           </p>
           <div className="flex items-center gap-2 pt-0.5">
             <button
-              onClick={() => send(group.megaprompt)}
+              onClick={() =>
+                onSend(group.megaprompt, {
+                  kind: 'megaprompt',
+                  title: group.megapromptTitle,
+                  group: group.title,
+                  gist: group.megapromptBlurb,
+                  icon: 'star',
+                })
+              }
               className="rounded-md bg-[var(--accent)] px-2.5 py-1 text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
             >
               Run it
             </button>
             <button
-              onClick={() => insert(group.megaprompt)}
+              onClick={() => onInsert(group.megaprompt)}
               className="rounded-md border border-[var(--border-default)] px-2.5 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)]"
             >
               Edit first
@@ -155,9 +176,10 @@ function Group({
         <Section
           key={`${group.role}-${section.id}`}
           section={section}
+          groupTitle={group.title}
           filter={filter}
-          onInsert={insert}
-          onSend={send}
+          onInsert={onInsert}
+          onSend={onSend}
         />
       ))}
     </div>
@@ -169,8 +191,8 @@ function Group({
  * headline groups (Health & Triage, Scoping & Architecture) plus Admin
  * Actions — each with its megaprompt hero and collapsible themed sections.
  * Clicking a prompt inserts it into the composer (edit before sending); the
- * arrow affordance sends it immediately. The group is the routing signal
- * that picks the backend specialist for the prompt.
+ * arrow affordance sends it immediately, carrying PresetMeta so the
+ * transcript shows a compact card instead of the raw prompt text.
  */
 export function PromptLibrary({
   open,
@@ -180,8 +202,8 @@ export function PromptLibrary({
 }: {
   open: boolean;
   onClose: () => void;
-  onInsert: (prompt: string, role: AgentRole) => void;
-  onSend: (prompt: string, role: AgentRole) => void;
+  onInsert: (prompt: string) => void;
+  onSend: (prompt: string, meta: PresetMeta) => void;
 }) {
   const [filter, setFilter] = useState('');
 
@@ -194,12 +216,12 @@ export function PromptLibrary({
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  const insert = (prompt: string, role: AgentRole) => {
-    onInsert(prompt, role);
+  const insert = (prompt: string) => {
+    onInsert(prompt);
     onClose();
   };
-  const send = (prompt: string, role: AgentRole) => {
-    onSend(prompt, role);
+  const send = (prompt: string, meta: PresetMeta) => {
+    onSend(prompt, meta);
     onClose();
   };
 

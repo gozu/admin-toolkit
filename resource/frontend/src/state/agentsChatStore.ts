@@ -87,6 +87,21 @@ export interface ActionItemsCardData {
   droppedCount?: number;
 }
 
+/** Provenance of a catalog/synthetic send — rides as a segment on the USER
+ * message so the transcript can show a compact card (icon + title + gist)
+ * instead of the raw megaprompt text. Stored verbatim with the message
+ * (localStorage + server chat store both persist segments as-is), so no
+ * schema/back-compat work: old messages simply have no preset segment. */
+export interface PresetMeta {
+  kind: 'megaprompt' | 'prompt' | 'action';
+  title: string;
+  /** Catalog group (and section) the preset came from — shown as a chip. */
+  group?: string;
+  /** One-line summary shown collapsed; falls back to the content itself. */
+  gist?: string;
+  icon?: 'star' | 'prompt' | 'approve' | 'reject' | 'handoff';
+}
+
 export type Segment =
   | { type: 'text'; text: string }
   | { type: 'activity'; items: ActivityItem[] }
@@ -98,7 +113,9 @@ export type Segment =
    *  structured error code from the tool result (e.g. action-disabled);
    *  `link` is the backend's machine-readable internal deep link
    *  ({page: PageId, label}) when the clearing surface is a toolkit page. */
-  | { type: 'gate_hint'; code: string; message?: string; link?: GateLink };
+  | { type: 'gate_hint'; code: string; message?: string; link?: GateLink }
+  /** Preset-send provenance on a user message — see PresetMeta. */
+  | { type: 'preset'; preset: PresetMeta };
 
 export interface GateLink {
   page: string;
@@ -857,7 +874,12 @@ export function submitActionItemsToActuator(
     actionable.map((item, i) => handoffLine(batchId, item, i, false)).join('\n');
 
   selectAgent(actuatorAgentId);
-  void sendAgentMessage(actuatorAgentId, text, display);
+  void sendAgentMessage(actuatorAgentId, text, display, {
+    kind: 'action',
+    title: `${actionable.length} action item${actionable.length === 1 ? '' : 's'} → actuator`,
+    gist: display,
+    icon: 'handoff',
+  });
 }
 
 /**
@@ -889,7 +911,12 @@ export function approvePlans(agentId: string, plans: PlanCardData[]): void {
       ? `Approved — execute the planned ${plans[0].action} on host ${plans[0].host}.`
       : `Approved — execute all ${plans.length} plans:\n` +
         plans.map((plan, i) => `${i + 1}. ${plan.action} on host ${plan.host}`).join('\n');
-  void sendAgentMessage(agentId, text, display);
+  void sendAgentMessage(agentId, text, display, {
+    kind: 'action',
+    title: plans.length === 1 ? 'Plan approved' : `${plans.length} plans approved`,
+    gist: display,
+    icon: 'approve',
+  });
 }
 
 /** Reject one or more pending plans in a single message. */
@@ -902,7 +929,16 @@ export function rejectPlans(agentId: string, plans: PlanCardData[]): void {
       : `Rejected — do NOT execute ANY of the following ${plans.length} planned actions: ` +
         plans.map((plan) => `${plan.action} on ${plan.host}`).join('; ') +
         `. Stand down and await further instructions.`;
-  void sendAgentMessage(agentId, text);
+  const display =
+    plans.length === 1
+      ? `Rejected — do not execute the planned ${plans[0].action}. Stand down.`
+      : `Rejected all ${plans.length} plans — stand down.`;
+  void sendAgentMessage(agentId, text, display, {
+    kind: 'action',
+    title: plans.length === 1 ? 'Plan rejected' : `${plans.length} plans rejected`,
+    gist: plans.map((plan) => `${plan.action} on ${plan.host}`).join(' · '),
+    icon: 'reject',
+  });
 }
 
 export function abortAgentTurn(agentId: string): void {
@@ -923,14 +959,22 @@ export function clearAllConversations(): void {
 
 /** Send one user message and stream the agent's reply into the store.
  * `display` overrides what the user bubble shows; `text` (which may carry
- * confirm tokens / item refs) is always what goes into the model history. */
+ * confirm tokens / item refs) is always what goes into the model history.
+ * `preset` marks a catalog/synthetic send — the transcript renders a compact
+ * card instead of the raw prompt, and the preset title doubles as `display`
+ * so derived conversation titles stay clean. */
 export async function sendAgentMessage(
   agentId: string,
   text: string,
   display?: string,
+  preset?: PresetMeta,
 ): Promise<void> {
   const base = getConversation(agentId);
   if (base.streaming) return;
+
+  const shown = display ?? preset?.title;
+  const segments: Segment[] = [{ type: 'text', text: shown ?? text }];
+  if (preset) segments.unshift({ type: 'preset', preset });
 
   const turnIds = [newId(), newId()];
   const conv: Conversation = {
@@ -940,7 +984,7 @@ export async function sendAgentMessage(
     streamStartedAt: Date.now(),
     messages: [
       ...base.messages,
-      { id: turnIds[0], role: 'user', content: text, display, segments: [{ type: 'text', text: display ?? text }] },
+      { id: turnIds[0], role: 'user', content: text, display: shown, segments },
       { id: turnIds[1], role: 'assistant', content: '', segments: [] },
     ],
   };

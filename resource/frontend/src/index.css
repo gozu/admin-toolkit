@@ -971,7 +971,13 @@ h1, h2, h3, h4 {
   font-size: 1.1rem;
   font-weight: 600;
   margin: 1rem 0 0.4rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-default) 70%, transparent);
   color: var(--text-primary);
+}
+
+.ai-analysis-markdown > *:first-child {
+  margin-top: 0;
 }
 
 .ai-analysis-markdown h3 {
@@ -999,6 +1005,10 @@ h1, h2, h3, h4 {
   line-height: 1.5;
 }
 
+.ai-analysis-markdown li::marker {
+  color: color-mix(in srgb, var(--accent) 70%, var(--text-muted));
+}
+
 .ai-analysis-markdown code {
   font-family: var(--font-mono);
   font-size: 0.85em;
@@ -1008,11 +1018,16 @@ h1, h2, h3, h4 {
 }
 
 .ai-analysis-markdown pre {
-  background-color: var(--bg-tertiary);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--text-primary) 4%, transparent), transparent 3rem),
+    var(--bg-tertiary);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
-  padding: 0.75rem 1rem;
+  padding: 0.85rem 1rem;
   overflow-x: auto;
-  margin: 0.5rem 0;
+  margin: 0.6rem 0;
+  font-size: 0.8rem;
+  line-height: 1.55;
 }
 
 .ai-analysis-markdown pre code {
@@ -1027,8 +1042,15 @@ h1, h2, h3, h4 {
 
 .ai-analysis-markdown hr {
   border: none;
-  border-top: 1px solid var(--border-default);
-  margin: 1rem 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--border-default) 12%,
+    var(--border-default) 88%,
+    transparent
+  );
+  margin: 1.1rem 0;
 }
 
 .ai-analysis-markdown h4,
@@ -1041,20 +1063,25 @@ h1, h2, h3, h4 {
 }
 
 /* display:block lets a wide table scroll inside the chat column instead of
-   blowing out the layout */
+   blowing out the layout. Rounded outer frame + row rules only (no per-cell
+   grid) — the corner radii live on the corner cells so header/zebra fills
+   never poke past the frame. */
 .ai-analysis-markdown table {
   display: block;
   max-width: 100%;
   width: fit-content;
   overflow-x: auto;
-  margin: 0.6rem 0;
-  border-collapse: collapse;
+  margin: 0.75rem 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   font-size: 0.85em;
   line-height: 1.45;
 }
 
 .ai-analysis-markdown th {
-  background-color: var(--bg-tertiary);
+  background-color: color-mix(in srgb, var(--bg-tertiary) 85%, transparent);
   color: var(--text-primary);
   font-weight: 600;
   text-align: left;
@@ -1063,14 +1090,43 @@ h1, h2, h3, h4 {
 
 .ai-analysis-markdown th,
 .ai-analysis-markdown td {
-  border: 1px solid var(--border-default);
-  padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid var(--border-default);
+  padding: 0.4rem 0.75rem;
   vertical-align: top;
   color: var(--text-secondary);
 }
 
+.ai-analysis-markdown th {
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border-default));
+}
+
+.ai-analysis-markdown td {
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-analysis-markdown tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.ai-analysis-markdown thead th:first-child {
+  border-top-left-radius: calc(var(--radius-md) - 1px);
+}
+.ai-analysis-markdown thead th:last-child {
+  border-top-right-radius: calc(var(--radius-md) - 1px);
+}
+.ai-analysis-markdown tbody tr:last-child td:first-child {
+  border-bottom-left-radius: calc(var(--radius-md) - 1px);
+}
+.ai-analysis-markdown tbody tr:last-child td:last-child {
+  border-bottom-right-radius: calc(var(--radius-md) - 1px);
+}
+
 .ai-analysis-markdown tbody tr:nth-child(even) {
-  background-color: color-mix(in srgb, var(--bg-tertiary) 45%, transparent);
+  background-color: color-mix(in srgb, var(--bg-tertiary) 30%, transparent);
+}
+
+.ai-analysis-markdown tbody tr:hover {
+  background-color: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .ai-analysis-markdown a {
@@ -1085,10 +1141,21 @@ h1, h2, h3, h4 {
 }
 
 .ai-analysis-markdown blockquote {
-  border-left: 3px solid var(--border-default);
-  margin: 0.5rem 0;
-  padding: 0.1rem 0 0.1rem 0.75rem;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  margin: 0.6rem 0;
+  padding: 0.35rem 0.85rem 0.35rem 0.85rem;
   color: var(--text-muted);
+}
+
+/* Chat-only layout tweaks (the base .ai-analysis-markdown is shared with
+   AiLogAnalysis): cap prose line length for readability — tables and code
+   blocks keep the full column. */
+.chat-markdown p,
+.chat-markdown ul,
+.chat-markdown ol {
+  max-width: 78ch;
 }
 
 /* =============================================================================
@@ -3215,7 +3282,8 @@ h1, h2, h3, h4 {
 
 /* State recolors via custom props; tempo via --orb-spin/--orb-breathe.
    --orb-blur/--orb-glow-size are set inline per instance (they scale with
-   the rendered size). */
+   the rendered size). The mark is the Dataiku bird: the silhouette holds
+   still and glows while the aura layers rotate behind it. */
 .agent-orb {
   --orb-a: var(--accent);
   --orb-b: var(--neon-purple);
@@ -3226,17 +3294,13 @@ h1, h2, h3, h4 {
   position: relative;
   display: inline-block;
   flex-shrink: 0;
-  border-radius: 50%;
   isolation: isolate;
-  overflow: hidden;
-  box-shadow: 0 0 var(--orb-glow-size, 14px) color-mix(in oklab, var(--orb-a) var(--orb-glow-alpha), transparent);
   animation: orb-breathe var(--orb-breathe) ease-in-out infinite;
-  transition: box-shadow 0.6s ease;
 }
 .agent-orb::before {
   content: '';
   position: absolute;
-  inset: -4%;
+  inset: -2%;
   border-radius: 50%;
   background: conic-gradient(
     from 0deg,
@@ -3246,13 +3310,15 @@ h1, h2, h3, h4 {
     var(--orb-b) 75%,
     var(--orb-a)
   );
-  filter: blur(var(--orb-blur, 2px)) saturate(1.25);
+  filter: blur(calc(var(--orb-blur, 2px) * 2.5)) saturate(1.3);
+  opacity: 0.55;
   animation: orb-rotate var(--orb-spin) linear infinite;
+  transition: opacity 0.6s ease;
 }
 .agent-orb::after {
   content: '';
   position: absolute;
-  inset: 12%;
+  inset: 14%;
   border-radius: 50%;
   background: conic-gradient(
     from 180deg,
@@ -3264,21 +3330,23 @@ h1, h2, h3, h4 {
   );
   filter: blur(calc(var(--orb-blur, 2px) * 1.5));
   mix-blend-mode: screen;
-  opacity: 0.9;
+  opacity: 0.35;
   animation: orb-rotate-rev calc(var(--orb-spin) * 0.62) linear infinite;
 }
-.agent-orb-core {
+.agent-orb-bird {
   position: absolute;
-  inset: 0;
+  inset: 8%;
   z-index: 1;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle at 32% 28%,
-    rgba(255, 255, 255, 0.5),
-    rgba(255, 255, 255, 0.07) 42%,
-    transparent 60%
+  display: block;
+  color: color-mix(in oklab, var(--orb-a) 45%, white);
+  filter: drop-shadow(
+    0 0 calc(var(--orb-glow-size, 14px) * 0.6)
+      color-mix(in oklab, var(--orb-a) var(--orb-glow-alpha), transparent)
   );
-  box-shadow: inset 0 0 calc(var(--orb-blur, 2px) * 3) rgba(0, 0, 0, 0.35);
+  transition: color 0.6s ease, filter 0.6s ease;
+}
+[data-theme='light'] .agent-orb-bird {
+  color: var(--orb-a);
 }
 .agent-orb[data-state='thinking'] {
   --orb-spin: 2.4s;
@@ -3334,6 +3402,48 @@ h1, h2, h3, h4 {
   margin-left: -2px;
   background: var(--neon-magenta);
   box-shadow: 0 0 8px 1px color-mix(in oklab, var(--neon-magenta) 75%, transparent);
+}
+
+/* User-side chat surfaces: the plain typed bubble and the preset card share
+   one accent-gradient family so the user's side of the transcript reads as
+   one voice. Dark-first; light theme drops the glow shadows. */
+.chat-user-bubble {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 16%, var(--bg-surface)),
+    color-mix(in srgb, var(--neon-purple) 10%, var(--bg-surface))
+  );
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  box-shadow: 0 2px 14px -6px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+[data-theme='light'] .chat-user-bubble {
+  box-shadow: none;
+}
+
+.preset-card {
+  position: relative;
+  background: linear-gradient(
+    140deg,
+    color-mix(in srgb, var(--accent) 15%, var(--bg-surface)) 0%,
+    color-mix(in srgb, var(--neon-purple) 9%, var(--bg-surface)) 55%,
+    var(--bg-surface) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  box-shadow: 0 4px 20px -8px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+[data-theme='light'] .preset-card {
+  box-shadow: 0 2px 8px -6px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.preset-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.5rem;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 /* Ambient aurora behind the transcript. Three blurred color fields drifting

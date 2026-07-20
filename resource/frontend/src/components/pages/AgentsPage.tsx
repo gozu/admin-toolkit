@@ -254,10 +254,15 @@ export function AgentsPage() {
     return out;
   }, [messages, now]);
 
-  // Autoscroll while streaming, unless the user scrolled up.
+  // Autoscroll while streaming, unless the user scrolled up. The empty-state
+  // hero anchors to the top instead — pinning it to the bottom clips the bird
+  // mark when the hero is taller than the viewport (composer autofocus would
+  // otherwise drag the scroll down too).
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (messages.length === 0) el.scrollTop = 0;
+    else if (stickToBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [messages, streaming]);
 
   const handleScroll = useCallback(() => {

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.774] - 2026-07-20
+
+### Fixed
+- **Native chat validates the agent id fail-closed**: an unknown or caller-invented `agentId` (including the virtual generalist's id while real instances exist) is now refused instead of silently falling back to the virtual agent — whose execute gate is the plugin master switch, not the per-instance `allow_red_actions` — so a chat request can no longer sidestep a real agent's execution config. Lookup failures refuse the turn (never treated as "no agents"); the virtual generalist still serves the verified no-instances state. The setup-bundle cache is size-bounded and purges expired entries, and the chat route caps `agentId` length.
+
 ## [0.4.773] - 2026-07-20
 
 ### Changed

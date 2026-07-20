@@ -304,3 +304,142 @@ def test_agents_settings_update_clears_bundle_cache(monkeypatch):
     assert resp.status_code == 200, resp.get_data(as_text=True)
     assert fake_settings.raw['config']['agent_runtime'] == 'dataiku'
     assert clear.called
+
+
+# ── agent-id verification: fail closed, virtual only when verified empty ─────
+
+class _FakeAgent:
+    def __init__(self, raw=None, settings_error=None):
+        self._raw = raw or {}
+        self._settings_error = settings_error
+
+    def get_settings(self):
+        if self._settings_error:
+            raise self._settings_error
+
+        class _S:
+            def get_raw(_self):
+                return self._raw
+        return _S()
+
+
+class _FakeProject:
+    def __init__(self, agents=None, list_error=None, agent_raw=None, settings_error=None):
+        self._agents = agents
+        self._list_error = list_error
+        self._agent_raw = agent_raw
+        self._settings_error = settings_error
+
+    def list_agents(self):
+        if self._list_error:
+            raise self._list_error
+        return self._agents
+
+    def get_agent(self, agent_id):
+        return _FakeAgent(self._agent_raw, self._settings_error)
+
+
+class _FakeDSSClient:
+    def __init__(self, project, project_keys=('ADMINTOOLKIT',)):
+        self._project = project
+        self._project_keys = list(project_keys)
+
+    def get_project(self, key):
+        return self._project
+
+    def list_project_keys(self):
+        return self._project_keys
+
+
+def _with_local_client(client):
+    import dataiku
+    return mock.patch.object(dataiku, 'api_client', return_value=client)
+
+
+def test_unknown_agent_id_is_rejected_not_promoted_to_virtual():
+    from atk_agent_common.errors import ToolkitError
+    client = _FakeDSSClient(_FakeProject(agents=[{'id': 'real1'}]))
+    with _with_local_client(client):
+        try:
+            agent_native.agent_instance_config_local('bogus-id')
+            assert False, 'expected ToolkitError'
+        except ToolkitError as exc:
+            assert 'bogus-id' in exc.message or 'No agent instance' in exc.message
+
+
+def test_virtual_id_rejected_when_real_agents_exist():
+    from atk_agent_common.errors import ToolkitError
+    client = _FakeDSSClient(_FakeProject(agents=[{'id': 'real1'}]))
+    with _with_local_client(client):
+        try:
+            agent_native.agent_instance_config_local(agent_native.VIRTUAL_AGENT_ID)
+            assert False, 'expected ToolkitError'
+        except ToolkitError:
+            pass
+
+
+def test_virtual_id_allowed_when_project_has_zero_agents():
+    client = _FakeDSSClient(_FakeProject(agents=[]))
+    with _with_local_client(client):
+        assert agent_native.agent_instance_config_local(agent_native.VIRTUAL_AGENT_ID) is None
+
+
+def test_virtual_id_allowed_when_project_verifiably_absent():
+    client = _FakeDSSClient(_FakeProject(list_error=RuntimeError('no such project')),
+                            project_keys=('OTHER',))
+    with _with_local_client(client):
+        assert agent_native.agent_instance_config_local(agent_native.VIRTUAL_AGENT_ID) is None
+
+
+def test_lookup_failure_fails_closed_never_virtual():
+    from atk_agent_common.errors import ToolkitError
+    # Project exists (in the key list) but listing agents errors: a transient
+    # failure must raise, not fall through to the master-switch virtual agent.
+    client = _FakeDSSClient(_FakeProject(list_error=RuntimeError('boom')))
+    with _with_local_client(client):
+        for agent_id in ('real1', agent_native.VIRTUAL_AGENT_ID):
+            try:
+                agent_native.agent_instance_config_local(agent_id)
+                assert False, 'expected ToolkitError'
+            except ToolkitError as exc:
+                assert 'agent' in exc.message.lower()
+
+
+def test_listed_agent_with_unreadable_settings_fails_closed():
+    from atk_agent_common.errors import ToolkitError
+    client = _FakeDSSClient(_FakeProject(agents=[{'id': 'real1'}],
+                                         settings_error=RuntimeError('read denied')))
+    with _with_local_client(client):
+        try:
+            agent_native.agent_instance_config_local('real1')
+            assert False, 'expected ToolkitError'
+        except ToolkitError as exc:
+            assert 'agent' in exc.message.lower()
+
+
+def test_listed_agent_returns_its_plugin_config():
+    raw = {'activeVersion': 'v2',
+           'versions': [{'versionId': 'v1', 'pluginAgentConfig': {'old': True}},
+                        {'versionId': 'v2', 'pluginAgentConfig': {'allow_red_actions': True}}]}
+    client = _FakeDSSClient(_FakeProject(agents=[{'id': 'real1'}], agent_raw=raw))
+    with _with_local_client(client):
+        config = agent_native.agent_instance_config_local('real1')
+    assert config == {'allow_red_actions': True}
+
+
+def test_bundle_cache_is_size_bounded():
+    agent_native.clear_bundle_cache()
+    try:
+        with _BundleBuilders():
+            for i in range(agent_native._BUNDLE_MAX * 2):
+                agent_native._setup_bundle('agent-%d' % i)
+            assert len(agent_native._bundle_cache) <= agent_native._BUNDLE_MAX
+    finally:
+        agent_native.clear_bundle_cache()
+
+
+def test_chat_route_rejects_overlong_agent_id():
+    resp = backend.app.test_client().post(
+        '/api/agents/chat',
+        json={'agentId': 'x' * 65, 'messages': [{'role': 'user', 'content': 'hi'}]})
+    assert resp.status_code == 400

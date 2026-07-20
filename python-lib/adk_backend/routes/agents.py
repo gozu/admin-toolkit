@@ -217,13 +217,19 @@ def _native_chat_response(client, host_id: str, agent_id: str, messages: List[Di
         content = (msg.get('content') or '') if isinstance(msg, dict) else ''
         if role in ('user', 'assistant') and content:
             clipped.append({'role': role, 'content': content[:_MAX_MESSAGE_CHARS]})
+    try:
+        from adk_backend.chat.identity import resolve_chat_user
+        chat_user = resolve_chat_user()
+    except Exception:
+        chat_user = None
 
     def generate():
         def sse(event: str, payload: Dict[str, Any]) -> str:
             return 'event: %s\ndata: %s\n\n' % (event, json.dumps(payload, default=str))
 
         try:
-            for event, payload in agent_native.stream_native_turn(agent_id, clipped):
+            for event, payload in agent_native.stream_native_turn(agent_id, clipped,
+                                                                  user=chat_user):
                 if event != 'final':
                     yield sse(event, payload)
                     continue
@@ -232,6 +238,10 @@ def _native_chat_response(client, host_id: str, agent_id: str, messages: List[Di
                                                 'durationMs': payload.get('durationMs'),
                                                 'traceAvailable': bool(trace),
                                                 'runtime': 'native'}
+                # Turn stats (native loop): only when the generator provided them.
+                for key in ('llmTurns', 'toolsRun', 'usage'):
+                    if payload.get(key) is not None:
+                        done_payload[key] = payload[key]
                 if trace:
                     done_payload['traceId'] = _remember_trace(trace)
                 explorer = _trace_explorer_info(client, host_id)

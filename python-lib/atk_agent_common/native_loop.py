@@ -61,6 +61,41 @@ def _stream_model_turn(llm_with_tools, messages):
     return None
 
 
+def _usage_from(response):
+    """Token usage of one summed model turn, or None.
+
+    Ground truth (akaos, DSS 14.7, 2026-07-19): DKUChatModel chunks do NOT
+    populate LangChain's usage_metadata (it sums to None) — the LLM Mesh
+    footer lands in response_metadata instead, with promptTokens /
+    completionTokens / totalTokens / estimatedCost at the top level (and a
+    totalUsage sub-dict repeating them)."""
+    meta = getattr(response, 'response_metadata', None) or {}
+    source = meta if meta.get('totalTokens') is not None else meta.get('totalUsage') or {}
+    if source.get('totalTokens') is None:
+        return None
+    usage = {}
+    for key in ('promptTokens', 'completionTokens', 'totalTokens'):
+        try:
+            usage[key] = int(source.get(key) or 0)
+        except (TypeError, ValueError):
+            usage[key] = 0
+    try:
+        usage['estimatedCost'] = float(source.get('estimatedCost') or 0.0)
+    except (TypeError, ValueError):
+        usage['estimatedCost'] = 0.0
+    return usage
+
+
+def _add_usage(total, usage):
+    if usage is None:
+        return total
+    if total is None:
+        return dict(usage)
+    for key, value in usage.items():
+        total[key] = (total.get(key) or 0) + value
+    return total
+
+
 def _run_tool(tool_map, call):
     """Execute one tool call; mirrors run_tool_loop's error envelope."""
     name = call.get('name')
@@ -80,10 +115,14 @@ def _run_tool(tool_map, call):
 
 def run_native_loop(llm, tools, messages, trace=None, max_iterations=MAX_ITERATIONS):
     """Sync generator: yields the same dicts as run_tool_loop ({'chunk': ...})
-    plus {'heartbeat': True} markers while tools are executing."""
+    plus {'heartbeat': True} markers while tools are executing, then exactly
+    one {'stats': {llmTurns, toolsRun, usage?}} marker before finishing
+    (except on error/abort)."""
     tool_map = {t.name: t for t in tools}
     llm_with_tools = llm.bind_tools(tools) if tools else llm
     executor = None
+    stats = {'llmTurns': 0, 'toolsRun': 0}
+    usage_total = None
 
     try:
         for iteration in range(max_iterations):
@@ -98,13 +137,18 @@ def run_native_loop(llm, tools, messages, trace=None, max_iterations=MAX_ITERATI
                     break
             if response is None:
                 _span_end(turn_span, outcome='no-response')
+                yield {'stats': dict(stats, usage=usage_total)}
                 return
+            stats['llmTurns'] += 1
+            usage_total = _add_usage(usage_total, _usage_from(response))
             tool_calls = getattr(response, 'tool_calls', None) or []
             text = response.content if isinstance(response.content, str) else ''
             _span_end(turn_span, toolCalls=len(tool_calls) or None, textChars=len(text) or None,
                       outcome='tool-calls' if tool_calls else 'final-answer')
             if not tool_calls:
+                yield {'stats': dict(stats, usage=usage_total)}
                 return
+            stats['toolsRun'] += len(tool_calls)
             messages.append(AIMessage(content=text, tool_calls=tool_calls))
 
             # All chips first: the user sees the whole turn's activity appear
@@ -112,7 +156,8 @@ def run_native_loop(llm, tools, messages, trace=None, max_iterations=MAX_ITERATI
             spans = {}
             for call in tool_calls:
                 yield {'chunk': {'type': 'event', 'eventKind': 'tool_call',
-                                 'eventData': {'name': call.get('name'), 'args': call.get('args') or {}}}}
+                                 'eventData': {'name': call.get('name'), 'args': call.get('args') or {},
+                                               'id': call.get('id')}}}
                 span = _span_begin(trace, 'tool:%s' % call.get('name'))
                 if span is not None:
                     try:
@@ -136,7 +181,8 @@ def run_native_loop(llm, tools, messages, trace=None, max_iterations=MAX_ITERATI
                     call = futures[future]
                     result, duration_ms = future.result()
                     results[id(call)] = result
-                    events = _result_event(call.get('name'), result, duration_ms)
+                    events = _result_event(call.get('name'), result, duration_ms,
+                                           call_id=call.get('id'))
                     summary = events[0]['chunk']['eventData']
                     err = summary.get('error')
                     _span_end(spans.get(id(call)), durationMs=duration_ms, ok=summary.get('ok'),
@@ -155,6 +201,7 @@ def run_native_loop(llm, tools, messages, trace=None, max_iterations=MAX_ITERATI
 
         yield {'chunk': {'text': '\n\n[stopped: tool-call iteration limit reached — '
                                  'narrow the request or ask me to continue]'}}
+        yield {'stats': dict(stats, usage=usage_total)}
     finally:
         if executor is not None:
             # Abandon, don't wait: on abort (generator closed) running tools

@@ -192,6 +192,10 @@ def api_agent_knobs_update():
     settings = _local_thread_client().get_plugin(_PLUGIN_ID).get_settings()
     settings.get_raw().setdefault('config', {}).update(casted)
     settings.save()
+    # Saved knobs (agent_runtime, LLM picks…) must beat the native runtime's
+    # setup-bundle TTL — the next chat turn reassembles from fresh config.
+    from adk_backend import agent_native
+    agent_native.clear_bundle_cache()
     config = settings.get_raw().get('config', {})
     return jsonify({'ok': True, 'values': _read_agent_knobs(config),
                     'written': sorted(casted)})

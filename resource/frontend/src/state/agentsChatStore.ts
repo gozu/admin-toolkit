@@ -26,6 +26,11 @@ export interface ActivityItem {
   name: string;
   args?: unknown;
   running: boolean;
+  /** Tool-call correlation id from the model — settles the right chip when
+   * parallel calls share a name (results can land out of order). */
+  callId?: string;
+  /** Epoch ms when the call started — drives the live elapsed on running chips. */
+  startedAt?: number;
   durationMs?: number;
   ok?: boolean;
   error?: string;
@@ -115,11 +120,22 @@ export type Segment =
    *  ({page: PageId, label}) when the clearing surface is a toolkit page. */
   | { type: 'gate_hint'; code: string; message?: string; link?: GateLink }
   /** Preset-send provenance on a user message — see PresetMeta. */
-  | { type: 'preset'; preset: PresetMeta };
+  | { type: 'preset'; preset: PresetMeta }
+  /** User hit Stop mid-turn — rendered as a muted marker line. Deliberately
+   *  NOT a text segment, so it never joins the model-facing `content`. */
+  | { type: 'stopped' };
 
 export interface GateLink {
   page: string;
   label: string;
+}
+
+/** Token usage of the turn, summed across model turns by the native loop. */
+export interface TurnUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  estimatedCost?: number;
 }
 
 export interface ChatMessage {
@@ -138,6 +154,14 @@ export interface ChatMessage {
   traceId?: string;
   /** Wall-clock duration of the turn that produced this assistant message. */
   durationMs?: number;
+  // Turn stats from the done event (session-local, mirrored like durationMs;
+  // the server chat store has no columns for them). All optional — the footer
+  // renders only what the runtime actually reported.
+  /** Which runtime served the turn: 'native' | 'dataiku'. */
+  runtime?: string;
+  usage?: TurnUsage;
+  llmTurns?: number;
+  toolsRun?: number;
 }
 
 export interface Conversation {
@@ -372,7 +396,13 @@ function appendText(segments: Segment[], text: string): Segment[] {
 
 function applyAgentEvent(segments: Segment[], kind: string, data: Record<string, unknown>): Segment[] {
   if (kind === 'tool_call') {
-    const item: ActivityItem = { name: String(data.name || '?'), args: data.args, running: true };
+    const item: ActivityItem = {
+      name: String(data.name || '?'),
+      args: data.args,
+      running: true,
+      callId: data.id ? String(data.id) : undefined,
+      startedAt: Date.now(),
+    };
     const last = segments[segments.length - 1];
     if (last && last.type === 'activity') {
       segments[segments.length - 1] = { type: 'activity', items: [...last.items, item] };
@@ -387,7 +417,11 @@ function applyAgentEvent(segments: Segment[], kind: string, data: Record<string,
     for (let i = segments.length - 1; i >= 0; i--) {
       const seg = segments[i];
       if (seg.type !== 'activity') continue;
-      const idx = seg.items.findIndex((it) => it.running && it.name === data.name);
+      // Match by correlation id when the backend sent one (parallel same-name
+      // calls settle out of order); name is the stale-kernel fallback.
+      const idx = seg.items.findIndex(
+        (it) => it.running && (data.id ? it.callId === String(data.id) : it.name === data.name),
+      );
       if (idx === -1) continue;
       const items = seg.items.slice();
       items[idx] = {
@@ -1064,7 +1098,14 @@ async function streamTurn(
             : conv.traceExplorerPath,
         };
         const doneDuration = Number(payload.durationMs) || undefined;
-        if (payload.traceId || doneDuration) {
+        const runtime = payload.runtime ? String(payload.runtime) : undefined;
+        const llmTurns = Number(payload.llmTurns) || undefined;
+        const toolsRun = Number(payload.toolsRun) || undefined;
+        const usage =
+          payload.usage && typeof payload.usage === 'object'
+            ? (payload.usage as TurnUsage)
+            : undefined;
+        if (payload.traceId || doneDuration || runtime || llmTurns || toolsRun || usage) {
           const messages = conv.messages.slice();
           const last = messages[messages.length - 1];
           if (last?.role === 'assistant') {
@@ -1072,6 +1113,10 @@ async function streamTurn(
               ...last,
               traceId: payload.traceId ? String(payload.traceId) : last.traceId,
               durationMs: doneDuration ?? last.durationMs,
+              runtime: runtime ?? last.runtime,
+              llmTurns: llmTurns ?? last.llmTurns,
+              toolsRun: toolsRun ?? last.toolsRun,
+              usage: usage ?? last.usage,
             };
             conv = { ...conv, messages };
           }
@@ -1093,8 +1138,25 @@ async function streamTurn(
     if (agentsChatStore.get().conversations[conv.id]) {
       // Drop an empty trailing assistant message (abort before first token).
       const messages = conv.messages.slice();
-      const last = messages[messages.length - 1];
+      let last = messages[messages.length - 1];
       if (last && last.role === 'assistant' && last.segments.length === 0) messages.pop();
+      // User hit Stop mid-reply: settle any still-running chips (the turn is
+      // over — same normalization the reload path applies) and append the
+      // non-text stop marker so the truncation stays visible in the record.
+      last = messages[messages.length - 1];
+      if (controller.signal.aborted && last?.role === 'assistant' && last.segments.length > 0) {
+        messages[messages.length - 1] = {
+          ...last,
+          segments: [
+            ...last.segments.map((s) =>
+              s.type === 'activity'
+                ? { ...s, items: s.items.map((it) => ({ ...it, running: false })) }
+                : s,
+            ),
+            { type: 'stopped' as const },
+          ],
+        };
+      }
       const settled = { ...conv, messages, streaming: false, streamStartedAt: undefined };
       putConversation(settled);
       // Auto-persist the settled turn: the user message + the assistant reply

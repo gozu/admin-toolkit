@@ -170,6 +170,10 @@ function formatDuration(ms: number): string {
   return `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
 }
 
+function formatTokens(n: number): string {
+  return n < 1000 ? String(n) : `${(n / 1000).toFixed(1)}k`;
+}
+
 /** Inline callout for a safety-gate refusal an admin can clear in DSS. Today
  *  the only case is `agent-execution-disabled` (per-agent `allow_red_actions`
  *  is off), with a deep link straight to the agent's config screen. */
@@ -296,7 +300,14 @@ export function MessageView({
           );
         }
         if (segment.type === 'activity') {
-          return <ActivityChips key={i} items={segment.items} />;
+          return <ActivityChips key={i} items={segment.items} now={now} />;
+        }
+        if (segment.type === 'stopped') {
+          return (
+            <div key={i} className="flex items-center gap-1.5 pt-1 text-[11px] text-[var(--text-muted)]">
+              <span aria-hidden="true">⏹</span> stopped
+            </div>
+          );
         }
         if (segment.type === 'gate_hint') {
           return (
@@ -331,14 +342,17 @@ export function MessageView({
             />
           );
         }
-        // Preset segments live on user messages; never rendered here.
-        if (segment.type === 'preset') return null;
-        return <ExecutionCard key={i} execution={segment.execution} onShowAudit={onShowAudit} />;
+        if (segment.type === 'execution') {
+          return <ExecutionCard key={i} execution={segment.execution} onShowAudit={onShowAudit} />;
+        }
+        // Anything else (preset segments live on user messages; unknown types
+        // from a newer bundle in persisted conversations) — skip.
+        return null;
       })}
       {live && message.segments[message.segments.length - 1]?.type === 'text' && (
         <span className="stream-caret" aria-hidden="true" />
       )}
-      {(message.traceId || message.durationMs || message.content) && (
+      {(message.traceId || message.durationMs || message.runtime || message.content) && (
         <div className="flex items-center gap-3 pt-0.5">
           {message.durationMs ? (
             <span
@@ -346,6 +360,32 @@ export function MessageView({
               title="Turn duration"
             >
               {formatDuration(message.durationMs)}
+            </span>
+          ) : null}
+          {message.runtime && (
+            <span
+              className="rounded border border-[var(--border-default)] px-1 py-px text-[10px] font-mono text-[var(--text-muted)]"
+              title="Agent runtime"
+            >
+              {message.runtime}
+            </span>
+          )}
+          {message.llmTurns ? (
+            <span className="text-[11px] tabular-nums text-[var(--text-muted)]" title="Model turns">
+              {message.llmTurns} {message.llmTurns === 1 ? 'turn' : 'turns'}
+            </span>
+          ) : null}
+          {message.toolsRun ? (
+            <span className="text-[11px] tabular-nums text-[var(--text-muted)]" title="Tool calls">
+              {message.toolsRun} {message.toolsRun === 1 ? 'tool' : 'tools'}
+            </span>
+          ) : null}
+          {message.usage?.totalTokens ? (
+            <span
+              className="text-[11px] tabular-nums text-[var(--text-muted)]"
+              title={`${message.usage.promptTokens ?? '?'} in · ${message.usage.completionTokens ?? '?'} out`}
+            >
+              {formatTokens(message.usage.totalTokens)} tok
             </span>
           ) : null}
           {message.traceId && (

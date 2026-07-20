@@ -8,7 +8,14 @@ function formatMs(ms?: number): string {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
-function ChipDetail({ item }: { item: ActivityItem }) {
+/** Live elapsed of a running call — whole seconds (the `now` tick is 1/s). */
+function liveElapsed(item: ActivityItem, now: number): string {
+  if (!item.startedAt) return '';
+  const s = Math.max(0, Math.floor((now - item.startedAt) / 1000));
+  return `${s}s`;
+}
+
+function ChipDetail({ item, now }: { item: ActivityItem; now: number }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-1.5">
@@ -30,7 +37,7 @@ function ChipDetail({ item }: { item: ActivityItem }) {
       )}
       <div className="text-[10px]">
         {item.running ? (
-          <span className="text-[var(--neon-yellow)]">running…</span>
+          <span className="text-[var(--neon-yellow)]">running… {liveElapsed(item, now)}</span>
         ) : item.error ? (
           <span className="text-[var(--danger)]">failed: {item.error}</span>
         ) : item.ok === false ? (
@@ -44,12 +51,13 @@ function ChipDetail({ item }: { item: ActivityItem }) {
 }
 
 // Tool-call activity chips. Each chip opens a RichPopover with the tool's
-// arguments and outcome (replaces the old lossy `title` tooltip).
-export function ActivityChips({ items }: { items: ActivityItem[] }) {
+// arguments and outcome (replaces the old lossy `title` tooltip). Running
+// chips count elapsed live off the page's shared 1s `now` tick.
+export function ActivityChips({ items, now }: { items: ActivityItem[]; now: number }) {
   return (
     <div className="flex flex-wrap gap-1.5 my-1.5">
       {items.map((item, i) => (
-        <RichPopover key={`${item.name}-${i}`} width={300} content={<ChipDetail item={item} />}>
+        <RichPopover key={`${item.name}-${i}`} width={300} content={<ChipDetail item={item} now={now} />}>
           <motion.span
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
@@ -71,6 +79,9 @@ export function ActivityChips({ items }: { items: ActivityItem[] }) {
               </svg>
             )}
             {item.name}
+            {item.running && item.startedAt && (
+              <span className="tabular-nums opacity-80">{liveElapsed(item, now)}</span>
+            )}
             {!item.running && item.durationMs !== undefined && (
               <span className="text-[var(--text-muted)]">{formatMs(item.durationMs)}</span>
             )}

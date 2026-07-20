@@ -62,12 +62,17 @@ def messages_from_query(query, system_prompt):
     return out
 
 
-def _result_event(name, result, duration_ms):
+def _result_event(name, result, duration_ms, call_id=None):
     """tool_result event (+ plan/execution card events for the actuator tools).
 
     Results are tool-function return values: JSON strings for the actuator
     tools, str(dict) or JSON for the sensor tools. Parse defensively — the
-    UI events are best-effort sugar, never load-bearing for the loop."""
+    UI events are best-effort sugar, never load-bearing for the loop.
+
+    call_id (the model's tool_call id) correlates this result with its
+    tool_call event so the frontend can settle the right chip when several
+    calls share a name; omitted (older callers) the frontend falls back to
+    name matching."""
     parsed = None
     if isinstance(result, str):
         try:
@@ -79,6 +84,8 @@ def _result_event(name, result, duration_ms):
     error = (parsed or {}).get('error') if isinstance(parsed, dict) else None
     events = [{'name': name, 'durationMs': duration_ms, 'ok': error is None,
                'error': error or None}]
+    if call_id:
+        events[0]['id'] = call_id
     out = [{'chunk': {'type': 'event', 'eventKind': 'tool_result', 'eventData': events[0]}}]
     if isinstance(parsed, dict):
         if name == _PLAN_TOOL and parsed.get('confirm_token'):
@@ -163,7 +170,8 @@ async def run_tool_loop(llm, tools, messages, trace=None):
             name = call.get('name')
             args = call.get('args') or {}
             yield {'chunk': {'type': 'event', 'eventKind': 'tool_call',
-                             'eventData': {'name': name, 'args': args}}}
+                             'eventData': {'name': name, 'args': args,
+                                           'id': call.get('id')}}}
             tool = tool_map.get(name)
             tool_span = _span_begin(trace, 'tool:%s' % name)
             if tool_span is not None:
@@ -180,7 +188,8 @@ async def run_tool_loop(llm, tools, messages, trace=None):
                 except Exception as exc:
                     result = json.dumps({'error': {'code': 'tool-crash',
                                                    'message': '%s: %s' % (type(exc).__name__, str(exc)[:200])}})
-            events = _result_event(name, result, int((time.monotonic() - started) * 1000))
+            events = _result_event(name, result, int((time.monotonic() - started) * 1000),
+                                   call_id=call.get('id'))
             summary = events[0]['chunk']['eventData']
             err = summary.get('error')
             _span_end(tool_span, durationMs=summary.get('durationMs'), ok=summary.get('ok'),

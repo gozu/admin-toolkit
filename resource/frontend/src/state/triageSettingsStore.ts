@@ -3,20 +3,10 @@ import { fetchJson } from '../utils/api';
 import { pushToast } from './toastStore';
 
 // Agents → Permissions → "Autonomous daily agent" panel. One GET powers the
-// whole panel (opt-ins, caps, schedule, delivery); every write is a partial
-// POST whose response is the authoritative refreshed payload. Opting an
-// action IN also enables its main per-action gate server-side.
-
-export interface TriageActionRow {
-  action: string;
-  risk: 'low' | 'medium' | 'high';
-  description: string;
-  findings: string[];
-  optedIn: boolean;
-  gateEnabled: boolean;
-  localOnly: boolean;
-  batchable: boolean;
-}
+// whole panel (status, caps, schedule, delivery); every write is a partial
+// POST whose response is the authoritative refreshed payload. Per-action
+// autonomy lives on the main capability list (agentActionGatesStore's Auto
+// column) — the panel only shows the allowed/total count.
 
 export interface TriageScenarioStatus {
   provisioned: boolean;
@@ -29,7 +19,9 @@ export interface TriageSettings {
   ok: boolean;
   enabled: boolean;
   remoteHosts: boolean;
-  actions: TriageActionRow[];
+  /** Actions with a live Autonomous grant vs. all auto-capable actions
+   *  (python-run excluded from the denominator). */
+  autonomousCounts: { allowed: number; total: number };
   caps: { maxGb: number; maxObjects: number; logMinAgeDays: number };
   delivery: {
     recipient: string;
@@ -78,14 +70,13 @@ export async function loadTriageSettings(): Promise<void> {
 export interface TriageUpdate {
   enabled?: boolean;
   remoteHosts?: boolean;
-  optIn?: Record<string, boolean>;
   maxGb?: number;
   maxObjects?: number;
 }
 
 /** Partial write; optimistic for toggles, authoritative on response. The
- *  `saving` tag drives per-control spinners ('__master__', '__bulk__',
- *  '__caps__', or an action name). */
+ *  `saving` tag drives per-control spinners ('__master__', '__remote__',
+ *  '__caps__'). */
 export async function updateTriageSettings(update: TriageUpdate, savingTag: string): Promise<void> {
   const prev = triageSettingsStore.get();
   if (prev.data) {
@@ -93,11 +84,6 @@ export async function updateTriageSettings(update: TriageUpdate, savingTag: stri
       ...prev.data,
       ...(update.enabled !== undefined ? { enabled: update.enabled } : null),
       ...(update.remoteHosts !== undefined ? { remoteHosts: update.remoteHosts } : null),
-      actions: prev.data.actions.map((a) =>
-        update.optIn && a.action in update.optIn
-          ? { ...a, optedIn: update.optIn[a.action], gateEnabled: a.gateEnabled || update.optIn[a.action] }
-          : a,
-      ),
     };
     triageSettingsStore.patch({ data: optimistic, saving: savingTag, error: null });
   } else {

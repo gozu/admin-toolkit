@@ -3,10 +3,12 @@ import {
   agentActionGatesStore,
   loadActionGates,
   toggleActionGate,
+  toggleAutonomous,
   toggleGatesBulk,
   type ActionRow,
   type SensorRow,
 } from '../../state/agentActionGatesStore';
+import { loadTriageSettings } from '../../state/triageSettingsStore';
 import { useDiag } from '../../context/DiagContext';
 import { useRedState } from '../../state/redUnlockStore';
 import { UnlockModal } from '../UnlockModal';
@@ -16,11 +18,13 @@ import { Spinner } from '../common/Spinner';
 import { AutonomousAgentPanel } from '../agents/AutonomousAgentPanel';
 
 /**
- * Agent Permissions — the per-action enablement catalog. Every capability the
- * agents have is listed here: read-only sensor tools (checked by default)
- * and the actuator actions grouped read/write vs execute (unchecked and
- * therefore refused until an admin enables them). Toggles are advanced-gated
- * server-side and reach running agent kernels within ~30s — no recycle.
+ * Agent Permissions — the per-capability catalog. Every capability the agents
+ * have is listed once, in four sections (Read-only / Write / Execute /
+ * Power-Up), each row carrying TWO checkboxes: Enabled (the agent may use it
+ * at all) and Auto (the nightly autonomous agent may run it without a human).
+ * Server invariants: Auto ⇒ Enabled, and python-run can never be Auto.
+ * Toggles are advanced-gated server-side and reach running agent kernels
+ * within ~30s — no recycle.
  */
 
 const PLUGIN_SETTINGS_URL = '/plugins/admin-toolkit/settings/';
@@ -31,6 +35,10 @@ const RISK_DOT: Record<string, string> = {
   green: 'bg-[var(--accent)]',
 };
 
+// One shared grid keeps the header labels and every row's checkbox columns
+// aligned — content | Enabled | Auto.
+const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_3.25rem_3.25rem] gap-x-1';
+
 function Chip({ children }: { children: string }) {
   return (
     <span className="rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
@@ -39,87 +47,126 @@ function Chip({ children }: { children: string }) {
   );
 }
 
+function ColumnHeadRow() {
+  return (
+    <div className={`${ROW_GRID} px-3 pt-1 pb-0.5`}>
+      <span />
+      <span className="justify-self-center text-[9px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+        Enabled
+      </span>
+      <span className="justify-self-center text-[9px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+        Auto
+      </span>
+    </div>
+  );
+}
+
 function GateRow({
   name,
   enabled,
+  autonomous,
+  autoCapable,
   risk,
   detail,
   chips,
   saving,
-  onToggle,
+  onToggleEnabled,
+  onToggleAuto,
 }: {
   name: string;
   enabled: boolean;
+  autonomous: boolean;
+  autoCapable: boolean;
   risk?: string;
   detail: string;
   chips?: string[];
   saving: boolean;
-  onToggle: (enabled: boolean) => void;
+  onToggleEnabled: (enabled: boolean) => void;
+  onToggleAuto: (allowed: boolean) => void;
 }) {
   return (
-    <label
-      className={`flex items-start gap-3 rounded-lg border border-transparent px-3 py-2 transition-colors hover:bg-[var(--bg-hover)] ${
-        saving ? 'opacity-60' : 'cursor-pointer'
+    <div
+      className={`${ROW_GRID} items-start rounded-lg border border-transparent px-3 py-2 transition-colors hover:bg-[var(--bg-hover)] ${
+        saving ? 'opacity-60' : ''
       }`}
     >
-      <input
-        type="checkbox"
-        checked={enabled}
-        disabled={saving}
-        onChange={(e) => onToggle(e.target.checked)}
-        className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
-      />
-      <div className="min-w-0 flex-1 space-y-0.5">
+      <div className="min-w-0 space-y-0.5">
         <div className="flex flex-wrap items-center gap-2">
           {risk && <span className={`h-2 w-2 shrink-0 rounded-full ${RISK_DOT[risk] ?? RISK_DOT.amber}`} />}
           <code className="text-xs font-semibold text-[var(--text-primary)]">{name}</code>
-          {!enabled && (
-            <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
-              disabled
-            </span>
-          )}
           {chips?.map((c) => <Chip key={c}>{c}</Chip>)}
         </div>
         <p className="text-[11px] leading-relaxed text-[var(--text-muted)] break-words">{detail}</p>
+        {!autoCapable && (
+          <p className="text-[10px] text-[var(--text-tertiary)]">
+            Autonomous mode unavailable — manual per-run code acknowledgment always required.
+          </p>
+        )}
       </div>
-    </label>
+      <input
+        type="checkbox"
+        aria-label={`${name} enabled`}
+        checked={enabled}
+        disabled={saving}
+        onChange={(e) => onToggleEnabled(e.target.checked)}
+        className="mt-0.5 h-4 w-4 justify-self-center accent-[var(--accent)] cursor-pointer disabled:cursor-default"
+      />
+      {autoCapable ? (
+        <input
+          type="checkbox"
+          aria-label={`${name} autonomous`}
+          checked={autonomous}
+          disabled={saving}
+          onChange={(e) => onToggleAuto(e.target.checked)}
+          className="mt-0.5 h-4 w-4 justify-self-center accent-[var(--accent)] cursor-pointer disabled:cursor-default"
+        />
+      ) : (
+        <input
+          type="checkbox"
+          aria-label={`${name} autonomous (unavailable)`}
+          checked={false}
+          disabled
+          title="python-run can never run autonomously — every run requires a human 'I have read this code' acknowledgment."
+          className="mt-0.5 h-4 w-4 justify-self-center accent-[var(--accent)] opacity-30 cursor-not-allowed"
+        />
+      )}
+    </div>
   );
 }
 
-/** The "Read access — all toolkit data" master switch: checked when every
- *  sensor is on, indeterminate when only some are. One click flips them all
- *  in a single request; per-sensor rows below stay individually toggleable. */
+/** The sensors' master row: two indeterminate checkboxes — Enabled flips all
+ *  sensors in one request, Auto grants/revokes autonomy over all of them.
+ *  Per-sensor rows below stay individually toggleable. */
 function MasterReadRow({
   enabledCount,
+  autoCount,
   total,
   saving,
-  onToggle,
+  onToggleEnabled,
+  onToggleAuto,
 }: {
   enabledCount: number;
+  autoCount: number;
   total: number;
   saving: boolean;
-  onToggle: (enabled: boolean) => void;
+  onToggleEnabled: (enabled: boolean) => void;
+  onToggleAuto: (allowed: boolean) => void;
 }) {
-  const ref = useRef<HTMLInputElement>(null);
+  const enabledRef = useRef<HTMLInputElement>(null);
+  const autoRef = useRef<HTMLInputElement>(null);
   const allOn = enabledCount === total && total > 0;
+  const allAuto = autoCount === total && total > 0;
   useEffect(() => {
-    if (ref.current) ref.current.indeterminate = enabledCount > 0 && !allOn;
-  }, [enabledCount, allOn]);
+    if (enabledRef.current) enabledRef.current.indeterminate = enabledCount > 0 && !allOn;
+    if (autoRef.current) autoRef.current.indeterminate = autoCount > 0 && !allAuto;
+  }, [enabledCount, allOn, autoCount, allAuto]);
   return (
-    <label
-      className={`flex items-start gap-3 rounded-lg border border-[var(--border-default)]/60 bg-[var(--bg-surface)]/60 px-3 py-2 transition-colors hover:bg-[var(--bg-hover)] ${
-        saving ? 'opacity-60' : 'cursor-pointer'
+    <div
+      className={`${ROW_GRID} items-start rounded-lg border border-[var(--border-default)]/60 bg-[var(--bg-surface)]/60 px-3 py-2 transition-colors hover:bg-[var(--bg-hover)] ${
+        saving ? 'opacity-60' : ''
       }`}
     >
-      <input
-        ref={ref}
-        type="checkbox"
-        checked={allOn}
-        disabled={saving}
-        onChange={(e) => onToggle(e.target.checked)}
-        className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
-      />
-      <div className="min-w-0 flex-1 space-y-0.5">
+      <div className="min-w-0 space-y-0.5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-[var(--text-primary)]">
             Read access — all toolkit data
@@ -137,10 +184,28 @@ function MasterReadRow({
         </div>
         <p className="text-[11px] leading-relaxed text-[var(--text-muted)] break-words">
           Everything the toolkit surfaces — health, config, cost, storage, logs, churn, audits —
-          is readable by the agents. Flip this to grant or revoke all sensors at once.
+          is readable by the agents. Each column&apos;s checkbox flips all sensors at once.
         </p>
       </div>
-    </label>
+      <input
+        ref={enabledRef}
+        type="checkbox"
+        aria-label="all sensors enabled"
+        checked={allOn}
+        disabled={saving}
+        onChange={(e) => onToggleEnabled(e.target.checked)}
+        className="mt-0.5 h-4 w-4 justify-self-center accent-[var(--accent)] cursor-pointer disabled:cursor-default"
+      />
+      <input
+        ref={autoRef}
+        type="checkbox"
+        aria-label="all sensors autonomous"
+        checked={allAuto}
+        disabled={saving}
+        onChange={(e) => onToggleAuto(e.target.checked)}
+        className="mt-0.5 h-4 w-4 justify-self-center accent-[var(--accent)] cursor-pointer disabled:cursor-default"
+      />
+    </div>
   );
 }
 
@@ -149,34 +214,68 @@ function SectionCard({
   subtitle,
   enabledCount,
   total,
+  autoBulk,
   children,
 }: {
   title: string;
   subtitle: string;
   enabledCount: number;
   total: number;
+  autoBulk?: {
+    allowed: number;
+    capable: number;
+    saving: boolean;
+    onAll: () => void;
+    onNone: () => void;
+  };
   children: React.ReactNode;
 }) {
   return (
     <section className="glass-card p-4 space-y-2">
-      <div className="flex items-baseline gap-2">
+      <div className="flex flex-wrap items-baseline gap-2">
         <h3 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h3>
         <span className="text-xs text-[var(--text-tertiary)]">
           {enabledCount}/{total} enabled
         </span>
+        {autoBulk && (
+          <span className="ml-auto flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
+            {autoBulk.allowed}/{autoBulk.capable} auto
+            <button
+              type="button"
+              disabled={autoBulk.saving || autoBulk.allowed === autoBulk.capable}
+              onClick={autoBulk.onAll}
+              className="text-[var(--accent)] hover:underline disabled:opacity-40 disabled:no-underline"
+            >
+              Allow all auto
+            </button>
+            <button
+              type="button"
+              disabled={autoBulk.saving || autoBulk.allowed === 0}
+              onClick={autoBulk.onNone}
+              className="text-[var(--accent)] hover:underline disabled:opacity-40 disabled:no-underline"
+            >
+              Revoke all auto
+            </button>
+          </span>
+        )}
       </div>
       <p className="text-xs text-[var(--text-muted)]">{subtitle}</p>
-      <div className="-mx-1 divide-y divide-[var(--border-default)]/40">{children}</div>
+      <div className="-mx-1">
+        <ColumnHeadRow />
+        <div className="divide-y divide-[var(--border-default)]/40">{children}</div>
+      </div>
     </section>
   );
 }
+
+type PendingToggle = { kind: 'gates' | 'auto'; names: string[]; value: boolean };
 
 export function AgentSettingsPage() {
   const { sensors, actions, loading, loaded, saving, error } = agentActionGatesStore.use();
   const { setActivePage } = useDiag();
   const { authed: unlocked } = useRedState();
   const [showUnlock, setShowUnlock] = useState(false);
-  const [pending, setPending] = useState<{ names: string[]; enabled: boolean } | null>(null);
+  const [pending, setPending] = useState<PendingToggle | null>(null);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [powerUpConfirm, setPowerUpConfirm] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -185,18 +284,24 @@ export function AgentSettingsPage() {
     if (!loaded) void loadActionGates();
   }, [loaded]);
 
-  const applyToggle = (names: string[], enabled: boolean) => {
-    if (names.length === 1) void toggleActionGate(names[0], enabled).catch(() => undefined);
-    else void toggleGatesBulk(names, enabled).catch(() => undefined);
+  // Every successful write refreshes the autonomous panel's allowed-count.
+  const applyToggle = ({ kind, names, value }: PendingToggle) => {
+    const op =
+      kind === 'auto'
+        ? toggleAutonomous(names, value)
+        : names.length === 1
+          ? toggleActionGate(names[0], value)
+          : toggleGatesBulk(names, value);
+    void op.then(() => void loadTriageSettings()).catch(() => undefined);
   };
 
-  const requestToggle = (names: string[], enabled: boolean) => {
+  const requestToggle = (toggle: PendingToggle) => {
     if (!unlocked) {
-      setPending({ names, enabled });
+      setPending(toggle);
       setShowUnlock(true);
       return;
     }
-    applyToggle(names, enabled);
+    applyToggle(toggle);
   };
 
   // Unlock gate shared with the autonomous-agent panel: any panel write goes
@@ -220,12 +325,46 @@ export function AgentSettingsPage() {
 
   const visibleSensors = sensors.filter(matchesSensor);
   const readWrite = actions.filter((a: ActionRow) => a.mode === 'read/write' && matchesAction(a));
-  const powerUp = actions.filter((a: ActionRow) => a.action === 'python-run' && matchesAction(a));
   const execute = actions.filter(
     (a: ActionRow) => a.mode === 'execute' && a.action !== 'python-run' && matchesAction(a),
   );
+  const powerUp = actions.filter((a: ActionRow) => a.action === 'python-run' && matchesAction(a));
   const nothingMatches =
     needle && visibleSensors.length + readWrite.length + powerUp.length + execute.length === 0;
+
+  const autoBulkFor = (rows: ActionRow[]) => {
+    const capable = rows.filter((a) => a.autoCapable);
+    return {
+      allowed: capable.filter((a) => a.autonomous).length,
+      capable: capable.length,
+      saving: saving === '__bulk-auto__',
+      onAll: () =>
+        requestToggle({ kind: 'auto', names: capable.map((a) => a.action), value: true }),
+      onNone: () =>
+        requestToggle({ kind: 'auto', names: capable.map((a) => a.action), value: false }),
+    };
+  };
+
+  const actionChips = (a: ActionRow) => [
+    ...(a.batchable ? ['batchable'] : []),
+    ...(a.localOnly ? ['local-only'] : []),
+  ];
+
+  const actionGateRow = (a: ActionRow) => (
+    <GateRow
+      key={a.action}
+      name={a.action}
+      enabled={a.enabled}
+      autonomous={a.autonomous}
+      autoCapable={a.autoCapable}
+      risk={a.risk}
+      detail={a.shape}
+      chips={actionChips(a)}
+      saving={saving === a.action || saving === '__bulk-auto__'}
+      onToggleEnabled={(v) => requestToggle({ kind: 'gates', names: [a.action], value: v })}
+      onToggleAuto={(v) => requestToggle({ kind: 'auto', names: [a.action], value: v })}
+    />
+  );
 
   if (loading && !loaded) {
     return (
@@ -253,11 +392,12 @@ export function AgentSettingsPage() {
 
         <div className="glass-card p-4 space-y-1.5 border-l-2 border-l-[var(--accent)]">
           <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-            Everything the agents can do is listed below. Read-only tools are enabled by
-            default; every read/write and execute action is <strong>off</strong> until you
-            enable it here — a disabled action is refused at plan time and again at execute
-            time, for chat, checklists and the autonomous triage tier alike. Changes apply to
-            running agents within ~30 seconds. Executing also still requires the{' '}
+            Everything the agents can do is listed below with two checkboxes per capability:{' '}
+            <strong>Enabled</strong> lets agents use it at all (with per-plan human approval in
+            chat); <strong>Auto</strong> additionally lets the nightly autonomous agent plan and
+            run it without a human in the loop. Auto implies Enabled; disabling a capability
+            revokes its Auto grant. A disabled action is refused at plan time and again at
+            execute time. Changes apply to running agents within ~30 seconds. The{' '}
             <a
               href={PLUGIN_SETTINGS_URL}
               target="_blank"
@@ -266,8 +406,8 @@ export function AgentSettingsPage() {
             >
               Master kill-switch ↗
             </a>{' '}
-            and per-plan human approval — this page only decides which actions exist for the
-            agents at all.
+            (on by default) still sits above everything — an admin can shut all agentic actions
+            off there with one click.
           </p>
         </div>
 
@@ -290,104 +430,107 @@ export function AgentSettingsPage() {
           </div>
         )}
 
-        {visibleSensors.length > 0 && (
-          <SectionCard
-            title="Read-only tools"
-            subtitle="Sensors — inspect health, config, cost, storage, logs. No side effects; enabled by default."
-            enabledCount={sensors.filter((s: SensorRow) => s.enabled).length}
-            total={sensors.length}
-          >
-            {!needle && (
-              <MasterReadRow
-                enabledCount={sensors.filter((s: SensorRow) => s.enabled).length}
-                total={sensors.length}
-                saving={saving === '__bulk__'}
-                onToggle={(v) =>
-                  requestToggle(
-                    sensors.map((s: SensorRow) => s.name),
-                    v,
-                  )
-                }
-              />
-            )}
-            {visibleSensors.map((s: SensorRow) => (
-              <GateRow
-                key={s.name}
-                name={s.name}
-                enabled={s.enabled}
-                detail={s.description}
-                saving={saving === s.name || saving === '__bulk__'}
-                onToggle={(v) => requestToggle([s.name], v)}
-              />
-            ))}
-          </SectionCard>
-        )}
+        <div id="permission-catalog" className="space-y-3">
+          {visibleSensors.length > 0 && (
+            <SectionCard
+              title="Read-only tools"
+              subtitle="Sensors — inspect health, config, cost, storage, logs. No side effects; enabled and autonomous by default (the nightly agent reads to decide)."
+              enabledCount={sensors.filter((s: SensorRow) => s.enabled).length}
+              total={sensors.length}
+            >
+              {!needle && (
+                <MasterReadRow
+                  enabledCount={sensors.filter((s: SensorRow) => s.enabled).length}
+                  autoCount={sensors.filter((s: SensorRow) => s.autonomous).length}
+                  total={sensors.length}
+                  saving={saving === '__bulk__' || saving === '__bulk-auto__'}
+                  onToggleEnabled={(v) =>
+                    requestToggle({
+                      kind: 'gates',
+                      names: sensors.map((s: SensorRow) => s.name),
+                      value: v,
+                    })
+                  }
+                  onToggleAuto={(v) =>
+                    requestToggle({
+                      kind: 'auto',
+                      names: sensors.map((s: SensorRow) => s.name),
+                      value: v,
+                    })
+                  }
+                />
+              )}
+              {visibleSensors.map((s: SensorRow) => (
+                <GateRow
+                  key={s.name}
+                  name={s.name}
+                  enabled={s.enabled}
+                  autonomous={s.autonomous}
+                  autoCapable
+                  detail={s.description}
+                  saving={saving === s.name || saving === '__bulk__' || saving === '__bulk-auto__'}
+                  onToggleEnabled={(v) =>
+                    requestToggle({ kind: 'gates', names: [s.name], value: v })
+                  }
+                  onToggleAuto={(v) => requestToggle({ kind: 'auto', names: [s.name], value: v })}
+                />
+              ))}
+            </SectionCard>
+          )}
 
-        {readWrite.length > 0 && (
-        <SectionCard
-          title="Read / write actions"
-          subtitle="Configuration mutations — drift-guarded, most land in the restorable settings history. Disabled by default."
-          enabledCount={readWrite.filter((a) => a.enabled).length}
-          total={readWrite.length}
-        >
-          {readWrite.map((a) => (
-            <GateRow
-              key={a.action}
-              name={a.action}
-              enabled={a.enabled}
-              risk={a.risk}
-              detail={a.shape}
-              chips={[...(a.batchable ? ['batchable'] : []), ...(a.localOnly ? ['local-only'] : [])]}
-              saving={saving === a.action}
-              onToggle={(v) => requestToggle([a.action], v)}
-            />
-          ))}
-        </SectionCard>
-        )}
+          {readWrite.length > 0 && (
+            <SectionCard
+              title="Write tools"
+              subtitle="Configuration mutations — drift-guarded, most land in the restorable settings history. Disabled by default; Auto lets the nightly agent apply them unattended."
+              enabledCount={readWrite.filter((a) => a.enabled).length}
+              total={readWrite.length}
+              autoBulk={autoBulkFor(readWrite)}
+            >
+              {readWrite.map(actionGateRow)}
+            </SectionCard>
+          )}
 
-        {powerUp.length > 0 && (
-          <SectionCard
-            title="Power-Up (dangerous)"
-            subtitle="Agent-authored Python — scripts run with the toolkit's admin credentials. On top of this gate, EVERY run requires a per-run 'I have read this code' acknowledgment on the plan card; excluded from batch approvals and auto-remediation."
-            enabledCount={powerUp.filter((a) => a.enabled).length}
-            total={powerUp.length}
-          >
-            {powerUp.map((a) => (
-              <GateRow
-                key={a.action}
-                name={a.action}
-                enabled={a.enabled}
-                risk={a.risk}
-                detail={a.shape}
-                chips={a.localOnly ? ['local-only'] : []}
-                saving={saving === a.action}
-                onToggle={(v) => (v ? setPowerUpConfirm(a.action) : requestToggle([a.action], false))}
-              />
-            ))}
-          </SectionCard>
-        )}
+          {execute.length > 0 && (
+            <SectionCard
+              title="Execute tools"
+              subtitle="Run, stop, clean, delete, send — the plan → approve → confirm-token flow still applies in chat; Auto lets the nightly agent run them unattended. Disabled by default."
+              enabledCount={execute.filter((a) => a.enabled).length}
+              total={execute.length}
+              autoBulk={autoBulkFor(execute)}
+            >
+              {execute.map(actionGateRow)}
+            </SectionCard>
+          )}
 
-        {execute.length > 0 && (
-        <SectionCard
-          title="Execute actions"
-          subtitle="Run, stop, clean, delete, send — the plan → approve → confirm-token flow still applies to every one. Disabled by default."
-          enabledCount={execute.filter((a) => a.enabled).length}
-          total={execute.length}
-        >
-          {execute.map((a) => (
-            <GateRow
-              key={a.action}
-              name={a.action}
-              enabled={a.enabled}
-              risk={a.risk}
-              detail={a.shape}
-              chips={[...(a.batchable ? ['batchable'] : []), ...(a.localOnly ? ['local-only'] : [])]}
-              saving={saving === a.action}
-              onToggle={(v) => requestToggle([a.action], v)}
-            />
-          ))}
-        </SectionCard>
-        )}
+          {powerUp.length > 0 && (
+            <SectionCard
+              title="Power-Up (dangerous)"
+              subtitle="Agent-authored Python — scripts run with the toolkit's admin credentials. On top of this gate, EVERY run requires a per-run 'I have read this code' acknowledgment on the plan card; excluded from batch approvals and permanently excluded from autonomous execution."
+              enabledCount={powerUp.filter((a) => a.enabled).length}
+              total={powerUp.length}
+            >
+              {powerUp.map((a) => (
+                <GateRow
+                  key={a.action}
+                  name={a.action}
+                  enabled={a.enabled}
+                  autonomous={false}
+                  autoCapable={false}
+                  risk={a.risk}
+                  detail={a.shape}
+                  chips={a.localOnly ? ['local-only'] : []}
+                  saving={saving === a.action}
+                  onToggleEnabled={(v) =>
+                    v
+                      ? setPowerUpConfirm(a.action)
+                      : requestToggle({ kind: 'gates', names: [a.action], value: false })
+                  }
+                  onToggleAuto={() => undefined}
+                />
+              ))}
+            </SectionCard>
+          )}
+        </div>
       </div>
 
       <Modal
@@ -402,7 +545,8 @@ export function AgentSettingsPage() {
             <Button
               variant="modalDanger"
               onClick={() => {
-                if (powerUpConfirm) requestToggle([powerUpConfirm], true);
+                if (powerUpConfirm)
+                  requestToggle({ kind: 'gates', names: [powerUpConfirm], value: true });
                 setPowerUpConfirm(null);
               }}
             >
@@ -429,7 +573,7 @@ export function AgentSettingsPage() {
         onUnlocked={() => {
           setShowUnlock(false);
           if (pending) {
-            applyToggle(pending.names, pending.enabled);
+            applyToggle(pending);
             setPending(null);
           }
           if (pendingAction) {

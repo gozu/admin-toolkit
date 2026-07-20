@@ -1,5 +1,13 @@
-"""Native agent runtime — the generalist loop run IN-PROCESS in this backend,
-replacing the Dataiku agent kernel as the orchestration vehicle.
+"""Native agent runtime — the generalist loop run IN-PROCESS in this backend.
+
+Since 0.4.777 the Dataiku agent kernel relay is the DEFAULT chat vehicle (the
+standard DSS-managed path: DSS-side agent settings, interaction logging,
+governance — and the only vehicle for remote hosts). The native runtime
+remains as (a) an explicit admin choice / debugging aid (Settings → Agents &
+Outreach, or a per-request runtime override), and (b) the automatic fallback:
+when the local host has no provisioned agent instances (the virtual
+generalist only exists natively) or when the kernel relay fails before
+streaming anything.
 
 What stays identical to the kernel path (parity by construction):
   • tools, actuator protocol, gates, tuning overrides, prompts — all assembled
@@ -98,10 +106,11 @@ def _setup_bundle(agent_id):
 
 def runtime_mode(plugin_config=None):
     """'native' | 'dataiku' — the agent_runtime knob (Settings → Agents &
-    Outreach). Unknown values fall back to 'native'."""
+    Outreach). Unknown/empty values fall back to 'dataiku' (the kernel relay
+    default; native stays an explicit choice + automatic fallback)."""
     config = plugin_config if plugin_config is not None else _get_plugin_config()
     mode = str((config or {}).get('agent_runtime') or '').strip().lower()
-    return mode if mode in ('native', 'dataiku') else 'native'
+    return mode if mode in ('native', 'dataiku') else 'dataiku'
 
 
 def virtual_agent_row():

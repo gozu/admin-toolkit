@@ -7,8 +7,13 @@ Flow per run:
   3. one LLM Mesh completion per flagged host drafts a recommendation,
      grounded ONLY in that host's issues + signals;
   4. persist rows to agents.agent_triage_daily (upsert on day+host);
-  5. email a digest via the configured mail channel;
-  6. RAISE if any host errored, so the scenario reporter fires.
+  5. deterministic auto-remediation tier (mapped finding→target fixes over
+     the admin's per-action Autonomous grants — budget priority);
+  6. LLM planning pass (triage/auto_agent): may propose ANY
+     autonomous-granted action for the flagged hosts, same executor, same
+     shared budgets; its crash never loses the deterministic summary;
+  7. snapshot zip, then the digest email via the configured mail channel;
+  8. RAISE if any host errored, so the scenario reporter fires.
 
 The sweep doubles as the fleet-wide heavy-cache pre-warmer: after it runs,
 agent tool calls hit warm code-envs/footprint caches all day.
@@ -111,16 +116,37 @@ class MyRunnable(Runnable):
 
         written = store.persist_sweep(settings['triage_connection'], rows, run_id, llm_id=llm_id)
 
-        # Auto-remediation tier (admin-opted actions only; failures become a
-        # digest warning, never a sweep failure).
+        # Auto-remediation tiers (admin-granted Autonomous capabilities only;
+        # failures become a digest warning, never a sweep failure). The LIVE
+        # grants beat the kernel-start snapshot — an admin toggle this
+        # afternoon applies tonight without a kernel recycle.
         auto_summary = None
         auto_error = None
         if not _bool(self.config.get('skip_auto_remediate')):
             try:
+                from atk_agent_common import action_gates, actuator
                 from atk_agent_common.triage import auto_remediate
-                auto_summary = auto_remediate.run_auto_remediation(client, settings, rows, run_id)
+                autonomous_actions = {a for a in actuator.ACTIONS
+                                      if action_gates.action_autonomous(client, a)}
+                auto_summary = auto_remediate.run_auto_remediation(
+                    client, settings, rows, run_id,
+                    autonomous_actions=autonomous_actions)
             except Exception as exc:
                 auto_error = '%s: %s' % (type(exc).__name__, str(exc)[:300])
+            # LLM planning pass — separate guard: a planner crash keeps the
+            # deterministic summary intact (run_llm_planner itself returns an
+            # error status rather than raising, this is the belt).
+            if auto_summary is not None and not auto_summary.get('paused') \
+                    and not _bool(self.config.get('skip_llm')):
+                try:
+                    from atk_agent_common.triage import auto_agent
+                    auto_summary['llmPlanner'] = auto_agent.run_llm_planner(
+                        client, settings, rows, result['flagged'], auto_summary,
+                        autonomous_actions, run_id, llm_id)
+                except Exception as exc:
+                    auto_summary['llmPlanner'] = {
+                        'status': 'error',
+                        'error': '%s: %s' % (type(exc).__name__, str(exc)[:300])}
 
         # Snapshot zip (schema-free record of every scan payload the sweep
         # consumed). Failures become a digest warning, never a sweep failure.

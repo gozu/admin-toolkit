@@ -88,7 +88,7 @@ def api_settings_update():
 # reading them through atk_agent_common.config.resolve unchanged. Defaults here
 # must mirror plugin.json.
 _AGENT_KNOB_DEFAULTS = {
-    'agent_runtime': 'native',
+    'agent_runtime': 'dataiku',
     'outreach_mail_channel': '',
     'host_allowlist': '',
     'verify_tls': True,
@@ -98,7 +98,6 @@ _AGENT_KNOB_DEFAULTS = {
     'triage_score_threshold': 75,
     'triage_mail_channel': '',
     'triage_recipient': '',
-    'auto_remediate_actions': '',
     'auto_remediate_enabled': True,
     'auto_remediate_remote_hosts': False,
     'auto_remediate_max_gb': 20,
@@ -107,11 +106,6 @@ _AGENT_KNOB_DEFAULTS = {
     'log_cleanup_min_age_days': 3,
     'settings_set_blocked_extra': '',
 }
-
-
-def _auto_eligible_actions():
-    from atk_agent_common.remediation_map import auto_catalog
-    return [row['action'] for row in auto_catalog()]
 
 
 def _knob_cast(key, value):
@@ -159,8 +153,7 @@ def api_agent_knobs_get():
     except Exception:
         pass
     return jsonify({'ok': True, 'values': _read_agent_knobs(config),
-                    'mailChannels': channels, 'llms': llms,
-                    'autoRemediateEligible': _auto_eligible_actions()})
+                    'mailChannels': channels, 'llms': llms})
 
 
 @bp.route('/api/settings/agents/update', methods=['POST'])
@@ -180,13 +173,6 @@ def api_agent_knobs_update():
             casted[key] = _knob_cast(key, value)
         except (TypeError, ValueError):
             return jsonify({'ok': False, 'error': '%s must be a number' % key}), 400
-    if 'auto_remediate_actions' in casted:
-        tokens = [t.strip() for t in casted['auto_remediate_actions'].split(',') if t.strip()]
-        bad = sorted(set(tokens) - set(_auto_eligible_actions()))
-        if bad:
-            return jsonify({'ok': False,
-                            'error': 'not auto-eligible: %s' % ', '.join(bad)}), 400
-        casted['auto_remediate_actions'] = ','.join(tokens)
     if 'agent_runtime' in casted and casted['agent_runtime'] not in ('native', 'dataiku'):
         return jsonify({'ok': False,
                         'error': "agent_runtime must be 'native' or 'dataiku'"}), 400

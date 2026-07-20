@@ -342,15 +342,22 @@ def _auto_section(ctx):
         return ('<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" '
                 'style="background:%s;border:1px solid %s;border-radius:10px;">'
                 '<tr><td style="padding:14px 18px;font-family:%s;font-size:13px;color:%s;'
-                'line-height:19px;">No actions are opted into autonomous execution yet. '
-                'The agent only observes and recommends — grant it capabilities under '
-                'Agents&nbsp;&rarr;&nbsp;Permissions.</td></tr></table>'
+                'line-height:19px;">No actions are marked Autonomous yet. '
+                'The agent only observes and recommends — tick the Auto box on '
+                'capabilities under Agents&nbsp;&rarr;&nbsp;Permissions.</td></tr></table>'
                 % (CARD, LINE, _FONT, GREY))
 
     rows = []
     for done in executed:
         no_effect = done.get('effect') == 'no-effect'
         freed = done.get('freedGB') or 0
+        llm_chip = ('&nbsp;' + _chip('LLM-planned', TEAL_DARK, '#E6F7F5')
+                    if done.get('tier') == 'llm' else '')
+        reasoning_html = ''
+        if done.get('tier') == 'llm' and done.get('reasoning'):
+            reasoning_html = ('<div style="font-family:%s;font-size:12px;color:%s;'
+                              'font-style:italic;padding-top:3px;">&ldquo;%s&rdquo;</div>'
+                              % (_FONT, INK_SOFT, _esc(str(done['reasoning'])[:180])))
         _right_td = ('<td align="right" valign="top" style="font-family:%s;'
                      'font-size:%dpx;font-weight:%s;color:%s;white-space:nowrap;'
                      'padding:12px 18px 10px 10px;border-bottom:1px solid ' + LINE + ';">'
@@ -388,21 +395,26 @@ def _auto_section(ctx):
             '<span style="font-family:{mono};font-size:13px;font-weight:700;color:{ink};'
             'background:#F1F0F6;border-radius:6px;padding:2px 7px;">{action}</span>'
             '<span style="font-family:{font};font-size:13px;color:{ink_soft};">'
-            '&nbsp; on {host}</span>'
+            '&nbsp; on {host}</span>{llm_chip}'
             '<div style="font-family:{font};font-size:12px;color:{grey};'
             'padding-top:4px;">{detail}</div>'
-            '{warn}</td>{right}</tr>'.format(
+            '{reasoning}{warn}</td>{right}</tr>'.format(
                 line=LINE, icon_bg=icon_bg, font=_FONT, icon=icon, mono=_MONO,
                 ink=INK, action=_esc(done.get('action')), ink_soft=INK_SOFT,
                 host=_esc(_host_label(ctx, done.get('host'))), grey=GREY,
-                detail=detail_html, warn=warn_html, right=right))
+                llm_chip=llm_chip, detail=detail_html, reasoning=reasoning_html,
+                warn=warn_html, right=right))
 
     if not executed:
+        shown_enabled = enabled[:8]
+        enabled_label = ', '.join(shown_enabled) + (
+            ' +%d more' % (len(enabled) - len(shown_enabled))
+            if len(enabled) > len(shown_enabled) else '')
         rows.append('<tr><td style="padding:14px 18px 4px 18px;font-family:%s;'
                     'font-size:13px;color:%s;line-height:19px;">'
-                    'No matching findings today — nothing needed fixing. Opted-in: %s.'
+                    'No matching findings today — nothing needed fixing. Autonomous: %s.'
                     '</td></tr>'
-                    % (_FONT, GREY, _esc(', '.join(enabled))))
+                    % (_FONT, GREY, _esc(enabled_label)))
 
     skip_html = ''
     if skipped:
@@ -439,9 +451,41 @@ def _auto_section(ctx):
                       % (_FONT, GREY, INK, total_freed, ('%g' % max_gb),
                          _score_bar(max(pct, 2), TEAL)))
 
+    planner_html = _planner_strip(auto.get('llmPlanner'))
+
     return ('<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" '
             'style="background:%s;border:1px solid %s;border-radius:10px;">'
-            '%s%s%s</table>' % (CARD, LINE, ''.join(rows), skip_html, meter_html))
+            '%s%s%s%s</table>' % (CARD, LINE, ''.join(rows), skip_html, meter_html,
+                                  planner_html))
+
+
+_PLANNER_IDLE_REASONS = {
+    'nothing-flagged': 'idle — nothing was flagged tonight',
+    'no-llm': 'idle — no default LLM configured',
+    'no-autonomous-actions': 'idle — no autonomous grants',
+}
+
+
+def _planner_strip(planner):
+    """One honest footer line about the LLM planning pass: ran / why it was
+    idle / that it crashed. Absent planner info renders nothing (old runs)."""
+    if not isinstance(planner, dict) or not planner.get('status'):
+        return ''
+    status = str(planner.get('status'))
+    color = GREY
+    if status == 'ran':
+        text = ('LLM planner ran — %d proposal(s), %d executed, %d refused.'
+                % (int(planner.get('proposals') or 0),
+                   int(planner.get('executed') or 0),
+                   int(planner.get('refused') or 0)))
+    elif status == 'error':
+        color = RED
+        text = 'LLM planner crashed: %s' % str(planner.get('error') or 'unknown')[:200]
+    else:
+        text = 'LLM planner %s.' % _PLANNER_IDLE_REASONS.get(status, status)
+    return ('<tr><td colspan="3" style="padding:10px 18px 12px 18px;'
+            'border-top:1px solid %s;font-family:%s;font-size:11px;color:%s;">'
+            '%s</td></tr>' % (LINE, _FONT, color, _esc(text)))
 
 
 def _warnings_section(ctx):
@@ -714,21 +758,40 @@ def render_digest_text(ctx):
     if ctx.get('autoError'):
         lines += ['AUTO-REMEDIATION WARNING: tier crashed: %s' % ctx['autoError'], '']
     elif auto.get('enabled'):
-        lines.append('Auto-remediation (opted-in: %s%s):'
+        lines.append('Auto-remediation (autonomous: %s%s):'
                      % (', '.join(auto['enabled']),
                         '; PAUSED' if auto.get('paused') else ''))
         for done in auto.get('executed') or []:
-            lines.append('  + %s %s (finding %s) — freed %.2f GB, audit #%s'
-                         % (done.get('host'), done.get('action'), done.get('findingId'),
+            prefix = '[LLM] ' if done.get('tier') == 'llm' else ''
+            lines.append('  + %s%s %s (finding %s) — freed %.2f GB, audit #%s'
+                         % (prefix, done.get('host'), done.get('action'),
+                            done.get('findingId'),
                             done.get('freedGB') or 0, done.get('auditId')))
+            if done.get('reasoning'):
+                lines.append('    "%s"' % str(done['reasoning'])[:180])
             if done.get('warning'):
                 lines.append('    !! %s' % done['warning'])
         for skip in auto.get('skipped') or []:
-            lines.append('  - %s %s: %s' % (skip.get('host'),
-                                            skip.get('action') or '(all)',
-                                            skip.get('reason')))
+            prefix = '[LLM] ' if skip.get('tier') == 'llm' else ''
+            lines.append('  - %s%s %s: %s' % (prefix, skip.get('host'),
+                                              skip.get('action') or '(all)',
+                                              skip.get('reason')))
         if not (auto.get('executed') or auto.get('skipped')):
             lines.append('  (no matching findings today)')
+        planner = auto.get('llmPlanner')
+        if isinstance(planner, dict) and planner.get('status'):
+            status = str(planner['status'])
+            if status == 'ran':
+                lines.append('  LLM planner: ran — %d proposal(s), %d executed, %d refused.'
+                             % (int(planner.get('proposals') or 0),
+                                int(planner.get('executed') or 0),
+                                int(planner.get('refused') or 0)))
+            elif status == 'error':
+                lines.append('  LLM planner: CRASHED — %s'
+                             % str(planner.get('error') or 'unknown')[:200])
+            else:
+                lines.append('  LLM planner: %s'
+                             % _PLANNER_IDLE_REASONS.get(status, status))
         lines += ['  Total freed: %.2f GB across %d object(s).'
                   % (auto.get('totalFreedGB') or 0, auto.get('totalObjects') or 0), '']
     for row in hosts:
@@ -813,30 +876,39 @@ def sample_context():
         'flagged': ['prod-emea', 'automation'],
         'autoSummary': {
             'enabled': ['connection-test', 'docker-prune', 'job-logs-cleanup',
-                        'log-cleanup'],
+                        'log-cleanup', 'notebook-kernels-shutdown'],
             'paused': False, 'remoteHosts': True,
             'executed': [
                 {'host': 'prod-emea', 'action': 'log-cleanup',
                  'findingId': 'disk-critical-/data', 'freedGB': 1.42, 'auditId': 3121,
-                 'detail': '312 rotated log files removed'},
+                 'detail': '312 rotated log files removed', 'tier': 'deterministic'},
                 {'host': 'prod-emea', 'action': 'docker-prune',
                  'findingId': 'disk-critical-/data', 'freedGB': 3.86, 'auditId': 3122,
-                 'detail': 'docker reported 3.86 GB reclaimed from the builder cache'},
+                 'detail': 'docker reported 3.86 GB reclaimed from the builder cache',
+                 'tier': 'deterministic'},
                 {'host': 'prod-emea', 'action': 'connection-test',
                  'findingId': 'cap-connection-broken', 'freedGB': 0, 'auditId': 3123,
                  'detail': '0 connections recovered, 2 still failing',
-                 'effect': 'no-effect'},
+                 'effect': 'no-effect', 'tier': 'deterministic'},
                 {'host': 'automation', 'action': 'job-logs-cleanup',
                  'findingId': 'disk-warning-/data', 'freedGB': 2.19, 'auditId': 3124,
-                 'detail': '57 aged job directories removed'},
+                 'detail': '57 aged job directories removed', 'tier': 'deterministic'},
+                {'host': 'prod-emea', 'action': 'notebook-kernels-shutdown',
+                 'findingId': 'sanity-warning-JUPYTER_KERNELS', 'freedGB': 0,
+                 'auditId': 3125, 'detail': '14 kernel(s) shut down', 'tier': 'llm',
+                 'reasoning': 'The sanity check flags 14 kernels running for days; '
+                              'kernels-shutdown holds an Autonomous grant and files/'
+                              'outputs are untouched.'},
             ],
             'skipped': [
-                {'host': 'prod-emea', 'action': 'notebook-kernels-shutdown',
-                 'findingId': 'sanity-warning-JUPYTER_KERNELS',
-                 'reason': 'not opted into autonomous execution '
-                           '(Permissions → Autonomous agent)'},
+                {'host': 'prod-emea', 'action': 'settings-set',
+                 'findingId': 'features-disabled-several', 'tier': 'llm',
+                 'reason': 'settings-set has no Autonomous grant in '
+                           'Agents → Permissions'},
             ],
-            'totalFreedGB': 7.47, 'totalObjects': 372,
+            'totalFreedGB': 7.47, 'totalObjects': 386,
+            'llmPlanner': {'status': 'ran', 'proposals': 2, 'executed': 1,
+                           'refused': 1},
         },
         'autoError': None,
         'configWarning': None,

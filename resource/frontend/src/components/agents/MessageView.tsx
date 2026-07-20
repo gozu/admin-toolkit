@@ -362,14 +362,24 @@ export function MessageView({
               {formatDuration(message.durationMs)}
             </span>
           ) : null}
-          {message.runtime && (
-            <span
-              className="rounded border border-[var(--border-default)] px-1 py-px text-[10px] font-mono text-[var(--text-muted)]"
-              title="Agent runtime"
-            >
-              {message.runtime}
-            </span>
-          )}
+          {message.runtime &&
+            (message.fallbackFrom ? (
+              <span
+                className="rounded border border-[var(--neon-amber)]/50 px-1 py-px text-[10px] font-mono text-[var(--neon-amber)]"
+                title={`Fell back from the ${message.fallbackFrom} runtime${
+                  message.fallbackReason ? `: ${message.fallbackReason}` : ''
+                }`}
+              >
+                {message.runtime} · fallback
+              </span>
+            ) : (
+              <span
+                className="rounded border border-[var(--border-default)] px-1 py-px text-[10px] font-mono text-[var(--text-muted)]"
+                title="Agent runtime"
+              >
+                {message.runtime}
+              </span>
+            ))}
           {message.llmTurns ? (
             <span className="text-[11px] tabular-nums text-[var(--text-muted)]" title="Model turns">
               {message.llmTurns} {message.llmTurns === 1 ? 'turn' : 'turns'}

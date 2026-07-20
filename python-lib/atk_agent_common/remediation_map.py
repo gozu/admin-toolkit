@@ -1,13 +1,16 @@
 """Finding → remediation registry.
 
 Maps health-score issue ids (atk_agent_common.health) and k8s-insights rule
-ids to catalogued actuator actions. First glob match wins. `auto: True` marks
-the actions the daily triage loop may execute autonomously WHEN the admin has
-opted that action into `auto_remediate_actions` — only reversible, capped,
-whitelist-safe operations qualify; each needs a `build_target` that produces
-a concrete target from the finding + settings alone (no human in the loop).
-A build_target returning None means "this finding lacks the data" and the
-candidate is silently not proposed.
+ids to catalogued actuator actions. First glob match wins.
+
+`auto: True` means "has a deterministic finding→target mapping": a
+`build_target` that produces a concrete target from the finding + settings
+alone, so the nightly deterministic tier can run it without an LLM. It is NOT
+the autonomy consent — that lives on the per-action Autonomous flag in
+Agents → Permissions (`agent_autonomous_gates`), which covers the whole
+catalog: the nightly LLM planning pass may propose ANY autonomous-granted
+action, mapped here or not. A build_target returning None means "this
+finding lacks the data" and the candidate is silently not proposed.
 
 Explicit `None` entries document known gaps: findings we can detect but not
 remediate through any catalogued action (so agents say "manual" instead of
@@ -337,14 +340,16 @@ def is_documented_gap(issue_id):
     return False
 
 
-# Actions that can NEVER run autonomously, whatever the admin's CSV says —
-# python-run's whole safety story is the per-run human code ack, which an
-# autonomous tier structurally cannot provide.
+# Actions that can NEVER run autonomously, whatever the stored autonomy map
+# says — python-run's whole safety story is the per-run human code ack, which
+# an autonomous tier structurally cannot provide. Enforced at four layers:
+# route 400 (agent_gates), action_gates hard floor, auto_candidates
+# subtraction, and the LLM planner's propose_fix refusal (auto_agent).
 AUTO_EXCLUDED = frozenset({'python-run'})
 
-# Admin-facing copy for the Permissions panel — what opting an action into
-# the autonomous tier actually means, in plain language. Keys must stay a
-# subset of the auto-eligible set (asserted in auto_catalog).
+# Admin-facing copy — what granting an action autonomy actually means, in
+# plain language. Curated for the classic deterministic-tier actions;
+# autonomous_description() generates honest fallback copy for the rest.
 AUTO_DESCRIPTIONS = {
     'log-cleanup': 'Delete aged rotated logs under the whitelisted log roots when a disk '
                    'fills up. Oldest-first, capped by the GB budget below.',
@@ -365,6 +370,16 @@ AUTO_DESCRIPTIONS = {
                                  'footprint scan flags as oversized. Running backends and '
                                  'the newest runs per webapp are never touched.',
 }
+
+
+def autonomous_description(action):
+    """What autonomy means for one action, for prompts and admin surfaces:
+    curated copy where it exists, an honest generated line otherwise."""
+    if action in AUTO_DESCRIPTIONS:
+        return AUTO_DESCRIPTIONS[action]
+    return ('May be planned and executed by the nightly agent without a human in '
+            'the loop when a flagged finding warrants it — same plan → confirm-token '
+            '→ audit path as a human-approved run.')
 
 
 def auto_catalog():

@@ -29,7 +29,8 @@
         },
         {
             "name": "skip_llm",
-            "label": "Skip LLM recommendations",
+            "label": "Skip LLM recommendations + planner",
+            "description": "Skip both the per-host LLM recommendations AND the autonomous LLM planning pass for this run (the deterministic tier still runs).",
             "type": "BOOLEAN",
             "defaultValue": false,
             "mandatory": false
@@ -45,7 +46,7 @@
         {
             "name": "skip_auto_remediate",
             "label": "Skip auto-remediation",
-            "description": "Skip the admin-opted autonomous fixes (auto_remediate_actions) for this run.",
+            "description": "Skip BOTH autonomous tiers (deterministic fixes and the LLM planning pass) for this run — the per-action Autonomous grants in Agents → Permissions are untouched.",
             "type": "BOOLEAN",
             "defaultValue": false,
             "mandatory": false

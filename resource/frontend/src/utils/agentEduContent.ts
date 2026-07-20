@@ -452,8 +452,8 @@ export const EDU: Record<string, EduEntry> = {
   'concept.auto-remediation': {
     title: 'Auto-remediation',
     body: [
-      'An admin can opt specific actions (only the reversible, capped cleanups: log-cleanup, docker-prune) into autonomous execution during the daily triage sweep via the auto_remediate_actions plugin setting.',
-      'Every autonomous run still passes the kill-switch and policy gates, respects cumulative GB/object caps, writes an audit row as triage-auto, and is reported in the digest — skips included, with reasons.',
+      'An admin can mark any capability Autonomous in Agents → Permissions (the Auto column; python-run never qualifies). The nightly triage sweep then runs two tiers over those grants: deterministic finding→target fixes first, then an LLM planning pass that may propose any granted action.',
+      'Every autonomous run still passes the kill-switch and policy gates, respects cumulative GB/object caps, writes an audit row as triage-auto (deterministic) or triage-llm (LLM-planned), and is reported in the digest — skips included, with reasons.',
     ],
   },
 

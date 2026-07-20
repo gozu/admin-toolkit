@@ -31,17 +31,20 @@ def _wrap(fn, client):
     return run
 
 
-def build_langchain_tools(client, names=None):
+def build_langchain_tools(client, names=None, autonomous_only=False):
     """StructuredTools for the given tool names (default: all sensors).
 
     Sensors an admin unchecked in Agent Settings are dropped here — the
-    agent never sees a disabled tool (default: all sensors enabled)."""
+    agent never sees a disabled tool (default: all sensors enabled).
+    autonomous_only=True additionally drops sensors whose Autonomous flag an
+    admin revoked — the nightly LLM planner builds its toolset with this."""
     specs = tools_impl.SENSOR_DESCRIPTIONS
     wanted = names or list(specs)
     return [StructuredTool.from_function(_wrap(getattr(tools_impl, n), client),
                                          name=n, description=specs[n])
             for n in wanted
-            if n in specs and action_gates.sensor_enabled(client, n)]
+            if n in specs and action_gates.sensor_enabled(client, n)
+            and (not autonomous_only or action_gates.sensor_autonomous(client, n))]
 
 
 def sensor_manifest(tools):

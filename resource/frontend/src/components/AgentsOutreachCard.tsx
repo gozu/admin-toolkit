@@ -14,7 +14,6 @@ interface AgentKnobValues {
   triage_score_threshold: number;
   triage_mail_channel: string;
   triage_recipient: string;
-  auto_remediate_actions: string;
   auto_remediate_max_gb: number;
   auto_remediate_max_objects: number;
   python_run_timeout_seconds: number;
@@ -173,8 +172,8 @@ export function AgentsOutreachCard({
             <div className="inline-flex rounded-lg border border-[var(--border-default)] overflow-hidden">
               {(
                 [
-                  ['native', 'Native (in-process)'],
                   ['dataiku', 'Dataiku agent kernel'],
+                  ['native', 'Native (in-process)'],
                 ] as const
               ).map(([id, label]) => (
                 <button
@@ -193,9 +192,11 @@ export function AgentsOutreachCard({
             </div>
           </Field>
           <p className="text-xs text-[var(--text-muted)] -mt-1">
-            Native runs the agent loop inside the toolkit backend — instant start, parallel tools,
-            no kernel recycles, works without provisioned instances. The Dataiku kernel relay
-            remains for remote hosts and as a fallback.
+            The Dataiku agent kernel (default) is the standard DSS-managed path — DSS-side agent
+            settings, interaction logging and governance apply, and it is the only vehicle for
+            remote hosts. Native runs the loop inside the toolkit backend — a debugging choice
+            (instant start, no kernel recycles) that also serves as the automatic fallback when
+            the kernel can&apos;t (no provisioned instances, or a kernel error before streaming).
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Outreach mail channel">

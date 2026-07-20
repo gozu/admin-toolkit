@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.780",
+    "version": "0.4.781",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -191,10 +191,10 @@
         {
             "name": "enable_red_actions",
             "label": "Master kill-switch",
-            "description": "OFF = every agentic action refuses, regardless of per-action gates. Verify what agents propose \u2014 don't trust blindly.",
+            "description": "OFF = every agentic action refuses, regardless of per-action gates. ON by default \u2014 each action still needs its per-action gate in the webapp (Agents \u2192 Permissions) and, for DSS-side agents, the agent's own execute setting. Verify what agents propose \u2014 don't trust blindly.",
             "type": "BOOLEAN",
             "mandatory": false,
-            "defaultValue": false
+            "defaultValue": true
         },
         {
             "name": "host_allowlist",
@@ -245,10 +245,10 @@
         {
             "name": "agent_runtime",
             "label": "Agent runtime (webapp-managed)",
-            "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value. 'native' runs the agent loop in the webapp backend; 'dataiku' relays through the Dataiku agent kernel.",
+            "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value. 'dataiku' (default) relays through the Dataiku agent kernel; 'native' runs the agent loop in the webapp backend (debugging aid + automatic fallback).",
             "type": "STRING",
             "mandatory": false,
-            "defaultValue": "native",
+            "defaultValue": "dataiku",
             "visibilityCondition": "false"
         },
         {
@@ -305,8 +305,8 @@
         },
         {
             "name": "auto_remediate_actions",
-            "label": "Auto-remediate actions (webapp-managed)",
-            "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value.",
+            "label": "Auto-remediate actions (LEGACY)",
+            "description": "LEGACY \u2014 read once to seed agent_autonomous_gates (the per-action Autonomous flags in Agents \u2192 Permissions); no longer written. Declared here (hidden) so DSS keeps the value for rollback.",
             "type": "STRING",
             "mandatory": false,
             "defaultValue": "",
@@ -355,7 +355,16 @@
         {
             "name": "agent_action_gates",
             "label": "Agent action gates (managed)",
-            "description": "Managed by the webapp's Agents \u2192 Agent Settings page \u2014 JSON {action: bool}. Read-only sensor tools default ON; every actuator action defaults OFF until enabled there. Declared here (hidden) so DSS never prunes the saved value.",
+            "description": "Managed by the webapp's Agents \u2192 Permissions page \u2014 JSON {action: bool}. Read-only sensor tools default ON; every actuator action defaults OFF until enabled there. Declared here (hidden) so DSS never prunes the saved value.",
+            "type": "TEXTAREA",
+            "mandatory": false,
+            "defaultValue": "",
+            "visibilityCondition": "false"
+        },
+        {
+            "name": "agent_autonomous_gates",
+            "label": "Agent autonomous gates (managed)",
+            "description": "Managed by the webapp's Agents \u2192 Permissions page (the Auto column) \u2014 JSON {name: bool}. Capabilities the NIGHTLY triage agent may plan and execute without a human in the loop. Sensors default ON, actions OFF; python-run can never be autonomous. Empty = seed once from the legacy auto_remediate_actions CSV. Declared here (hidden) so DSS never prunes the saved value.",
             "type": "TEXTAREA",
             "mandatory": false,
             "defaultValue": "",

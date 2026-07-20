@@ -94,11 +94,13 @@ def sse_events(resp):
 
 
 class Drill:
-    def __init__(self, base, password, report_path):
+    def __init__(self, base, password, report_path, runtime=None):
         self.base = base.rstrip('/')
         self.session = requests.Session()
         self.password = password
-        self.report = {'base': base, 'read': [], 'issues': [], 'execute': []}
+        self.runtime = runtime  # None = server default (dataiku since 0.4.777)
+        self.report = {'base': base, 'runtime': runtime or 'server-default',
+                       'read': [], 'issues': [], 'execute': []}
         self.report_path = report_path
         self.client = ToolkitClient(config.resolve(
             {'backend_url': self.base, 'heavy_timeout_s': 900}))
@@ -115,9 +117,14 @@ class Drill:
     def chat(self, messages, timeout=900):
         """One streamed turn. Returns dict(text, events, error, done)."""
         out = {'text': [], 'events': [], 'error': None, 'done': None}
+        body = {'agentId': self.agent_id, 'messages': messages}
+        if self.runtime:
+            # Explicit override: pins the runtime AND (for 'dataiku') disables
+            # the pre-stream native fallback — deterministic drill results.
+            body['runtime'] = self.runtime
         resp = self.session.post(
             self.base + '/api/agents/chat',
-            json={'agentId': self.agent_id, 'messages': messages},
+            json=body,
             stream=True, timeout=(30, timeout))
         resp.raise_for_status()
         for event, payload in sse_events(resp):
@@ -413,11 +420,15 @@ def main():
                     help='cap issue families (0 = all)')
     ap.add_argument('--execute', action='store_true',
                     help='approve + execute the safe reversible subset')
+    ap.add_argument('--runtime', choices=('native', 'dataiku'), default=None,
+                    help='per-turn runtime override (default: the server '
+                         "default — 'dataiku' since 0.4.777; an explicit "
+                         "'dataiku' also disables the native fallback)")
     ap.add_argument('--report', default='scripts/agents/.coverage_drill.json')
     args = ap.parse_args()
 
     password = pathlib.Path(args.password_file).read_text().strip()
-    drill = Drill(args.base, password, args.report)
+    drill = Drill(args.base, password, args.report, runtime=args.runtime)
     drill.unlock()
     try:
         if args.phase in ('all', 'issues', 'execute') or args.execute:

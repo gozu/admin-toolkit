@@ -887,14 +887,22 @@ def list_capabilities(client):
     from . import action_gates
     from . import actions as actions_registry
     from . import actuator as actuator_mod
+    from .remediation_map import AUTO_EXCLUDED
     gates = action_gates.gates(client)
-    sensors = [{'name': name, 'enabled': bool(gates.get(name, True))}
+    autonomous = action_gates.autonomous(client)
+    sensors = [{'name': name, 'enabled': bool(gates.get(name, True)),
+                'autonomous': bool(gates.get(name, True))
+                and bool(autonomous.get(name, True))}
                for name in SENSOR_DESCRIPTIONS]
     local_only = set(actuator_mod._LOCAL_ONLY_ACTIONS)
     actions = [{'action': action,
                 'mode': actions_registry.MODES[action],
                 'risk': actions_registry.ALL_RISKS[action],
                 'enabled': bool(gates.get(action, False)),
+                'autoCapable': action not in AUTO_EXCLUDED,
+                'autonomous': bool(gates.get(action, False))
+                and action not in AUTO_EXCLUDED
+                and bool(autonomous.get(action, False)),
                 'batchable': action in actions_registry.BATCHABLE,
                 'localOnly': action in local_only}
                for action in actuator_mod.ACTIONS]
@@ -905,6 +913,9 @@ def list_capabilities(client):
         'toolkitPages': dict(_read_registry.TOOLKIT_PAGES),
         'note': ('Sensors are read-only and need no confirmation. Disabled actions '
                  'can be enabled by an admin in Agents → Permissions. '
+                 'autonomous=true means the NIGHTLY triage agent may plan and run '
+                 'that capability without a human in the loop (admin-granted per '
+                 'action there; autoCapable=false = python-run, never autonomous). '
                  'killSwitchOn=false means NO action can execute regardless of '
                  'per-action gates. toolkitPages maps webapp pages for pointing '
                  'users at the right screen.'),

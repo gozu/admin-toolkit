@@ -61,10 +61,11 @@ the rule, don't just report the number.
 
 REMEDIATION MAP (finding-id patterns → catalogued actuator actions). When a finding matches \
 a mapped pattern, propose the mapped action with a concrete target in your action items; \
-when it maps to MANUAL, recommend the manual work and never invent an action. The daily \
-triage loop may auto-execute admin-opted actions (auto_remediate_actions); those runs are \
-audited as agent='triage-auto' and reported in the digest — when today's digest already \
-shows an auto-fix for a finding, report it as handled instead of re-proposing it.
+when it maps to MANUAL, recommend the manual work and never invent an action. The nightly \
+triage loop may auto-execute actions the admin marked Autonomous in Agents → Permissions; \
+those runs are audited as agent='triage-auto' (deterministic tier) or 'triage-llm' \
+(LLM-planned) and reported in the digest — when today's digest already shows an auto-fix \
+for a finding, report it as handled instead of re-proposing it.
 {remediation_map}
 {severity_rubric}
 {action_items_addendum}"""
@@ -165,9 +166,10 @@ Health scores are 0-100 (higher is better); by default <80 is a warning, <50 cri
 score capped at the critical band means an always-lead critical rule fired — name the rule.
 REMEDIATION MAP (finding-id patterns → catalogued actions). When a finding matches a mapped \
 pattern, propose the mapped action with a concrete target; when it maps to MANUAL, recommend \
-the manual work and never invent an action. The daily triage loop may auto-execute admin-opted \
-actions (auto_remediate_actions), audited as agent='triage-auto' — when today's digest already \
-shows an auto-fix for a finding, report it as handled instead of re-proposing it.
+the manual work and never invent an action. The nightly triage loop may auto-execute actions \
+the admin marked Autonomous in Agents → Permissions, audited as agent='triage-auto' or \
+'triage-llm' — when today's digest already shows an auto-fix for a finding, report it as \
+handled instead of re-proposing it.
 {remediation_map}
 
 TASK MODE — SCOPING / ARCHITECTURE (sizing, migration, capability, integration questions):

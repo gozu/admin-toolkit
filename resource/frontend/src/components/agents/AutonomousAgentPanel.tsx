@@ -5,28 +5,21 @@ import {
   sendTestDigest,
   triageSettingsStore,
   updateTriageSettings,
-  type TriageActionRow,
 } from '../../state/triageSettingsStore';
 import { Button } from '../common/Button';
 import { Spinner } from '../common/Spinner';
 
 /**
- * Permissions → "Autonomous daily agent" — the 24h triage sweep's capability
- * panel. Everything the agent may do WITHOUT a human in the loop is granted
- * here: per-action opt-ins over the auto-eligible catalog, one master switch
- * that pauses the whole tier (grants preserved), safety caps, remote-host
- * scope, schedule status and the branded test report. Save failures surface
- * as toasts (the store reverts optimistic state); prerequisites render as a
- * setup checklist, not as alarms.
+ * Permissions → "Autonomous daily agent" — the 24h triage sweep's status
+ * panel: master pause (grants preserved), safety caps, remote-host scope,
+ * schedule status and the branded test report. Per-capability autonomy lives
+ * on the main permission list below (the Auto column) — the panel links down
+ * to it with a live allowed/total count. Save failures surface as toasts
+ * (the store reverts optimistic state); prerequisites render as a setup
+ * checklist, not as alarms.
  */
 
 const PLUGIN_SETTINGS_URL = '/plugins/admin-toolkit/settings/';
-
-const RISK_DOT: Record<string, string> = {
-  high: 'bg-[var(--danger)]',
-  medium: 'bg-[var(--neon-amber)]',
-  low: 'bg-[var(--accent)]',
-};
 
 function fmtLastRun(lastRun: { outcome: string | null; start: number | null } | null): string {
   if (!lastRun || !lastRun.start) return 'never ran';
@@ -47,52 +40,6 @@ function StatusChip({ label, tone }: { label: string; tone: 'ok' | 'warn' | 'mut
     <span className={`rounded-full border bg-[var(--bg-surface)]/60 px-2 py-0.5 text-[10px] font-medium ${cls}`}>
       {label}
     </span>
-  );
-}
-
-function AutoActionRow({
-  row,
-  saving,
-  onToggle,
-}: {
-  row: TriageActionRow;
-  saving: boolean;
-  onToggle: (enabled: boolean) => void;
-}) {
-  return (
-    <label
-      className={`flex items-start gap-3 rounded-lg border border-transparent px-3 py-2 transition-colors hover:bg-[var(--bg-hover)] ${
-        saving ? 'opacity-60' : 'cursor-pointer'
-      }`}
-    >
-      <input
-        type="checkbox"
-        checked={row.optedIn}
-        disabled={saving}
-        onChange={(e) => onToggle(e.target.checked)}
-        className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
-      />
-      <div className="min-w-0 flex-1 space-y-0.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={`h-2 w-2 shrink-0 rounded-full ${RISK_DOT[row.risk] ?? RISK_DOT.medium}`} />
-          <code className="text-xs font-semibold text-[var(--text-primary)]">{row.action}</code>
-          {row.optedIn && !row.gateEnabled && (
-            <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--neon-amber)]">
-              blocked — also enable it in the action list below
-            </span>
-          )}
-          {row.localOnly && (
-            <span className="rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
-              local-only
-            </span>
-          )}
-        </div>
-        <p className="text-[11px] leading-relaxed text-[var(--text-muted)] break-words">
-          {row.description}
-          <span className="text-[var(--text-tertiary)]"> Triggers: {row.findings.join(', ')}.</span>
-        </p>
-      </div>
-    </label>
   );
 }
 
@@ -160,9 +107,8 @@ export function AutonomousAgentPanel({
     ) : null;
   }
 
-  const optedCount = data.actions.filter((a) => a.optedIn).length;
-  const total = data.actions.length;
-  const active = data.enabled && optedCount > 0;
+  const { allowed, total } = data.autonomousCounts;
+  const active = data.enabled && allowed > 0;
 
   const apply = (update: Parameters<typeof updateTriageSettings>[0], tag: string) =>
     requireUnlock(() => void updateTriageSettings(update, tag).catch(() => undefined));
@@ -233,9 +179,9 @@ export function AutonomousAgentPanel({
             to <strong className="text-[var(--text-secondary)]">{data.delivery.recipient}</strong>
           </>
         ) : null}
-        , and — only for the actions you allow below — fixes findings on its own. Each
-        autonomous fix is planned, token-signed and audited exactly like a human-approved
-        action.
+        , and — only for the capabilities marked <strong>Auto</strong> in the permission list
+        below — fixes findings on its own. Each autonomous fix is planned, token-signed and
+        audited exactly like a human-approved action.
       </p>
 
       {setupSteps.length > 0 && (
@@ -273,7 +219,7 @@ export function AutonomousAgentPanel({
         </div>
       )}
 
-      {/* master switch + bulk controls */}
+      {/* master switch + count-link into the capability list */}
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border-default)]/60 bg-[var(--bg-surface)]/60 px-3 py-2">
         <label className={`flex items-center gap-2.5 ${saving === '__master__' ? 'opacity-60' : 'cursor-pointer'}`}>
           <input
@@ -285,59 +231,34 @@ export function AutonomousAgentPanel({
           />
           <span className="text-xs font-semibold text-[var(--text-primary)]">
             Autonomous actions
-            <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
-              {`${optedCount}/${total} allowed${data.enabled ? '' : ' · paused'}`}
-            </span>
+            {!data.enabled && (
+              <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+                paused
+              </span>
+            )}
           </span>
         </label>
         <span className="text-[11px] text-[var(--text-muted)]">
           — one switch pauses everything; your per-action grants are kept.
         </span>
-        <div className="ml-auto flex items-center gap-1.5">
-          <Button
-            variant="ghost"
-            disabled={saving === '__bulk__' || optedCount === total}
-            onClick={() =>
-              apply(
-                { optIn: Object.fromEntries(data.actions.map((a) => [a.action, true])) },
-                '__bulk__',
-              )
-            }
-          >
-            Allow all
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={saving === '__bulk__' || optedCount === 0}
-            onClick={() =>
-              apply(
-                { optIn: Object.fromEntries(data.actions.map((a) => [a.action, false])) },
-                '__bulk__',
-              )
-            }
-          >
-            Revoke all
-          </Button>
-        </div>
+        <button
+          type="button"
+          className="ml-auto text-[11px] font-medium text-[var(--accent)] hover:underline"
+          onClick={() =>
+            document
+              .getElementById('permission-catalog')
+              ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+        >
+          {allowed} of {total} actions allowed autonomously — review below ↓
+        </button>
       </div>
 
       {!data.enabled && (
         <p className="rounded-lg border border-[var(--neon-amber)]/30 bg-[var(--neon-amber)]/5 px-3 py-2 text-[11px] text-[var(--text-secondary)]">
-          Paused — grants below are saved, but nothing will run tonight.
+          Paused — Auto grants below are saved, but nothing will run tonight.
         </p>
       )}
-
-      {/* per-action grants (stay interactive while paused: grants are kept) */}
-      <div className="-mx-1 divide-y divide-[var(--border-default)]/40">
-        {data.actions.map((row) => (
-          <AutoActionRow
-            key={row.action}
-            row={row}
-            saving={saving === row.action || saving === '__bulk__'}
-            onToggle={(v) => apply({ optIn: { [row.action]: v } }, row.action)}
-          />
-        ))}
-      </div>
 
       {/* caps + scope */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-[var(--border-default)]/40 bg-[var(--bg-surface)]/40 px-3 py-2">
@@ -368,16 +289,6 @@ export function AutonomousAgentPanel({
           Also fix remote hosts
           <span className="text-[var(--text-tertiary)]">(local-only actions stay local)</span>
         </label>
-        <span className="ml-auto flex items-center gap-2 text-[10px] text-[var(--text-tertiary)]">
-          Risk:
-          {(['low', 'medium', 'high'] as const)
-            .filter((r) => data.actions.some((a) => a.risk === r))
-            .map((r) => (
-              <span key={r} className="flex items-center gap-1">
-                <span className={`h-2 w-2 rounded-full ${RISK_DOT[r]}`} /> {r}
-              </span>
-            ))}
-        </span>
       </div>
 
       {/* footer actions */}

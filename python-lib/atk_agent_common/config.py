@@ -42,7 +42,10 @@ def resolve(plugin_config=None):
         'http_timeout_s': int(pick('http_timeout_s', cfg.get('http_timeout_s') or 30)),
         'heavy_timeout_s': int(pick('heavy_timeout_s', cfg.get('heavy_timeout_s') or 900)),
         'default_llm_id': pick('default_llm_id'),
-        'enable_red_actions': str(pick('enable_red_actions', cfg.get('enable_red_actions', False))).lower() in ('true', '1', 'yes'),
+        # Default ON (0.4.777+): two more gates remain in the chain (webapp
+        # per-action permissions; DSS-side agent execute setting), so an unset
+        # raw config must resolve True — DSS never materializes defaultValue.
+        'enable_red_actions': str(pick('enable_red_actions', cfg.get('enable_red_actions', True))).lower() in ('true', '1', 'yes'),
         'triage_connection': _toolkit_db or pick('triage_connection'),
         # Audit-DB fallback chain inputs (audit.resolve_connection): the unified
         # toolkit DB wins, then the dedicated param and the legacy Story key —
@@ -70,11 +73,17 @@ def resolve(plugin_config=None):
         'python_run_timeout_seconds': int(pick('python_run_timeout_seconds',
                                                cfg.get('python_run_timeout_seconds') or 120)),
         'settings_set_blocked_extra': pick('settings_set_blocked_extra'),
-        # Per-action enablement map (Agent Settings page). JSON {name: bool};
+        # Per-action enablement map (Agent Permissions page). JSON {name: bool};
         # kernel-start snapshot only — action_gates.py fetches the live map
         # through the backend with this as the offline fallback.
         'agent_action_gates': _parse_gates(pick('agent_action_gates')),
     }
+    # Per-action autonomy map (the "Auto" column). Seeding keys off the RAW
+    # string being empty: a never-written param inherits the legacy
+    # auto_remediate_actions CSV; a persisted '{}' means the admin revoked
+    # everything and must never re-seed.
+    settings['agent_autonomous_gates'] = _parse_autonomous(
+        pick('agent_autonomous_gates'), settings['auto_remediate_actions'])
     if not settings['backend_url']:
         settings['backend_url'] = _discover_backend_url() or ''
     return settings
@@ -89,6 +98,15 @@ def _parse_gates(raw):
         return {str(k): bool(v) for k, v in parsed.items()} if isinstance(parsed, dict) else {}
     except (ValueError, TypeError):
         return {}
+
+
+def _parse_autonomous(raw, seed_actions):
+    if isinstance(raw, dict):
+        return {str(k): bool(v) for k, v in raw.items()}
+    if raw is None or str(raw).strip() == '':
+        from .remediation_map import AUTO_EXCLUDED
+        return {a: True for a in (seed_actions or []) if a not in AUTO_EXCLUDED}
+    return _parse_gates(raw)
 
 
 def _discover_backend_url():

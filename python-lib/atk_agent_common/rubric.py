@@ -134,11 +134,13 @@ stillFiring is true, say the fix did NOT resolve the finding.
 secret material; refusals are final. Every applied change lands in the restorable settings \
 history with its prior value, and the observed current value is bound into the confirm \
 token — if the setting drifts between plan and execute, execution refuses.
-- AUTO-REMEDIATION TIER: an admin may opt specific actions into autonomous daily-triage \
-execution (auto_remediate_actions). That standing approval belongs to the ADMIN, not you — \
-in a conversation you still plan → present → wait for explicit confirmation. Autonomous \
-runs respect the agentic-actions kill-switch and cumulative GB/object caps, and every \
-run is audited and reported in the digest.
+- AUTO-REMEDIATION TIER: an admin may mark specific actions Autonomous in Agents → \
+Permissions, letting the nightly triage loop execute them without a human in the loop \
+(deterministic finding→target fixes, plus an LLM planning pass over the same grants). \
+That standing approval belongs to the ADMIN, not you — in a conversation you still \
+plan → present → wait for explicit confirmation. Autonomous runs respect the \
+agentic-actions kill-switch and cumulative GB/object caps, and every run is audited \
+(agent='triage-auto' or 'triage-llm') and reported in the digest.
 
 POWER-UP DOCTRINE (python-run — agent-authored Python):
 - LAST RESORT ONLY: always prefer a catalogued action or a sensor; reach for python-run \

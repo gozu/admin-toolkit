@@ -159,6 +159,11 @@ export interface ChatMessage {
   // renders only what the runtime actually reported.
   /** Which runtime served the turn: 'native' | 'dataiku'. */
   runtime?: string;
+  /** Set when the turn was served by a fallback runtime (e.g. the kernel
+   * relay failed pre-stream, or no agent instances exist): the runtime the
+   * turn was ORIGINALLY routed to, with the reason it fell back. */
+  fallbackFrom?: string;
+  fallbackReason?: string;
   usage?: TurnUsage;
   llmTurns?: number;
   toolsRun?: number;
@@ -1113,6 +1118,8 @@ async function streamTurn(
         };
         const doneDuration = Number(payload.durationMs) || undefined;
         const runtime = payload.runtime ? String(payload.runtime) : undefined;
+        const fallbackFrom = payload.fallbackFrom ? String(payload.fallbackFrom) : undefined;
+        const fallbackReason = payload.fallbackReason ? String(payload.fallbackReason) : undefined;
         const llmTurns = Number(payload.llmTurns) || undefined;
         const toolsRun = Number(payload.toolsRun) || undefined;
         const usage =
@@ -1128,6 +1135,8 @@ async function streamTurn(
               traceId: payload.traceId ? String(payload.traceId) : last.traceId,
               durationMs: doneDuration ?? last.durationMs,
               runtime: runtime ?? last.runtime,
+              fallbackFrom: fallbackFrom ?? last.fallbackFrom,
+              fallbackReason: fallbackReason ?? last.fallbackReason,
               llmTurns: llmTurns ?? last.llmTurns,
               toolsRun: toolsRun ?? last.toolsRun,
               usage: usage ?? last.usage,

@@ -112,9 +112,11 @@ def api_agents_list():
         rows, reason = [], str(exc)[:200]
     else:
         reason = None
-    # The native runtime needs no provisioned instances: on the local hub it
-    # serves a virtual generalist instead of the provisioning empty-state.
-    if not rows and host_id == 'local' and agent_native.runtime_mode() == 'native':
+    # The native runtime needs no provisioned instances: on the local hub the
+    # virtual generalist replaces the provisioning empty-state regardless of
+    # the configured runtime — chatting with it falls back to native (the
+    # kernel relay has nothing to relay to) and the turn is tagged as such.
+    if not rows and host_id == 'local':
         return jsonify({'available': True, 'projectKey': AGENTS_PROJECT_KEY,
                         'agents': [agent_native.virtual_agent_row()],
                         'runtime': 'native'})
@@ -134,6 +136,22 @@ def api_agents_provision():
     return jsonify(agent_provision.ensure_agents_provisioned(g.client))
 
 
+def _sse_frame(event: str, payload: Dict[str, Any]) -> str:
+    return 'event: %s\ndata: %s\n\n' % (event, json.dumps(payload, default=str))
+
+
+def _clip_messages(messages: List[Any]) -> List[Dict[str, str]]:
+    """The shared history caps, applied once in the view (the SSE generators
+    run outside the request context and must only touch plain values)."""
+    clipped = []
+    for msg in messages[-_MAX_MESSAGES:]:
+        role = msg.get('role') if isinstance(msg, dict) else None
+        content = (msg.get('content') or '') if isinstance(msg, dict) else ''
+        if role in ('user', 'assistant') and content:
+            clipped.append({'role': role, 'content': content[:_MAX_MESSAGE_CHARS]})
+    return clipped
+
+
 @bp.route('/api/agents/chat', methods=['POST'])
 def api_agents_chat():
     """SSE: one streamed agent turn.
@@ -142,12 +160,17 @@ def api_agents_chat():
            runtime?: 'native'|'dataiku' (per-request override, e.g. drills)}
     Events out: chunk {text} · agent_event {eventKind, eventData} ·
     done {finishReason, durationMs, traceAvailable, traceId?, traceExplorerPath?,
-    runtime} · error {message} · ping {} (native keep-alives).
+    runtime, fallbackFrom?, fallbackReason?} · error {message} · ping {}
+    (native keep-alives).
 
-    Two runtimes behind the same protocol: the in-process native loop
-    (agent_native, local host — the default) or the relay over the Dataiku
-    agent kernel via `agent.as_llm().execute_streamed()` (remote hosts, or
-    agent_runtime='dataiku').
+    Two runtimes behind the same protocol. The relay over the Dataiku agent
+    kernel (`agent.as_llm().execute_streamed()`) is the DEFAULT and the only
+    vehicle for remote hosts; the in-process native loop (agent_native, local
+    host only) serves explicit runtime='native' choices and two fallbacks —
+    the virtual generalist (no provisioned instances) and a kernel relay that
+    fails before streaming anything. Fallback turns are tagged in the done
+    event; an explicit 'dataiku' override disables fallback (deterministic
+    drills/tests).
     """
     body = request.get_json(silent=True) or {}
     agent_id = (body.get('agentId') or '').strip()
@@ -156,34 +179,57 @@ def api_agents_chat():
         return jsonify({'error': 'agentId and a non-empty messages list are required'}), 400
     client = g.client
     host_id = str(getattr(g, 'host_id', 'local') or 'local')
+    is_local = host_id == 'local'
+
+    clipped = _clip_messages(messages)
+    try:
+        from adk_backend.chat.identity import resolve_chat_user
+        chat_user = resolve_chat_user()
+    except Exception:
+        chat_user = None
 
     override = str(body.get('runtime') or '').strip().lower()
-    mode = override if override in ('native', 'dataiku') else agent_native.runtime_mode()
-    if mode == 'native' and host_id == 'local':
-        return _native_chat_response(client, host_id, agent_id, messages)
+    if override not in ('native', 'dataiku'):
+        override = ''
+    mode = override or agent_native.runtime_mode()
+
+    if is_local and mode == 'native':
+        def native_only():
+            for frame in _native_sse_frames(client, host_id, agent_id, clipped, chat_user):
+                yield frame
+        return _sse_response(native_only)
+
+    if is_local and agent_id == agent_native.VIRTUAL_AGENT_ID and override != 'dataiku':
+        # The virtual generalist only exists natively (the list route serves it
+        # when zero instances are provisioned) — the kernel relay has nothing
+        # to resolve the id against. agent_instance_config_local stays
+        # fail-closed: it re-verifies the zero-instances state.
+        def virtual_fallback():
+            for frame in _native_sse_frames(
+                    client, host_id, agent_id, clipped, chat_user,
+                    fallback={'from': 'dataiku', 'reason': 'no-agent-instances'}):
+                yield frame
+        return _sse_response(virtual_fallback)
 
     def generate():
-        def sse(event: str, payload: Dict[str, Any]) -> str:
-            return 'event: %s\ndata: %s\n\n' % (event, json.dumps(payload, default=str))
-
+        streamed = False
         try:
             llm = client.get_project(AGENTS_PROJECT_KEY).get_agent(agent_id).as_llm()
             completion = llm.new_completion()
-            for msg in messages[-_MAX_MESSAGES:]:
-                role = msg.get('role') if isinstance(msg, dict) else None
-                content = (msg.get('content') or '') if isinstance(msg, dict) else ''
-                if role in ('user', 'assistant') and content:
-                    completion.with_message(content[:_MAX_MESSAGE_CHARS], role=role)
+            for msg in clipped:
+                completion.with_message(msg['content'], role=msg['role'])
             footer: Optional[Dict[str, Any]] = None
             for chunk in completion.execute_streamed():
                 data = getattr(chunk, 'data', None) or {}
                 kind = data.get('type')
                 if kind == 'content':
                     if data.get('text'):
-                        yield sse('chunk', {'text': data['text']})
+                        streamed = True
+                        yield _sse_frame('chunk', {'text': data['text']})
                 elif kind == 'event':
-                    yield sse('agent_event', {'eventKind': data.get('eventKind'),
-                                              'eventData': data.get('eventData') or {}})
+                    streamed = True
+                    yield _sse_frame('agent_event', {'eventKind': data.get('eventKind'),
+                                                     'eventData': data.get('eventData') or {}})
                 elif kind == 'footer':
                     footer = data
             trajectory = ((footer or {}).get('additionalInformation') or {}).get('trajectory') or {}
@@ -199,61 +245,60 @@ def api_agents_chat():
                 done_payload['traceExplorer'] = explorer
                 # Back-compat alias (pre-0.4.648 frontends read the path).
                 done_payload['traceExplorerPath'] = explorer['viewPath']
-            yield sse('done', done_payload)
+            yield _sse_frame('done', done_payload)
         except Exception as exc:
             _LOGGER.warning('agent chat stream failed (agent %s): %s', agent_id, exc)
-            yield sse('error', {'message': '%s: %s' % (type(exc).__name__, str(exc)[:300])})
+            if not streamed and is_local and not override:
+                # Nothing reached the client yet — retry the whole turn
+                # natively (local only). Mid-stream failures do NOT retry:
+                # kernel tool calls may have had side effects and partial text
+                # is already on screen; a manual retry will itself fall back
+                # here if the kernel is still down.
+                reason = 'kernel-error: %s: %s' % (type(exc).__name__, str(exc)[:200])
+                for frame in _native_sse_frames(client, host_id, agent_id, clipped, chat_user,
+                                                fallback={'from': 'dataiku', 'reason': reason}):
+                    yield frame
+                return
+            yield _sse_frame('error', {'message': '%s: %s' % (type(exc).__name__, str(exc)[:300])})
 
     return _sse_response(generate)
 
 
-def _native_chat_response(client, host_id: str, agent_id: str, messages: List[Dict[str, Any]]):
-    """SSE response for one native-runtime turn: translate agent_native's
-    (event, payload) tuples, applying the same history caps as the relay path
-    and the same done-event enrichment (trace ring + Trace Explorer)."""
-    clipped = []
-    for msg in messages[-_MAX_MESSAGES:]:
-        role = msg.get('role') if isinstance(msg, dict) else None
-        content = (msg.get('content') or '') if isinstance(msg, dict) else ''
-        if role in ('user', 'assistant') and content:
-            clipped.append({'role': role, 'content': content[:_MAX_MESSAGE_CHARS]})
+def _native_sse_frames(client, host_id: str, agent_id: str, clipped: List[Dict[str, str]],
+                       chat_user: Optional[str], fallback: Optional[Dict[str, str]] = None):
+    """SSE frames for one native-runtime turn: translate agent_native's
+    (event, payload) tuples with the shared done-event enrichment (trace ring
+    + Trace Explorer). `fallback` marks a turn the kernel relay could not
+    serve — its from/reason merge into the done payload so the UI can tag the
+    turn honestly (runtime stays 'native': that IS what ran)."""
     try:
-        from adk_backend.chat.identity import resolve_chat_user
-        chat_user = resolve_chat_user()
-    except Exception:
-        chat_user = None
-
-    def generate():
-        def sse(event: str, payload: Dict[str, Any]) -> str:
-            return 'event: %s\ndata: %s\n\n' % (event, json.dumps(payload, default=str))
-
-        try:
-            for event, payload in agent_native.stream_native_turn(agent_id, clipped,
-                                                                  user=chat_user):
-                if event != 'final':
-                    yield sse(event, payload)
-                    continue
-                trace = payload.get('trace')
-                done_payload: Dict[str, Any] = {'finishReason': payload.get('finishReason'),
-                                                'durationMs': payload.get('durationMs'),
-                                                'traceAvailable': bool(trace),
-                                                'runtime': 'native'}
-                # Turn stats (native loop): only when the generator provided them.
-                for key in ('llmTurns', 'toolsRun', 'usage'):
-                    if payload.get(key) is not None:
-                        done_payload[key] = payload[key]
-                if trace:
-                    done_payload['traceId'] = _remember_trace(trace)
-                explorer = _trace_explorer_info(client, host_id)
-                if explorer:
-                    done_payload['traceExplorer'] = explorer
-                    done_payload['traceExplorerPath'] = explorer['viewPath']
-                yield sse('done', done_payload)
-        except Exception as exc:
-            _LOGGER.warning('native agent chat failed (agent %s): %s', agent_id, exc)
-            yield sse('error', {'message': '%s: %s' % (type(exc).__name__, str(exc)[:300])})
-
-    return _sse_response(generate)
+        for event, payload in agent_native.stream_native_turn(agent_id, clipped,
+                                                              user=chat_user):
+            if event != 'final':
+                yield _sse_frame(event, payload)
+                continue
+            trace = payload.get('trace')
+            done_payload: Dict[str, Any] = {'finishReason': payload.get('finishReason'),
+                                            'durationMs': payload.get('durationMs'),
+                                            'traceAvailable': bool(trace),
+                                            'runtime': 'native'}
+            if fallback:
+                done_payload['fallbackFrom'] = fallback.get('from')
+                done_payload['fallbackReason'] = fallback.get('reason')
+            # Turn stats (native loop): only when the generator provided them.
+            for key in ('llmTurns', 'toolsRun', 'usage'):
+                if payload.get(key) is not None:
+                    done_payload[key] = payload[key]
+            if trace:
+                done_payload['traceId'] = _remember_trace(trace)
+            explorer = _trace_explorer_info(client, host_id)
+            if explorer:
+                done_payload['traceExplorer'] = explorer
+                done_payload['traceExplorerPath'] = explorer['viewPath']
+            yield _sse_frame('done', done_payload)
+    except Exception as exc:
+        _LOGGER.warning('native agent chat failed (agent %s): %s', agent_id, exc)
+        yield _sse_frame('error', {'message': '%s: %s' % (type(exc).__name__, str(exc)[:300])})
 
 
 @bp.route('/api/agents/last-trace')

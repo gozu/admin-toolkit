@@ -3294,6 +3294,9 @@ h1, h2, h3, h4 {
    --rpt-mint (the report overlay palette is the brand source of truth). */
 :root {
   --dku-green: #3edab2;
+  /* Exact color-wheel complement of --dku-green (hue 165° → 345°): the warm
+     rose that flashes through the hero headline sheen. */
+  --dku-green-complement: #da3e66;
 }
 
 /* State recolors via custom props; tempo via --orb-spin/--orb-breathe.
@@ -3606,9 +3609,9 @@ h1, h2, h3, h4 {
   background: linear-gradient(
     100deg,
     var(--text-primary) 30%,
-    var(--accent) 45%,
-    var(--neon-magenta) 50%,
-    var(--accent) 55%,
+    var(--dku-green) 45%,
+    var(--dku-green-complement) 50%,
+    var(--dku-green) 55%,
     var(--text-primary) 70%
   );
   background-size: 250% 100%;

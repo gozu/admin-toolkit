@@ -3290,14 +3290,20 @@ h1, h2, h3, h4 {
   50%      { transform: scale(1.05); }
 }
 
+/* Official Dataiku brand green — same value as the presentation deck's
+   --rpt-mint (the report overlay palette is the brand source of truth). */
+:root {
+  --dku-green: #3edab2;
+}
+
 /* State recolors via custom props; tempo via --orb-spin/--orb-breathe.
    --orb-blur/--orb-glow-size are set inline per instance (they scale with
    the rendered size). The mark is the Dataiku bird: the silhouette holds
-   still and glows while the aura layers rotate behind it. */
+   still and glows in brand green while the aura layers rotate behind it. */
 .agent-orb {
-  --orb-a: var(--accent);
-  --orb-b: var(--neon-purple);
-  --orb-c: var(--neon-magenta);
+  --orb-a: var(--dku-green);
+  --orb-b: #0ea5a0;
+  --orb-c: #8ff5d3;
   --orb-spin: 16s;
   --orb-breathe: 5s;
   --orb-glow-alpha: 40%;
@@ -3356,7 +3362,9 @@ h1, h2, h3, h4 {
   transition: color 0.6s ease, filter 0.6s ease;
 }
 [data-theme='light'] .agent-orb-bird {
-  color: var(--orb-a);
+  /* Brand green alone is too pale on white — deepen toward the deck's paper
+     green so the mark keeps contrast while staying on-brand. */
+  color: color-mix(in oklab, var(--orb-a) 60%, #06312e);
 }
 /* Light theme: crisp flat mark — the aura hugs the bird instead of smearing
    across the white header. */
@@ -3374,7 +3382,7 @@ h1, h2, h3, h4 {
 .agent-orb[data-state='tool'] {
   --orb-a: var(--neon-amber);
   --orb-b: var(--neon-magenta);
-  --orb-c: var(--accent);
+  --orb-c: var(--dku-green);
   --orb-spin: 1.7s;
   --orb-breathe: 1.4s;
   --orb-glow-alpha: 70%;
@@ -3406,8 +3414,8 @@ h1, h2, h3, h4 {
   height: 6px;
   margin-left: -3px;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 10px 1px color-mix(in oklab, var(--accent) 75%, transparent);
+  background: var(--dku-green);
+  box-shadow: 0 0 10px 1px color-mix(in oklab, var(--dku-green) 75%, transparent);
 }
 .orb-orbit.orbit-2 {
   inset: 22px;
@@ -3462,6 +3470,26 @@ h1, h2, h3, h4 {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+/* Footer ghost-links (expander + copy): one quiet treatment — the stacked
+   cards must not out-shout the assistant's replies. Hover brightens. */
+.preset-card-link {
+  color: color-mix(in srgb, var(--accent) 55%, var(--text-muted));
+  transition: color 0.15s ease;
+}
+.preset-card-link:hover {
+  color: var(--accent);
+}
+/* Expanded prompt: the bottom fade signals "scrollable" mid-scroll; the
+   matching bottom padding keeps the last line legible at scroll end. */
+.preset-card-pre {
+  mask-image: linear-gradient(to bottom, black calc(100% - 18px), transparent);
+}
+
+/* Transcript scroll veil: content slides under a soft fade at the header
+   seam instead of being guillotined by the container edge. */
+.chat-scroll-fade {
+  mask-image: linear-gradient(to bottom, transparent, black 28px);
 }
 /* Action outcomes read by color at a glance: approve green, reject red,
    handoff amber — tint only the icon tile, the card body stays neutral. */
@@ -3527,10 +3555,10 @@ h1, h2, h3, h4 {
   background: radial-gradient(circle, color-mix(in oklab, var(--neon-magenta) 12%, transparent), transparent 62%);
   animation: aurora-c 33s ease-in-out infinite alternate;
 }
-/* On white the blurred fields band into visible rings — keep light nearly
-   flat, with only a hint of life while a turn is running. */
-[data-theme='light'] .agent-aurora { opacity: 0.12; }
-[data-theme='light'] .agent-aurora[data-live='true'] { opacity: 0.25; }
+/* On white the blurred fields band into visible rings — light stays flat at
+   rest; only a whisper of life while a turn is actually running. */
+[data-theme='light'] .agent-aurora { opacity: 0; }
+[data-theme='light'] .agent-aurora[data-live='true'] { opacity: 0.12; }
 
 /* Border-beam: a hot spark tracing the card's edge — reserved for plans
    waiting on a human decision. Falls back to a static (harmless) ring where
@@ -3645,6 +3673,13 @@ h1, h2, h3, h4 {
 .btn-agent-send:not(:disabled):hover {
   filter: brightness(1.12);
   box-shadow: 0 0 22px -4px color-mix(in oklab, var(--accent) 65%, transparent);
+}
+/* Disabled = unambiguously inert: ghost outline, no gradient (a washed
+   gradient reads as a rendering fault, not a state). */
+.btn-agent-send:disabled {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  color: var(--text-muted);
 }
 
 /* A running tool chip gets a light sweep (reuses progress-sheen-sweep). */

@@ -17,6 +17,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `auto_remediate.run_auto_remediation` understands batched targets, reports per-action result details/effects, and honors the new master pause + remote-host knobs; grouped health issues (`project-size-*`, `project-codenv-*`) now carry their member names in `items` so remediation targets can be built from findings.
 - Settings → Agents & Outreach: the auto-remediation checkboxes and caps moved to Agents → Permissions → Autonomous daily agent (the card links there); opting an action into autonomy also enables its main per-action gate in the same write.
 
+## [0.4.770] - 2026-07-19
+
+### Fixed
+- **Agents page pinned to the viewport**: the page wrapper's min-content height let the enlarged welcome hero push the composer below the fold, and the composer's autofocus then scrolled the app shell — clipping the bird mark on first paint. The wrapper now caps at the viewport on the Agents page, so the transcript is the only scroller and the composer stays visible.
+
+## [0.4.769] - 2026-07-19
+
+### Fixed
+- **Welcome hero anchors to the top**: an empty conversation no longer inherits the transcript's stick-to-bottom autoscroll, so the identity mark opens fully in view.
+
+## [0.4.768] - 2026-07-19
+
+### Added
+- **Character-level streaming**: replies now land as a smooth, fast typewriter reveal instead of stuttery multi-word bursts. Incoming SSE chunks queue behind a ~24ms drain whose speed scales with backlog, so the reveal trails the server by about a second at most; tool events stay in order and Stop flushes instantly.
+
+### Changed
+- **Bird glow in official Dataiku green**: the orb's identity palette is now the brand mint (`#3EDAB2`, straight from the presentation deck's palette) with emerald/pale-mint aura layers; the hero orbit dot follows. Tool and error states keep their semantic amber/red, and the light theme deepens the mark toward the deck's paper green for contrast.
+- **Bigger welcome hero**: larger headline, subtitle, group cards, and prompt buttons (the card grid widens to fill the column) so the empty state no longer floats in dead space.
+
 ## [0.4.767] - 2026-07-19
 
 ### Added
@@ -24,6 +43,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Turn stats + runtime badge**: the native loop reports model turns, tools run and token usage (read from the LLM Mesh footer in `response_metadata` — LangChain's `usage_metadata` is None on DKU chunks, verified live); the assistant-reply footer now reads e.g. `12.4s · native · 2 turns · 4 tools · 1.8k tok` (hover the token count for the in/out split). Fields only render when the runtime reported them; the kernel relay keeps its runtime badge.
 - **Instant follow-up turns**: the native runtime caches the per-agent setup bundle (config, gates, tuning, toolset, prompt — previously 4-6 self-HTTP/DSS reads per turn) for ~20s; saving Agents & Outreach settings clears the cache so knob changes still apply on the very next turn.
 - **Interaction-logs parity**: native turns now append their row to `ADMINTOOLKIT/agent_interaction_logs` (agent_type `NATIVE_TOOLKIT_AGENT`, full `dku_trace`) via the standard APPEND write path DSS's own logger uses — closing the 0.4.762 gap where native turns never reached the durable trace dataset. Best-effort and silent when the dataset isn't provisioned.
+
+### Changed
+- **Preset cards, round 3**: hanging-icon layout (title, gist, and footer share one left edge), the expander and Copy demoted to one quiet ghost-link treatment so stacked cards no longer out-shout the replies, and the expanded prompt got taller with a bottom scroll fade instead of a hard mid-line slice.
+- **Transcript top veil**: messages slide under a soft fade at the header seam instead of being cut off by the container edge.
+- **Ghost disabled Send**: the disabled state is a plain outlined pill — the washed-out gradient used to read as a rendering fault rather than "disabled".
+- **Light theme, fully flat at rest**: the ambient aurora is invisible in light until a turn is actually running (the blurred fields banded into visible rings on white).
+
+## [0.4.766] - 2026-07-19
+
+### Fixed
+- **Markdown list markers restored**: Tailwind's preflight strips `list-style`, so every bulleted/numbered list in assistant replies (and AI log analysis) rendered without markers — now back, with accent-tinted markers.
+- **Scroll-to-top FAB no longer covers Send**: the global back-to-top button is suppressed on the Agents page, where it landed exactly on the Send button whenever the page scrolled.
+
+### Changed
+- **Preset-card affordances**: state-tinted icon tiles (approve green / reject red / handoff amber), a copy control inside the card, and an accent-colored expander link.
+- **Light-theme damping**: quieter orb halo, calmer aurora, and a flatter composer focus ring in light.
+- **Turn durations**: consistent formatting — one decimal only under 10s ("3.4s", "21s", "2m 28s").
+
+## [0.4.765] - 2026-07-19
+
+### Added
+- **Dataiku bird identity mark**: the agent's orb is now the Dataiku bird — a still, glowing silhouette inside the living halo, keeping all four states (idle breathe / thinking swirl / amber tool flare / red error) at every size (header, hero with orbit satellites, streaming indicator).
+- **Preset prompt cards**: clicking a hero megaprompt, a catalog prompt, or a plan approve/reject/handoff no longer dumps the raw multi-line prompt into the transcript — it renders a compact card (icon + title + group chip + gist) with click-to-expand for the full text actually sent to the agent. Provenance rides as a `preset` segment on the user message, so cards survive reloads and server-side chat storage with no schema change.
+- **Prettier chat**: markdown tables get a rounded outer frame, tinted header, row rules, hover tint and tabular numerals; code blocks get borders and a top sheen; accent blockquotes, gradient `hr`, hairline under `h2`; prose lines capped at 78ch in chat; user bubbles wear a soft accent gradient that pairs with the preset cards.
 
 ## [0.4.764] - 2026-07-19
 

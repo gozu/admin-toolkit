@@ -1050,6 +1050,21 @@ export function retryLastTurn(agentId: string): void {
   void streamTurn(agentId, conv, [messages[userIdx].id, assistantId]);
 }
 
+/** Typewriter pacing for streamed text: SSE chunks arrive as multi-word
+ * bursts, so raw appends read stuttery. Frames queue as ops (order preserved
+ * across text and agent events) and a ~24ms ticker reveals a slice of the
+ * text backlog per tick — the slice scales with backlog size so the reveal
+ * stays roughly SMOOTH_DRAIN_TICKS ticks (~1s) behind the server no matter
+ * how fast tokens land. Abort flushes instantly. */
+const SMOOTH_TICK_MS = 24;
+const SMOOTH_DRAIN_TICKS = 45;
+
+type StreamOp =
+  | { kind: 'text'; text: string }
+  | { kind: 'event'; eventKind: string; data: Record<string, unknown> }
+  | { kind: 'done'; payload: Record<string, unknown> }
+  | { kind: 'error'; payload: Record<string, unknown> };
+
 /** Stream one turn (the trailing user+assistant pair of `conv`, identified by
  * `turnIds`) over the chat SSE proxy, settling and persisting at the end. */
 async function streamTurn(
@@ -1081,15 +1096,14 @@ async function streamTurn(
       throw new Error(`${response.status} ${response.statusText} — ${body.slice(0, 240)}`);
     }
 
-    for await (const frame of parseSseStream(response.body)) {
-      const payload = (frame.payload || {}) as Record<string, unknown>;
-      if (frame.event === 'chunk') {
-        conv = updateAssistant(conv, (segs) => appendText(segs, String(payload.text || '')));
-      } else if (frame.event === 'agent_event') {
-        const kind = String(payload.eventKind || '');
-        const data = (payload.eventData || {}) as Record<string, unknown>;
-        conv = updateAssistant(conv, (segs) => applyAgentEvent(segs, kind, data));
-      } else if (frame.event === 'done') {
+    const ops: StreamOp[] = [];
+    let inputDone = false;
+
+    const applyOp = (op: Exclude<StreamOp, { kind: 'text' }>) => {
+      if (op.kind === 'event') {
+        conv = updateAssistant(conv, (segs) => applyAgentEvent(segs, op.eventKind, op.data));
+      } else if (op.kind === 'done') {
+        const payload = op.payload;
         conv = {
           ...conv,
           lastDurationMs: Number(payload.durationMs) || undefined,
@@ -1121,12 +1135,74 @@ async function streamTurn(
             conv = { ...conv, messages };
           }
         }
-      } else if (frame.event === 'error') {
-        conv = { ...conv, error: String(payload.message || 'Agent stream failed') };
+      } else {
+        conv = { ...conv, error: String(op.payload.message || 'Agent stream failed') };
       }
-      // A frame already yielded before an abort ("New conversation" mid-turn)
-      // must not re-insert the deleted conversation.
-      if (!controller.signal.aborted) putConversation(conv);
+    };
+
+    const drainer = (async () => {
+      for (;;) {
+        let mutated = false;
+        while (ops.length) {
+          const op = ops[0];
+          if (op.kind !== 'text') {
+            applyOp(op);
+            ops.shift();
+            mutated = true;
+            continue;
+          }
+          if (!op.text) {
+            ops.shift();
+            continue;
+          }
+          if (controller.signal.aborted) {
+            // Stop pressed — land the whole backlog at once.
+            conv = updateAssistant(conv, (segs) => appendText(segs, op.text));
+            ops.shift();
+            mutated = true;
+            continue;
+          }
+          const backlog = ops.reduce((n, o) => n + (o.kind === 'text' ? o.text.length : 0), 0);
+          const step = Math.max(1, Math.round(backlog / SMOOTH_DRAIN_TICKS));
+          conv = updateAssistant(conv, (segs) => appendText(segs, op.text.slice(0, step)));
+          op.text = op.text.slice(step);
+          if (!op.text) ops.shift();
+          mutated = true;
+          break; // one reveal per tick keeps the cadence even
+        }
+        // A frame already applied after an abort ("New conversation" mid-turn)
+        // must not re-insert the deleted conversation.
+        if (mutated && !controller.signal.aborted) putConversation(conv);
+        if (!ops.length && inputDone) return;
+        await new Promise((resolve) => setTimeout(resolve, SMOOTH_TICK_MS));
+      }
+    })();
+
+    try {
+      for await (const frame of parseSseStream(response.body)) {
+        const payload = (frame.payload || {}) as Record<string, unknown>;
+        if (frame.event === 'chunk') {
+          const text = String(payload.text || '');
+          const tail = ops[ops.length - 1];
+          if (tail?.kind === 'text') tail.text += text;
+          else ops.push({ kind: 'text', text });
+        } else if (frame.event === 'agent_event') {
+          ops.push({
+            kind: 'event',
+            eventKind: String(payload.eventKind || ''),
+            data: (payload.eventData || {}) as Record<string, unknown>,
+          });
+        } else if (frame.event === 'done') {
+          ops.push({ kind: 'done', payload });
+        } else if (frame.event === 'error') {
+          ops.push({ kind: 'error', payload });
+        }
+      }
+    } finally {
+      // Whether the stream ended cleanly or threw (abort/network), let the
+      // drainer land everything queued before the settle below runs.
+      inputDone = true;
+      await drainer;
     }
   } catch (err) {
     const aborted = (err as Error).name === 'AbortError';

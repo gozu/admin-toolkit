@@ -225,7 +225,12 @@ export function PageRouter() {
         animate="animate"
         exit="exit"
         transition={crossfadeTransition}
-        className="page-cascade flex-1 flex flex-col"
+        // min-h-0 on agents only: that page pins its composer to the viewport
+        // and scrolls the transcript internally — without it the wrapper's
+        // min-content height lets a tall hero push the composer below the fold
+        // (composer autofocus then scrolls <main>, clipping the bird mark).
+        // Other pages rely on the wrapper growing so <main> scrolls.
+        className={`page-cascade flex-1 flex flex-col${activePage === 'agents' ? ' min-h-0' : ''}`}
         onAnimationStart={(definition) => {
           // AppShell restores the page's saved scroll offset on this signal:
           // content is mounted and laid out, entrance not yet visible.

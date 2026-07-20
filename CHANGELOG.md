@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.767] - 2026-07-19
+
+### Changed
+- **Preset cards, round 3**: hanging-icon layout (title, gist, and footer share one left edge), the expander and Copy demoted to one quiet ghost-link treatment so stacked cards no longer out-shout the replies, and the expanded prompt got taller with a bottom scroll fade instead of a hard mid-line slice.
+- **Transcript top veil**: messages slide under a soft fade at the header seam instead of being cut off by the container edge.
+- **Ghost disabled Send**: the disabled state is a plain outlined pill — the washed-out gradient used to read as a rendering fault rather than "disabled".
+- **Light theme, fully flat at rest**: the ambient aurora is invisible in light until a turn is actually running (the blurred fields banded into visible rings on white).
+
+## [0.4.766] - 2026-07-19
+
+### Fixed
+- **Markdown list markers restored**: Tailwind's preflight strips `list-style`, so every bulleted/numbered list in assistant replies (and AI log analysis) rendered without markers — now back, with accent-tinted markers.
+- **Scroll-to-top FAB no longer covers Send**: the global back-to-top button is suppressed on the Agents page, where it landed exactly on the Send button whenever the page scrolled.
+
+### Changed
+- **Preset-card affordances**: state-tinted icon tiles (approve green / reject red / handoff amber), a copy control inside the card, and an accent-colored expander link.
+- **Light-theme damping**: quieter orb halo, calmer aurora, and a flatter composer focus ring in light.
+- **Turn durations**: consistent formatting — one decimal only under 10s ("3.4s", "21s", "2m 28s").
+
+## [0.4.765] - 2026-07-19
+
+### Added
+- **Dataiku bird identity mark**: the agent's orb is now the Dataiku bird — a still, glowing silhouette inside the living halo, keeping all four states (idle breathe / thinking swirl / amber tool flare / red error) at every size (header, hero with orbit satellites, streaming indicator).
+- **Preset prompt cards**: clicking a hero megaprompt, a catalog prompt, or a plan approve/reject/handoff no longer dumps the raw multi-line prompt into the transcript — it renders a compact card (icon + title + group chip + gist) with click-to-expand for the full text actually sent to the agent. Provenance rides as a `preset` segment on the user message, so cards survive reloads and server-side chat storage with no schema change.
+- **Prettier chat**: markdown tables get a rounded outer frame, tinted header, row rules, hover tint and tabular numerals; code blocks get borders and a top sheen; accent blockquotes, gradient `hr`, hairline under `h2`; prose lines capped at 78ch in chat; user bubbles wear a soft accent gradient that pairs with the preset cards.
+
 ## [0.4.764] - 2026-07-19
 
 ### Added

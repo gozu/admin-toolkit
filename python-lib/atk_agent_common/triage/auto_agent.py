@@ -148,6 +148,9 @@ def run_llm_planner(client, settings, rows, flagged, summary, autonomous_actions
         def propose_fix(host, action, finding_id, reasoning, target=None, targets=None):
             action = str(action or '')
             host = str(host or 'local')
+            # Every call is a proposal — refused ones included, so the digest's
+            # "N proposal(s), X executed, Y refused" adds up.
+            state['proposals'] += 1
             # Enforcement chain — in code, never trusting the model.
             if action not in set(actuator.ACTIONS):
                 return _refuse(host, action, finding_id,
@@ -166,10 +169,9 @@ def run_llm_planner(client, settings, rows, flagged, summary, autonomous_actions
             if (host, action) in seen:
                 return _refuse(host, action, finding_id,
                                '(%s, %s) was already handled/attempted tonight' % (host, action))
-            if state['proposals'] >= MAX_PROPOSALS:
+            if state['proposals'] > MAX_PROPOSALS:
                 return _refuse(host, action, finding_id,
                                'proposal cap (%d) reached for tonight' % MAX_PROPOSALS)
-            state['proposals'] += 1
             seen.add((host, action))
             cand = {'host': host, 'action': action, 'issueId': finding_id,
                     'target': targets if targets else target, 'reasoning': reasoning}

@@ -43,6 +43,7 @@ _LOGGER = logging.getLogger(__name__)
 
 VIRTUAL_AGENT_ID = 'native-admin-generalist'
 VIRTUAL_AGENT_NAME = 'ATK Admin Agent'
+AGENTS_PROJECT_KEY = 'ADMINTOOLKIT'
 
 # ── setup-bundle cache ───────────────────────────────────────────────────────
 # Per-turn assembly costs a handful of self-HTTP/DSS reads (plugin config,
@@ -52,6 +53,9 @@ VIRTUAL_AGENT_NAME = 'ATK Admin Agent'
 # the whole bundle and get to the first token immediately. Settings saves
 # clear it explicitly so knob changes still apply on the very next turn.
 _BUNDLE_TTL_S = 20.0
+# Ids are validated against the live agent list before a bundle is built, so
+# the key space is server-controlled — the cap is a backstop, not a policy.
+_BUNDLE_MAX = 16
 _bundle_lock = threading.Lock()
 _bundle_cache = {}  # agent_id -> (monotonic deadline, bundle dict)
 
@@ -83,7 +87,12 @@ def _setup_bundle(agent_id):
               'behavior': behavior, 'tools': tools,
               'prompt': generalist.build_system_prompt(client, behavior, tools)}
     with _bundle_lock:
-        _bundle_cache[agent_id] = (time.monotonic() + _BUNDLE_TTL_S, bundle)
+        now = time.monotonic()
+        for key in [k for k, v in _bundle_cache.items() if v[0] <= now]:
+            del _bundle_cache[key]
+        while len(_bundle_cache) >= _BUNDLE_MAX:
+            del _bundle_cache[min(_bundle_cache, key=lambda k: _bundle_cache[k][0])]
+        _bundle_cache[agent_id] = (now + _BUNDLE_TTL_S, bundle)
     return bundle
 
 
@@ -104,7 +113,9 @@ def virtual_agent_row():
 
 def agent_instance_config(client, agent_id, project_key='ADMINTOOLKIT'):
     """The agent instance's pluginAgentConfig (active version), or None when
-    the instance doesn't exist / isn't readable — the virtual-agent signal."""
+    the instance doesn't exist / isn't readable. Callers decide what None
+    means — agent_instance_config_local treats it as a hard failure for a
+    listed agent (never the virtual-agent signal)."""
     try:
         raw = client.get_project(project_key).get_agent(agent_id).get_settings().get_raw()
         active = raw.get('activeVersion')
@@ -194,13 +205,56 @@ def stream_native_turn(agent_id, messages, user=None):
     yield 'final', final
 
 
+def _verified_agent_ids(client):
+    """Agent ids actually present in ADMINTOOLKIT, or None when the project
+    itself is verifiably absent (the provision-free state). Lookup failures
+    raise — callers fail closed, never treating an error as 'no agents'."""
+    try:
+        agents = client.get_project(AGENTS_PROJECT_KEY).list_agents() or []
+    except Exception:
+        # Distinguish "project missing" (a normal, verifiable state) from a
+        # transient lookup failure: the project-keys list is a definitive read.
+        if AGENTS_PROJECT_KEY not in set(client.list_project_keys() or []):
+            return None
+        raise
+    ids = []
+    for item in agents:
+        raw = item if isinstance(item, dict) else getattr(item, 'raw', {}) or {}
+        if raw.get('id'):
+            ids.append(str(raw['id']))
+    return ids
+
+
 def agent_instance_config_local(agent_id):
-    """pluginAgentConfig via the LOCAL client (native runtime is local-only);
-    the virtual agent id never touches the API."""
-    if agent_id == VIRTUAL_AGENT_ID:
-        return None
+    """pluginAgentConfig via the LOCAL client (native runtime is local-only).
+
+    Fails closed (ToolkitError) on everything except two VERIFIED states: a
+    listed real instance (returns its config) or the virtual generalist when
+    the project verifiably has no instances (returns None). The virtual
+    behavior swaps the per-agent execute gate for the plugin master switch,
+    so it must never be reachable through an unknown caller-supplied id or a
+    failed lookup — only through the confirmed no-instances state."""
     import dataiku
-    return agent_instance_config(dataiku.api_client(), agent_id)
+    client = dataiku.api_client()
+    try:
+        ids = _verified_agent_ids(client)
+    except Exception as exc:
+        raise ToolkitError('Could not verify the agent list (%s).' % str(exc)[:150],
+                           'Retry — the agent lookup failed, so the turn is refused.')
+    if agent_id == VIRTUAL_AGENT_ID:
+        if ids:
+            raise ToolkitError('Provisioned agents exist on this instance.',
+                               'Pick an agent from the agent list.')
+        return None
+    if not ids or agent_id not in ids:
+        raise ToolkitError('No agent instance %r in %s.' % (agent_id, AGENTS_PROJECT_KEY),
+                           'Pick an agent from the agent list.')
+    config = agent_instance_config(client, agent_id)
+    if config is None:
+        # Listed but unreadable is a lookup failure, not the virtual signal.
+        raise ToolkitError('Agent %r exists but its settings could not be read.' % agent_id,
+                           'Retry — the agent lookup failed, so the turn is refused.')
+    return config
 
 
 def _elapsed_ms(started):

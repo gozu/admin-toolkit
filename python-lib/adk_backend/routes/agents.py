@@ -152,7 +152,7 @@ def api_agents_chat():
     body = request.get_json(silent=True) or {}
     agent_id = (body.get('agentId') or '').strip()
     messages = body.get('messages') or []
-    if not agent_id or not isinstance(messages, list) or not messages:
+    if not agent_id or len(agent_id) > 64 or not isinstance(messages, list) or not messages:
         return jsonify({'error': 'agentId and a non-empty messages list are required'}), 400
     client = g.client
     host_id = str(getattr(g, 'host_id', 'local') or 'local')

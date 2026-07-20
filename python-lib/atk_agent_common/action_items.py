@@ -28,7 +28,8 @@ TOOL_DESCRIPTION = (
     'evidence: [strings]}. '
     'Set action ONLY when it maps exactly to one of: %s — target shapes: %s. %s '
     'Items with no valid action become advisory (still shown, not executable). Call ONCE, '
-    'at the end of the investigation.'
+    'as the LAST element of your reply — write any analysis first; after this returns, end '
+    'the turn with no further text.'
     % (MAX_ITEMS, ', '.join(actuator.ACTIONS), _TARGET_SHAPES,
        actions_registry.BATCH_NOTE))
 
@@ -55,7 +56,13 @@ automatically at plan time (the plan shows the destination) — a standalone pro
 projects you are KEEPING, or a migration bundle — never as a pre-delete safety copy.)
 - Every item needs concrete `evidence` entries citing tool + host + the numbers that justify it.
 The items render as a checklist; the USER decides what is handed to the ops-actuator for \
-planning and approval. Never plan, never execute, never promise execution yourself.""".format(
+planning and approval. Never plan, never execute, never promise execution yourself.
+PLACEMENT — the checklist is always the LAST element of your reply: write your full \
+analysis/summary BEFORE calling propose_action_items, then call it as your final act. After \
+the tool returns, END YOUR TURN IMMEDIATELY with no further text — no recap, no sign-off, no \
+"let me know" (the checklist speaks for itself; trailing prose wastes tokens and pushes it \
+off the bottom). Sole exception: if the tool result reports dropped or downgraded items, add \
+ONE short line naming the most important of them, nothing else.""".format(
     max_items=MAX_ITEMS, actions=', '.join(actuator.ACTIONS),
     batchable=', '.join(sorted(actuator.BATCHABLE_ACTIONS)))
 
@@ -174,10 +181,12 @@ def propose_action_items(client, items):
         'count': len(out),
         'nextStep': ('The items are now displayed to the user as a checklist. Do NOT plan or '
                      'execute anything — the user will hand checked items to the ops-actuator '
-                     'themselves. Close with a short summary of what you proposed.'),
+                     'themselves. END YOUR TURN NOW with no further text: the checklist is the '
+                     'final element of your reply and anything after it wastes tokens.'),
     }
     if dropped:
         result['droppedCount'] = dropped
-        result['nextStep'] += (' NOTE: %d item(s) beyond the %d-item cap were dropped — mention '
-                               'the ones you consider most important among the dropped.' % (dropped, MAX_ITEMS))
+        result['nextStep'] += (' Sole exception: %d item(s) beyond the %d-item cap were dropped — '
+                               'add ONE short line naming the most important dropped item(s), '
+                               'then stop.' % (dropped, MAX_ITEMS))
     return result

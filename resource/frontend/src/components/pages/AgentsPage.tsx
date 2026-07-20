@@ -18,6 +18,7 @@ import { hostBaseUrl } from '../../utils/agentLinks';
 import { dssUrls } from '../../utils/codeEnvUsageLinks';
 import { getActiveHostId } from '../../state/hostStore';
 import { AgentOrb, type OrbState } from '../agents/AgentOrb';
+import { OrbPlanets } from '../agents/OrbPlanets';
 import { ChatHistoryDrawer } from '../agents/ChatHistoryDrawer';
 import { ComposerPalette } from '../agents/ComposerPalette';
 import { Spinner } from '../common/Spinner';
@@ -586,9 +587,8 @@ export function AgentsPage() {
               {messages.length === 0 && (
                 <div className="pt-6 flex flex-col items-center gap-6 text-center">
                   <div className="relative flex items-center justify-center w-[10rem] h-[10rem]">
-                    <span className="orb-orbit" aria-hidden="true" />
-                    <span className="orb-orbit orbit-2" aria-hidden="true" />
-                    <AgentOrb size={88} state="idle" />
+                    <OrbPlanets />
+                    <AgentOrb size={88} state="idle" className="orb-bird-white z-[1]" />
                   </div>
                   <div className="space-y-2">
                     <h2

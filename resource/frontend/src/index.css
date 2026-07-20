@@ -3396,38 +3396,33 @@ h1, h2, h3, h4 {
 }
 [data-theme='light'] .agent-orb { --orb-glow-alpha: 22%; }
 
-/* Hero satellites: faint orbit rings with a bright dot each, counter-rotating. */
-.orb-orbit {
-  position: absolute;
-  inset: 4px;
-  border-radius: 50%;
-  border: 1px solid color-mix(in oklab, var(--text-tertiary) 22%, transparent);
-  animation: orb-rotate 11s linear infinite;
-  pointer-events: none;
+/* Hero variant: pure-white bird — the aura layers and drop-shadow stay brand
+   green, only the silhouette goes white. */
+.agent-orb.orb-bird-white .agent-orb-bird {
+  color: #fff;
 }
-.orb-orbit::before {
-  content: '';
+[data-theme='light'] .agent-orb.orb-bird-white .agent-orb-bird {
+  /* white-on-white would vanish — light theme keeps the deepened brand mark */
+  color: color-mix(in oklab, var(--orb-a) 60%, #06312e);
+}
+
+/* Hero planets: three brand-green bodies on mutually-perturbing 3D orbits
+   (real N-body sim in OrbPlanets.tsx). Position, scale, opacity and stacking
+   are written by the sim each frame; CSS only paints the lit sphere. */
+.orb-planet {
   position: absolute;
-  top: -3px;
+  top: 50%;
   left: 50%;
-  width: 6px;
-  height: 6px;
-  margin-left: -3px;
   border-radius: 50%;
-  background: var(--dku-green);
-  box-shadow: 0 0 10px 1px color-mix(in oklab, var(--dku-green) 75%, transparent);
-}
-.orb-orbit.orbit-2 {
-  inset: 22px;
-  animation-duration: 7s;
-  animation-direction: reverse;
-}
-.orb-orbit.orbit-2::before {
-  width: 4px;
-  height: 4px;
-  margin-left: -2px;
-  background: var(--neon-magenta);
-  box-shadow: 0 0 8px 1px color-mix(in oklab, var(--neon-magenta) 75%, transparent);
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 32% 28%,
+    #d6fff1,
+    var(--dku-green) 52%,
+    #0a7c66 100%
+  );
+  box-shadow: 0 0 12px 1px color-mix(in oklab, var(--dku-green) 70%, transparent);
+  will-change: transform, opacity;
 }
 
 /* User-side chat surfaces: the plain typed bubble and the preset card share

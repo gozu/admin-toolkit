@@ -8,10 +8,9 @@ import { PendingApprovalsBar } from '../agents/PendingApprovalsBar';
 import { AuditTimeline } from '../agents/AuditTimeline';
 import { SettingsHistoryCard } from '../agents/SettingsHistoryCard';
 import {
+  HERO_CARDS,
   PROMPT_GROUPS,
   filterPaletteEntries,
-  groupForRole,
-  type CatalogGroup,
   type PaletteEntry,
 } from '../../utils/agentPromptCatalog';
 import { hostBaseUrl } from '../../utils/agentLinks';
@@ -56,24 +55,6 @@ interface AgentsListResponse {
  * never the routing. */
 function findAgent(agents: AgentInfo[]): AgentInfo | undefined {
   return agents.find((a) => /admin agent|generalist/i.test(a.name)) || agents[0];
-}
-
-/** First prompt of each section, then seconds, until `count` — a spread of
- * samples across the group's themes rather than one section's list. */
-function samplePrompts(group: CatalogGroup, count: number) {
-  const out: { id: string; label: string; prompt: string }[] = [];
-  for (let depth = 0; out.length < count; depth++) {
-    let added = false;
-    for (const section of group.sections) {
-      const p = section.prompts[depth];
-      if (p && out.length < count) {
-        out.push(p);
-        added = true;
-      }
-    }
-    if (!added) break;
-  }
-  return out;
 }
 
 // Shared fluid column: near full width, capped at 1400px. Header, transcript,
@@ -412,11 +393,6 @@ export function AgentsPage() {
     );
   const traceExplorer = chatState.traceExplorer;
   const explorerViewPath = traceExplorer?.viewPath || conversation?.traceExplorerPath;
-  const heroGroups = useMemo(
-    () => [groupForRole('triage'), groupForRole('scoping')],
-    [],
-  );
-
   // The orb mirrors the agent's live state everywhere it appears.
   const orbState: OrbState = streaming
     ? runningTool
@@ -587,7 +563,6 @@ export function AgentsPage() {
                 <div className="pt-6 flex flex-col items-center gap-6 text-center">
                   <div className="relative flex items-center justify-center w-[10rem] h-[10rem]">
                     <span className="orb-orbit" aria-hidden="true" />
-                    <span className="orb-orbit orbit-2" aria-hidden="true" />
                     <AgentOrb size={88} state="idle" />
                   </div>
                   <div className="space-y-2">
@@ -595,51 +570,50 @@ export function AgentsPage() {
                       className="hero-shimmer text-4xl font-bold tracking-tight"
                       style={{ fontFamily: 'var(--font-display)' }}
                     >
-                      Your fleet, on command.
+                      Your DSS, on command.
                     </h2>
                     <p className="text-base text-[var(--text-secondary)]">
-                      Ask about fleet health, sizing and scoping, or admin maintenance — or start
-                      from a sample below.
+                      Ask about health, sizing, cost, or maintenance — or start from a sample below.
                     </p>
                   </div>
-                  <div className="grid gap-4 w-full max-w-5xl sm:grid-cols-2 text-left">
-                    {heroGroups.map((group, gi) => (
+                  <div className="grid gap-4 w-full sm:grid-cols-2 xl:grid-cols-4 text-left">
+                    {HERO_CARDS.map((card, gi) => (
                       <motion.div
-                        key={group.role}
+                        key={card.id}
                         initial={{ opacity: 0, y: 16, filter: 'blur(5px)' }}
                         animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                        transition={{ duration: 0.45, delay: 0.12 + gi * 0.1, ease: 'easeOut' }}
-                        className="glass-card hero-card p-5 space-y-3 border-l-2 border-l-[var(--accent)]"
+                        transition={{ duration: 0.45, delay: 0.12 + gi * 0.08, ease: 'easeOut' }}
+                        className="glass-card hero-card p-4 space-y-3 border-l-2 border-l-[var(--accent)]"
                       >
                         <div className="text-sm font-bold uppercase tracking-widest text-[var(--accent)]">
-                          {group.title}
+                          {card.title}
                         </div>
                         <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                          {group.blurb}
+                          {card.blurb}
                         </p>
                         <button
                           onClick={() =>
-                            send(group.megaprompt, {
+                            send(card.flagshipPrompt, {
                               kind: 'megaprompt',
-                              title: group.megapromptTitle,
-                              group: group.title,
-                              gist: group.megapromptBlurb,
+                              title: card.flagshipTitle,
+                              group: card.title,
+                              gist: card.flagshipBlurb,
                               icon: 'star',
                             })
                           }
                           className="px-4 py-2 text-sm font-semibold rounded-lg bg-[var(--accent)] text-white hover:opacity-90 transition-opacity"
                         >
-                          ★ {group.megapromptTitle}
+                          ★ {card.flagshipTitle}
                         </button>
                         <div className="flex flex-col gap-2 pt-1">
-                          {samplePrompts(group, 7).map((p) => (
+                          {card.prompts.map((p) => (
                             <button
                               key={p.id}
                               onClick={() =>
                                 send(p.prompt, {
                                   kind: 'prompt',
                                   title: p.label,
-                                  group: group.title,
+                                  group: card.title,
                                   icon: 'prompt',
                                 })
                               }

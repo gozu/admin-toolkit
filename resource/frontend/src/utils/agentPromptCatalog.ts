@@ -3,7 +3,8 @@
 // the backend specialist that handles it. The UI presents ONE agent; the
 // group on a prompt is the routing signal that picks the specialist under
 // the hood (specialists are matched by NAME substring — ids differ per
-// provisioning).
+// provisioning). The landing page features a hand-picked subset via
+// HERO_CARDS below — the library modal always shows the full catalog.
 
 /** Which backend specialist a prompt (or free-form message) is routed to. */
 export type AgentRole = 'triage' | 'scoping' | 'actuator';
@@ -58,14 +59,21 @@ const ACTUATOR_MEGAPROMPT = `Take a full maintenance-opportunity inventory of th
 5. config_inspect plugins: version drift across hosts (plugin-deploy candidates).
 Present a prioritized list — most value first, medium+ severity only (whitelist-suppressed findings are already removed from your data — treat everything you see as live) — with the evidence, the exact action + target you would plan for each, and the risk color. Then STOP and wait: I will tell you which ones to plan.`;
 
+const COST_MEGAPROMPT = `Run a full cost review of this instance — where the money goes and what it would take to shrink it. Step by step:
+1. compute_cost grouped by project, by user, and by context type — top spenders with numbers, and the span the data covers.
+2. LLM spend: LLM usage cost from compute_cost, plus config_inspect domain=llms for the connections and models behind it.
+3. Storage as cost: storage_footprint — the largest projects and how much is inactive dead weight.
+4. Kubernetes: k8s_health cluster states, plus containerized execution configs vs observed usage — flag oversized configs and idle capacity.
+Report where the money goes, then the top saving opportunities ranked by impact, each with evidence citations. Cost-class findings (image sprawl, oversized containers, idle capacity) stay cost, never health. Close with propose_action_items for the savings that map to concrete admin work.`;
+
 export const PROMPT_GROUPS: readonly CatalogGroup[] = [
   {
     role: 'triage',
     title: 'Health & Triage',
-    blurb: 'Fleet health sweeps, logs, storage, database, Kubernetes, config — find what is broken or about to break.',
-    megapromptTitle: 'Full fleet audit',
+    blurb: 'Health sweeps over logs, storage, database, Kubernetes and config — find what is broken or about to break.',
+    megapromptTitle: 'Full instance audit',
     megapromptBlurb:
-      'Sweeps every host across every domain — health, logs, storage, database, Kubernetes, config, LLM Mesh — and ends with a ready-to-action checklist.',
+      'Sweeps every domain — health, logs, storage, database, Kubernetes, config, LLM Mesh — and ends with a ready-to-action checklist.',
     megaprompt: TRIAGE_MEGAPROMPT,
     sections: [
       {
@@ -218,7 +226,7 @@ export const PROMPT_GROUPS: readonly CatalogGroup[] = [
     role: 'actuator',
     title: 'Admin Actions',
     blurb: 'Plan and (with your approval) execute maintenance: cleanup, vacuum, right-sizing, deploys.',
-    megapromptTitle: 'Maintenance-opportunity inventory',
+    megapromptTitle: 'Maintenance inventory',
     megapromptBlurb:
       'Read-only sweep of everything worth maintaining — cleanup, vacuum, right-sizing, deploys — prioritized, with explicit "nothing executes yet".',
     megaprompt: ACTUATOR_MEGAPROMPT,
@@ -317,6 +325,75 @@ export function roleForAgentName(agentName: string | undefined): AgentRole | nul
   return null;
 }
 
+// ── landing-page hero cards ─────────────────────────────────────────────────
+// Four themed columns on the empty-transcript landing. Three mirror the
+// catalog groups; Cost & Usage is a cross-cutting cut through the same
+// catalog with its own flagship. `prompts` is a hand-picked feature list —
+// question-shaped prompts that show judgment, not inventory dumps.
+
+export interface HeroCard {
+  id: string;
+  title: string;
+  blurb: string;
+  flagshipTitle: string;
+  flagshipBlurb: string;
+  flagshipPrompt: string;
+  prompts: CatalogPrompt[];
+}
+
+const ALL_PROMPTS: readonly CatalogPrompt[] = PROMPT_GROUPS.flatMap((group) =>
+  group.sections.flatMap((section) => section.prompts),
+);
+
+function pick(...ids: string[]): CatalogPrompt[] {
+  return ids.flatMap((id) => ALL_PROMPTS.filter((p) => p.id === id));
+}
+
+export const HERO_CARDS: readonly HeroCard[] = (() => {
+  const triage = groupForRole('triage');
+  const scoping = groupForRole('scoping');
+  const actuator = groupForRole('actuator');
+  return [
+    {
+      id: 'triage',
+      title: triage.title,
+      blurb: 'Find what is broken or about to break — logs, storage, database, Kubernetes, config.',
+      flagshipTitle: triage.megapromptTitle,
+      flagshipBlurb: triage.megapromptBlurb,
+      flagshipPrompt: triage.megaprompt,
+      prompts: pick('fleet-outage', 'fleet-risks', 'fleet-quiet', 'log-new', 'cfg-conn'),
+    },
+    {
+      id: 'scoping',
+      title: scoping.title,
+      blurb: 'Sizing, migration and capacity — the dossier a field engineer needs.',
+      flagshipTitle: scoping.megapromptTitle,
+      flagshipBlurb: scoping.megapromptBlurb,
+      flagshipPrompt: scoping.megaprompt,
+      prompts: pick('pr-migration', 'cap-bottleneck', 'cap-now', 'env-python', 'pr-landscape'),
+    },
+    {
+      id: 'cost',
+      title: 'Cost & Usage',
+      blurb: 'Where compute, LLM and storage money goes — and the savings hiding in it.',
+      flagshipTitle: 'Full cost review',
+      flagshipBlurb:
+        'Compute, LLM, storage and Kubernetes spend in one pass — top spenders, idle capacity, and the biggest saving opportunities.',
+      flagshipPrompt: COST_MEGAPROMPT,
+      prompts: pick('co-byproject', 'co-context', 'llm-cost', 'st-hogs', 'co-byuser'),
+    },
+    {
+      id: 'actions',
+      title: actuator.title,
+      blurb: 'Plan and — with your approval — execute maintenance: cleanup, vacuum, right-sizing, deploys.',
+      flagshipTitle: actuator.megapromptTitle,
+      flagshipBlurb: actuator.megapromptBlurb,
+      flagshipPrompt: actuator.megaprompt,
+      prompts: pick('pc-find', 'db-worst', 'ce-unused', 'kt-review', 'sd-gates'),
+    },
+  ];
+})();
+
 // ── composer slash-palette ──────────────────────────────────────────────────
 
 export interface PaletteEntry {
@@ -332,12 +409,12 @@ export interface PaletteEntry {
 // the query is still empty ("/" just typed).
 const PALETTE_ENTRIES: PaletteEntry[] = (() => {
   const out: PaletteEntry[] = [];
-  for (const group of PROMPT_GROUPS) {
+  for (const card of HERO_CARDS) {
     out.push({
-      id: `${group.role}-mega`,
-      label: group.megapromptTitle,
-      prompt: group.megaprompt,
-      section: group.title,
+      id: `${card.id}-mega`,
+      label: card.flagshipTitle,
+      prompt: card.flagshipPrompt,
+      section: card.title,
       mega: true,
     });
   }

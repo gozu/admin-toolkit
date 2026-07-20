@@ -3396,10 +3396,10 @@ h1, h2, h3, h4 {
 }
 [data-theme='light'] .agent-orb { --orb-glow-alpha: 22%; }
 
-/* Hero satellites: faint orbit rings with a bright dot each, counter-rotating. */
+/* Hero satellite: a single faint ring hugging the orb, one green planet. */
 .orb-orbit {
   position: absolute;
-  inset: 4px;
+  inset: 22px;
   border-radius: 50%;
   border: 1px solid color-mix(in oklab, var(--text-tertiary) 22%, transparent);
   animation: orb-rotate 11s linear infinite;
@@ -3416,18 +3416,6 @@ h1, h2, h3, h4 {
   border-radius: 50%;
   background: var(--dku-green);
   box-shadow: 0 0 10px 1px color-mix(in oklab, var(--dku-green) 75%, transparent);
-}
-.orb-orbit.orbit-2 {
-  inset: 22px;
-  animation-duration: 7s;
-  animation-direction: reverse;
-}
-.orb-orbit.orbit-2::before {
-  width: 4px;
-  height: 4px;
-  margin-left: -2px;
-  background: var(--neon-magenta);
-  box-shadow: 0 0 8px 1px color-mix(in oklab, var(--neon-magenta) 75%, transparent);
 }
 
 /* User-side chat surfaces: the plain typed bubble and the preset card share

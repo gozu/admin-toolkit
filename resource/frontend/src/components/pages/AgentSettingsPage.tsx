@@ -35,13 +35,19 @@ const RISK_DOT: Record<string, string> = {
   green: 'bg-[var(--accent)]',
 };
 
-// One shared grid keeps the header labels and every row's checkbox columns
-// aligned — content | Enabled | Auto.
-const ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_3.25rem_3.25rem] gap-x-1';
+// One shared grid keeps the header labels and every row's cells aligned —
+// a real table: capability | description | Enabled | Auto, one row each.
+const ROW_GRID = 'grid grid-cols-[13.5rem_minmax(0,1fr)_4.5rem_4.5rem] gap-x-4';
+
+const HEAD_CELL = 'text-[11px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]';
+
+// Descriptions longer than this clamp to two lines and expand on click — the
+// table stays scannable while the full tool doc stays one click away.
+const CLAMP_CHARS = 180;
 
 function Chip({ children }: { children: string }) {
   return (
-    <span className="rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]">
+    <span className="rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[11px] leading-none text-[var(--text-muted)]">
       {children}
     </span>
   );
@@ -49,14 +55,31 @@ function Chip({ children }: { children: string }) {
 
 function ColumnHeadRow() {
   return (
-    <div className={`${ROW_GRID} px-3 pt-1 pb-0.5`}>
-      <span />
-      <span className="justify-self-center text-[9px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
-        Enabled
-      </span>
-      <span className="justify-self-center text-[9px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
-        Auto
-      </span>
+    <div className={`${ROW_GRID} border-b border-[var(--border-default)]/60 px-3 pt-1 pb-1.5`}>
+      <span className={HEAD_CELL}>Capability</span>
+      <span className={HEAD_CELL}>What it does</span>
+      <span className={`${HEAD_CELL} justify-self-center`}>Enabled</span>
+      <span className={`${HEAD_CELL} justify-self-center`}>Auto</span>
+    </div>
+  );
+}
+
+/** Description cell: long docs clamp to two lines and toggle open on click. */
+function DetailCell({ detail, note }: { detail: string; note?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const clampable = detail.length > CLAMP_CHARS;
+  return (
+    <div className="min-w-0 self-center">
+      <p
+        className={`text-[13px] leading-snug text-[var(--text-muted)] break-words ${
+          clampable ? 'cursor-pointer' : ''
+        } ${clampable && !expanded ? 'line-clamp-2' : ''}`}
+        title={clampable ? (expanded ? 'Click to collapse' : 'Click to show the full description') : undefined}
+        onClick={clampable ? () => setExpanded((v) => !v) : undefined}
+      >
+        {detail}
+      </p>
+      {note && <p className="mt-0.5 text-xs text-[var(--text-tertiary)]">{note}</p>}
     </div>
   );
 }
@@ -86,30 +109,32 @@ function GateRow({
 }) {
   return (
     <div
-      className={`${ROW_GRID} items-start rounded-lg border border-transparent px-3 py-2 transition-colors hover:bg-[var(--bg-hover)] ${
+      className={`${ROW_GRID} px-3 py-2.5 transition-colors hover:bg-[var(--bg-hover)] ${
         saving ? 'opacity-60' : ''
       }`}
     >
-      <div className="min-w-0 space-y-0.5">
-        <div className="flex flex-wrap items-center gap-2">
-          {risk && <span className={`h-2 w-2 shrink-0 rounded-full ${RISK_DOT[risk] ?? RISK_DOT.amber}`} />}
-          <code className="text-xs font-semibold text-[var(--text-primary)]">{name}</code>
-          {chips?.map((c) => <Chip key={c}>{c}</Chip>)}
-        </div>
-        <p className="text-[11px] leading-relaxed text-[var(--text-muted)] break-words">{detail}</p>
-        {!autoCapable && (
-          <p className="text-[10px] text-[var(--text-tertiary)]">
-            Autonomous mode unavailable — manual per-run code acknowledgment always required.
-          </p>
-        )}
+      <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1 self-center">
+        {risk && <span className={`h-2 w-2 shrink-0 rounded-full ${RISK_DOT[risk] ?? RISK_DOT.amber}`} />}
+        <code className="text-[13px] font-semibold text-[var(--text-primary)] break-words">
+          {name}
+        </code>
+        {chips?.map((c) => <Chip key={c}>{c}</Chip>)}
       </div>
+      <DetailCell
+        detail={detail}
+        note={
+          autoCapable
+            ? undefined
+            : 'Autonomous mode unavailable — manual per-run code acknowledgment always required.'
+        }
+      />
       <input
         type="checkbox"
         aria-label={`${name} enabled`}
         checked={enabled}
         disabled={saving}
         onChange={(e) => onToggleEnabled(e.target.checked)}
-        className="mt-0.5 h-4 w-4 justify-self-center accent-[var(--accent)] cursor-pointer disabled:cursor-default"
+        className="h-[17px] w-[17px] justify-self-center self-center accent-[var(--accent)] cursor-pointer disabled:cursor-default"
       />
       {autoCapable ? (
         <input
@@ -118,7 +143,7 @@ function GateRow({
           checked={autonomous}
           disabled={saving}
           onChange={(e) => onToggleAuto(e.target.checked)}
-          className="mt-0.5 h-4 w-4 justify-self-center accent-[var(--accent)] cursor-pointer disabled:cursor-default"
+          className="h-[17px] w-[17px] justify-self-center self-center accent-[var(--accent)] cursor-pointer disabled:cursor-default"
         />
       ) : (
         <input
@@ -127,7 +152,7 @@ function GateRow({
           checked={false}
           disabled
           title="python-run can never run autonomously — every run requires a human 'I have read this code' acknowledgment."
-          className="mt-0.5 h-4 w-4 justify-self-center accent-[var(--accent)] opacity-30 cursor-not-allowed"
+          className="h-[17px] w-[17px] justify-self-center self-center accent-[var(--accent)] opacity-30 cursor-not-allowed"
         />
       )}
     </div>
@@ -162,31 +187,29 @@ function MasterReadRow({
   }, [enabledCount, allOn, autoCount, allAuto]);
   return (
     <div
-      className={`${ROW_GRID} items-start rounded-lg border border-[var(--border-default)]/60 bg-[var(--bg-surface)]/60 px-3 py-2 transition-colors hover:bg-[var(--bg-hover)] ${
+      className={`${ROW_GRID} rounded-lg border border-[var(--border-default)]/60 bg-[var(--bg-surface)]/60 px-3 py-2.5 transition-colors hover:bg-[var(--bg-hover)] ${
         saving ? 'opacity-60' : ''
       }`}
     >
-      <div className="min-w-0 space-y-0.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold text-[var(--text-primary)]">
-            Read access — all toolkit data
+      <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1 self-center">
+        <span className="text-[13px] font-semibold text-[var(--text-primary)]">
+          Read access — all toolkit data
+        </span>
+        {!allOn && enabledCount > 0 && (
+          <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+            partial
           </span>
-          {!allOn && enabledCount > 0 && (
-            <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
-              partial
-            </span>
-          )}
-          {enabledCount === 0 && (
-            <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
-              disabled
-            </span>
-          )}
-        </div>
-        <p className="text-[11px] leading-relaxed text-[var(--text-muted)] break-words">
-          Everything the toolkit surfaces — health, config, cost, storage, logs, churn, audits —
-          is readable by the agents. Each column&apos;s checkbox flips all sensors at once.
-        </p>
+        )}
+        {enabledCount === 0 && (
+          <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
+            disabled
+          </span>
+        )}
       </div>
+      <p className="min-w-0 self-center text-[13px] leading-snug text-[var(--text-muted)] break-words">
+        Everything the toolkit surfaces — health, config, cost, storage, logs, churn, audits —
+        is readable by the agents. Each column&apos;s checkbox flips all sensors at once.
+      </p>
       <input
         ref={enabledRef}
         type="checkbox"
@@ -194,7 +217,7 @@ function MasterReadRow({
         checked={allOn}
         disabled={saving}
         onChange={(e) => onToggleEnabled(e.target.checked)}
-        className="mt-0.5 h-4 w-4 justify-self-center accent-[var(--accent)] cursor-pointer disabled:cursor-default"
+        className="h-[17px] w-[17px] justify-self-center self-center accent-[var(--accent)] cursor-pointer disabled:cursor-default"
       />
       <input
         ref={autoRef}
@@ -203,7 +226,7 @@ function MasterReadRow({
         checked={allAuto}
         disabled={saving}
         onChange={(e) => onToggleAuto(e.target.checked)}
-        className="mt-0.5 h-4 w-4 justify-self-center accent-[var(--accent)] cursor-pointer disabled:cursor-default"
+        className="h-[17px] w-[17px] justify-self-center self-center accent-[var(--accent)] cursor-pointer disabled:cursor-default"
       />
     </div>
   );
@@ -233,7 +256,7 @@ function SectionCard({
   return (
     <section className="glass-card p-4 space-y-2">
       <div className="flex flex-wrap items-baseline gap-2">
-        <h3 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h3>
+        <h3 className="text-[15px] font-semibold text-[var(--text-primary)]">{title}</h3>
         <span className="text-xs text-[var(--text-tertiary)]">
           {enabledCount}/{total} enabled
         </span>
@@ -259,8 +282,8 @@ function SectionCard({
           </span>
         )}
       </div>
-      <p className="text-xs text-[var(--text-muted)]">{subtitle}</p>
-      <div className="-mx-1">
+      <p className="text-[13px] leading-snug text-[var(--text-muted)]">{subtitle}</p>
+      <div className="-mx-1 pt-1">
         <ColumnHeadRow />
         <div className="divide-y divide-[var(--border-default)]/40">{children}</div>
       </div>
@@ -378,20 +401,20 @@ export function AgentSettingsPage() {
     <div className="w-full flex-1 min-h-0 py-4 overflow-y-auto">
       <div className="w-full max-w-[64rem] mx-auto px-4 space-y-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Agent Permissions</h2>
-          <span className="text-xs text-[var(--text-tertiary)]">
+          <h2 className="text-base font-semibold text-[var(--text-primary)]">Agent Permissions</h2>
+          <span className="text-[13px] text-[var(--text-tertiary)]">
             per-action enablement · {sensors.length + actions.length} capabilities
           </span>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter capabilities…"
-            className="ml-auto w-56 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none"
+            className="ml-auto w-56 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-[13px] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none"
           />
         </div>
 
         <div className="glass-card p-4 space-y-1.5 border-l-2 border-l-[var(--accent)]">
-          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+          <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
             Everything the agents can do is listed below with two checkboxes per capability:{' '}
             <strong>Enabled</strong> lets agents use it at all (with per-plan human approval in
             chat); <strong>Auto</strong> additionally lets the nightly autonomous agent plan and
@@ -425,7 +448,7 @@ export function AgentSettingsPage() {
         )}
 
         {nothingMatches && (
-          <div className="glass-card p-6 text-center text-xs text-[var(--text-muted)]">
+          <div className="glass-card p-6 text-center text-[13px] text-[var(--text-muted)]">
             No capabilities match “{query.trim()}”.
           </div>
         )}

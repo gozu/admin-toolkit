@@ -575,7 +575,7 @@ export function AgentsPage() {
             <div
               ref={scrollRef}
               onScroll={handleScroll}
-              className="relative z-[1] h-full overflow-y-auto scroll-smooth"
+              className="chat-scroll-fade relative z-[1] h-full overflow-y-auto scroll-smooth"
             >
               <div className={`${COLUMN} space-y-4`}>
               {messages.length === 0 && (
@@ -846,7 +846,7 @@ export function AgentsPage() {
                 <button
                   onClick={() => sendDraft(draft)}
                   disabled={!draft.trim()}
-                  className="btn-agent-send px-3.5 py-2 text-sm font-medium rounded-lg text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="btn-agent-send px-3.5 py-2 text-sm font-medium rounded-lg text-white disabled:cursor-not-allowed"
                 >
                   Send
                 </button>

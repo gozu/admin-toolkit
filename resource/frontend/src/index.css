@@ -3463,6 +3463,26 @@ h1, h2, h3, h4 {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
+/* Footer ghost-links (expander + copy): one quiet treatment — the stacked
+   cards must not out-shout the assistant's replies. Hover brightens. */
+.preset-card-link {
+  color: color-mix(in srgb, var(--accent) 55%, var(--text-muted));
+  transition: color 0.15s ease;
+}
+.preset-card-link:hover {
+  color: var(--accent);
+}
+/* Expanded prompt: the bottom fade signals "scrollable" mid-scroll; the
+   matching bottom padding keeps the last line legible at scroll end. */
+.preset-card-pre {
+  mask-image: linear-gradient(to bottom, black calc(100% - 18px), transparent);
+}
+
+/* Transcript scroll veil: content slides under a soft fade at the header
+   seam instead of being guillotined by the container edge. */
+.chat-scroll-fade {
+  mask-image: linear-gradient(to bottom, transparent, black 28px);
+}
 /* Action outcomes read by color at a glance: approve green, reject red,
    handoff amber — tint only the icon tile, the card body stays neutral. */
 .preset-card-icon[data-icon='approve'] {
@@ -3527,10 +3547,10 @@ h1, h2, h3, h4 {
   background: radial-gradient(circle, color-mix(in oklab, var(--neon-magenta) 12%, transparent), transparent 62%);
   animation: aurora-c 33s ease-in-out infinite alternate;
 }
-/* On white the blurred fields band into visible rings — keep light nearly
-   flat, with only a hint of life while a turn is running. */
-[data-theme='light'] .agent-aurora { opacity: 0.12; }
-[data-theme='light'] .agent-aurora[data-live='true'] { opacity: 0.25; }
+/* On white the blurred fields band into visible rings — light stays flat at
+   rest; only a whisper of life while a turn is actually running. */
+[data-theme='light'] .agent-aurora { opacity: 0; }
+[data-theme='light'] .agent-aurora[data-live='true'] { opacity: 0.12; }
 
 /* Border-beam: a hot spark tracing the card's edge — reserved for plans
    waiting on a human decision. Falls back to a static (harmless) ring where
@@ -3645,6 +3665,13 @@ h1, h2, h3, h4 {
 .btn-agent-send:not(:disabled):hover {
   filter: brightness(1.12);
   box-shadow: 0 0 22px -4px color-mix(in oklab, var(--accent) 65%, transparent);
+}
+/* Disabled = unambiguously inert: ghost outline, no gradient (a washed
+   gradient reads as a rendering fault, not a state). */
+.btn-agent-send:disabled {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  color: var(--text-muted);
 }
 
 /* A running tool chip gets a light sweep (reuses progress-sheen-sweep). */

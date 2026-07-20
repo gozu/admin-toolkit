@@ -74,50 +74,59 @@ export function PresetPromptCard({ preset, content }: { preset: PresetMeta; cont
   };
   return (
     <div className="preset-card max-w-[min(85%,28rem)] rounded-xl rounded-br-sm px-3.5 py-2.5 text-left">
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="preset-card-icon shrink-0" data-icon={preset.icon} aria-hidden="true">
+      {/* Hanging icon column: title, gist, and footer share one left edge. */}
+      <div className="flex gap-2.5">
+        <span className="preset-card-icon shrink-0 mt-px" data-icon={preset.icon} aria-hidden="true">
           <PresetIcon icon={preset.icon} />
         </span>
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-primary)]">
-          {preset.title}
-        </span>
-        {preset.group && (
-          <span className="shrink-0 rounded-full border border-[var(--accent)]/25 bg-[var(--accent)]/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[var(--accent)]">
-            {preset.group}
-          </span>
-        )}
-      </div>
-      {gist && (
-        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--text-secondary)] whitespace-pre-line">
-          {gist}
-        </p>
-      )}
-      <div className="mt-1.5 flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--accent)] opacity-80 transition-opacity hover:opacity-100"
-        >
-          <motion.span
-            animate={{ rotate: expanded ? 90 : 0 }}
-            transition={{ duration: 0.18 }}
-            className="inline-flex"
-            aria-hidden="true"
-          >
-            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
-            </svg>
-          </motion.span>
-          {expanded ? 'Hide' : expandLabel}
-        </button>
-        <button
-          type="button"
-          onClick={() => void copy()}
-          title="Copy the full text sent to the agent"
-          className="text-[11px] text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[var(--text-secondary)] focus:opacity-100"
-        >
-          {copied ? 'copied ✓' : 'copy'}
-        </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-primary)]">
+              {preset.title}
+            </span>
+            {preset.group && (
+              <span className="shrink-0 rounded-full border border-[var(--accent)]/25 bg-[var(--accent)]/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-[var(--accent)]">
+                {preset.group}
+              </span>
+            )}
+          </div>
+          {gist && (
+            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--text-secondary)] whitespace-pre-line">
+              {gist}
+            </p>
+          )}
+          <div className="mt-1.5 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="preset-card-link inline-flex items-center gap-1 text-[11px] font-medium"
+            >
+              <motion.span
+                animate={{ rotate: expanded ? 90 : 0 }}
+                transition={{ duration: 0.18 }}
+                className="inline-flex"
+                aria-hidden="true"
+              >
+                <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
+                </svg>
+              </motion.span>
+              {expanded ? 'Hide' : expandLabel}
+            </button>
+            <button
+              type="button"
+              onClick={() => void copy()}
+              title="Copy the full text sent to the agent"
+              className="preset-card-link inline-flex items-center gap-1 text-[11px] font-medium opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
+            >
+              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                <rect x="9" y="9" width="11" height="11" rx="2" />
+                <path d="M5 15V5a2 2 0 012-2h10" />
+              </svg>
+              {copied ? 'Copied ✓' : 'Copy'}
+            </button>
+          </div>
+        </div>
       </div>
       <AnimatePresence initial={false}>
         {expanded && (
@@ -128,7 +137,7 @@ export function PresetPromptCard({ preset, content }: { preset: PresetMeta; cont
             transition={{ duration: 0.25, ease: 'easeOut' }}
             className="overflow-hidden"
           >
-            <pre className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md border border-[var(--border-default)] bg-[var(--bg-tertiary)]/70 px-2.5 pt-2 pb-3 font-mono text-[11px] leading-relaxed text-[var(--text-secondary)]">
+            <pre className="preset-card-pre mt-2 max-h-80 overflow-y-auto whitespace-pre-wrap rounded-md border border-[var(--border-default)] bg-[var(--bg-tertiary)]/70 px-2.5 pt-2 pb-6 font-mono text-[11px] leading-relaxed text-[var(--text-secondary)]">
               {content}
             </pre>
           </motion.div>

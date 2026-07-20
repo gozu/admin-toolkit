@@ -3396,66 +3396,38 @@ h1, h2, h3, h4 {
 }
 [data-theme='light'] .agent-orb { --orb-glow-alpha: 22%; }
 
-/* Hero variant: Liquid-Glass bird — a translucent frosted silhouette that
-   refracts the planets passing behind it. The backdrop-filter is clipped to
-   the bird shape by masking the svg's box with the same paths it paints; the
-   gradient background under the translucent fill is the specular sheen. No
-   halo: aura layers and the green glow are off. */
-.agent-orb.orb-bird-glass {
-  /* isolate would make the orb its own backdrop root — the glass could then
-     only refract the (hidden) aura, never the planets behind it */
-  isolation: auto;
-}
-.agent-orb.orb-bird-glass::before,
-.agent-orb.orb-bird-glass::after {
-  display: none;
-}
-.agent-orb.orb-bird-glass .agent-orb-bird {
-  --orb-bird-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 71 71'><path d='M68.2984 48.7227H38.7461V54.1448H68.2984V48.7227Z'/><path d='M65.5439 4.61992C64.0076 1.87173 61.0335 0 57.6053 0C52.6105 0 48.5617 3.97372 48.5617 8.87589C48.5617 9.34382 48.6071 9.7969 48.6828 10.2425L47.9184 11.1636L0.150326 69.0017C-0.0842763 69.2839 -0.0388693 69.6998 0.248708 69.9301C0.513582 70.1381 0.899541 70.1232 1.14171 69.8855L21.2494 50.1729C24.9577 46.5408 29.9827 44.4983 35.2272 44.4983H42.2274C57.522 44.4983 66.7169 35.9492 65.052 18.3831C64.4768 12.3371 64.7947 9.78947 66.9061 7.2344C67.9959 5.91973 70.1073 3.34981 70.1073 3.34981L67.6326 4.03314L65.5363 4.61249L65.5439 4.61992ZM57.7944 9.96773C56.4398 9.96773 55.3425 8.89074 55.3425 7.56121C55.3425 6.23169 56.4398 5.1547 57.7944 5.1547C59.1491 5.1547 60.2464 6.23169 60.2464 7.56121C60.2464 8.89074 59.1491 9.96773 57.7944 9.96773Z'/></svg>");
-  color: rgba(255, 255, 255, 0.22);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.55),
-    rgba(255, 255, 255, 0.12) 42%,
-    rgba(62, 218, 178, 0.18) 100%
-  );
-  backdrop-filter: blur(5px) saturate(1.7) brightness(1.15);
-  -webkit-backdrop-filter: blur(5px) saturate(1.7) brightness(1.15);
-  filter: none;
-  -webkit-mask: var(--orb-bird-mask) center / contain no-repeat;
-  mask: var(--orb-bird-mask) center / contain no-repeat;
-}
-[data-theme='light'] .agent-orb.orb-bird-glass .agent-orb-bird {
-  /* clear glass on a white page is invisible — light theme gets smoked glass
-     tinted toward the deck's paper green */
-  color: rgba(6, 49, 46, 0.16);
-  background: linear-gradient(
-    135deg,
-    rgba(6, 49, 46, 0.38),
-    rgba(6, 49, 46, 0.1) 45%,
-    rgba(62, 218, 178, 0.28) 100%
-  );
-  backdrop-filter: blur(5px) saturate(1.4);
-  -webkit-backdrop-filter: blur(5px) saturate(1.4);
-}
-
-/* Hero planets: three brand-green bodies on mutually-perturbing 3D orbits
-   (real N-body sim in OrbPlanets.tsx). Position, scale, opacity and stacking
-   are written by the sim each frame; CSS only paints the lit sphere. */
-.orb-planet {
+/* Hero satellites: faint orbit rings with a bright dot each, counter-rotating. */
+.orb-orbit {
   position: absolute;
-  top: 50%;
-  left: 50%;
+  inset: 4px;
   border-radius: 50%;
+  border: 1px solid color-mix(in oklab, var(--text-tertiary) 22%, transparent);
+  animation: orb-rotate 11s linear infinite;
   pointer-events: none;
-  background: radial-gradient(
-    circle at 32% 28%,
-    #d6fff1,
-    var(--dku-green) 52%,
-    #0a7c66 100%
-  );
-  box-shadow: 0 0 12px 1px color-mix(in oklab, var(--dku-green) 70%, transparent);
-  will-change: transform, opacity;
+}
+.orb-orbit::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  border-radius: 50%;
+  background: var(--dku-green);
+  box-shadow: 0 0 10px 1px color-mix(in oklab, var(--dku-green) 75%, transparent);
+}
+.orb-orbit.orbit-2 {
+  inset: 22px;
+  animation-duration: 7s;
+  animation-direction: reverse;
+}
+.orb-orbit.orbit-2::before {
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  background: var(--neon-magenta);
+  box-shadow: 0 0 8px 1px color-mix(in oklab, var(--neon-magenta) 75%, transparent);
 }
 
 /* User-side chat surfaces: the plain typed bubble and the preset card share
@@ -3637,10 +3609,25 @@ h1, h2, h3, h4 {
   animation: caret-pulse 1s ease-in-out infinite;
 }
 
-/* Gradient sheen sweeping through the working label. */
+/* Gradient sheen sweeping through the hero headline / working label. */
 @keyframes text-sheen {
   from { background-position: 200% 0; }
   to   { background-position: -200% 0; }
+}
+.hero-shimmer {
+  background: linear-gradient(
+    100deg,
+    var(--text-primary) 30%,
+    var(--accent) 45%,
+    var(--neon-magenta) 50%,
+    var(--accent) 55%,
+    var(--text-primary) 70%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: text-sheen 7s linear infinite;
 }
 .working-shimmer {
   background: linear-gradient(

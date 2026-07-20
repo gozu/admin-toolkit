@@ -18,7 +18,6 @@ import { hostBaseUrl } from '../../utils/agentLinks';
 import { dssUrls } from '../../utils/codeEnvUsageLinks';
 import { getActiveHostId } from '../../state/hostStore';
 import { AgentOrb, type OrbState } from '../agents/AgentOrb';
-import { OrbPlanets } from '../agents/OrbPlanets';
 import { ChatHistoryDrawer } from '../agents/ChatHistoryDrawer';
 import { ComposerPalette } from '../agents/ComposerPalette';
 import { Spinner } from '../common/Spinner';
@@ -587,8 +586,21 @@ export function AgentsPage() {
               {messages.length === 0 && (
                 <div className="pt-6 flex flex-col items-center gap-6 text-center">
                   <div className="relative flex items-center justify-center w-[10rem] h-[10rem]">
-                    <OrbPlanets />
-                    <AgentOrb size={88} state="idle" className="orb-bird-glass z-[1]" />
+                    <span className="orb-orbit" aria-hidden="true" />
+                    <span className="orb-orbit orbit-2" aria-hidden="true" />
+                    <AgentOrb size={88} state="idle" />
+                  </div>
+                  <div className="space-y-2">
+                    <h2
+                      className="hero-shimmer text-4xl font-bold tracking-tight"
+                      style={{ fontFamily: 'var(--font-display)' }}
+                    >
+                      Your fleet, on command.
+                    </h2>
+                    <p className="text-base text-[var(--text-secondary)]">
+                      Ask about fleet health, sizing and scoping, or admin maintenance — or start
+                      from a sample below.
+                    </p>
                   </div>
                   <div className="grid gap-4 w-full max-w-5xl sm:grid-cols-2 text-left">
                     {heroGroups.map((group, gi) => (

@@ -20,10 +20,12 @@ from atk_agent_common import generalist  # noqa: E402
 
 # ── runtime_mode ─────────────────────────────────────────────────────────────
 
-def test_runtime_mode_defaults_to_native():
-    assert agent_native.runtime_mode({}) == 'native'
-    assert agent_native.runtime_mode({'agent_runtime': ''}) == 'native'
-    assert agent_native.runtime_mode({'agent_runtime': 'bogus'}) == 'native'
+def test_runtime_mode_defaults_to_dataiku():
+    # The kernel relay is the default since 0.4.777 — native is an explicit
+    # choice + automatic fallback, never the silent default.
+    assert agent_native.runtime_mode({}) == 'dataiku'
+    assert agent_native.runtime_mode({'agent_runtime': ''}) == 'dataiku'
+    assert agent_native.runtime_mode({'agent_runtime': 'bogus'}) == 'dataiku'
 
 
 def test_runtime_mode_reads_knob():
@@ -121,6 +123,8 @@ def test_chat_remote_host_keeps_kernel_relay():
 
 
 def test_chat_runtime_override_forces_kernel_relay():
+    # Explicit 'dataiku' override also disables the native fallback — the
+    # kernel failure surfaces as an error, deterministic for drills/tests.
     with mock.patch.object(agent_native, 'runtime_mode', return_value='native'), \
             mock.patch.object(agent_native, 'stream_native_turn') as native_turn, \
             mock.patch.object(backend, '_resolve_client', return_value=_NoAgentsClient()):
@@ -129,26 +133,107 @@ def test_chat_runtime_override_forces_kernel_relay():
             json={'agentId': 'a1', 'runtime': 'dataiku',
                   'messages': [{'role': 'user', 'content': 'hi'}]})
     assert not native_turn.called
-    assert 'event: error' in resp.get_data(as_text=True)
+    body = resp.get_data(as_text=True)
+    assert 'event: error' in body and 'event: done' not in body
+
+
+# ── kernel-default routing + native fallbacks ────────────────────────────────
+
+def test_chat_virtual_agent_falls_back_to_native_tagged():
+    with mock.patch.object(agent_native, 'runtime_mode', return_value='dataiku'), \
+            mock.patch.object(agent_native, 'stream_native_turn',
+                              side_effect=_scripted_native_turn) as native_turn, \
+            mock.patch.object(backend, '_resolve_client', return_value=_NoAgentsClient()):
+        resp = backend.app.test_client().post(
+            '/api/agents/chat',
+            json={'agentId': agent_native.VIRTUAL_AGENT_ID,
+                  'messages': [{'role': 'user', 'content': 'hi'}]})
+    assert native_turn.called
+    body = resp.get_data(as_text=True)
+    done = json.loads(body.split('event: done\ndata: ')[1].split('\n')[0])
+    assert done['runtime'] == 'native'
+    assert done['fallbackFrom'] == 'dataiku'
+    assert done['fallbackReason'] == 'no-agent-instances'
+
+
+def test_chat_kernel_error_pre_stream_falls_back_native():
+    # _NoAgentsClient raises before the kernel streams anything → the turn
+    # retries natively and the done event is tagged with the kernel error.
+    with mock.patch.object(agent_native, 'runtime_mode', return_value='dataiku'), \
+            mock.patch.object(agent_native, 'stream_native_turn',
+                              side_effect=_scripted_native_turn) as native_turn, \
+            mock.patch.object(backend, '_resolve_client', return_value=_NoAgentsClient()):
+        resp = backend.app.test_client().post(
+            '/api/agents/chat',
+            json={'agentId': 'a1', 'messages': [{'role': 'user', 'content': 'hi'}]})
+    assert native_turn.called
+    body = resp.get_data(as_text=True)
+    assert 'event: error' not in body
+    done = json.loads(body.split('event: done\ndata: ')[1].split('\n')[0])
+    assert done['runtime'] == 'native'
+    assert done['fallbackFrom'] == 'dataiku'
+    assert done['fallbackReason'].startswith('kernel-error:')
+
+
+class _MidStreamFailClient:
+    """Kernel relay that yields one content chunk, then dies."""
+
+    def get_project(self, key):
+        outer = self
+
+        class _Completion:
+            def with_message(self, *a, **k):
+                return self
+
+            def execute_streamed(self):
+                class _Chunk:
+                    data = {'type': 'content', 'text': 'partial '}
+                yield _Chunk()
+                raise RuntimeError('kernel died mid-stream')
+
+        class _Llm:
+            def new_completion(self):
+                return _Completion()
+
+        class _Agent:
+            def as_llm(self):
+                return _Llm()
+
+        class _Project:
+            def get_agent(self, agent_id):
+                return _Agent()
+        return _Project()
+
+
+def test_chat_kernel_midstream_error_does_not_retry():
+    # Once anything streamed, kernel tool calls may have had side effects and
+    # partial text is on screen — surface the error, never re-run natively.
+    with mock.patch.object(agent_native, 'runtime_mode', return_value='dataiku'), \
+            mock.patch.object(agent_native, 'stream_native_turn') as native_turn, \
+            mock.patch.object(backend, '_resolve_client',
+                              return_value=_MidStreamFailClient()):
+        resp = backend.app.test_client().post(
+            '/api/agents/chat',
+            json={'agentId': 'a1', 'messages': [{'role': 'user', 'content': 'hi'}]})
+    assert not native_turn.called
+    body = resp.get_data(as_text=True)
+    assert '"partial "' in body
+    assert 'event: error' in body and 'event: done' not in body
 
 
 # ── agents list: virtual generalist ──────────────────────────────────────────
 
-def test_agents_list_serves_virtual_row_when_unprovisioned_native():
-    with mock.patch.object(agent_native, 'runtime_mode', return_value='native'), \
-            mock.patch.object(backend, '_resolve_client', return_value=_NoAgentsClient()):
-        resp = backend.app.test_client().get('/api/agents')
-    data = resp.get_json()
-    assert data['available'] is True and data['runtime'] == 'native'
-    assert data['agents'][0]['id'] == agent_native.VIRTUAL_AGENT_ID
-
-
-def test_agents_list_keeps_empty_state_on_dataiku_runtime():
-    with mock.patch.object(agent_native, 'runtime_mode', return_value='dataiku'), \
-            mock.patch.object(backend, '_resolve_client', return_value=_NoAgentsClient()):
-        resp = backend.app.test_client().get('/api/agents')
-    data = resp.get_json()
-    assert data['available'] is False and data['agents'] == []
+def test_agents_list_serves_virtual_row_when_unprovisioned():
+    # Regardless of the configured runtime: the virtual generalist only exists
+    # natively, so chatting with it will fall back (tagged) — but the list
+    # must never show the provisioning empty-state on the local hub.
+    for mode in ('native', 'dataiku'):
+        with mock.patch.object(agent_native, 'runtime_mode', return_value=mode), \
+                mock.patch.object(backend, '_resolve_client', return_value=_NoAgentsClient()):
+            resp = backend.app.test_client().get('/api/agents')
+        data = resp.get_json()
+        assert data['available'] is True and data['runtime'] == 'native'
+        assert data['agents'][0]['id'] == agent_native.VIRTUAL_AGENT_ID
 
 
 # ── generalist shared assembly (used by BOTH runtimes) ───────────────────────

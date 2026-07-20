@@ -578,7 +578,7 @@ test.describe('Agent Tuning (mocked backend)', () => {
     await mockAgentsBackend(page);
     // The deep-link target page loads its catalog on mount.
     await page.route('**/api/agents/action-settings', (route: Route) =>
-      route.fulfill({ json: { ok: true, sensors: [], actions: [], gates: {} } }),
+      route.fulfill({ json: { ok: true, sensors: [], actions: [], gates: {}, autonomous: {} } }),
     );
     // Override the chat mock (last-registered route wins): this turn hits the
     // action-disabled gate and the tool_result error carries the deep link.
@@ -628,5 +628,103 @@ test.describe('Agent Tuning (mocked backend)', () => {
     await expect(page.getByRole('heading', { name: 'Agent Permissions' })).toBeVisible({
       timeout: 15_000,
     });
+  });
+
+  test('permissions page: two-checkbox catalog, coupling, python-run floor', async ({ page }) => {
+    await mockAgentsBackend(page);
+    // Red-unlock cookie present → toggles skip the unlock modal.
+    await page.route('**/api/auth/red/status', (route: Route) =>
+      route.fulfill({ json: { unlocked: true, expiresAt: Date.now() + 3_600_000 } }),
+    );
+    // In-memory capability catalog with the two-flag contract shape.
+    const sensors = [
+      { name: 'instance_health', mode: 'read', description: 'Health snapshot of one host.',
+        enabled: true, autonomous: true },
+    ];
+    const actions = [
+      { action: 'settings-set', mode: 'read/write', risk: 'amber',
+        shape: 'settings-set {path, newValue}', batchable: true, localOnly: false,
+        enabled: false, autonomous: false, autoCapable: true },
+      { action: 'log-cleanup', mode: 'execute', risk: 'green',
+        shape: 'log-cleanup {roots, minAgeDays}', batchable: false, localOnly: true,
+        enabled: false, autonomous: false, autoCapable: true },
+      { action: 'python-run', mode: 'execute', risk: 'red',
+        shape: 'python-run {code, purpose}', batchable: false, localOnly: true,
+        enabled: false, autonomous: false, autoCapable: false },
+    ];
+    const payload = () => ({ ok: true, sensors, actions, gates: {}, autonomous: {} });
+    await page.route('**/api/agents/action-settings', (route: Route) =>
+      route.fulfill({ json: payload() }),
+    );
+    // Server-side coupling twin: autonomous:true forces enabled on.
+    await page.route('**/api/agents/action-settings/update', (route: Route) => {
+      const body = JSON.parse(route.request().postData() || '{}') as {
+        gates?: Record<string, boolean>;
+        autonomous?: Record<string, boolean>;
+      };
+      for (const [name, value] of Object.entries(body.gates ?? {})) {
+        for (const a of actions)
+          if (a.action === name) {
+            a.enabled = value;
+            if (!value) a.autonomous = false;
+          }
+      }
+      for (const [name, value] of Object.entries(body.autonomous ?? {})) {
+        for (const a of actions)
+          if (a.action === name && a.autoCapable) {
+            a.autonomous = value;
+            if (value) a.enabled = true;
+          }
+      }
+      return route.fulfill({ json: payload() });
+    });
+    await page.route('**/api/agents/triage-settings', (route: Route) =>
+      route.fulfill({
+        json: {
+          ok: true, enabled: true, remoteHosts: false,
+          autonomousCounts: { allowed: 0, total: 52 },
+          caps: { maxGb: 20, maxObjects: 25, logMinAgeDays: 3 },
+          delivery: { recipient: 'admin@example.com', mailChannel: '', threshold: 75,
+            llmConfigured: true },
+          killSwitch: true, masterPassword: true,
+          scenario: { provisioned: true, active: true, hour: 7,
+            lastRun: { outcome: 'SUCCESS', start: 1784437200000, end: 1784437300000 } },
+        },
+      }),
+    );
+
+    await enterAgentsPage(page);
+    await page.locator('aside button').filter({ hasText: /^Permissions$/ }).first().click();
+    await expect(page.getByRole('heading', { name: 'Agent Permissions' })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Four sections, in reading order: Read-only → Write → Execute → Power-Up.
+    const headings = page.locator('#permission-catalog h3');
+    await expect(headings).toHaveText([
+      'Read-only tools',
+      'Write tools',
+      'Execute tools',
+      'Power-Up (dangerous)',
+    ]);
+
+    // python-run's Auto checkbox is permanently disabled and unchecked.
+    const pythonAuto = page.getByRole('checkbox', { name: 'python-run autonomous (unavailable)' });
+    await expect(pythonAuto).toBeDisabled();
+    await expect(pythonAuto).not.toBeChecked();
+    await expect(
+      page.getByText('Autonomous mode unavailable — manual per-run code acknowledgment'),
+    ).toBeVisible();
+
+    // Ticking Auto on a disabled action also checks Enabled (server coupling).
+    const enabledBox = page.getByRole('checkbox', { name: 'log-cleanup enabled' });
+    await expect(enabledBox).not.toBeChecked();
+    await page.getByRole('checkbox', { name: 'log-cleanup autonomous' }).check();
+    await expect(page.getByRole('checkbox', { name: 'log-cleanup autonomous' })).toBeChecked();
+    await expect(enabledBox).toBeChecked();
+
+    // Unchecking Enabled clears the Auto grant again.
+    await enabledBox.uncheck();
+    await expect(page.getByRole('checkbox', { name: 'log-cleanup autonomous' })).not.toBeChecked();
   });
 });

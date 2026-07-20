@@ -61,7 +61,8 @@ def test_auto_candidates_dedup_per_action():
 # ── auto-remediation tier gating ─────────────────────────────────────────────
 
 def _settings(**over):
-    base = {'auto_remediate_actions': ['log-cleanup'], 'auto_remediate_enabled': True,
+    base = {'agent_autonomous_gates': {'log-cleanup': True},
+            'auto_remediate_enabled': True,
             'auto_remediate_remote_hosts': False, 'enable_red_actions': True,
             'master_password': 'x', 'auto_remediate_max_gb': 20,
             'auto_remediate_max_objects': 25}
@@ -87,6 +88,31 @@ def test_remote_host_skipped_by_default():
     assert summary['executed'] == []
     assert len(summary['skipped']) == 1
     assert 'remote-host remediation is OFF' in summary['skipped'][0]['reason']
+    assert summary['skipped'][0]['tier'] == 'deterministic'
+
+
+def test_live_autonomous_actions_override_snapshot():
+    # The runnable passes the LIVE per-action grants; the snapshot map in
+    # settings must not resurrect a revoked action.
+    summary = auto_remediate.run_auto_remediation(
+        client=None, settings=_settings(), rows=_ROWS, run_id='r1',
+        autonomous_actions=set())
+    assert summary['enabled'] == []
+    assert summary['executed'] == [] and summary['skipped'] == []
+
+
+def test_snapshot_map_seeds_enabled_set():
+    summary = auto_remediate.run_auto_remediation(
+        client=None, settings=_settings(auto_remediate_enabled=False), rows=[],
+        run_id='r1')
+    assert summary['enabled'] == ['log-cleanup']
+    # python-run can never appear in the enabled set, whatever the map says.
+    summary = auto_remediate.run_auto_remediation(
+        client=None,
+        settings=_settings(agent_autonomous_gates={'python-run': True},
+                           auto_remediate_enabled=False),
+        rows=[], run_id='r1')
+    assert summary['enabled'] == []
 
 
 def test_remote_host_local_only_action_still_skipped_when_remote_enabled():
@@ -185,3 +211,34 @@ def test_text_twin_carries_the_essentials(ctx):
     text = digest.render_digest_text(ctx)
     assert 'prod-emea' in text and 'log-cleanup' in text
     assert 'Total freed: 7.47 GB' in text
+    # LLM-tier provenance: prefixed row + one planner status line.
+    assert '[LLM] prod-emea notebook-kernels-shutdown' in text
+    assert 'LLM planner: ran — 2 proposal(s), 1 executed, 1 refused.' in text
+
+
+def test_html_marks_llm_planned_rows(ctx):
+    html = digest.render_digest_html(ctx)
+    assert 'LLM-planned' in html
+    # reasoning line rides the LLM row, clipped and quoted
+    assert 'kernels-shutdown holds an Autonomous grant' in html
+
+
+def test_html_planner_strip_states(ctx):
+    assert 'LLM planner ran — 2 proposal(s), 1 executed, 1 refused.' \
+        in digest.render_digest_html(ctx)
+    ctx['autoSummary']['llmPlanner'] = {'status': 'no-llm'}
+    assert 'idle — no default LLM configured' in digest.render_digest_html(ctx)
+    ctx['autoSummary']['llmPlanner'] = {'status': 'error', 'error': 'boom <x>'}
+    html = digest.render_digest_html(ctx)
+    assert 'LLM planner crashed' in html and '<x>' not in html
+    del ctx['autoSummary']['llmPlanner']  # old runs: strip absent, no crash
+    assert 'LLM planner' not in digest.render_digest_html(ctx)
+
+
+def test_html_clamps_long_autonomous_list(ctx):
+    ctx['autoSummary']['executed'] = []
+    ctx['autoSummary']['skipped'] = []
+    ctx['autoSummary']['enabled'] = ['action-%02d' % i for i in range(12)]
+    html = digest.render_digest_html(ctx)
+    assert 'action-07' in html and 'action-08' not in html
+    assert '+4 more' in html

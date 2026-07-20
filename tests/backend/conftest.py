@@ -67,6 +67,7 @@ def _reset_backend_singletons_between_tests():
         from atk_agent_common import action_gates as _action_gates
         _action_gates._cache['ts'] = 0.0
         _action_gates._cache['gates'] = None
+        _action_gates._cache['autonomous'] = None
     except Exception:
         pass
     backend = sys.modules.get('backend')

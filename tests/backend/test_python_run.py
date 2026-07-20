@@ -33,10 +33,28 @@ def test_registered_in_catalog():
 
 
 def test_auto_remediation_hard_excluded():
-    # Even an admin CSV naming python-run yields no autonomous candidates.
+    # Even a grant set naming python-run yields no autonomous candidates.
     issues = [{'id': 'anything'}]
     out = remediation_map.auto_candidates(issues, {'python-run'}, {})
     assert all(c['action'] != 'python-run' for c in out)
+
+
+def test_python_run_never_auto_capable_in_catalog():
+    from adk_backend.routes import agent_gates
+    _sensors, actions = agent_gates._catalog({}, {})
+    by = {a['action']: a for a in actions}
+    assert by['python-run']['autoCapable'] is False
+    # autoCapable covers the whole catalog EXCEPT python-run.
+    assert all(row['autoCapable'] for a, row in by.items() if a != 'python-run')
+
+
+def test_red_actions_default_on():
+    # Part of the same consent story: the master switch defaults ON because
+    # the per-action gates (and python-run's per-run ack) remain in the chain.
+    from atk_agent_common import config as atk_config
+    assert atk_config.resolve({})['enable_red_actions'] is True
+    assert atk_config.resolve({'enable_red_actions': False})['enable_red_actions'] is False
+    assert atk_config.resolve({'enable_red_actions': 'false'})['enable_red_actions'] is False
 
 
 def test_plan_binds_sha_and_carries_code():

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.773] - 2026-07-20
+
+### Changed
+- **Unified release**: merges the agents FX line (0.4.765–770 — Dataiku-bird orb, character-level streaming, preset prompt cards r3, viewport pinning) with native runtime v2 (correlation ids, live chip timers, turn stats) and the daily agent overhaul (autonomous panel, 6-action catalog, branded digest) into one build. The previously deployed 0.4.772 lacked the FX work.
+
 ## [0.4.772] - 2026-07-19
 
 ### Added

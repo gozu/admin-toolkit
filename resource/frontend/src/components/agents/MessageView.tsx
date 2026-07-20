@@ -162,9 +162,11 @@ function CopyChip({ text, label = 'copy' }: { text: string; label?: string }) {
 }
 
 function formatDuration(ms: number): string {
-  if (ms < 1000) return `${(ms / 1000).toFixed(1)}s`;
   const s = ms / 1000;
-  if (s < 60) return `${s.toFixed(1)}s`;
+  // One decimal only while it carries signal (<10s); "21.0s" next to
+  // "2m 28s" reads as noise.
+  if (s < 10) return `${s.toFixed(1)}s`;
+  if (s < 60) return `${Math.round(s)}s`;
   return `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
 }
 
@@ -268,9 +270,11 @@ export function MessageView({
     );
     return (
       <div className="group flex items-end justify-end gap-2">
-        <span className="pb-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <CopyChip text={preset ? message.content : (message.display ?? message.content)} />
-        </span>
+        {!preset && (
+          <span className="pb-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <CopyChip text={message.display ?? message.content} />
+          </span>
+        )}
         {preset ? (
           <PresetPromptCard preset={preset.preset} content={message.content} />
         ) : (

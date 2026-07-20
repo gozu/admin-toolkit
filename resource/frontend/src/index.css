@@ -993,11 +993,21 @@ h1, h2, h3, h4 {
   color: var(--text-secondary);
 }
 
+/* Tailwind preflight strips list-style — restore real markers here. */
 .ai-analysis-markdown ul,
 .ai-analysis-markdown ol {
   margin: 0.4rem 0;
   padding-left: 1.5rem;
   color: var(--text-secondary);
+}
+.ai-analysis-markdown ul {
+  list-style: disc;
+}
+.ai-analysis-markdown ol {
+  list-style: decimal;
+}
+.ai-analysis-markdown ul ul {
+  list-style: circle;
 }
 
 .ai-analysis-markdown li {
@@ -3348,6 +3358,14 @@ h1, h2, h3, h4 {
 [data-theme='light'] .agent-orb-bird {
   color: var(--orb-a);
 }
+/* Light theme: crisp flat mark — the aura hugs the bird instead of smearing
+   across the white header. */
+[data-theme='light'] .agent-orb::before {
+  opacity: 0.3;
+}
+[data-theme='light'] .agent-orb::after {
+  opacity: 0.18;
+}
 .agent-orb[data-state='thinking'] {
   --orb-spin: 2.4s;
   --orb-breathe: 1.8s;
@@ -3445,6 +3463,23 @@ h1, h2, h3, h4 {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
+/* Action outcomes read by color at a glance: approve green, reject red,
+   handoff amber — tint only the icon tile, the card body stays neutral. */
+.preset-card-icon[data-icon='approve'] {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  border-color: color-mix(in srgb, var(--success) 32%, transparent);
+}
+.preset-card-icon[data-icon='reject'] {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 32%, transparent);
+}
+.preset-card-icon[data-icon='handoff'] {
+  color: var(--neon-amber);
+  background: color-mix(in srgb, var(--neon-amber) 14%, transparent);
+  border-color: color-mix(in srgb, var(--neon-amber) 32%, transparent);
+}
 
 /* Ambient aurora behind the transcript. Three blurred color fields drifting
    on long alternating paths; the whole layer brightens while a turn is in
@@ -3492,8 +3527,10 @@ h1, h2, h3, h4 {
   background: radial-gradient(circle, color-mix(in oklab, var(--neon-magenta) 12%, transparent), transparent 62%);
   animation: aurora-c 33s ease-in-out infinite alternate;
 }
-[data-theme='light'] .agent-aurora { opacity: 0.3; }
-[data-theme='light'] .agent-aurora[data-live='true'] { opacity: 0.55; }
+/* On white the blurred fields band into visible rings — keep light nearly
+   flat, with only a hint of life while a turn is running. */
+[data-theme='light'] .agent-aurora { opacity: 0.12; }
+[data-theme='light'] .agent-aurora[data-live='true'] { opacity: 0.25; }
 
 /* Border-beam: a hot spark tracing the card's edge — reserved for plans
    waiting on a human decision. Falls back to a static (harmless) ring where
@@ -3597,6 +3634,9 @@ h1, h2, h3, h4 {
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--accent) 55%, transparent),
     0 8px 30px -12px color-mix(in oklab, var(--accent) 40%, transparent);
+}
+[data-theme='light'] .agent-composer:focus {
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 45%, transparent);
 }
 .btn-agent-send {
   background: linear-gradient(135deg, var(--accent), var(--neon-purple));

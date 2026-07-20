@@ -59,13 +59,23 @@ function PresetIcon({ icon }: { icon: PresetMeta['icon'] }) {
  */
 export function PresetPromptCard({ preset, content }: { preset: PresetMeta; content: string }) {
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   const gist = preset.gist ?? content;
   const expandLabel =
     preset.kind === 'action' ? 'Show message sent to the agent' : 'Show full prompt';
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard unavailable — leave the label as-is
+    }
+  };
   return (
     <div className="preset-card max-w-[min(85%,28rem)] rounded-xl rounded-br-sm px-3.5 py-2.5 text-left">
       <div className="flex items-center gap-2 min-w-0">
-        <span className="preset-card-icon shrink-0" aria-hidden="true">
+        <span className="preset-card-icon shrink-0" data-icon={preset.icon} aria-hidden="true">
           <PresetIcon icon={preset.icon} />
         </span>
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text-primary)]">
@@ -82,23 +92,33 @@ export function PresetPromptCard({ preset, content }: { preset: PresetMeta; cont
           {gist}
         </p>
       )}
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]"
-      >
-        <motion.span
-          animate={{ rotate: expanded ? 90 : 0 }}
-          transition={{ duration: 0.18 }}
-          className="inline-flex"
-          aria-hidden="true"
+      <div className="mt-1.5 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--accent)] opacity-80 transition-opacity hover:opacity-100"
         >
-          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
-          </svg>
-        </motion.span>
-        {expanded ? 'Hide' : expandLabel}
-      </button>
+          <motion.span
+            animate={{ rotate: expanded ? 90 : 0 }}
+            transition={{ duration: 0.18 }}
+            className="inline-flex"
+            aria-hidden="true"
+          >
+            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
+            </svg>
+          </motion.span>
+          {expanded ? 'Hide' : expandLabel}
+        </button>
+        <button
+          type="button"
+          onClick={() => void copy()}
+          title="Copy the full text sent to the agent"
+          className="text-[11px] text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100 hover:text-[var(--text-secondary)] focus:opacity-100"
+        >
+          {copied ? 'copied ✓' : 'copy'}
+        </button>
+      </div>
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.div
@@ -108,7 +128,7 @@ export function PresetPromptCard({ preset, content }: { preset: PresetMeta; cont
             transition={{ duration: 0.25, ease: 'easeOut' }}
             className="overflow-hidden"
           >
-            <pre className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md border border-[var(--border-default)] bg-[var(--bg-tertiary)]/70 px-2.5 py-2 font-mono text-[11px] leading-relaxed text-[var(--text-secondary)]">
+            <pre className="mt-2 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md border border-[var(--border-default)] bg-[var(--bg-tertiary)]/70 px-2.5 pt-2 pb-3 font-mono text-[11px] leading-relaxed text-[var(--text-secondary)]">
               {content}
             </pre>
           </motion.div>

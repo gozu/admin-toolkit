@@ -525,9 +525,12 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         {children}
       </main>
 
-      {/* Scroll-to-top — appears once <main> is scrolled past the threshold */}
+      {/* Scroll-to-top — appears once <main> is scrolled past the threshold.
+          Suppressed on the Agents page: its composer owns that corner (the
+          FAB would sit on the Send button) and the transcript has its own
+          jump-to-latest affordance. */}
       <AnimatePresence>
-        {showScrollTop && (
+        {showScrollTop && activePage !== 'agents' && (
           <motion.button
             type="button"
             title="Back to top"

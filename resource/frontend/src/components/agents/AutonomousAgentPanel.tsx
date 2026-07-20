@@ -118,9 +118,10 @@ function CapInput({
         if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
       }}
       onBlur={(e) => {
-        const v = Number(e.target.value);
-        if (Number.isFinite(v) && v >= 1) {
+        const v = Math.round(Number(e.target.value));
+        if (Number.isInteger(v) && v >= 1) {
           if (v !== value) onCommit(v);
+          else e.target.value = String(value);
         } else {
           e.target.value = String(value);
         }
@@ -175,7 +176,7 @@ export function AutonomousAgentPanel({
     setupSteps.push({ label: 'Turn on the Master kill-switch', href: PLUGIN_SETTINGS_URL });
   if (!data.masterPassword)
     setupSteps.push({ label: 'Set a master password', href: PLUGIN_SETTINGS_URL });
-  if (!data.delivery.recipient)
+  if (!data.delivery.recipient && onOpenSettings)
     setupSteps.push({ label: 'Set a report recipient', action: onOpenSettings });
   if (!scenario.provisioned)
     setupSteps.push({
@@ -197,7 +198,11 @@ export function AutonomousAgentPanel({
   chips.push({
     label: fmtLastRun(scenario.lastRun),
     tone:
-      scenario.lastRun?.outcome === 'SUCCESS' ? 'ok' : scenario.lastRun ? 'warn' : 'muted',
+      scenario.lastRun?.outcome === 'SUCCESS'
+        ? 'ok'
+        : scenario.lastRun?.start
+          ? 'warn'
+          : 'muted',
   });
 
   return (
@@ -238,9 +243,9 @@ export function AutonomousAgentPanel({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--neon-amber)] pb-1">
             To go live
           </p>
-          <ol className="space-y-0.5 text-xs text-[var(--text-secondary)]">
+          <div className="space-y-0.5 text-xs text-[var(--text-secondary)]">
             {setupSteps.map((step, i) => (
-              <li key={step.label}>
+              <div key={step.label}>
                 {i + 1}.{' '}
                 {step.href ? (
                   <a
@@ -262,9 +267,9 @@ export function AutonomousAgentPanel({
                 ) : (
                   step.label
                 )}
-              </li>
+              </div>
             ))}
-          </ol>
+          </div>
         </div>
       )}
 
@@ -281,7 +286,7 @@ export function AutonomousAgentPanel({
           <span className="text-xs font-semibold text-[var(--text-primary)]">
             Autonomous actions
             <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
-              {data.enabled ? `${optedCount}/${total} allowed` : 'paused'}
+              {`${optedCount}/${total} allowed${data.enabled ? '' : ' · paused'}`}
             </span>
           </span>
         </label>
@@ -365,12 +370,13 @@ export function AutonomousAgentPanel({
         </label>
         <span className="ml-auto flex items-center gap-2 text-[10px] text-[var(--text-tertiary)]">
           Risk:
-          <span className="flex items-center gap-1">
-            <span className={`h-2 w-2 rounded-full ${RISK_DOT.low}`} /> low
-          </span>
-          <span className="flex items-center gap-1">
-            <span className={`h-2 w-2 rounded-full ${RISK_DOT.medium}`} /> medium
-          </span>
+          {(['low', 'medium', 'high'] as const)
+            .filter((r) => data.actions.some((a) => a.risk === r))
+            .map((r) => (
+              <span key={r} className="flex items-center gap-1">
+                <span className={`h-2 w-2 rounded-full ${RISK_DOT[r]}`} /> {r}
+              </span>
+            ))}
         </span>
       </div>
 
@@ -381,7 +387,7 @@ export function AutonomousAgentPanel({
           className="border border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20 disabled:opacity-50 disabled:cursor-not-allowed"
           disabled={testSending || !data.delivery.recipient}
           title={data.delivery.recipient ? undefined : 'Set a report recipient first (step above)'}
-          onClick={() => void sendTestDigest().catch(() => undefined)}
+          onClick={() => requireUnlock(() => void sendTestDigest().catch(() => undefined))}
         >
           {testSending ? 'Sending…' : 'Send test report'}
         </Button>

@@ -531,6 +531,9 @@ class Rule21ClusterFloorProjection(Rule):
                 taints=node_taints(n),
             )
         node_groups = list(groups_by_instance.values())
+        usage = _build_usage_index(probes)
+        usage_packed = 0
+        unsized_packed = 0
         pod_reqs: List[PodReq] = []
         for p in pods:
             if pod_owner_kind(p) == 'DaemonSet':
@@ -542,7 +545,17 @@ class Rule21ClusterFloorProjection(Rule):
                 continue
             cpu_req, mem_req, gpu_req = pod_total_requests(p)
             if cpu_req <= 0 and mem_req <= 0 and gpu_req <= 0:
-                continue
+                # Zero-request pods (DSS exec configs / API deployments often set
+                # none) still occupy a node. Dropping them lets the floor reach
+                # 0 nodes and the projection claim ~100% of spend. Pack them by
+                # live usage when metrics exist, else at zero size — either way
+                # they keep the floor at >= 1 node.
+                real = usage.get(f'{pod_namespace(p)}/{pod_name(p)}')
+                if real:
+                    cpu_req, mem_req = real
+                    usage_packed += 1
+                else:
+                    unsized_packed += 1
             pod_reqs.append(PodReq(
                 name=f'{pod_namespace(p)}/{pod_name(p)}',
                 namespace=pod_namespace(p),
@@ -570,17 +583,29 @@ class Rule21ClusterFloorProjection(Rule):
         total_nodes = sum(full_count_by_instance.values())
         workload_nodes = sum(workload_count_by_instance.values())
         floor_nodes = sum(result.by_group.values())
+        caveats = ''
+        if usage_packed:
+            caveats += (
+                f' {usage_packed} pod(s) declare no resource requests and were packed by '
+                'live usage instead — set real requests to firm up this estimate.'
+            )
+        if unsized_packed:
+            caveats += (
+                f' {unsized_packed} pod(s) have no requests and no usage metrics; they were '
+                'held at zero size, so the floor may be optimistic.'
+            )
         return [Finding(
             id=make_id(self.id, 'cluster'),
             rule=self.id,
             severity='high',
             category='cost',
-            title=f'Bin-pack floor: ~${consolidation_hourly:.2f}/hr (${consolidation_hourly*730:.0f}/mo) consolidation savings',
+            title=f'Cluster floor: ~${total_savings_hourly:.2f}/hr (${total_savings_hourly*730:.0f}/mo) savings via idle reclaim + bin-pack',
             summary=(
                 f'Current spend ~${current_hourly:.2f}/hr across {total_nodes} nodes. '
                 f'{len(idle_node_names)} idle/empty node(s) (~${idle_hourly:.2f}/hr) are reclaimable '
                 f'outright; the remaining {workload_nodes} workload node(s) bin-pack to '
                 f'{floor_nodes} node(s) (~${floor_hourly:.2f}/hr).'
+                + caveats
             ),
             evidence={
                 'currentHourly': round(current_hourly, 3),
@@ -595,8 +620,10 @@ class Rule21ClusterFloorProjection(Rule):
                 'currentByInstance': full_count_by_instance,
                 'floorBreakdown': floor_breakdown,
                 'unplaceablePods': result.unplaceable[:20],
+                'podsPackedByUsage': usage_packed,
+                'podsWithoutRequestsOrUsage': unsized_packed,
             },
-            cost_impact_per_month=round(consolidation_hourly * 730, 2),
+            cost_impact_per_month=round(total_savings_hourly * 730, 2),
             remediation=[
                 doc_link_remediation(
                     'Action plan: address the per-pod overrequest findings, then cordon empty nodes',

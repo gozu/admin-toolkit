@@ -1,7 +1,8 @@
 """First-fit-decreasing bin packing across instance types.
 
 Used by rule 21 (cluster-floor-projection) to estimate the minimum number of
-nodes required to host the *current* pod set at the *current* requests.
+nodes required to host the *current* pod set at the *current* requests
+(zero-request pods are sized by live usage, or held at zero size, upstream).
 
 Inputs are normalized into milli-cpu and MiB of memory. Pods that don't fit on
 any node group at all (oversized) are returned in `unplaceable`, so the rule

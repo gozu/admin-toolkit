@@ -504,7 +504,9 @@ function K8sOverviewCard({ data }: { data: NonNullable<ReturnType<typeof k8sInsi
             Potential savings
           </div>
           <div className="space-y-1 max-w-xs font-mono text-sm">
-            <K8sSavingsRow label="Consolidate nodes (bin-pack)" value={consolidation} />
+            {consolidation > 0 && (
+              <K8sSavingsRow label="Consolidate nodes (bin-pack)" value={consolidation} />
+            )}
             {idleNodes > 0 && <K8sSavingsRow label="Reclaim idle / empty nodes" value={idleNodes} />}
             {gpuWaste > 0 && <K8sSavingsRow label="Free GPU from idle pods" value={gpuWaste} />}
             <div className="flex justify-between border-t border-white/10 pt-1 mt-1 text-green-300">

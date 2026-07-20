@@ -3,8 +3,11 @@
 Maps health-score issue ids (atk_agent_common.health) and k8s-insights rule
 ids to catalogued actuator actions. First glob match wins. `auto: True` marks
 the actions the daily triage loop may execute autonomously WHEN the admin has
-opted that action into `auto_remediate_actions` — only the reversible,
-capped, whitelist-safe cleanups qualify (log-cleanup, docker-prune).
+opted that action into `auto_remediate_actions` — only reversible, capped,
+whitelist-safe operations qualify; each needs a `build_target` that produces
+a concrete target from the finding + settings alone (no human in the loop).
+A build_target returning None means "this finding lacks the data" and the
+candidate is silently not proposed.
 
 Explicit `None` entries document known gaps: findings we can detect but not
 remediate through any catalogued action (so agents say "manual" instead of
@@ -12,6 +15,13 @@ improvising).
 """
 
 from fnmatch import fnmatchcase
+
+# Aged job dirs are a different corpus than rotated logs — 14 days keeps the
+# recent-debugging window intact while still draining months of buildup.
+_JOB_LOGS_MIN_AGE_DAYS = 14
+# Batched auto targets stay bounded so one pathological finding can't turn
+# into a hundred-target plan nobody reviewed.
+_AUTO_BATCH_CAP = 10
 
 
 def _log_cleanup_target(issue, settings):
@@ -23,6 +33,39 @@ def _log_cleanup_target(issue, settings):
 def _docker_prune_target(issue, settings):
     return {'mode': 'builder',
             'keepStorageGB': int(settings.get('auto_remediate_max_gb') or 20)}
+
+
+def _job_logs_cleanup_target(issue, settings):
+    return {'minAgeDays': _JOB_LOGS_MIN_AGE_DAYS,
+            'maxDeleteGB': int(settings.get('auto_remediate_max_gb') or 20)}
+
+
+def _connection_test_target(issue, settings):
+    """Re-probe the connections the finding names (issue.items). Batch when
+    several are failing — one plan, per-connection pass/fail in the result."""
+    names = [str(n) for n in (issue.get('items') or []) if n]
+    if not names:
+        return None
+    if len(names) == 1:
+        return {'name': names[0]}
+    return [{'name': n} for n in names[:_AUTO_BATCH_CAP]]
+
+
+def _kernels_shutdown_target(issue, settings):
+    # Empty projectKey = every active kernel on the host; the planner refuses
+    # (→ skip) when there is nothing to shut down.
+    return {'projectKey': ''}
+
+
+def _clear_webapp_runs_target(issue, settings):
+    """Trim dead webapp run dirs in the projects the finding names. Only ever
+    deletes non-running run directories, newest N per webapp survive."""
+    keys = [str(k) for k in (issue.get('items') or []) if k]
+    if not keys:
+        return None
+    if len(keys) == 1:
+        return {'projectKey': keys[0]}
+    return [{'projectKey': k} for k in keys[:_AUTO_BATCH_CAP]]
 
 
 def _spec(action, risk, why, auto=False, build_target=None):
@@ -39,19 +82,26 @@ REMEDIATIONS = [
         _spec('docker-prune', 'low', 'When DockerRootDir shares the data mount, builder/image '
               'cache is usually the biggest reclaimable block.', auto=True,
               build_target=_docker_prune_target),
+        _spec('job-logs-cleanup', 'low', 'Aged job directories are the next reclaim after '
+              'rotated logs and docker cache — newest N per project survive.',
+              auto=True, build_target=_job_logs_cleanup_target),
     ]),
     ('disk-critical-*', [
         _spec('log-cleanup', 'low', 'Reclaim rotated logs before anything invasive.',
               auto=True, build_target=_log_cleanup_target),
         _spec('docker-prune', 'low', 'Prune docker build/image cache if docker lives on the '
               'affected mount.', auto=True, build_target=_docker_prune_target),
+        _spec('job-logs-cleanup', 'low', 'Aged job directories (jobs/<PROJECT>/<jobDir>) '
+              'free real space with zero risk to running work.',
+              auto=True, build_target=_job_logs_cleanup_target),
     ]),
     ('disk-warning-*', [
         _spec('log-cleanup', 'low', 'Early cleanup keeps the warning from becoming critical.',
               auto=True, build_target=_log_cleanup_target),
         _spec('job-logs-cleanup', 'low', 'Aged job directories (jobs/<PROJECT>/<jobDir>) are '
               'the next-safest reclaim after rotated logs — newest N per project survive; '
-              'severity is judged by share of the /data disk (rubric).'),
+              'severity is judged by share of the /data disk (rubric).',
+              auto=True, build_target=_job_logs_cleanup_target),
     ]),
 
     # ── connections ──────────────────────────────────────────────────────────
@@ -67,7 +117,8 @@ REMEDIATIONS = [
               'When a real newValue exists the action is drift-guarded, secret paths '
               'blocked, prior value restorable from history.'),
         _spec('connection-test', 'low', 'Verify the repair immediately: the test result '
-              'reports connectionOK true/false.'),
+              'reports connectionOK true/false.', auto=True,
+              build_target=_connection_test_target),
     ]),
     ('connection-broken-unused', [
         _spec('connection-delete', 'medium', 'Nothing references the connection — back up its '
@@ -77,7 +128,8 @@ REMEDIATIONS = [
     ]),
     ('connection-broken-unverified', [
         _spec('connection-test', 'low', 'Re-probe the connection; run the usage scan before '
-              'proposing anything destructive.'),
+              'proposing anything destructive.', auto=True,
+              build_target=_connection_test_target),
     ]),
 
     # ── clusters ─────────────────────────────────────────────────────────────
@@ -177,18 +229,21 @@ REMEDIATIONS = [
     ('project-size-*', [
         _spec('project-clear-webapp-runs', 'medium', 'When the footprint breakdown names '
               '"Web app runs" (bucketKey webApps), trim dead run dirs — keeps the newest N '
-              'per webapp, never touches a running backend.'),
+              'per webapp, never touches a running backend.', auto=True,
+              build_target=_clear_webapp_runs_target),
     ]),
 
     # ── runtime workloads (sanity codes surface as sanity-warning-<CODE>) ────
     ('sanity-*LONG_RUNNING*', [
         _spec('notebook-kernels-shutdown', 'medium', 'Kernels alive beyond ~days rarely do '
               'real work (rubric): shut down the active kernels via the DSS API — files and '
-              'outputs untouched, users just restart. Never a Linux-level kill.'),
+              'outputs untouched, users just restart. Never a Linux-level kill.',
+              auto=True, build_target=_kernels_shutdown_target),
     ]),
     ('sanity-*JUPYTER*', [
         _spec('notebook-kernels-shutdown', 'medium', 'Idle/leaked notebook kernels are '
-              'reclaimed at the DSS level; the plan lists every kernel before approval.'),
+              'reclaimed at the DSS level; the plan lists every kernel before approval.',
+              auto=True, build_target=_kernels_shutdown_target),
     ]),
     ('sanity-*CLUSTERS_NONE_SELECTED*', [
         _spec('project-set-cluster', 'low', 'Point the flagged project at an explicit K8s '
@@ -287,6 +342,48 @@ def is_documented_gap(issue_id):
 # autonomous tier structurally cannot provide.
 AUTO_EXCLUDED = frozenset({'python-run'})
 
+# Admin-facing copy for the Permissions panel — what opting an action into
+# the autonomous tier actually means, in plain language. Keys must stay a
+# subset of the auto-eligible set (asserted in auto_catalog).
+AUTO_DESCRIPTIONS = {
+    'log-cleanup': 'Delete aged rotated logs under the whitelisted log roots when a disk '
+                   'fills up. Oldest-first, capped by the GB budget below.',
+    'docker-prune': 'Prune the Docker builder/image cache when it crowds the data mount. '
+                    'Rebuilt on demand; keeps the configured storage floor.',
+    'job-logs-cleanup': 'Remove job directories older than %d days when disk pressure '
+                        'builds. The newest runs of every project always survive.'
+                        % _JOB_LOGS_MIN_AGE_DAYS,
+    'connection-test': 'Re-probe connections that failed their health test and record '
+                       'pass/fail — a zero-mutation verification so the morning report '
+                       'says "still broken" or "recovered", not "unknown".',
+    'notebook-kernels-shutdown': 'Shut down ALL active notebook kernels when the DSS sanity '
+                                 'check flags long-running/leaked kernels. Files and outputs '
+                                 'untouched — but in-memory state of every kernel on the host '
+                                 'is lost, so enable this only if overnight kernels are '
+                                 'never legitimate here.',
+    'project-clear-webapp-runs': 'Trim dead webapp run directories in the projects the '
+                                 'footprint scan flags as oversized. Running backends and '
+                                 'the newest runs per webapp are never touched.',
+}
+
+
+def auto_catalog():
+    """Deduped, admin-facing catalog of every auto-eligible action:
+    [{action, risk, description, findings: [glob, ...]}], sorted by action.
+    Single source for the Permissions panel and the settings validator."""
+    by_action = {}
+    for glob, specs in REMEDIATIONS:
+        for spec in (specs or []):
+            if not spec['auto'] or spec['action'] in AUTO_EXCLUDED:
+                continue
+            row = by_action.setdefault(spec['action'], {
+                'action': spec['action'], 'risk': spec['risk'],
+                'description': AUTO_DESCRIPTIONS.get(spec['action'], spec['why']),
+                'findings': []})
+            if glob not in row['findings']:
+                row['findings'].append(glob)
+    return [by_action[a] for a in sorted(by_action)]
+
 
 def auto_candidates(issues, enabled_actions, settings):
     """Autonomous-fix candidates for one host's finding list.
@@ -294,7 +391,8 @@ def auto_candidates(issues, enabled_actions, settings):
     `issues` = [{'id': ..., ...}] (health topIssues rows), `enabled_actions` =
     the admin's auto_remediate_actions CSV as a set. One candidate per action
     per host (three disk findings still mean ONE log-cleanup run). Returns
-    [{'issueId', 'action', 'target', 'why'}].
+    [{'issueId', 'action', 'target', 'why', 'risk'}] — `target` is a single
+    target dict, or a LIST of target dicts for a batched plan.
     """
     out = []
     seen_actions = set()
@@ -308,11 +406,11 @@ def auto_candidates(issues, enabled_actions, settings):
                 continue
             build = spec['build_target']
             target = build(issue, settings) if build else None
-            if target is None:
+            if not target:
                 continue
             seen_actions.add(spec['action'])
             out.append({'issueId': issue_id, 'action': spec['action'],
-                        'target': target, 'why': spec['why']})
+                        'target': target, 'why': spec['why'], 'risk': spec['risk']})
     return out
 
 

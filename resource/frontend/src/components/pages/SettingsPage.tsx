@@ -20,7 +20,7 @@ export const SHOW_DEPRECATED_STORAGE_KEY = 'showDeprecated';
 const PLUGIN_SETTINGS_URL = '/plugins/admin-toolkit/settings/';
 
 export function SettingsPage() {
-  const { state } = useDiag();
+  const { state, setActivePage } = useDiag();
   const mailChannels = state.parsedData.mailChannels ?? [];
 
   const [stored, setStored] = useState<string>(() =>
@@ -144,7 +144,7 @@ export function SettingsPage() {
         </p>
       </section>
 
-      <AgentsOutreachCard />
+      <AgentsOutreachCard onOpenPermissions={() => setActivePage('agent-settings')} />
 
       <RemoteHostsCard />
 

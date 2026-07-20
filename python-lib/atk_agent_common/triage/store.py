@@ -29,6 +29,31 @@ CREATE TABLE IF NOT EXISTS agents.agent_triage_daily (
 """
 
 
+def fetch_previous_scores(connection_name):
+    """{host_id: score} from each host's most recent BEFORE-today row —
+    powers the digest's 'vs yesterday' deltas. Empty dict on any failure
+    (first run, table missing, connection down): deltas are decoration,
+    never a sweep dependency."""
+    try:
+        conn = audit._connect(connection_name)
+    except Exception as exc:
+        logger.info('[triage-store] previous scores unavailable: %s', exc)
+        return {}
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                'SELECT DISTINCT ON (host_id) host_id, score '
+                'FROM agents.agent_triage_daily '
+                'WHERE day < CURRENT_DATE AND score IS NOT NULL '
+                'ORDER BY host_id, day DESC')
+            return {row[0]: row[1] for row in cur.fetchall()}
+    except Exception as exc:
+        logger.info('[triage-store] previous scores unavailable: %s', exc)
+        return {}
+    finally:
+        conn.close()
+
+
 def persist_sweep(connection_name, rows, run_id, llm_id=None):
     """Upsert one row per host for today. `rows` = sweep rows (+ optional
     'recommendation' added by the runnable). Returns count written."""

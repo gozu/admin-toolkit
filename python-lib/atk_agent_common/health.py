@@ -427,9 +427,12 @@ def _group_issue(id, category, severity, count, noun_phrase, detail, recommendat
     extra = {}
     if whitelist_rule and whitelist_items:
         extra = {'whitelistRule': whitelist_rule, 'whitelistItems': whitelist_items}
+    # items carries the member names structurally (the description only
+    # previews 5) — remediation build_targets need the real list.
     return _issue(id, category, severity,
                   ('%d project%s ' % (count, plural)) + noun_phrase,
-                  recommendation, description='%s%s. %s' % (preview, more, detail), **extra)
+                  recommendation, description='%s%s. %s' % (preview, more, detail),
+                  items=list(names), **extra)
 
 
 def _score_code_env_size(code_envs, is_whitelisted):

@@ -99,6 +99,8 @@ _AGENT_KNOB_DEFAULTS = {
     'triage_mail_channel': '',
     'triage_recipient': '',
     'auto_remediate_actions': '',
+    'auto_remediate_enabled': True,
+    'auto_remediate_remote_hosts': False,
     'auto_remediate_max_gb': 20,
     'auto_remediate_max_objects': 25,
     'python_run_timeout_seconds': 120,
@@ -108,9 +110,8 @@ _AGENT_KNOB_DEFAULTS = {
 
 
 def _auto_eligible_actions():
-    from atk_agent_common.remediation_map import AUTO_EXCLUDED, REMEDIATIONS
-    return sorted({spec['action'] for _glob, specs in REMEDIATIONS
-                   for spec in (specs or []) if spec['auto']} - set(AUTO_EXCLUDED))
+    from atk_agent_common.remediation_map import auto_catalog
+    return [row['action'] for row in auto_catalog()]
 
 
 def _knob_cast(key, value):

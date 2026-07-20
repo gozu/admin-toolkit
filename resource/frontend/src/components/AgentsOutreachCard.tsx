@@ -32,7 +32,6 @@ interface AgentKnobsResponse {
   values: AgentKnobValues;
   mailChannels: ChoiceItem[];
   llms: ChoiceItem[];
-  autoRemediateEligible: string[];
 }
 
 interface SaveResponse {
@@ -85,12 +84,15 @@ function ChoiceSelect({
  * the values). Reads/writes the LOCAL instance's plugin config — saving is
  * advanced-gated like every other mutating settings surface.
  */
-export function AgentsOutreachCard() {
+export function AgentsOutreachCard({
+  onOpenPermissions,
+}: {
+  onOpenPermissions?: () => void;
+}) {
   const [values, setValues] = useState<AgentKnobValues | null>(null);
   const [saved, setSaved] = useState<AgentKnobValues | null>(null);
   const [mailChannels, setMailChannels] = useState<ChoiceItem[]>([]);
   const [llms, setLlms] = useState<ChoiceItem[]>([]);
-  const [eligible, setEligible] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
@@ -107,7 +109,6 @@ export function AgentsOutreachCard() {
         setSaved(res.values);
         setMailChannels(res.mailChannels);
         setLlms(res.llms);
-        setEligible(res.autoRemediateEligible);
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof ApiRequestError ? e.message : String(e));
@@ -150,19 +151,6 @@ export function AgentsOutreachCard() {
       return;
     }
     void doSave();
-  };
-
-  const autoSelected = new Set(
-    (values?.auto_remediate_actions ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
-  );
-  const toggleAuto = (action: string, on: boolean) => {
-    const next = new Set(autoSelected);
-    if (on) next.add(action);
-    else next.delete(action);
-    set('auto_remediate_actions', eligible.filter((a) => next.has(a)).join(','));
   };
 
   return (
@@ -300,39 +288,18 @@ export function AgentsOutreachCard() {
 
           <SubHeading>Auto-remediation</SubHeading>
           <p className="text-xs text-[var(--text-muted)]">
-            Checked actions run autonomously during the daily triage sweep, within the caps below.
-            The master kill-switch still gates every run and each run is audited.
+            Which actions the daily agent may run autonomously — plus its safety caps and
+            remote-host scope — moved to{' '}
+            <button
+              type="button"
+              onClick={() => onOpenPermissions?.()}
+              className="text-[var(--accent)] hover:underline"
+            >
+              Agents → Permissions → Autonomous daily agent
+            </button>
+            , next to the rest of the agent capability grants.
           </p>
-          <div className="flex flex-wrap gap-4">
-            {eligible.map((action) => (
-              <label key={action} className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoSelected.has(action)}
-                  onChange={(e) => toggleAuto(action, e.target.checked)}
-                  className="h-4 w-4 accent-[var(--accent)]"
-                />
-                <span className="text-sm font-mono text-[var(--text-primary)]">{action}</span>
-              </label>
-            ))}
-          </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Field label="Cap: GB per sweep">
-              <input
-                type="number"
-                className="input-glass w-full"
-                value={values.auto_remediate_max_gb}
-                onChange={(e) => set('auto_remediate_max_gb', Number(e.target.value))}
-              />
-            </Field>
-            <Field label="Cap: objects per sweep">
-              <input
-                type="number"
-                className="input-glass w-full"
-                value={values.auto_remediate_max_objects}
-                onChange={(e) => set('auto_remediate_max_objects', Number(e.target.value))}
-              />
-            </Field>
             <Field label="Power-Up timeout (s)">
               <input
                 type="number"

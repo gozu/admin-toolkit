@@ -52,9 +52,16 @@ def resolve(plugin_config=None):
         'triage_score_threshold': int(pick('triage_score_threshold', cfg.get('triage_score_threshold') or 75)),
         'triage_mail_channel': pick('triage_mail_channel'),
         'triage_recipient': pick('triage_recipient'),
-        # Auto-remediation tier: per-action opt-in CSV + cumulative caps.
+        # Auto-remediation tier: per-action opt-in CSV + cumulative caps, a
+        # one-switch pause that keeps the selection, and a remote-host opt-in.
         'auto_remediate_actions': [a.strip() for a in (pick('auto_remediate_actions') or '').split(',')
                                    if a.strip()],
+        'auto_remediate_enabled': str(pick('auto_remediate_enabled',
+                                           cfg.get('auto_remediate_enabled', True))).lower()
+        not in ('false', '0', 'no'),
+        'auto_remediate_remote_hosts': str(pick('auto_remediate_remote_hosts',
+                                                cfg.get('auto_remediate_remote_hosts', False))).lower()
+        in ('true', '1', 'yes'),
         'auto_remediate_max_gb': int(pick('auto_remediate_max_gb', cfg.get('auto_remediate_max_gb') or 20)),
         'auto_remediate_max_objects': int(pick('auto_remediate_max_objects',
                                                cfg.get('auto_remediate_max_objects') or 25)),

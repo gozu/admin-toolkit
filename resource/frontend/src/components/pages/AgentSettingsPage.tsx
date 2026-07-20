@@ -12,6 +12,7 @@ import { UnlockModal } from '../UnlockModal';
 import { Modal } from '../Modal';
 import { Button } from '../common/Button';
 import { Spinner } from '../common/Spinner';
+import { AutonomousAgentPanel } from '../agents/AutonomousAgentPanel';
 
 /**
  * Agent Permissions — the per-action enablement catalog. Every capability the
@@ -174,6 +175,7 @@ export function AgentSettingsPage() {
   const { authed: unlocked } = useRedState();
   const [showUnlock, setShowUnlock] = useState(false);
   const [pending, setPending] = useState<{ names: string[]; enabled: boolean } | null>(null);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [powerUpConfirm, setPowerUpConfirm] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
@@ -193,6 +195,17 @@ export function AgentSettingsPage() {
       return;
     }
     applyToggle(names, enabled);
+  };
+
+  // Unlock gate shared with the autonomous-agent panel: any panel write goes
+  // through the same red-unlock modal as a gate toggle.
+  const requireUnlock = (apply: () => void) => {
+    if (!unlocked) {
+      setPendingAction(() => apply);
+      setShowUnlock(true);
+      return;
+    }
+    apply();
   };
 
   // Live capability filter over name + description/shape — with ~60 rows,
@@ -261,6 +274,8 @@ export function AgentSettingsPage() {
             <p className="text-xs text-[var(--danger)]">{error}</p>
           </div>
         )}
+
+        {!needle && <AutonomousAgentPanel requireUnlock={requireUnlock} />}
 
         {nothingMatches && (
           <div className="glass-card p-6 text-center text-xs text-[var(--text-muted)]">
@@ -402,12 +417,17 @@ export function AgentSettingsPage() {
         onClose={() => {
           setShowUnlock(false);
           setPending(null);
+          setPendingAction(null);
         }}
         onUnlocked={() => {
           setShowUnlock(false);
           if (pending) {
             applyToggle(pending.names, pending.enabled);
             setPending(null);
+          }
+          if (pendingAction) {
+            pendingAction();
+            setPendingAction(null);
           }
         }}
       />

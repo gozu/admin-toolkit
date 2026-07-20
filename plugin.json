@@ -287,6 +287,23 @@
             "visibilityCondition": "false"
         },
         {
+            "name": "auto_remediate_enabled",
+            "label": "Autonomous actions master switch (webapp-managed)",
+            "description": "Managed in webapp Agents \u2192 Permissions; declared here (hidden) so DSS keeps the value.",
+            "type": "BOOLEAN",
+            "mandatory": false,
+            "defaultValue": true,
+            "visibilityCondition": "false"
+        },
+        {
+            "name": "auto_remediate_remote_hosts",
+            "label": "Autonomous actions on remote hosts (webapp-managed)",
+            "type": "BOOLEAN",
+            "mandatory": false,
+            "defaultValue": false,
+            "visibilityCondition": "false"
+        },
+        {
             "name": "auto_remediate_actions",
             "label": "Auto-remediate actions (webapp-managed)",
             "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value.",

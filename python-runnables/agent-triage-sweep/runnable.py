@@ -77,12 +77,20 @@ class MyRunnable(Runnable):
         hosts = [h.strip() for h in (self.config.get('hosts') or '').split(',') if h.strip()] or None
         threshold = settings.get('triage_score_threshold', 75)
         run_id = 'triage-%d' % int(time.time())
+        self._run_id = run_id
 
         snapshot_enabled = _bool(self.config.get('snapshot_enabled'), default=True)
         payload_sink = {} if snapshot_enabled else None
         result = sweep.sweep_fleet(client, hosts=hosts, score_threshold=threshold,
                                    payload_sink=payload_sink)
         rows = result['hosts']
+
+        # "vs yesterday" deltas for the digest — decoration, never a dependency.
+        previous = store.fetch_previous_scores(settings['triage_connection'])
+        for row in rows:
+            prev_score = previous.get(row['host'])
+            if isinstance(prev_score, (int, float)) and isinstance(row.get('score'), (int, float)):
+                row['previousScore'] = prev_score
 
         llm_id = settings.get('default_llm_id')
         if not _bool(self.config.get('skip_llm')) and llm_id and result['flagged']:
@@ -187,51 +195,70 @@ class MyRunnable(Runnable):
 
     def _send_digest(self, settings, result, rows, config_warning=None, snapshot_error=None,
                      auto_summary=None, auto_error=None):
+        """Branded HTML digest (atk_agent_common.triage.digest); the plain-text
+        twin ships as the fallback body when the HTML send fails."""
         import dataiku
+        from atk_agent_common.triage import digest
         from atk_agent_common.triage.provision import MACRO_PROJECT_KEY, resolve_mail_channel
         client = dataiku.api_client()
         channel_id = resolve_mail_channel(client, settings.get('triage_mail_channel') or '')
         channel = client.get_messaging_channel(channel_id)
-        lines = ['Daily DSS fleet health triage (threshold %s):' % result['scoreThreshold'], '']
-        if config_warning:
-            lines += ['CONFIG WARNING: %s' % config_warning, '']
-        if snapshot_error:
-            lines += ['SNAPSHOT WARNING: snapshot zip failed: %s' % snapshot_error, '']
-        lines += self._auto_remediation_lines(auto_summary, auto_error)
-        for row in rows:
-            score = row.get('score')
-            lines.append('%s — %s (%s)' % (row['host'],
-                                           ('score %s' % score) if score is not None else 'no score',
-                                           row.get('status')))
-            if row.get('error'):
-                lines.append('  ! %s' % json.dumps(row['error'], default=str)[:300])
-            if row.get('recommendation'):
-                lines.append('  → %s' % row['recommendation'])
-        body = '\n'.join(lines)
-        channel.send(MACRO_PROJECT_KEY, [settings['triage_recipient']],
-                     '[Admin Toolkit / Agents] Daily fleet health triage', body)
 
-    @staticmethod
-    def _auto_remediation_lines(auto_summary, auto_error):
-        """Digest section for the auto-remediation tier — every executed fix
-        (freed GB + audit row id) and every skip with its reason. Silent only
-        when the tier is off and nothing errored."""
-        if auto_error:
-            return ['AUTO-REMEDIATION WARNING: tier crashed: %s' % auto_error, '']
-        if not auto_summary or not auto_summary.get('enabled'):
-            return []
-        lines = ['Auto-remediation (opted-in: %s):' % ', '.join(auto_summary['enabled'])]
-        for done in auto_summary.get('executed') or []:
-            lines.append('  ✓ %s %s (finding %s) — freed %.2f GB, audit #%s'
-                         % (done['host'], done['action'], done.get('findingId'),
-                            done.get('freedGB') or 0, done.get('auditId')))
-            if done.get('warning'):
-                lines.append('    !! %s' % done['warning'])
-        for skip in auto_summary.get('skipped') or []:
-            lines.append('  – %s %s: %s' % (skip.get('host'),
-                                            skip.get('action') or '(all)', skip.get('reason')))
-        if not (auto_summary.get('executed') or auto_summary.get('skipped')):
-            lines.append('  (no matching findings today)')
-        lines += ['  Total freed: %.2f GB across %d object(s).'
-                  % (auto_summary.get('totalFreedGB') or 0, auto_summary.get('totalObjects') or 0), '']
-        return lines
+        ctx = self._digest_context(settings, result, rows, config_warning,
+                                   snapshot_error, auto_summary, auto_error)
+        subject = digest.build_subject(ctx)
+        recipient = settings['triage_recipient']
+        try:
+            channel.send(MACRO_PROJECT_KEY, [recipient], subject,
+                         digest.render_digest_html(ctx), plain_text=False)
+        except TypeError:
+            # Older dataikuapi without plain_text kwarg — HTML is its default.
+            channel.send(MACRO_PROJECT_KEY, [recipient], subject,
+                         digest.render_digest_html(ctx))
+        except Exception:
+            # Never lose the report over markup: retry as plain text.
+            channel.send(MACRO_PROJECT_KEY, [recipient], subject,
+                         digest.render_digest_text(ctx), plain_text=True)
+
+    def _digest_context(self, settings, result, rows, config_warning, snapshot_error,
+                        auto_summary, auto_error):
+        import dataiku
+        host_labels = {}
+        try:
+            from atk_agent_common.client import ToolkitClient
+            client = ToolkitClient(settings)
+            for h in client.list_hosts() or []:
+                if h.get('id'):
+                    host_labels[h['id']] = h.get('label') or h.get('name') or h['id']
+        except Exception:
+            pass
+        version = None
+        try:
+            plugin = dataiku.api_client().get_plugin('admin-toolkit')
+            version = (plugin.get_settings().get_raw() or {}).get('version') \
+                or (getattr(plugin, 'get_info', lambda: {})() or {}).get('version')
+        except Exception:
+            pass
+        toolkit_url = None
+        backend_url = settings.get('backend_url') or ''
+        if '/web-apps-backends/' in backend_url:
+            # public webapp UI = same base with the backend prefix swapped out
+            base, _, tail = backend_url.partition('/web-apps-backends/')
+            toolkit_url = '%s/public-webapps/%s' % (base, tail)
+        return {
+            'dateLabel': time.strftime('%A, %B %-d'),
+            'timeLabel': time.strftime('%H:%M server time'),
+            'runId': getattr(self, '_run_id', None),
+            'threshold': result['scoreThreshold'],
+            'version': version,
+            'llmEnabled': bool(settings.get('default_llm_id')),
+            'maxGb': float(settings.get('auto_remediate_max_gb') or 20),
+            'hostLabels': host_labels,
+            'hosts': rows,
+            'flagged': result['flagged'],
+            'autoSummary': auto_summary,
+            'autoError': auto_error,
+            'configWarning': config_warning,
+            'snapshotError': snapshot_error,
+            'toolkitUrl': toolkit_url,
+        }

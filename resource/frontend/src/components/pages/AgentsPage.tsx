@@ -579,37 +579,37 @@ export function AgentsPage() {
             >
               <div className={`${COLUMN} space-y-4`}>
               {messages.length === 0 && (
-                <div className="pt-8 flex flex-col items-center gap-5 text-center">
-                  <div className="relative flex items-center justify-center w-[8.25rem] h-[8.25rem]">
+                <div className="pt-6 flex flex-col items-center gap-6 text-center">
+                  <div className="relative flex items-center justify-center w-[10rem] h-[10rem]">
                     <span className="orb-orbit" aria-hidden="true" />
                     <span className="orb-orbit orbit-2" aria-hidden="true" />
-                    <AgentOrb size={72} state="idle" />
+                    <AgentOrb size={88} state="idle" />
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <h2
-                      className="hero-shimmer text-2xl font-bold tracking-tight"
+                      className="hero-shimmer text-4xl font-bold tracking-tight"
                       style={{ fontFamily: 'var(--font-display)' }}
                     >
                       Your fleet, on command.
                     </h2>
-                    <p className="text-sm text-[var(--text-secondary)]">
+                    <p className="text-base text-[var(--text-secondary)]">
                       Ask about fleet health, sizing and scoping, or admin maintenance — or start
                       from a sample below.
                     </p>
                   </div>
-                  <div className="grid gap-3 w-full max-w-3xl sm:grid-cols-2 text-left">
+                  <div className="grid gap-4 w-full max-w-5xl sm:grid-cols-2 text-left">
                     {heroGroups.map((group, gi) => (
                       <motion.div
                         key={group.role}
                         initial={{ opacity: 0, y: 16, filter: 'blur(5px)' }}
                         animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
                         transition={{ duration: 0.45, delay: 0.12 + gi * 0.1, ease: 'easeOut' }}
-                        className="glass-card hero-card p-4 space-y-2 border-l-2 border-l-[var(--accent)]"
+                        className="glass-card hero-card p-5 space-y-3 border-l-2 border-l-[var(--accent)]"
                       >
-                        <div className="text-xs font-bold uppercase tracking-widest text-[var(--accent)]">
+                        <div className="text-sm font-bold uppercase tracking-widest text-[var(--accent)]">
                           {group.title}
                         </div>
-                        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                        <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
                           {group.blurb}
                         </p>
                         <button
@@ -622,11 +622,11 @@ export function AgentsPage() {
                               icon: 'star',
                             })
                           }
-                          className="px-3 py-1 text-xs font-semibold rounded-md bg-[var(--accent)] text-white hover:opacity-90 transition-opacity"
+                          className="px-4 py-2 text-sm font-semibold rounded-lg bg-[var(--accent)] text-white hover:opacity-90 transition-opacity"
                         >
                           ★ {group.megapromptTitle}
                         </button>
-                        <div className="flex flex-col gap-1.5 pt-1">
+                        <div className="flex flex-col gap-2 pt-1">
                           {samplePrompts(group, 7).map((p) => (
                             <button
                               key={p.id}
@@ -638,7 +638,7 @@ export function AgentsPage() {
                                   icon: 'prompt',
                                 })
                               }
-                              className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors truncate text-left"
+                              className="px-3 py-2 rounded-lg text-sm text-[var(--text-secondary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors truncate text-left"
                               title={p.prompt}
                             >
                               {p.label}
@@ -650,7 +650,7 @@ export function AgentsPage() {
                   </div>
                   <button
                     onClick={() => setLibraryOpen(true)}
-                    className="px-3 py-1.5 text-xs rounded-md border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+                    className="px-4 py-2 text-sm rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
                   >
                     Browse all {PROMPT_GROUPS.reduce((n, g) => n + g.sections.reduce((m, s) => m + s.prompts.length, 0), 0)}{' '}
                     prompts…

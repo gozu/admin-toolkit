@@ -109,6 +109,70 @@ def test_parallel_tools_chips_first_results_live_history_ordered():
     assert json.loads(tool_messages[0].content) == {'slow': 1}
 
 
+def test_tool_events_carry_correlation_ids_out_of_order():
+    """Two parallel SAME-NAME calls: every tool_call/tool_result event carries
+    the model's call id, and each result keeps its own duration even though
+    the slower call was issued first (the name-collision trap)."""
+
+    def echo(x: int) -> str:
+        if x == 1:
+            time.sleep(0.4)
+        return json.dumps({'x': x})
+
+    llm = FakeLLM([
+        [tool_call_chunk([('echo', {'x': 1}, 'c1'), ('echo', {'x': 2}, 'c2')])],
+        [text_chunk('done')],
+    ])
+    items, _ = run(llm, [make_tool('echo', echo)])
+    assert [c['id'] for c in events_of(items, 'tool_call')] == ['c1', 'c2']
+    results = events_of(items, 'tool_result')
+    assert [r['id'] for r in results] == ['c2', 'c1']  # fast one lands first
+    by_id = {r['id']: r for r in results}
+    assert by_id['c1']['durationMs'] >= 300 > by_id['c2']['durationMs']
+
+
+def test_stats_marker_sums_turns_tools_and_usage():
+    """Exactly one {'stats': ...} marker, after the final answer: llm turns,
+    tools run, and usage summed from each turn's response_metadata (the LLM
+    Mesh footer — usage_metadata stays None on DKU chunks, verified live)."""
+
+    def t(x: int) -> str:
+        return '{}'
+
+    meta1 = {'promptTokens': 10, 'completionTokens': 5, 'totalTokens': 15,
+             'estimatedCost': 0.001}
+    meta2 = {'promptTokens': 30, 'completionTokens': 7, 'totalTokens': 37,
+             'estimatedCost': 0.002}
+    llm = FakeLLM([
+        [tool_call_chunk([('t', {'x': 1}, 'c1'), ('t', {'x': 2}, 'c2')]),
+         AIMessageChunk(content='', response_metadata=meta1)],
+        [text_chunk('done'), AIMessageChunk(content='', response_metadata=meta2)],
+    ])
+    items, _ = run(llm, [make_tool('t', t)])
+    stats = [i['stats'] for i in items if 'stats' in i]
+    assert len(stats) == 1
+    assert items[-1] == {'stats': stats[0]}  # marker is the very last item
+    assert stats[0]['llmTurns'] == 2 and stats[0]['toolsRun'] == 2
+    usage = stats[0]['usage']
+    assert usage['promptTokens'] == 40 and usage['completionTokens'] == 12
+    assert usage['totalTokens'] == 52
+    assert usage['estimatedCost'] == pytest.approx(0.003)
+
+
+def test_stats_marker_without_usage_metadata():
+    llm = FakeLLM([[text_chunk('hi')]])
+    items, _ = run(llm, [])
+    stats = [i['stats'] for i in items if 'stats' in i]
+    assert stats == [{'llmTurns': 1, 'toolsRun': 0, 'usage': None}]
+
+
+def test_usage_from_total_usage_fallback():
+    resp = AIMessageChunk(content='', response_metadata={
+        'totalUsage': {'promptTokens': 1, 'completionTokens': 2, 'totalTokens': 3}})
+    assert native_loop._usage_from(resp) == {
+        'promptTokens': 1, 'completionTokens': 2, 'totalTokens': 3, 'estimatedCost': 0.0}
+
+
 def test_unknown_tool_yields_error_envelope():
     llm = FakeLLM([
         [tool_call_chunk([('nope', {}, 'c1')])],
@@ -142,13 +206,16 @@ def test_iteration_limit_stops_with_notice():
     final_text = ''.join(i['chunk'].get('text', '') for i in items if 'chunk' in i)
     assert 'iteration limit' in final_text
     assert len(events_of(items, 'tool_call')) == 2
+    # The ceiling path still reports its stats.
+    assert [i['stats'] for i in items if 'stats' in i] == \
+        [{'llmTurns': 2, 'toolsRun': 2, 'usage': None}]
 
 
 def test_pre_output_stream_failure_retries_once():
     llm = FakeLLM([RuntimeError('mesh hiccup'), [text_chunk('second try')]])
     with mock.patch.object(native_loop.time, 'sleep'):
         items, _ = run(llm, [])
-    assert ''.join(i['chunk'].get('text', '') for i in items) == 'second try'
+    assert ''.join(i['chunk'].get('text', '') for i in items if 'chunk' in i) == 'second try'
     assert llm.streams_started == 2
 
 

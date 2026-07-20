@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.767] - 2026-07-19
+
+### Added
+- **Tool-call correlation ids + live chip timers**: `tool_call`/`tool_result` events now carry the model's call id, so parallel same-name calls settle the *right* chip even when results land out of order (previously durations could swap); running chips count elapsed seconds live, and stopping a turn mid-reply leaves a muted "⏹ stopped" marker (never part of the model-facing history).
+- **Turn stats + runtime badge**: the native loop reports model turns, tools run and token usage (read from the LLM Mesh footer in `response_metadata` — LangChain's `usage_metadata` is None on DKU chunks, verified live); the assistant-reply footer now reads e.g. `12.4s · native · 2 turns · 4 tools · 1.8k tok` (hover the token count for the in/out split). Fields only render when the runtime reported them; the kernel relay keeps its runtime badge.
+- **Instant follow-up turns**: the native runtime caches the per-agent setup bundle (config, gates, tuning, toolset, prompt — previously 4-6 self-HTTP/DSS reads per turn) for ~20s; saving Agents & Outreach settings clears the cache so knob changes still apply on the very next turn.
+- **Interaction-logs parity**: native turns now append their row to `ADMINTOOLKIT/agent_interaction_logs` (agent_type `NATIVE_TOOLKIT_AGENT`, full `dku_trace`) via the standard APPEND write path DSS's own logger uses — closing the 0.4.762 gap where native turns never reached the durable trace dataset. Best-effort and silent when the dataset isn't provisioned.
+
 ## [0.4.764] - 2026-07-19
 
 ### Added

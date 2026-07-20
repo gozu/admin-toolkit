@@ -33,11 +33,14 @@ def test_runtime_mode_reads_knob():
 
 # ── chat route branching ─────────────────────────────────────────────────────
 
-def _scripted_native_turn(agent_id, messages):
+def _scripted_native_turn(agent_id, messages, user=None):
     yield 'chunk', {'text': 'hello '}
     yield 'agent_event', {'eventKind': 'tool_call', 'eventData': {'name': 'instance_health', 'args': {}}}
     yield 'ping', {}
-    yield 'final', {'finishReason': 'stop', 'durationMs': 42, 'trace': {'type': 'span', 'name': 't'}}
+    yield 'final', {'finishReason': 'stop', 'durationMs': 42, 'trace': {'type': 'span', 'name': 't'},
+                    'llmTurns': 2, 'toolsRun': 3,
+                    'usage': {'promptTokens': 100, 'completionTokens': 20,
+                              'totalTokens': 120, 'estimatedCost': 0.01}}
 
 
 class _NoAgentsClient:
@@ -63,12 +66,29 @@ def test_chat_local_native_streams_native_turn():
     assert done['runtime'] == 'native'
     assert done['traceAvailable'] is True and done['traceId']
     assert done['durationMs'] == 42
+    # Turn stats ride the done event when the native generator provides them.
+    assert done['llmTurns'] == 2 and done['toolsRun'] == 3
+    assert done['usage']['totalTokens'] == 120
+
+
+def test_chat_done_omits_stats_when_generator_has_none():
+    def bare_turn(agent_id, messages, user=None):
+        yield 'final', {'finishReason': 'stop', 'durationMs': 5, 'trace': None}
+
+    with mock.patch.object(agent_native, 'runtime_mode', return_value='native'), \
+            mock.patch.object(agent_native, 'stream_native_turn', side_effect=bare_turn), \
+            mock.patch.object(backend, '_resolve_client', return_value=_NoAgentsClient()):
+        resp = backend.app.test_client().post(
+            '/api/agents/chat',
+            json={'agentId': 'a1', 'messages': [{'role': 'user', 'content': 'hi'}]})
+    done = json.loads(resp.get_data(as_text=True).split('event: done\ndata: ')[1].split('\n')[0])
+    assert 'llmTurns' not in done and 'toolsRun' not in done and 'usage' not in done
 
 
 def test_chat_native_turn_gets_clipped_history():
     captured = {}
 
-    def capture_turn(agent_id, messages):
+    def capture_turn(agent_id, messages, user=None):
         captured['agent_id'] = agent_id
         captured['messages'] = messages
         yield 'final', {'finishReason': 'stop', 'durationMs': 1, 'trace': None}
@@ -176,3 +196,111 @@ def test_virtual_agent_behavior_uses_master_switch():
     assert agent_native._behavior_for(None, {'enable_red_actions': False})['allow_execute'] is False
     # A real instance keeps kernel-identical semantics.
     assert agent_native._behavior_for({'allow_red_actions': True}, {})['allow_execute'] is True
+
+
+# ── setup-bundle cache ───────────────────────────────────────────────────────
+
+class _BundleBuilders:
+    """Patches every per-turn assembly step with counters."""
+
+    def __init__(self):
+        self.builds = 0
+
+    def __enter__(self):
+        def counted_config():
+            self.builds += 1
+            return {'k': 1}
+
+        self._patches = [
+            mock.patch.object(agent_native, '_get_plugin_config', side_effect=counted_config),
+            mock.patch.object(agent_native.atk_config, 'resolve', return_value={'s': 1}),
+            mock.patch.object(agent_native, 'build_client', return_value=object()),
+            mock.patch.object(agent_native, 'agent_instance_config_local', return_value=None),
+            mock.patch.object(agent_native.agent_runtime, 'resolve_llm_id', return_value='llm:x'),
+            mock.patch.object(agent_native.agent_runtime, 'build_llm', return_value=object()),
+            mock.patch.object(agent_native, '_behavior_for', return_value={'b': 1}),
+            mock.patch.object(agent_native.generalist, 'build_toolset', return_value=[]),
+            mock.patch.object(agent_native.generalist, 'build_system_prompt', return_value='sys'),
+        ]
+        for p in self._patches:
+            p.start()
+        return self
+
+    def __exit__(self, *exc):
+        for p in self._patches:
+            p.stop()
+
+
+def test_setup_bundle_caches_within_ttl_and_clears():
+    agent_native.clear_bundle_cache()
+    try:
+        with _BundleBuilders() as builders:
+            first = agent_native._setup_bundle('a1')
+            assert agent_native._setup_bundle('a1') is first  # cache hit
+            assert builders.builds == 1
+            agent_native._setup_bundle('a2')  # keyed per agent
+            assert builders.builds == 2
+            agent_native.clear_bundle_cache()
+            assert agent_native._setup_bundle('a1') is not first
+            assert builders.builds == 3
+    finally:
+        agent_native.clear_bundle_cache()
+
+
+def test_setup_bundle_ttl_expires(monkeypatch):
+    agent_native.clear_bundle_cache()
+    monkeypatch.setattr(agent_native, '_BUNDLE_TTL_S', 0.0)
+    try:
+        with _BundleBuilders() as builders:
+            agent_native._setup_bundle('a1')
+            agent_native._setup_bundle('a1')
+            assert builders.builds == 2  # deadline already passed → rebuild
+    finally:
+        agent_native.clear_bundle_cache()
+
+
+def test_setup_bundle_failures_are_not_cached():
+    from atk_agent_common.errors import ToolkitError
+    agent_native.clear_bundle_cache()
+    try:
+        with _BundleBuilders() as builders:
+            with mock.patch.object(agent_native.agent_runtime, 'resolve_llm_id',
+                                   side_effect=ToolkitError('No LLM configured.')):
+                for _ in range(2):
+                    try:
+                        agent_native._setup_bundle('a1')
+                        assert False, 'expected ToolkitError'
+                    except ToolkitError:
+                        pass
+            assert builders.builds == 2  # each attempt rebuilt — nothing cached
+            agent_native._setup_bundle('a1')  # recovers once the LLM resolves
+            assert builders.builds == 3
+    finally:
+        agent_native.clear_bundle_cache()
+
+
+def test_agents_settings_update_clears_bundle_cache(monkeypatch):
+    from adk_backend.routes import settings as settings_routes
+    monkeypatch.setattr(backend, '_verify_red_token', lambda token: True)
+
+    class _FakePluginSettings:
+        def __init__(self):
+            self.raw = {'config': {}}
+
+        def get_raw(self):
+            return self.raw
+
+        def save(self):
+            pass
+
+    fake_settings = _FakePluginSettings()
+    fake_client = mock.Mock()
+    fake_client.get_plugin.return_value.get_settings.return_value = fake_settings
+    with mock.patch.object(settings_routes, '_local_thread_client', return_value=fake_client), \
+            mock.patch.object(agent_native, 'clear_bundle_cache') as clear:
+        resp = backend.app.test_client().post(
+            '/api/settings/agents/update',
+            json={'values': {'agent_runtime': 'dataiku'}})
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    assert fake_settings.raw['config']['agent_runtime'] == 'dataiku'
+    assert clear.called

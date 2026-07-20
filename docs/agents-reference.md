@@ -143,10 +143,34 @@ Both runtimes assemble the **same toolset and system prompt** from
 `atk_agent_common/generalist.py` (extracted from the kernel component so the
 two can never drift); action gates, tuning overrides, HMAC confirm tokens,
 audit rows and the master kill-switch all live server-side and apply
-identically. One parity note: native turns don't flow through the Mesh, so
-they never land in the `agent_interaction_logs` dataset — per-turn traces come
-from the ring (`/api/agents/last-trace`) and, when chat storage is enabled,
-from the persisted conversation store.
+identically.
+
+Native-runtime extras (0.4.767):
+
+- **Tool-call correlation ids** — `tool_call`/`tool_result` events carry the
+  model's call `id`, so the frontend settles the right chip when parallel
+  same-name calls finish out of order (name matching stays as the fallback
+  for stale kernels). Running chips show a live elapsed counter; a Stop
+  mid-turn appends a non-text `stopped` segment marker.
+- **Turn stats** — the loop yields a final `{'stats': {llmTurns, toolsRun,
+  usage}}` marker; the `done` event carries them and the chat footer renders
+  `12.4s · native · 2 turns · 4 tools · 1.8k tok`. Usage is read from the
+  summed response's `response_metadata` (`promptTokens` / `completionTokens` /
+  `totalTokens` / `estimatedCost` — the LLM Mesh footer; LangChain's
+  `usage_metadata` stays **None** on DKU chunks, verified live on 14.7).
+- **Setup-bundle cache** — the per-turn assembly (plugin config, gates,
+  tuning, agent instance, toolset, prompt) is cached ~20s per agent id, so
+  follow-up turns reach the first token without the 4-6 self-HTTP/DSS reads.
+  Saving Agents & Outreach settings clears it (`clear_bundle_cache`), so knob
+  changes still apply on the very next turn.
+- **Interaction-logs parity** — after each native turn a daemon thread appends
+  the equivalent row to `ADMINTOOLKIT/agent_interaction_logs` (agent_type
+  `NATIVE_TOOLKIT_AGENT`, ISO-Z dates, JSON `input_messages`/`response`/
+  `dku_trace`), via the standard writer with `writeMode=APPEND` — the same
+  mechanism DSS's own logger flushes through, safe next to its rows on both
+  Filesystem- and SQL-backed datasets. Best-effort: failures log at debug,
+  the stream never notices; skipped silently when the dataset isn't
+  provisioned (existence cached ~5 min).
 
 ---
 

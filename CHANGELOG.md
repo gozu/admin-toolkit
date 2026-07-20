@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.770] - 2026-07-19
+
+### Fixed
+- **Agents page pinned to the viewport**: the page wrapper's min-content height let the enlarged welcome hero push the composer below the fold, and the composer's autofocus then scrolled the app shell — clipping the bird mark on first paint. The wrapper now caps at the viewport on the Agents page, so the transcript is the only scroller and the composer stays visible.
+
+## [0.4.769] - 2026-07-19
+
+### Fixed
+- **Welcome hero anchors to the top**: an empty conversation no longer inherits the transcript's stick-to-bottom autoscroll, so the identity mark opens fully in view.
+
+## [0.4.768] - 2026-07-19
+
+### Added
+- **Character-level streaming**: replies now land as a smooth, fast typewriter reveal instead of stuttery multi-word bursts. Incoming SSE chunks queue behind a ~24ms drain whose speed scales with backlog, so the reveal trails the server by about a second at most; tool events stay in order and Stop flushes instantly.
+
+### Changed
+- **Bird glow in official Dataiku green**: the orb's identity palette is now the brand mint (`#3EDAB2`, straight from the presentation deck's palette) with emerald/pale-mint aura layers; the hero orbit dot follows. Tool and error states keep their semantic amber/red, and the light theme deepens the mark toward the deck's paper green for contrast.
+- **Bigger welcome hero**: larger headline, subtitle, group cards, and prompt buttons (the card grid widens to fill the column) so the empty state no longer floats in dead space.
+
 ## [0.4.767] - 2026-07-19
 
 ### Changed

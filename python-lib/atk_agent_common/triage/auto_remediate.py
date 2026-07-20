@@ -95,8 +95,9 @@ def _detail(action, result):
         n = result.get('shutdownCount') or result.get('count')
         return '%s kernel(s) shut down' % n if n is not None else None
     if action == 'docker-prune' and result.get('totalReclaimed'):
-        return 'docker reported %s reclaimed from the builder/image cache' \
-            % result['totalReclaimed']
+        import re as _re
+        pretty = _re.sub(r'(?<=\d)(GB|MB|kB|B)$', r' \1', str(result['totalReclaimed']))
+        return 'docker reported %s reclaimed from the builder/image cache' % pretty
     if action in ('log-cleanup', 'job-logs-cleanup') and result.get('totalDeletedFiles'):
         noun = 'aged job directories' if action == 'job-logs-cleanup' else 'rotated log files'
         return '%s %s removed' % (result['totalDeletedFiles'], noun)

@@ -7,6 +7,7 @@ import {
   type ActionRow,
   type SensorRow,
 } from '../../state/agentActionGatesStore';
+import { useDiag } from '../../context/DiagContext';
 import { useRedState } from '../../state/redUnlockStore';
 import { UnlockModal } from '../UnlockModal';
 import { Modal } from '../Modal';
@@ -172,6 +173,7 @@ function SectionCard({
 
 export function AgentSettingsPage() {
   const { sensors, actions, loading, loaded, saving, error } = agentActionGatesStore.use();
+  const { setActivePage } = useDiag();
   const { authed: unlocked } = useRedState();
   const [showUnlock, setShowUnlock] = useState(false);
   const [pending, setPending] = useState<{ names: string[]; enabled: boolean } | null>(null);
@@ -275,7 +277,12 @@ export function AgentSettingsPage() {
           </div>
         )}
 
-        {!needle && <AutonomousAgentPanel requireUnlock={requireUnlock} />}
+        {!needle && (
+          <AutonomousAgentPanel
+            requireUnlock={requireUnlock}
+            onOpenSettings={() => setActivePage('settings')}
+          />
+        )}
 
         {nothingMatches && (
           <div className="glass-card p-6 text-center text-xs text-[var(--text-muted)]">

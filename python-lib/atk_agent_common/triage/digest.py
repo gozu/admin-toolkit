@@ -287,7 +287,7 @@ def _healthy_strip(ctx, rows):
             '<table role="presentation" width="100%%" cellpadding="0" cellspacing="0"><tr>'
             '<td width="180" style="font-family:%s;font-size:13px;font-weight:700;'
             'color:%s;">%s</td>'
-            '<td style="padding:0 14px;">%s</td>'
+            '<td class="healthy-bar" style="padding:0 14px;">%s</td>'
             '<td align="right" width="150" style="font-family:%s;font-size:13px;'
             'white-space:nowrap;"><span style="font-size:16px;font-weight:700;'
             'color:%s;">%d</span><span style="color:%s;font-size:11px;">&nbsp;/100'
@@ -621,9 +621,11 @@ def render_digest_html(ctx):
         '  @media only screen and (max-width: 540px) {\n'
         '    .kpi-cell { display: block !important; width: 100% !important; '
         'padding: 0 0 8px 0 !important; }\n'
+        '    .healthy-bar { display: none !important; }\n'
         '    .fleet-cell { display: block !important; width: 100% !important; '
         'padding: 0 30px 22px 30px !important; }\n'
-        '    .hero-cell { display: block !important; width: 100% !important; }\n'
+        '    .hero-cell { display: block !important; width: 100% !important; '
+        'box-sizing: border-box !important; padding: 24px 26px 0 26px !important; }\n'
         '  }\n'
         '</style>\n'
         '</head>\n'
@@ -819,7 +821,7 @@ def sample_context():
                  'detail': '312 rotated log files removed'},
                 {'host': 'prod-emea', 'action': 'docker-prune',
                  'findingId': 'disk-critical-/data', 'freedGB': 3.86, 'auditId': 3122,
-                 'detail': 'docker reported 3.86GB reclaimed from the builder cache'},
+                 'detail': 'docker reported 3.86 GB reclaimed from the builder cache'},
                 {'host': 'prod-emea', 'action': 'connection-test',
                  'findingId': 'cap-connection-broken', 'freedGB': 0, 'auditId': 3123,
                  'detail': '0 connections recovered, 2 still failing',

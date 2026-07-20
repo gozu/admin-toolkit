@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import {
   loadTriageSettings,
   provisionTriageSchedule,
@@ -14,9 +14,13 @@ import { Spinner } from '../common/Spinner';
  * Permissions → "Autonomous daily agent" — the 24h triage sweep's capability
  * panel. Everything the agent may do WITHOUT a human in the loop is granted
  * here: per-action opt-ins over the auto-eligible catalog, one master switch
- * that pauses the whole tier (selection preserved), safety caps, remote-host
- * scope, schedule status and the branded test report.
+ * that pauses the whole tier (grants preserved), safety caps, remote-host
+ * scope, schedule status and the branded test report. Save failures surface
+ * as toasts (the store reverts optimistic state); prerequisites render as a
+ * setup checklist, not as alarms.
  */
+
+const PLUGIN_SETTINGS_URL = '/plugins/admin-toolkit/settings/';
 
 const RISK_DOT: Record<string, string> = {
   high: 'bg-[var(--danger)]',
@@ -32,13 +36,7 @@ function fmtLastRun(lastRun: { outcome: string | null; start: number | null } | 
   return `${(lastRun.outcome || 'ran').toLowerCase()} · ${when} ${time}`;
 }
 
-function StatusChip({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: 'ok' | 'warn' | 'muted';
-}) {
+function StatusChip({ label, tone }: { label: string; tone: 'ok' | 'warn' | 'muted' }) {
   const cls =
     tone === 'ok'
       ? 'border-[var(--accent)]/40 text-[var(--accent)]'
@@ -55,19 +53,17 @@ function StatusChip({
 function AutoActionRow({
   row,
   saving,
-  disabled,
   onToggle,
 }: {
   row: TriageActionRow;
   saving: boolean;
-  disabled: boolean;
   onToggle: (enabled: boolean) => void;
 }) {
   return (
     <label
       className={`flex items-start gap-3 rounded-lg border border-transparent px-3 py-2 transition-colors hover:bg-[var(--bg-hover)] ${
         saving ? 'opacity-60' : 'cursor-pointer'
-      } ${disabled ? 'opacity-50' : ''}`}
+      }`}
     >
       <input
         type="checkbox"
@@ -82,7 +78,7 @@ function AutoActionRow({
           <code className="text-xs font-semibold text-[var(--text-primary)]">{row.action}</code>
           {row.optedIn && !row.gateEnabled && (
             <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--neon-amber)]">
-              blocked — action disabled above
+              blocked — also enable it in the action list below
             </span>
           )}
           {row.localOnly && (
@@ -100,27 +96,53 @@ function AutoActionRow({
   );
 }
 
+/** Numeric cap input: commits on blur or Enter; invalid input reverts to the
+ *  saved value instead of silently doing nothing. */
+function CapInput({
+  value,
+  saving,
+  onCommit,
+}: {
+  value: number;
+  saving: boolean;
+  onCommit: (v: number) => void;
+}) {
+  return (
+    <input
+      type="number"
+      min={1}
+      defaultValue={value}
+      key={value}
+      disabled={saving}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+      }}
+      onBlur={(e) => {
+        const v = Number(e.target.value);
+        if (Number.isFinite(v) && v >= 1) {
+          if (v !== value) onCommit(v);
+        } else {
+          e.target.value = String(value);
+        }
+      }}
+      className="w-16 rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-xs text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none disabled:opacity-50"
+    />
+  );
+}
+
 export function AutonomousAgentPanel({
   requireUnlock,
+  onOpenSettings,
 }: {
   requireUnlock: (apply: () => void) => void;
+  onOpenSettings?: () => void;
 }) {
   const { data, loading, loaded, saving, testSending, provisioning, error } =
     triageSettingsStore.use();
-  const masterRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!loaded) void loadTriageSettings();
   }, [loaded]);
-
-  const optedCount = data?.actions.filter((a) => a.optedIn).length ?? 0;
-  const total = data?.actions.length ?? 0;
-  const active = Boolean(data?.enabled) && optedCount > 0;
-
-  useEffect(() => {
-    if (masterRef.current)
-      masterRef.current.indeterminate = Boolean(data?.enabled) && optedCount === 0;
-  }, [data?.enabled, optedCount]);
 
   if (loading && !loaded) {
     return (
@@ -137,21 +159,49 @@ export function AutonomousAgentPanel({
     ) : null;
   }
 
+  const optedCount = data.actions.filter((a) => a.optedIn).length;
+  const total = data.actions.length;
+  const active = data.enabled && optedCount > 0;
+
   const apply = (update: Parameters<typeof updateTriageSettings>[0], tag: string) =>
     requireUnlock(() => void updateTriageSettings(update, tag).catch(() => undefined));
 
   const scenario = data.scenario;
-  const scheduleChip: { label: string; tone: 'ok' | 'warn' | 'muted' } = !scenario.provisioned
-    ? { label: 'no schedule', tone: 'warn' }
-    : !scenario.active
-      ? { label: 'schedule inactive', tone: 'warn' }
-      : {
-          label: `daily ${String(scenario.hour ?? 7).padStart(2, '0')}:00`,
-          tone: 'ok',
-        };
+
+  // Prerequisites the agent needs before anything can run — a setup
+  // checklist, not an incident. Chips are reserved for post-setup state.
+  const setupSteps: { label: string; action?: () => void; href?: string }[] = [];
+  if (!data.killSwitch)
+    setupSteps.push({ label: 'Turn on the Master kill-switch', href: PLUGIN_SETTINGS_URL });
+  if (!data.masterPassword)
+    setupSteps.push({ label: 'Set a master password', href: PLUGIN_SETTINGS_URL });
+  if (!data.delivery.recipient)
+    setupSteps.push({ label: 'Set a report recipient', action: onOpenSettings });
+  if (!scenario.provisioned)
+    setupSteps.push({
+      label: 'Set up the daily schedule',
+      action: () => requireUnlock(() => void provisionTriageSchedule().catch(() => undefined)),
+    });
+
+  const chips: { label: string; tone: 'ok' | 'warn' | 'muted' }[] = [];
+  if (scenario.provisioned) {
+    chips.push(
+      !scenario.active
+        ? { label: 'schedule inactive', tone: 'warn' }
+        : {
+            label: scenario.hour != null ? `daily ${String(scenario.hour).padStart(2, '0')}:00` : 'scheduled daily',
+            tone: 'ok',
+          },
+    );
+  }
+  chips.push({
+    label: fmtLastRun(scenario.lastRun),
+    tone:
+      scenario.lastRun?.outcome === 'SUCCESS' ? 'ok' : scenario.lastRun ? 'warn' : 'muted',
+  });
 
   return (
-    <section className="glass-card p-4 space-y-3 border-l-2 border-l-[var(--accent)]">
+    <section className="glass-card p-4 space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold text-[var(--text-primary)]">Autonomous daily agent</h3>
         <span
@@ -161,38 +211,67 @@ export function AutonomousAgentPanel({
               : 'bg-[var(--bg-surface)] text-[var(--text-muted)]'
           }`}
         >
-          {active ? 'active' : data.enabled ? 'idle — nothing opted in' : 'paused'}
+          {active ? 'active' : data.enabled ? 'idle — nothing allowed yet' : 'paused'}
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          <StatusChip label={scheduleChip.label} tone={scheduleChip.tone} />
-          <StatusChip
-            label={fmtLastRun(scenario.lastRun)}
-            tone={scenario.lastRun?.outcome === 'SUCCESS' ? 'ok' : 'muted'}
-          />
-          {!data.killSwitch && <StatusChip label="kill-switch off" tone="warn" />}
-          {!data.masterPassword && <StatusChip label="no master password" tone="warn" />}
+          {chips.map((c) => (
+            <StatusChip key={c.label} label={c.label} tone={c.tone} />
+          ))}
         </div>
       </div>
 
       <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-        Every night the triage agent scores the whole fleet, emails the branded health report, and
-        — only for the actions you grant below — fixes findings on its own through the same
-        plan → confirm-token → audit pipeline as a human-approved action.
+        Every night the triage agent scores the whole fleet, emails the health report
         {data.delivery.recipient ? (
           <>
             {' '}
-            Reports go to <strong className="text-[var(--text-secondary)]">{data.delivery.recipient}</strong>.
+            to <strong className="text-[var(--text-secondary)]">{data.delivery.recipient}</strong>
           </>
-        ) : (
-          <span className="text-[var(--neon-amber)]"> No digest recipient is configured yet — set one in Settings → Agents &amp; Outreach.</span>
-        )}
+        ) : null}
+        , and — only for the actions you allow below — fixes findings on its own. Each
+        autonomous fix is planned, token-signed and audited exactly like a human-approved
+        action.
       </p>
+
+      {setupSteps.length > 0 && (
+        <div className="rounded-lg border border-[var(--neon-amber)]/30 bg-[var(--neon-amber)]/5 px-3 py-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--neon-amber)] pb-1">
+            To go live
+          </p>
+          <ol className="space-y-0.5 text-xs text-[var(--text-secondary)]">
+            {setupSteps.map((step, i) => (
+              <li key={step.label}>
+                {i + 1}.{' '}
+                {step.href ? (
+                  <a
+                    href={step.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[var(--accent)] hover:underline"
+                  >
+                    {step.label} ↗
+                  </a>
+                ) : step.action ? (
+                  <button
+                    type="button"
+                    onClick={step.action}
+                    className="text-[var(--accent)] hover:underline"
+                  >
+                    {step.label}
+                  </button>
+                ) : (
+                  step.label
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
 
       {/* master switch + bulk controls */}
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--border-default)]/60 bg-[var(--bg-surface)]/60 px-3 py-2">
         <label className={`flex items-center gap-2.5 ${saving === '__master__' ? 'opacity-60' : 'cursor-pointer'}`}>
           <input
-            ref={masterRef}
             type="checkbox"
             checked={data.enabled}
             disabled={saving === '__master__'}
@@ -202,7 +281,7 @@ export function AutonomousAgentPanel({
           <span className="text-xs font-semibold text-[var(--text-primary)]">
             Autonomous actions
             <span className="ml-2 text-[10px] font-medium uppercase tracking-wide text-[var(--text-muted)]">
-              {data.enabled ? `${optedCount}/${total} granted` : 'all paused'}
+              {data.enabled ? `${optedCount}/${total} allowed` : 'paused'}
             </span>
           </span>
         </label>
@@ -220,7 +299,7 @@ export function AutonomousAgentPanel({
               )
             }
           >
-            Enable all
+            Allow all
           </Button>
           <Button
             variant="ghost"
@@ -232,19 +311,24 @@ export function AutonomousAgentPanel({
               )
             }
           >
-            Disable all
+            Revoke all
           </Button>
         </div>
       </div>
 
-      {/* per-action grants */}
-      <div className={`-mx-1 divide-y divide-[var(--border-default)]/40 ${data.enabled ? '' : 'opacity-60'}`}>
+      {!data.enabled && (
+        <p className="rounded-lg border border-[var(--neon-amber)]/30 bg-[var(--neon-amber)]/5 px-3 py-2 text-[11px] text-[var(--text-secondary)]">
+          Paused — grants below are saved, but nothing will run tonight.
+        </p>
+      )}
+
+      {/* per-action grants (stay interactive while paused: grants are kept) */}
+      <div className="-mx-1 divide-y divide-[var(--border-default)]/40">
         {data.actions.map((row) => (
           <AutoActionRow
             key={row.action}
             row={row}
             saving={saving === row.action || saving === '__bulk__'}
-            disabled={!data.enabled}
             onToggle={(v) => apply({ optIn: { [row.action]: v } }, row.action)}
           />
         ))}
@@ -252,37 +336,22 @@ export function AutonomousAgentPanel({
 
       {/* caps + scope */}
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-[var(--border-default)]/40 bg-[var(--bg-surface)]/40 px-3 py-2">
-        <label className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
-          Nightly budget
-          <input
-            type="number"
-            min={1}
-            defaultValue={data.caps.maxGb}
-            key={`gb-${data.caps.maxGb}`}
-            onBlur={(e) => {
-              const v = Number(e.target.value);
-              if (Number.isFinite(v) && v >= 1 && v !== data.caps.maxGb)
-                apply({ maxGb: v }, '__caps__');
-            }}
-            className="w-16 rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-xs text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
+        <span className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+          Delete at most
+          <CapInput
+            value={data.caps.maxGb}
+            saving={saving === '__caps__'}
+            onCommit={(v) => apply({ maxGb: v }, '__caps__')}
           />
-          GB deleted max
-        </label>
-        <label className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
-          <input
-            type="number"
-            min={1}
-            defaultValue={data.caps.maxObjects}
-            key={`obj-${data.caps.maxObjects}`}
-            onBlur={(e) => {
-              const v = Number(e.target.value);
-              if (Number.isFinite(v) && v >= 1 && v !== data.caps.maxObjects)
-                apply({ maxObjects: v }, '__caps__');
-            }}
-            className="w-16 rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-xs text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
+          GB and
+          <CapInput
+            value={data.caps.maxObjects}
+            saving={saving === '__caps__'}
+            onCommit={(v) => apply({ maxObjects: v }, '__caps__')}
           />
-          objects max
-        </label>
+          objects per night
+          {saving === '__caps__' && <Spinner size="w-3 h-3" color="border-[var(--accent)]" />}
+        </span>
         <label className="flex cursor-pointer items-center gap-2 text-[11px] text-[var(--text-muted)]">
           <input
             type="checkbox"
@@ -294,7 +363,15 @@ export function AutonomousAgentPanel({
           Also fix remote hosts
           <span className="text-[var(--text-tertiary)]">(local-only actions stay local)</span>
         </label>
-        {saving === '__caps__' && <Spinner size="w-3 h-3" color="border-[var(--accent)]" />}
+        <span className="ml-auto flex items-center gap-2 text-[10px] text-[var(--text-tertiary)]">
+          Risk:
+          <span className="flex items-center gap-1">
+            <span className={`h-2 w-2 rounded-full ${RISK_DOT.low}`} /> low
+          </span>
+          <span className="flex items-center gap-1">
+            <span className={`h-2 w-2 rounded-full ${RISK_DOT.medium}`} /> medium
+          </span>
+        </span>
       </div>
 
       {/* footer actions */}
@@ -303,22 +380,23 @@ export function AutonomousAgentPanel({
           variant="ghost"
           className="border border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20 disabled:opacity-50 disabled:cursor-not-allowed"
           disabled={testSending || !data.delivery.recipient}
+          title={data.delivery.recipient ? undefined : 'Set a report recipient first (step above)'}
           onClick={() => void sendTestDigest().catch(() => undefined)}
         >
           {testSending ? 'Sending…' : 'Send test report'}
         </Button>
-        {!scenario.provisioned || !scenario.active ? (
+        {scenario.provisioned && !scenario.active ? (
           <Button
             variant="ghost"
             className="border border-[var(--border-default)] disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={provisioning}
             onClick={() => requireUnlock(() => void provisionTriageSchedule().catch(() => undefined))}
           >
-            {provisioning ? 'Provisioning…' : scenario.provisioned ? 'Repair schedule' : 'Set up daily schedule'}
+            {provisioning ? 'Provisioning…' : 'Repair schedule'}
           </Button>
         ) : null}
         <span className="text-[11px] text-[var(--text-tertiary)]">
-          The report email uses sample data on test sends; nightly runs use real fleet data.
+          Test reports use sample data; nightly runs use real fleet data.
         </span>
       </div>
     </section>

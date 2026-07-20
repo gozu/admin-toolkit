@@ -384,6 +384,7 @@ MODULE_COVERAGE = {
     'agents': 'waiver:the agent surface itself',
     'agent-tuning': 'waiver:the agent surface itself',
     'agent-settings': 'waiver:the agent surface itself',
+    'agent-explainer': 'waiver:static explainer page — no data access',
     'settings': 'domain:settings + action:settings-set + notification-send channels',
     'logs': 'sensor:log_errors',
     'sanity-check': 'sensor:instance_health (sanity section)',

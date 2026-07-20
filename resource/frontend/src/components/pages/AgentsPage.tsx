@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useDiag } from '../../context/DiagContext';
 import { fetchJson } from '../../utils/api';
 import { InfoDot } from '../common/InfoDot';
 import { MessageView } from '../agents/MessageView';
@@ -57,9 +58,9 @@ function findAgent(agents: AgentInfo[]): AgentInfo | undefined {
   return agents.find((a) => /admin agent|generalist/i.test(a.name)) || agents[0];
 }
 
-// Shared fluid column: near full width, capped at 1400px. Header, transcript,
+// Shared fluid column: full-bleed like every other page. Header, transcript,
 // composer, and audit block all use it so the page reads as one column.
-const COLUMN = 'w-full max-w-[87.5rem] mx-auto px-4';
+const COLUMN = 'w-full px-4';
 
 // A typed-but-unsent draft survives navigation and reloads.
 const DRAFT_STORAGE_KEY = 'admin-toolkit:agentDraft';
@@ -86,6 +87,7 @@ function BookIcon() {
 }
 
 export function AgentsPage() {
+  const { setActivePage } = useDiag();
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [unavailableReason, setUnavailableReason] = useState<string | null>(null);
   const [loadingAgents, setLoadingAgents] = useState(true);
@@ -426,6 +428,13 @@ export function AgentsPage() {
           </span>
         )}
         <span className="ml-auto inline-flex items-center gap-2">
+          <button
+            onClick={() => setActivePage('agent-explainer')}
+            className="px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-tertiary)] border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors"
+            title="An animated tour of what the agent can do — and every guardrail between it and your instance"
+          >
+            How it works →
+          </button>
           {explorerViewPath ? (
             <a
               href={`${hostBaseUrl(getActiveHostId())}${explorerViewPath}`}

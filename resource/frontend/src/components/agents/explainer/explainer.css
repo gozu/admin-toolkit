@@ -1,0 +1,2306 @@
+/* Agents explainer — page-scoped animation system. Everything under the agx-
+   prefix. One persistent diagram per scene; the section's data-step attribute
+   drives most state via CSS transitions, data-live gates every loop's
+   animation-play-state (offscreen pause), data-revealed triggers one-shot
+   entrances on first scroll-into-view (never on mount).
+
+   Verdict semantics follow the house rules: grey = off/unavailable,
+   yellow = active/checking/waiting, white = passed/completed, red = failure. */
+
+.agx-scene {
+  /* Scene-local palette on top of the app tokens. */
+  --agx-glow: var(--accent);
+  --agx-warn: #eab308;
+  --agx-danger: #ef4444;
+  --agx-ok: var(--text-primary);
+  scroll-margin-top: 2rem;
+}
+
+/* ------------------------------------------------------------ scene grid -- */
+
+.agx-scene-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .agx-scene-grid {
+    grid-template-columns: 21rem minmax(0, 1fr);
+    gap: 1.25rem;
+  }
+  .agx-rail {
+    position: sticky;
+    top: 1rem;
+  }
+}
+
+/* ------------------------------------------------------------------ rail -- */
+
+.agx-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.agx-rail-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.agx-rail-step {
+  display: flex;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease;
+}
+.agx-rail-step:hover {
+  background: var(--bg-hover);
+}
+.agx-rail-step[data-active] {
+  background: var(--bg-surface);
+  border-color: var(--border-default);
+}
+.agx-rail-step-marker {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-default);
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+.agx-rail-step[data-active] .agx-rail-step-marker {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.agx-rail-step[data-done] .agx-rail-step-marker {
+  color: var(--text-primary);
+  border-color: var(--text-tertiary);
+}
+.agx-rail-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.agx-rail-step-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: color 0.2s ease;
+}
+.agx-rail-step[data-active] .agx-rail-step-title {
+  color: var(--text-primary);
+}
+.agx-rail-step-body {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+  /* Collapsed until active: the rail reads as a compact index. */
+  display: none;
+}
+.agx-rail-step[data-active] .agx-rail-step-body {
+  display: block;
+  animation: agx-fade-in 0.25s var(--ease-out) both;
+}
+.agx-rail-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.6rem 0;
+}
+.agx-rail-btn {
+  width: 1.6rem;
+  height: 1.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+.agx-rail-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.agx-rail-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* ------------------------------------------------------------------ dots -- */
+
+.agx-dots {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.agx-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  border: none;
+  padding: 0;
+  background: var(--border-default);
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    transform 0.2s var(--ease-out);
+}
+.agx-dot[data-active] {
+  background: var(--accent);
+  transform: scale(1.35);
+}
+
+/* ----------------------------------------------------------------- stage -- */
+
+.agx-stage {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--border-default);
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--accent) 4%, transparent), transparent 60%),
+    var(--bg-surface);
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ chip -- */
+
+.agx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.agx-chip[data-tone='neutral'] {
+  background: var(--bg-elevated);
+  border-color: var(--border-default);
+  box-shadow: none;
+  color: var(--text-secondary);
+}
+.agx-chip[data-tone='warn'] {
+  background: color-mix(in srgb, var(--agx-warn) 12%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--agx-warn) 55%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--agx-warn) 25%, transparent);
+}
+.agx-chip[data-tone='danger'] {
+  background: color-mix(in srgb, var(--agx-danger) 12%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--agx-danger) 55%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--agx-danger) 25%, transparent);
+}
+.agx-chip[data-tone='ok'] {
+  background: var(--bg-elevated);
+  border-color: color-mix(in srgb, var(--text-primary) 40%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+
+/* ------------------------------------------------------------------ beam -- */
+
+.agx-beam {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.agx-beam-base {
+  stroke: var(--border-default);
+  stroke-width: 1.5;
+}
+.agx-beam-glow {
+  stroke: var(--agx-glow);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 14 86;
+  stroke-dashoffset: 0;
+  opacity: 0;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--agx-glow) 70%, transparent));
+  transition: opacity 0.3s ease;
+  animation: agx-beam-flow 1.8s linear infinite;
+  animation-play-state: paused;
+}
+.agx-beam-glow[data-tone='warn'] {
+  stroke: var(--agx-warn);
+  --agx-glow: var(--agx-warn);
+}
+.agx-beam-glow[data-tone='danger'] {
+  stroke: var(--agx-danger);
+  --agx-glow: var(--agx-danger);
+}
+.agx-beam-glow[data-active] {
+  opacity: 1;
+}
+.agx-scene[data-live] .agx-beam-glow[data-active] {
+  animation-play-state: running;
+}
+@keyframes agx-beam-flow {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
+/* ------------------------------------------------------------------ gate -- */
+
+.agx-gate {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    opacity 0.3s ease,
+    transform 0.3s var(--ease-out);
+}
+.agx-gate-lamp {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border-default);
+  transition:
+    background-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+.agx-gate-index {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.agx-gate-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+.agx-gate-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: color 0.25s ease;
+}
+.agx-gate-sub {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+.agx-gate-badge {
+  margin-left: auto;
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* Gate states — grey idle, yellow checking, white passed, red failed. */
+.agx-gate[data-state='active'] {
+  border-color: color-mix(in srgb, var(--agx-warn) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--agx-warn) 12%, transparent);
+}
+.agx-gate[data-state='active'] .agx-gate-lamp {
+  background: var(--agx-warn);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--agx-warn) 70%, transparent);
+  animation: agx-lamp-pulse 1s ease-in-out infinite;
+  animation-play-state: paused;
+}
+.agx-scene[data-live] .agx-gate[data-state='active'] .agx-gate-lamp {
+  animation-play-state: running;
+}
+.agx-gate[data-state='active'] .agx-gate-label {
+  color: var(--text-primary);
+}
+.agx-gate[data-state='pass'] {
+  border-color: color-mix(in srgb, var(--text-primary) 30%, transparent);
+}
+.agx-gate[data-state='pass'] .agx-gate-lamp {
+  background: var(--text-primary);
+}
+.agx-gate[data-state='pass'] .agx-gate-label {
+  color: var(--text-primary);
+}
+.agx-gate[data-state='fail'] {
+  border-color: color-mix(in srgb, var(--agx-danger) 60%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--agx-danger) 12%, transparent);
+  animation: agx-shake 0.4s var(--ease-out) both;
+}
+.agx-gate[data-state='fail'] .agx-gate-lamp {
+  background: var(--agx-danger);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--agx-danger) 70%, transparent);
+}
+.agx-gate[data-state='fail'] .agx-gate-label {
+  color: var(--agx-danger);
+}
+.agx-gate[data-state='off'] {
+  opacity: 0.45;
+}
+
+@keyframes agx-lamp-pulse {
+  50% {
+    box-shadow: 0 0 12px color-mix(in srgb, var(--agx-warn) 90%, transparent);
+  }
+}
+@keyframes agx-shake {
+  20% {
+    transform: translateX(-3px);
+  }
+  50% {
+    transform: translateX(3px);
+  }
+  80% {
+    transform: translateX(-1px);
+  }
+}
+
+/* -------------------------------------------------------------- boundary -- */
+
+.agx-boundary {
+  position: relative;
+  border-radius: 12px;
+}
+.agx-boundary-edge {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.agx-boundary-rect {
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  fill: none;
+  stroke: var(--border-default);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 2.2;
+  vector-effect: non-scaling-stroke;
+}
+.agx-boundary[data-tone='danger'] .agx-boundary-rect {
+  stroke: color-mix(in srgb, var(--agx-danger) 55%, transparent);
+}
+.agx-boundary-rect[data-marching] {
+  animation: agx-march 2.4s linear infinite;
+  animation-play-state: paused;
+}
+.agx-scene[data-live] .agx-boundary-rect[data-marching] {
+  animation-play-state: running;
+}
+@keyframes agx-march {
+  to {
+    stroke-dashoffset: -15.6; /* 3× the dash period — seamless loop */
+  }
+}
+.agx-boundary-label {
+  position: absolute;
+  top: -0.55rem;
+  left: 0.9rem;
+  padding: 0 0.45rem;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  background: var(--bg-surface);
+  border-radius: 4px;
+}
+
+/* -------------------------------------------------------------- plan loop -- */
+
+.agx-planloop {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 900 / 320;
+  min-height: 280px;
+}
+.agx-pl-node {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.agx-pl-you {
+  left: 7.8%;
+  top: 40.6%;
+  transform: translate(-50%, -50%);
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+}
+.agx-pl-node-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+/* The traveling question: loops You → orb while step 0 narrates the ask. */
+.agx-pl-chip {
+  position: absolute;
+  left: 8%;
+  top: 40.6%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+}
+.agx-s-planloop[data-step='0'][data-live] .agx-pl-chip {
+  animation: agx-pl-travel 2.8s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+@keyframes agx-pl-travel {
+  0% {
+    left: 8%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  74% {
+    left: 44.4%;
+    opacity: 1;
+  }
+  88%,
+  100% {
+    left: 44.4%;
+    opacity: 0;
+  }
+}
+/* Beams: SSE glows during step 0, orb→plan during steps 2-3. */
+.agx-s-planloop .agx-beam-glow {
+  opacity: 0;
+}
+.agx-s-planloop[data-step='0'] .agx-pl-beam-sse .agx-beam-glow {
+  opacity: 1;
+}
+.agx-s-planloop[data-step='2'] .agx-pl-beam-plan .agx-beam-glow,
+.agx-s-planloop[data-step='3'] .agx-pl-beam-plan .agx-beam-glow {
+  opacity: 1;
+}
+/* Planner orb + tool-loop ring. */
+.agx-pl-orb {
+  position: absolute;
+  left: 44.4%;
+  top: 40.6%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.agx-pl-ring {
+  position: absolute;
+  width: 5.6rem;
+  height: 5.6rem;
+  border-radius: 999px;
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  animation: agx-spin 9s linear infinite;
+  animation-play-state: paused;
+  transition: border-color 0.3s ease;
+}
+.agx-s-planloop[data-live] .agx-pl-ring {
+  animation-play-state: running;
+}
+.agx-s-planloop[data-step='1'] .agx-pl-ring {
+  border-color: var(--accent);
+  animation-duration: 3.5s;
+}
+@keyframes agx-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.agx-pl-ring-label {
+  position: absolute;
+  top: calc(100% + 2.4rem);
+  white-space: nowrap;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  transition: color 0.3s ease;
+}
+.agx-s-planloop[data-step='1'] .agx-pl-ring-label {
+  color: var(--accent);
+}
+.agx-pl-readonly {
+  position: absolute;
+  bottom: calc(100% + 2.4rem);
+  white-space: nowrap;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.agx-s-planloop[data-step='1'] .agx-pl-readonly {
+  opacity: 1;
+}
+/* Sensor pings orbiting the planner during the loop step. */
+.agx-pl-sensor {
+  position: absolute;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-secondary);
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  opacity: 0;
+  transform: scale(0.85);
+  transition:
+    opacity 0.3s var(--ease-out),
+    transform 0.3s var(--ease-out);
+  white-space: nowrap;
+}
+.agx-pl-sensor[data-i='0'] {
+  right: calc(100% + 1.4rem);
+  bottom: calc(100% - 0.4rem);
+}
+.agx-pl-sensor[data-i='1'] {
+  left: calc(100% + 1.4rem);
+  bottom: calc(100% - 0.4rem);
+}
+.agx-pl-sensor[data-i='2'] {
+  right: calc(100% + 1.4rem);
+  top: calc(100% - 0.4rem);
+}
+.agx-pl-sensor[data-i='3'] {
+  left: calc(100% + 1.4rem);
+  top: calc(100% - 0.4rem);
+}
+.agx-s-planloop[data-step='1'] .agx-pl-sensor {
+  opacity: 1;
+  transform: scale(1);
+}
+.agx-s-planloop[data-step='1'][data-live] .agx-pl-sensor {
+  animation: agx-pl-ping 2.4s ease-in-out infinite;
+}
+.agx-s-planloop[data-step='1'][data-live] .agx-pl-sensor[data-i='1'] {
+  animation-delay: 0.6s;
+}
+.agx-s-planloop[data-step='1'][data-live] .agx-pl-sensor[data-i='2'] {
+  animation-delay: 1.2s;
+}
+.agx-s-planloop[data-step='1'][data-live] .agx-pl-sensor[data-i='3'] {
+  animation-delay: 1.8s;
+}
+@keyframes agx-pl-ping {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  18% {
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 45%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+}
+/* Plan card — the loop's only possible output for a mutation. */
+.agx-pl-plan {
+  position: absolute;
+  left: 74.5%;
+  top: 11%;
+  width: 23%;
+  min-width: 165px;
+  padding: 0.6rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  opacity: 0;
+  transform: translateY(8px) scale(0.97);
+  transition:
+    opacity 0.45s var(--ease-out),
+    transform 0.45s var(--ease-out),
+    border-color 0.3s ease;
+}
+.agx-s-planloop[data-step='2'] .agx-pl-plan,
+.agx-s-planloop[data-step='3'] .agx-pl-plan {
+  opacity: 1;
+  transform: none;
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-default));
+}
+.agx-pl-plan-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.agx-pl-plan-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding: 1px 0;
+}
+.agx-pl-plan-row code {
+  color: var(--text-secondary);
+}
+.agx-pl-plan-foot {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--border-default);
+  font-size: 10.5px;
+  font-style: italic;
+  color: var(--text-tertiary);
+}
+/* Ghost LLM→Execute arrow: drawn, struck out red, left dead grey. */
+.agx-pl-ghost {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.agx-pl-ghost-path {
+  stroke: var(--text-tertiary);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  opacity: 0;
+}
+.agx-s-planloop[data-step='3'] .agx-pl-ghost-path {
+  animation: agx-ghost-in 3s var(--ease-out) both;
+}
+@keyframes agx-ghost-in {
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.9;
+  }
+  60% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0.35;
+  }
+}
+.agx-pl-ghost-strike {
+  stroke: var(--agx-danger);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  opacity: 0;
+}
+.agx-s-planloop[data-step='3'] .agx-pl-ghost-strike {
+  animation: agx-ghost-strike 3s var(--ease-out) both;
+}
+@keyframes agx-ghost-strike {
+  0%,
+  22% {
+    stroke-dashoffset: 100;
+    opacity: 1;
+    stroke: var(--agx-danger);
+  }
+  42% {
+    stroke-dashoffset: 0;
+  }
+  70% {
+    stroke: var(--agx-danger);
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    stroke: var(--text-tertiary);
+    opacity: 0.6;
+  }
+}
+/* The tempting direct-execute node — never reachable. */
+.agx-pl-exec {
+  position: absolute;
+  left: 74.5%;
+  top: 76%;
+  min-width: 165px;
+  width: 23%;
+  padding: 0.45rem 0.7rem;
+  border-radius: 10px;
+  border: 1px dashed var(--border-default);
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  opacity: 0.55;
+  transition: opacity 0.3s ease;
+}
+.agx-pl-exec-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+.agx-pl-exec-note {
+  font-size: 10.5px;
+  color: var(--agx-danger);
+  opacity: 0;
+  transition: opacity 0.4s ease 1.6s;
+}
+.agx-s-planloop[data-step='3'] .agx-pl-exec {
+  opacity: 0.9;
+}
+.agx-s-planloop[data-step='3'] .agx-pl-exec-label {
+  text-decoration: line-through;
+}
+.agx-s-planloop[data-step='3'] .agx-pl-exec-note {
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------- catalog -- */
+
+.agx-cat-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+@media (min-width: 900px) {
+  .agx-cat-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+}
+.agx-cat-box {
+  padding: 1.4rem 1.2rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+/* Zone spotlight: the step's zone at full presence, the rest receded. */
+.agx-catalog [data-zone] {
+  opacity: 0.55;
+  transition: opacity 0.35s ease;
+}
+.agx-catalog [data-zone][data-hot] {
+  opacity: 1;
+}
+.agx-cat-counters {
+  display: flex;
+  gap: 2.5rem;
+}
+.agx-cat-counter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.agx-cat-counter-label {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+.agx-cat-tiers {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.agx-cat-tier {
+  flex: 1;
+  min-width: 7.5rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+}
+.agx-cat-tier-dot {
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+.agx-cat-tier[data-tier='green'] .agx-cat-tier-dot {
+  background: #22c55e;
+}
+.agx-cat-tier[data-tier='amber'] .agx-cat-tier-dot {
+  background: var(--agx-warn);
+}
+.agx-cat-tier[data-tier='red'] .agx-cat-tier-dot {
+  background: var(--agx-danger);
+}
+.agx-cat-tier-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.agx-cat-tier-desc {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+/* Unplug demo: sensor — cable — model socket. */
+.agx-cat-unplug {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border-default);
+}
+.agx-cat-sensor {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  font-size: 12px;
+  transition: opacity 0.35s ease;
+}
+.agx-cat-sensor input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  pointer-events: none;
+}
+.agx-cat-sensor code {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.agx-cat-sensor[data-off] {
+  opacity: 0.45;
+}
+.agx-cat-cable {
+  width: 7rem;
+  height: 16px;
+  flex: none;
+}
+.agx-cat-cable-path {
+  stroke: color-mix(in srgb, var(--accent) 55%, var(--border-default));
+  stroke-width: 2;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
+  transition:
+    stroke-dashoffset 0.6s var(--ease-out),
+    stroke 0.4s ease;
+}
+.agx-cat-cable-path[data-cut] {
+  stroke-dashoffset: 100;
+  stroke: var(--text-tertiary);
+}
+.agx-cat-socket {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-default);
+}
+.agx-cat-socket-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.agx-cat-unplug-note {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity 0.4s ease 0.45s,
+    transform 0.4s var(--ease-out) 0.45s;
+}
+.agx-cat-unplug-note[data-visible] {
+  opacity: 1;
+  transform: none;
+}
+/* Outside the wall: the permanently-impossible list. */
+.agx-cat-outside {
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-default);
+}
+.agx-cat-outside-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.agx-cat-outside-sub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin: 2px 0 0.6rem;
+}
+.agx-cat-outside-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.agx-cat-outside-list li {
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--text-tertiary) 70%, transparent);
+}
+.agx-s-catalog[data-step='2'] .agx-cat-outside-list li {
+  animation: agx-strike-flash 0.6s ease both;
+  animation-delay: calc(var(--agx-i) * 110ms);
+}
+@keyframes agx-strike-flash {
+  0% {
+    color: var(--text-tertiary);
+  }
+  35% {
+    color: var(--agx-danger);
+    text-decoration-color: var(--agx-danger);
+  }
+  100% {
+    color: var(--text-tertiary);
+  }
+}
+
+/* -------------------------------------------------------------- gauntlet -- */
+
+.agx-gauntlet {
+  /* Row pitch: fixed gate height + grid gap — the chip's translateY math and
+     the gate rows must agree on these two numbers. */
+  --agx-grow: 3.4rem;
+  --agx-ggap: 0.5rem;
+  position: relative;
+  display: flex;
+  gap: 0.9rem;
+}
+.agx-gauntlet-rail {
+  position: relative;
+  flex: none;
+  width: 1rem;
+}
+.agx-gauntlet-beam {
+  height: 100%;
+}
+.agx-chip-dot {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--accent) 80%, transparent),
+    0 0 24px color-mix(in srgb, var(--accent) 40%, transparent);
+  transform: translate(
+    -50%,
+    calc((var(--agx-grow) + var(--agx-ggap)) * var(--agx-pos) + var(--agx-grow) / 2 - 50%)
+  );
+  transition:
+    transform 0.5s var(--ease-out),
+    background-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+.agx-chip-dot[data-tone='danger'] {
+  background: var(--agx-danger);
+  box-shadow:
+    0 0 10px color-mix(in srgb, var(--agx-danger) 80%, transparent),
+    0 0 24px color-mix(in srgb, var(--agx-danger) 40%, transparent);
+}
+.agx-chip-dot[data-tone='ok'] {
+  background: var(--text-primary);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--text-primary) 45%, transparent);
+}
+.agx-gauntlet[data-finished] .agx-chip-dot[data-tone='danger'] {
+  animation: agx-dot-die 0.5s var(--ease-out) both;
+}
+@keyframes agx-dot-die {
+  30% {
+    transform: translate(
+        -50%,
+        calc((var(--agx-grow) + var(--agx-ggap)) * var(--agx-pos) + var(--agx-grow) / 2 - 50%)
+      )
+      scale(1.5);
+  }
+  100% {
+    transform: translate(
+        -50%,
+        calc((var(--agx-grow) + var(--agx-ggap)) * var(--agx-pos) + var(--agx-grow) / 2 - 50%)
+      )
+      scale(1);
+  }
+}
+.agx-gauntlet-gates {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-auto-rows: minmax(var(--agx-grow), auto);
+  gap: var(--agx-ggap);
+}
+.agx-gauntlet-gates .agx-gate {
+  height: var(--agx-grow);
+}
+.agx-gauntlet-gates .agx-gate .agx-gate-sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agx-gauntlet-outcome {
+  display: flex;
+  align-items: center;
+  padding: 0 0.7rem;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 0.35s var(--ease-out),
+    transform 0.35s var(--ease-out);
+}
+.agx-gauntlet-outcome[data-visible] {
+  opacity: 1;
+  transform: none;
+}
+.agx-gauntlet-outcome[data-kind='ok'] {
+  color: var(--text-primary);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 30%, transparent);
+}
+.agx-gauntlet-outcome[data-kind='danger'] {
+  color: var(--agx-danger);
+  border: 1px solid color-mix(in srgb, var(--agx-danger) 45%, transparent);
+  background: color-mix(in srgb, var(--agx-danger) 7%, transparent);
+}
+
+/* Ambient drift behind the gauntlet while it plays. */
+.agx-s-gauntlet .agx-stage::before {
+  content: '';
+  position: absolute;
+  inset: -30%;
+  pointer-events: none;
+  background:
+    radial-gradient(40% 30% at 25% 20%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
+    radial-gradient(35% 28% at 75% 75%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 70%);
+  animation: agx-ambient 16s ease-in-out infinite alternate;
+  animation-play-state: paused;
+}
+.agx-s-gauntlet[data-live] .agx-stage::before {
+  animation-play-state: running;
+}
+@keyframes agx-ambient {
+  to {
+    transform: translate(6%, 4%) rotate(4deg);
+  }
+}
+
+/* --------------------------------------------------------------- two flags -- */
+
+.agx-tf-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+@media (min-width: 820px) {
+  .agx-tf-top {
+    grid-template-columns: minmax(15rem, 1fr) minmax(0, 1.6fr);
+  }
+}
+.agx-tf-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+}
+.agx-tf-action {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.agx-tf-flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  cursor: pointer;
+}
+.agx-tf-flag[data-locked] {
+  cursor: default;
+}
+.agx-tf-flag input {
+  margin-top: 2px;
+}
+.agx-tf-flag-name {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.agx-tf-flag-sub {
+  display: block;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.agx-tf-defaults {
+  margin-top: 0.2rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border-default);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+/* Outcome grid: 2×2, highlight glides to the active cell. */
+.agx-tf-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 0.5rem;
+}
+.agx-tf-hl {
+  position: absolute;
+  width: calc(50% - 0.25rem);
+  height: calc(50% - 0.25rem);
+  border-radius: 12px;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 65%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 18%, transparent);
+  transform: translate(
+    calc(var(--agx-col) * (100% + 0.5rem)),
+    calc(var(--agx-row) * (100% + 0.5rem))
+  );
+  transition: transform 0.4s var(--ease-out);
+  pointer-events: none;
+  z-index: 1;
+}
+.agx-tf-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-height: 4.6rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-default);
+  transition: opacity 0.3s ease;
+  opacity: 0.6;
+}
+.agx-tf-cell[data-on] {
+  opacity: 1;
+}
+.agx-tf-cell-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+.agx-tf-cell-sub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.agx-tf-cell[data-kind='unreachable'] {
+  border-style: dashed;
+  opacity: 0.4;
+}
+.agx-tf-cell[data-kind='ask'] .agx-tf-cell-title {
+  color: var(--agx-warn);
+}
+.agx-tf-cell[data-kind='auto'] .agx-tf-cell-title {
+  color: var(--text-primary);
+}
+.agx-tf-mini {
+  margin-top: 1.1rem;
+  padding: 0.8rem 1rem 0.6rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-default);
+}
+.agx-tf-mini-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 0.6rem;
+}
+.agx-tf-layers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem;
+  margin-top: 0.9rem;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 0.35s var(--ease-out),
+    transform 0.35s var(--ease-out);
+}
+.agx-tf-layers[data-visible] {
+  opacity: 1;
+  transform: none;
+}
+.agx-tf-layers-title {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.agx-tf-layer {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  white-space: nowrap;
+}
+.agx-tf-layers[data-visible] .agx-tf-layer {
+  animation: agx-fade-in 0.4s var(--ease-out) both;
+  animation-delay: calc(var(--agx-i) * 140ms + 150ms);
+}
+
+/* ---------------------------------------------------------- mini gauntlet -- */
+
+.agx-mini {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+.agx-mini-node {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding-top: 2px;
+}
+/* Connecting track between lamps. */
+.agx-mini-node + .agx-mini-node::before {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: calc(50% + 8px);
+  width: calc(100% - 16px);
+  height: 1.5px;
+  background: var(--border-default);
+}
+.agx-mini-lamp {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1.5px solid var(--border-default);
+  transition:
+    background-color 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+.agx-mini-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  transition: color 0.25s ease;
+}
+.agx-mini-node[data-state='active'] .agx-mini-lamp,
+.agx-mini-node[data-state='wait'] .agx-mini-lamp {
+  border-color: var(--agx-warn);
+  background: color-mix(in srgb, var(--agx-warn) 30%, var(--bg-elevated));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--agx-warn) 60%, transparent);
+}
+.agx-mini-node[data-state='wait'] .agx-mini-label {
+  color: var(--agx-warn);
+}
+.agx-mini-node[data-state='pass'] .agx-mini-lamp {
+  border-color: var(--text-primary);
+  background: var(--text-primary);
+}
+.agx-mini-node[data-state='pass'] .agx-mini-label {
+  color: var(--text-secondary);
+}
+.agx-mini-node[data-state='fail'] .agx-mini-lamp {
+  border-color: var(--agx-danger);
+  background: var(--agx-danger);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--agx-danger) 60%, transparent);
+}
+.agx-mini-node[data-state='fail'] .agx-mini-label {
+  color: var(--agx-danger);
+}
+
+/* --------------------------------------------------------------- secrets -- */
+
+.agx-secrets [data-zone],
+.agx-sandbox [data-zone] {
+  opacity: 0.55;
+  transition: opacity 0.35s ease;
+}
+.agx-secrets [data-zone][data-hot],
+.agx-sandbox [data-zone][data-hot] {
+  opacity: 1;
+}
+.agx-sec-lanes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+@media (min-width: 860px) {
+  .agx-sec-lanes {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.agx-sec-lane-title,
+.agx-sb-zone-title {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 0.6rem;
+}
+.agx-sec-note {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 0.55rem;
+}
+/* Write lane: chip charges the wall, flashes red, bounces back. */
+.agx-sec-bounce {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  min-height: 6.5rem;
+}
+.agx-sec-chip {
+  position: relative;
+  z-index: 1;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agx-s-secrets[data-step='0'][data-live] .agx-sec-chip {
+  animation: agx-sec-charge 2.6s cubic-bezier(0.5, 0, 0.4, 1) infinite;
+}
+@keyframes agx-sec-charge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  42%,
+  50% {
+    transform: translateX(28%);
+  }
+  46% {
+    box-shadow: 0 0 18px color-mix(in srgb, var(--agx-danger) 60%, transparent);
+    border-color: var(--agx-danger);
+  }
+  70% {
+    transform: translateX(-2%);
+  }
+}
+.agx-sec-wall {
+  flex: none;
+  width: 10.5rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  border: 1.5px solid color-mix(in srgb, var(--agx-danger) 45%, var(--border-default));
+  background: color-mix(in srgb, var(--agx-danger) 5%, var(--bg-elevated));
+}
+.agx-s-secrets[data-step='0'][data-live] .agx-sec-wall {
+  animation: agx-sec-wall-hit 2.6s ease infinite;
+}
+@keyframes agx-sec-wall-hit {
+  46%,
+  52% {
+    box-shadow: 0 0 16px color-mix(in srgb, var(--agx-danger) 35%, transparent);
+  }
+}
+.agx-sec-wall-title {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--agx-danger);
+  margin-bottom: 4px;
+}
+.agx-sec-wall-tokens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 6px;
+}
+.agx-sec-wall-tokens code {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+/* Read lane: scan bar sweeps, secret values flip to blocks. */
+.agx-sec-card {
+  position: relative;
+  overflow: hidden;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  font-family: var(--font-mono, monospace);
+}
+.agx-sec-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -8%;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0;
+}
+.agx-s-secrets[data-step='1'][data-live] .agx-sec-scan {
+  opacity: 0.9;
+  animation: agx-sec-sweep 3.4s ease-in-out infinite;
+}
+@keyframes agx-sec-sweep {
+  0% {
+    top: -4%;
+  }
+  60%,
+  100% {
+    top: 104%;
+  }
+}
+.agx-sec-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 11.5px;
+  padding: 3px 0;
+}
+.agx-sec-key {
+  color: var(--text-tertiary);
+}
+.agx-sec-open {
+  color: var(--text-secondary);
+}
+.agx-sec-val {
+  position: relative;
+  display: inline-grid;
+}
+.agx-sec-plain,
+.agx-sec-mask {
+  grid-area: 1 / 1;
+  transition: opacity 0.25s ease;
+  transition-delay: calc(var(--agx-i) * 0.4s + 0.5s);
+}
+.agx-sec-plain {
+  color: var(--text-secondary);
+  opacity: 1;
+}
+.agx-sec-mask {
+  color: var(--text-tertiary);
+  opacity: 0;
+}
+/* Once redacted, values stay redacted for the rest of the scene. */
+.agx-s-secrets[data-step='1'] .agx-sec-plain,
+.agx-s-secrets[data-step='2'] .agx-sec-plain {
+  opacity: 0;
+}
+.agx-s-secrets[data-step='1'] .agx-sec-mask,
+.agx-s-secrets[data-step='2'] .agx-sec-mask {
+  opacity: 1;
+}
+.agx-s-secrets[data-step='1'] .agx-sec-mask {
+  animation: agx-sec-flip 0.5s ease both;
+  animation-delay: calc(var(--agx-i) * 0.4s + 0.5s);
+}
+.agx-s-secrets[data-step='2'] .agx-sec-mask {
+  transition-delay: 0s;
+}
+.agx-s-secrets[data-step='2'] .agx-sec-plain {
+  transition-delay: 0s;
+}
+@keyframes agx-sec-flip {
+  0% {
+    color: var(--agx-danger);
+  }
+  100% {
+    color: var(--text-tertiary);
+  }
+}
+/* Ticket zone: expectedCurrent is inside the signature; drift = VOID. */
+.agx-sec-ticketzone {
+  margin-top: 1.1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.agx-sec-ticket {
+  position: relative;
+  min-width: 16rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border-default));
+  background: var(--bg-elevated);
+}
+.agx-sec-ticket-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 5px;
+}
+.agx-sec-ticket-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 11.5px;
+  padding: 2px 0;
+  color: var(--text-tertiary);
+}
+.agx-sec-ticket-row code {
+  color: var(--text-secondary);
+}
+.agx-sec-ticket-row[data-pinned] code {
+  color: var(--accent);
+  font-weight: 700;
+}
+.agx-sec-void {
+  position: absolute;
+  right: 0.7rem;
+  top: 50%;
+  transform: translateY(-50%) rotate(-10deg) scale(2.2);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: var(--agx-danger);
+  border: 2px solid var(--agx-danger);
+  border-radius: 6px;
+  padding: 1px 7px;
+  opacity: 0;
+}
+.agx-s-secrets[data-step='2'] .agx-sec-void {
+  animation: agx-sec-stamp 0.45s var(--ease-out) both;
+  animation-delay: 1.5s;
+}
+@keyframes agx-sec-stamp {
+  0% {
+    opacity: 0;
+    transform: translateY(-50%) rotate(-10deg) scale(2.2);
+  }
+  100% {
+    opacity: 0.9;
+    transform: translateY(-50%) rotate(-10deg) scale(1);
+  }
+}
+.agx-sec-drift {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-width: 18rem;
+}
+.agx-sec-drift-chip {
+  align-self: flex-start;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--agx-warn);
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--agx-warn) 50%, transparent);
+  opacity: 0;
+  transform: translateY(4px);
+}
+.agx-s-secrets[data-step='2'] .agx-sec-drift-chip {
+  animation: agx-fade-in 0.4s var(--ease-out) both;
+  animation-delay: 0.7s;
+}
+
+/* --------------------------------------------------------------- sandbox -- */
+
+.agx-sb-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.2rem;
+}
+@media (min-width: 860px) {
+  .agx-sb-row {
+    grid-template-columns: minmax(11rem, 1fr) minmax(0, 2.6fr);
+    align-items: start;
+  }
+}
+.agx-sb-outside {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+.agx-sb-webapp {
+  padding: 0.5rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+/* The chip repeatedly slides toward the sandbox door. */
+.agx-s-sandbox[data-step='0'][data-live] .agx-sb-chip {
+  animation: agx-sb-enter 2.8s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+@keyframes agx-sb-enter {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  70%,
+  86% {
+    transform: translateX(55%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(60%);
+    opacity: 0;
+  }
+}
+.agx-sb-box {
+  padding: 1.3rem 1.2rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.agx-sb-port {
+  position: absolute;
+  left: -0.6rem;
+  top: 2.2rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  transition:
+    color 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+.agx-sb-port[data-hot] {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.agx-sb-roots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.agx-sb-root {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 25%, transparent);
+  color: var(--text-secondary);
+}
+.agx-sb-rogue {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--agx-danger) 50%, transparent);
+  color: var(--agx-danger);
+  text-decoration: line-through;
+}
+.agx-s-sandbox[data-step='1'][data-live] .agx-sb-rogue {
+  animation: agx-sb-reject 2.2s ease infinite;
+}
+@keyframes agx-sb-reject {
+  0%,
+  100% {
+    transform: translateX(0);
+    box-shadow: none;
+  }
+  18% {
+    transform: translateX(5px);
+  }
+  26% {
+    transform: translateX(-4px);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--agx-danger) 45%, transparent);
+  }
+  34% {
+    transform: translateX(0);
+  }
+}
+.agx-sb-hostcards {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.agx-sb-host {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+}
+.agx-sb-host-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.agx-sb-host-verdict {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.agx-sb-host[data-kind='local'] .agx-sb-host-verdict {
+  color: var(--text-primary);
+}
+.agx-sb-host[data-kind='remote'] {
+  border-style: dashed;
+}
+.agx-sb-host[data-kind='remote'] .agx-sb-host-verdict {
+  color: var(--agx-danger);
+}
+.agx-s-sandbox[data-step='2'] .agx-sb-host[data-kind='remote'] {
+  animation: agx-shake 0.45s var(--ease-out) both;
+  animation-delay: 0.6s;
+}
+/* Backup-first: folder lands on beat 1, the crate dims on beat 2. */
+.agx-sb-beat {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+.agx-sb-folder {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 0.4rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 30%, transparent);
+  opacity: 0.35;
+  transform: scale(0.94);
+  transition:
+    opacity 0.4s var(--ease-out),
+    transform 0.4s var(--ease-out);
+}
+.agx-s-sandbox[data-step='3'] .agx-sb-folder {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.5s;
+}
+.agx-sb-then {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-tertiary);
+}
+.agx-sb-crate {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0.4rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s var(--ease-out);
+}
+.agx-s-sandbox[data-step='3'] .agx-sb-crate {
+  opacity: 0.3;
+  transform: scale(0.92);
+  transition-delay: 1.4s;
+  text-decoration: line-through;
+}
+
+/* -------------------------------------------------------------- autonomy -- */
+
+.agx-autonomy,
+.agx-ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+.agx-autonomy [data-zone],
+.agx-ledger [data-zone] {
+  opacity: 0.5;
+  transition: opacity 0.35s ease;
+}
+.agx-autonomy [data-zone][data-hot],
+.agx-ledger [data-zone][data-hot] {
+  opacity: 1;
+}
+.agx-au-hosts {
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+.agx-au-host {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+}
+.agx-au-host[data-flagged] {
+  border-color: color-mix(in srgb, var(--agx-warn) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--agx-warn) 10%, transparent);
+}
+.agx-au-host-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.agx-au-host-tag {
+  display: none;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--agx-warn);
+}
+.agx-au-host[data-flagged] .agx-au-host-tag {
+  display: inline;
+}
+.agx-au-gauge {
+  width: 2.2rem;
+  height: 2.2rem;
+  transform: rotate(-90deg);
+}
+.agx-au-gauge-track {
+  fill: none;
+  stroke: var(--border-default);
+  stroke-width: 4;
+}
+.agx-au-gauge-fill {
+  fill: none;
+  stroke: var(--text-primary);
+  stroke-width: 4;
+  stroke-linecap: round;
+  transition: stroke-dasharray 1s var(--ease-out) 0.2s;
+}
+.agx-au-gauge-fill[data-low] {
+  stroke: var(--agx-warn);
+}
+.agx-au-gauge-tick {
+  stroke: var(--text-tertiary);
+  stroke-width: 1.5;
+}
+.agx-au-planner-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.agx-au-planner {
+  min-width: 12rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-start;
+}
+.agx-au-planner-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.agx-au-planner-caps {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.agx-au-proposal {
+  margin-top: 0.25rem;
+}
+.agx-au-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 4px 1rem;
+  flex: 1;
+  min-width: 14rem;
+}
+.agx-au-checks li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.agx-au-check-mark {
+  color: var(--text-primary);
+  font-weight: 700;
+  opacity: 0.25;
+  transition: opacity 0.3s ease;
+}
+.agx-s-autonomy[data-step='1'] .agx-au-check-mark {
+  animation: agx-fade-in 0.35s var(--ease-out) both;
+  animation-delay: calc(var(--agx-i) * 160ms + 200ms);
+  opacity: 1;
+}
+.agx-au-foot {
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.agx-au-budgets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 15rem;
+}
+.agx-au-meter {
+  display: grid;
+  grid-template-columns: 7rem 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+}
+.agx-au-meter-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.agx-au-meter-track {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border-default);
+  overflow: hidden;
+  min-width: 5rem;
+}
+.agx-au-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--text-primary);
+  transition: width 0.9s var(--ease-out) 0.25s;
+}
+.agx-au-meter-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.agx-au-pause {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+.agx-au-pause input {
+  margin-top: 2px;
+  pointer-events: none;
+}
+.agx-au-digest {
+  padding: 0.6rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border-default));
+  max-width: 17rem;
+}
+.agx-au-digest-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.agx-au-digest-body {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+/* ---------------------------------------------------------------- ledger -- */
+
+.agx-lg-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+@media (min-width: 900px) {
+  .agx-lg-grid {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  }
+}
+.agx-lg-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.agx-lg-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.agx-lg-table {
+  font-family: var(--font-mono, monospace);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  padding: 0.4rem 0.2rem;
+  overflow-x: auto;
+}
+.agx-lg-row {
+  display: grid;
+  grid-template-columns: 3rem 3.2rem minmax(7rem, 1.4fr) minmax(5rem, 1fr) 3.5rem;
+  gap: 0.6rem;
+  padding: 3px 0.6rem;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  opacity: 0;
+  transform: translateY(4px);
+}
+.agx-scene[data-revealed] .agx-lg-row {
+  animation: agx-fade-in 0.4s var(--ease-out) both;
+  animation-delay: calc(var(--agx-i) * 130ms + 150ms);
+}
+.agx-lg-id,
+.agx-lg-ts {
+  color: var(--text-tertiary);
+}
+.agx-lg-status {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.agx-lg-row[data-status='error'] .agx-lg-status {
+  color: var(--agx-danger);
+}
+.agx-lg-cursor {
+  padding: 4px 0.6rem 2px;
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  border-top: 1px solid var(--border-default);
+  margin-top: 3px;
+}
+.agx-s-ledger[data-live][data-step='0'] .agx-lg-cursor {
+  animation: agx-caret-blink 1.4s steps(1) infinite;
+}
+.agx-lg-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+.agx-lg-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+}
+.agx-lg-diff-path {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.agx-lg-diff-vals {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.agx-lg-before {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+}
+.agx-lg-arrow {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+.agx-lg-after {
+  color: var(--text-primary);
+}
+.agx-lg-trace {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  padding: 0.55rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-elevated);
+  overflow-x: auto;
+}
+.agx-lg-trace-key {
+  color: var(--text-tertiary);
+  margin-right: 0.5rem;
+}
+.agx-lg-redacted {
+  color: var(--agx-warn);
+  font-weight: 700;
+}
+.agx-lg-persistence {
+  margin-top: 0.55rem;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+.agx-lg-persistence strong {
+  color: var(--text-primary);
+}
+
+/* ------------------------------------------------------------------ hero -- */
+
+.agx-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.agx-hero-stage {
+  position: relative;
+  /* Headroom for the chip's flight above the composer. */
+  padding-top: 3.25rem;
+  width: 100%;
+}
+.agx-hero-composer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  min-height: 3rem;
+  transition: border-color 0.3s ease;
+}
+.agx-hero[data-phase='typing'] .agx-hero-composer {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border-default));
+}
+.agx-hero-text {
+  font-size: 13.5px;
+  color: var(--text-primary);
+  min-height: 1.2em;
+  transition: opacity 0.25s ease;
+}
+.agx-hero[data-phase='lift'] .agx-hero-text {
+  opacity: 0;
+}
+.agx-hero-caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--accent);
+  animation: agx-caret-blink 1s steps(1) infinite;
+  animation-play-state: paused;
+}
+.agx-hero[data-live][data-phase='typing'] .agx-hero-caret {
+  animation-play-state: running;
+}
+.agx-hero[data-phase='lift'] .agx-hero-caret {
+  opacity: 0;
+}
+@keyframes agx-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+.agx-hero-send {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+/* The lift-off: the sent question rises out of the composer, glows, hovers,
+   and fades — becoming the protagonist chip of every diagram below. */
+.agx-hero-chip {
+  position: absolute;
+  left: 1rem;
+  bottom: 0.8rem;
+  max-width: calc(100% - 2rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: agx-hero-lift 3.6s var(--ease-out) both;
+}
+@keyframes agx-hero-lift {
+  0% {
+    transform: translateY(0) scale(0.98);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  38% {
+    transform: translateY(-3.1rem) scale(1);
+  }
+  82% {
+    transform: translateY(-3.4rem) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-3.8rem) scale(1);
+    opacity: 0;
+  }
+}
+
+/* --------------------------------------------------------------- helpers -- */
+
+@keyframes agx-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* One-shot reveal on first scroll-into-view: elements start hidden via
+   opacity/transform ONLY (never display:none — draw-in measurement needs
+   real geometry), then transition in when the scene gains data-revealed. */
+.agx-reveal {
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 0.5s var(--ease-out),
+    transform 0.5s var(--ease-out);
+}
+.agx-scene[data-revealed] .agx-reveal {
+  opacity: 1;
+  transform: none;
+}

@@ -46,7 +46,7 @@ interface TuningState {
   pluginDefaultLlmId: string;
 }
 
-const COLUMN = 'w-full max-w-[64rem] mx-auto px-4';
+const COLUMN = 'w-full px-4';
 
 function effective(pt: PromptTypeInfo): string {
   return pt.override ?? pt.default;

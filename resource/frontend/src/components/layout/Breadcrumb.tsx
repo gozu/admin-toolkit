@@ -38,6 +38,7 @@ const PAGE_SECTION_MAP: Record<PageId, SectionInfo> = {
   agents: { label: 'Agents', firstPage: 'agents' },
   'agent-tuning': { label: 'Agents', firstPage: 'agents' },
   'agent-settings': { label: 'Agents', firstPage: 'agents' },
+  'agent-explainer': { label: 'Agents', firstPage: 'agents' },
   settings: { label: 'Misc', firstPage: 'settings' },
   logs: { label: 'Misc', firstPage: 'settings' },
   'sanity-check': { label: 'Misc', firstPage: 'settings' },
@@ -81,6 +82,7 @@ const PAGE_LABELS: Record<PageId, string> = {
   agents: 'Agents',
   'agent-tuning': 'Agent Tuning',
   'agent-settings': 'Agent Permissions',
+  'agent-explainer': 'How Agents Work',
 };
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];

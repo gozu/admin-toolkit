@@ -155,6 +155,7 @@ TOOLKIT_PAGES = {
     'agents': 'Agent chat + action plans + audit timeline',
     'agent-tuning': 'Agent prompt/model overrides (versioned)',
     'agent-settings': 'Agent Permissions: sensor + action gates',
+    'agent-explainer': 'How Agents Work: animated tour of the agent pipeline + guardrails',
     'settings': 'Toolkit settings: hosts, thresholds, whitelists, DB',
     'logs': 'Backend.log error groups',
     'sanity-check': 'DSS sanity-check messages',

@@ -399,7 +399,7 @@ export function AgentSettingsPage() {
 
   return (
     <div className="w-full flex-1 min-h-0 py-4 overflow-y-auto">
-      <div className="w-full max-w-[64rem] mx-auto px-4 space-y-3">
+      <div className="w-full px-4 space-y-3">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-semibold text-[var(--text-primary)]">Agent Permissions</h2>
           <span className="text-[13px] text-[var(--text-tertiary)]">

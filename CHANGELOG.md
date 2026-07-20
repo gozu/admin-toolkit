@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.770] - 2026-07-19
+## [0.4.771] - 2026-07-19
 
 ### Added
 - **Autonomous daily agent panel (Agents → Permissions)**: the 24h triage sweep now has a first-class capability surface — per-action opt-ins over the auto-eligible catalog with risk dots and plain-language descriptions, **Enable all / Disable all** bulk controls, one **master switch** that pauses every autonomous action at once (the per-action selection is kept), editable safety caps (GB / objects per sweep), a **remote-host scope** toggle, live schedule status (provisioned/active/hour/last run) with a one-click **Set up daily schedule** (the CLI provisioner's ensure-or-repair flow as a route), and a **Send test report** button that emails the branded digest with sample data on demand.

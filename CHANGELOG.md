@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.769] - 2026-07-19
+
+### Added
+- **Autonomous daily agent panel (Agents → Permissions)**: the 24h triage sweep now has a first-class capability surface — per-action opt-ins over the auto-eligible catalog with risk dots and plain-language descriptions, **Enable all / Disable all** bulk controls, one **master switch** that pauses every autonomous action at once (the per-action selection is kept), editable safety caps (GB / objects per sweep), a **remote-host scope** toggle, live schedule status (provisioned/active/hour/last run) with a one-click **Set up daily schedule** (the CLI provisioner's ensure-or-repair flow as a route), and a **Send test report** button that emails the branded digest with sample data on demand.
+- **Expanded autonomous catalog (2 → 6 actions)**: `job-logs-cleanup` (aged job dirs on disk pressure), `connection-test` (re-probes failing connections so the report says "recovered"/"still failing", single or batched from the finding's connection list), `notebook-kernels-shutdown` (leaked-kernel sanity findings; clearly labeled as shutting down ALL kernels), and `project-clear-webapp-runs` (dead webapp run dirs in oversized projects, batched) join `log-cleanup` and `docker-prune`. Every new action ships a deterministic `build_target` — a finding without the needed data simply produces no candidate. `python-run` remains structurally excluded from autonomy.
+- **Remote-host auto-remediation (opt-in)**: with `auto_remediate_remote_hosts` on, non-LOCAL-ONLY actions run against flagged remote hosts through the same plan → token → execute → audit pipeline; LOCAL-ONLY actions are skipped there with an explicit reason. Default off (v1 behavior preserved).
+- **Branded HTML fleet report**: the daily digest is now a Dataiku-branded HTML email (official logo asset, palette sampled from it: teal `#4DC9C3` / ink `#211C35`) — hero verdict with **fleet average + "vs yesterday" delta** (previous scores read back from `agent_triage_daily`), KPI tiles (scored/attention/actions/GB), a "What the agent did while you slept" receipts section (per-action detail, finding id, audit id, freed GB; zero-effect probes marked amber "0 fixed", never dressed as wins), worst-first host cards with score bars, weakest-category chips, top findings + "+N more" links and the LLM recommendation, a compact healthy strip with ±0/± deltas, safety-budget meter, and warnings band. Plain-text twin kept as the send fallback; subject line summarizes outcome ("⚠️ 2 of 5 scored hosts need attention — 7.5 GB reclaimed overnight").
+
+### Changed
+- `auto_remediate.run_auto_remediation` understands batched targets, reports per-action result details/effects, and honors the new master pause + remote-host knobs; grouped health issues (`project-size-*`, `project-codenv-*`) now carry their member names in `items` so remediation targets can be built from findings.
+- Settings → Agents & Outreach: the auto-remediation checkboxes and caps moved to Agents → Permissions → Autonomous daily agent (the card links there); opting an action into autonomy also enables its main per-action gate in the same write.
+
 ## [0.4.767] - 2026-07-19
 
 ### Added

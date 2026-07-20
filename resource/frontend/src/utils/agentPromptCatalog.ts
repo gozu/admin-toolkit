@@ -225,7 +225,7 @@ export const PROMPT_GROUPS: readonly CatalogGroup[] = [
   {
     role: 'actuator',
     title: 'Admin Actions',
-    blurb: 'Plan and (with your approval) execute maintenance: cleanup, vacuum, right-sizing, deploys.',
+    blurb: 'Plan and execute maintenance: cleanup, vacuum, right-sizing, deploys.',
     megapromptTitle: 'Maintenance inventory',
     megapromptBlurb:
       'Read-only sweep of everything worth maintaining — cleanup, vacuum, right-sizing, deploys — prioritized, with explicit "nothing executes yet".',
@@ -234,7 +234,7 @@ export const PROMPT_GROUPS: readonly CatalogGroup[] = [
       {
         id: 'projects',
         title: 'Project cleanup',
-        blurb: 'Find, plan and (with your approval) delete dead projects.',
+        blurb: 'Find, plan and delete dead projects.',
         eduId: 'action.project-delete',
         prompts: [
           { id: 'pc-find', label: 'Find cleanup candidates', prompt: 'Find the best project cleanup candidates: large AND inactive. List them with size, owner and days inactive — do not plan anything yet.' },
@@ -385,7 +385,7 @@ export const HERO_CARDS: readonly HeroCard[] = (() => {
     {
       id: 'actions',
       title: actuator.title,
-      blurb: 'Plan and — with your approval — execute maintenance: cleanup, vacuum, right-sizing, deploys.',
+      blurb: 'Plan and execute maintenance: cleanup, vacuum, right-sizing, deploys.',
       flagshipTitle: actuator.megapromptTitle,
       flagshipBlurb: actuator.megapromptBlurb,
       flagshipPrompt: actuator.megaprompt,

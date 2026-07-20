@@ -294,7 +294,9 @@ export function MessageView({
       {message.segments.map((segment: Segment, i) => {
         if (segment.type === 'text') {
           return (
-            <div key={i} className="ai-analysis-markdown chat-markdown text-sm text-[var(--text-primary)]">
+            // Prose keeps the old column's measure on ultrawide screens; the
+            // transcript container itself is full-bleed like every other page.
+            <div key={i} className="ai-analysis-markdown chat-markdown max-w-[87.5rem] text-sm text-[var(--text-primary)]">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{segment.text}</ReactMarkdown>
             </div>
           );

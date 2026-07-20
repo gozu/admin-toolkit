@@ -63,6 +63,13 @@ const icons: Record<string, ReactNode> = {
       <path d="M9 12l2 2 4-4.5" />
     </svg>
   ),
+  // Open book — the explainer subpage; reads as "learn how this works".
+  'agent-explainer': (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 7.5C10.5 6 8.5 5.5 4 5.5V18c4.5 0 6.5.5 8 2 1.5-1.5 3.5-2 8-2V5.5c-4.5 0-6.5.5-8 2z" />
+      <path d="M12 7.5V20" />
+    </svg>
+  ),
   'mission-control': (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="9" />

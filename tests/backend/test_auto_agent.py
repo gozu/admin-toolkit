@@ -103,7 +103,9 @@ def test_unknown_action_refused(monkeypatch):
     summary = _fresh_summary()
     status, results = _run_planner(monkeypatch, [_call(action='rm-rf-slash')],
                                    summary, {'log-cleanup'})
-    assert status == {'status': 'ran', 'proposals': 0, 'executed': 0, 'refused': 1}
+    # A refused call still counts as a proposal — the digest's
+    # "N proposal(s), X executed, Y refused" must add up.
+    assert status == {'status': 'ran', 'proposals': 1, 'executed': 0, 'refused': 1}
     assert 'unknown action' in results[0]['error']['message']
     assert summary['skipped'][0]['tier'] == 'llm'
 
@@ -145,7 +147,7 @@ def test_dedupe_across_both_tiers(monkeypatch):
                                    summary, {'log-cleanup'})
     assert results[0].get('status') == 'executed'
     assert 'already handled' in results[1]['error']['message']
-    assert status == {'status': 'ran', 'proposals': 1, 'executed': 1, 'refused': 1}
+    assert status == {'status': 'ran', 'proposals': 2, 'executed': 1, 'refused': 1}
 
 
 def test_proposal_cap(monkeypatch):
@@ -156,7 +158,9 @@ def test_proposal_cap(monkeypatch):
     summary = _fresh_summary()
     status, results = _run_planner(monkeypatch, calls, summary, grants)
     assert 'proposal cap' in results[2]['error']['message']
-    assert status['proposals'] == 2 and status['executed'] == 2
+    # The over-cap call is still tallied as a (refused) proposal.
+    assert status['proposals'] == 3 and status['executed'] == 2 \
+        and status['refused'] == 1
 
 
 def test_delegation_carries_tier_agent_and_llm(monkeypatch):

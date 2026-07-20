@@ -158,6 +158,21 @@ def test_invalid_roles_and_missing_ids_are_skipped(store):
     assert [m['id'] for m in conv['messages']] == ['m-ok']
 
 
+def test_upsert_turn_tolerates_non_numeric_client_fields(store):
+    """position/lastDurationMs arrive from a public, unauthenticated POST, so a
+    bad value must default — never raise and 500 the whole turn upsert."""
+    result = store.upsert_turn(USER, HOST, 'conv-0005', AGENT, messages=[
+        {'id': 'm-bad-pos', 'role': 'user', 'content': 'x', 'position': 'abc'},
+        {'id': 'm-bad-pos2', 'role': 'assistant', 'content': 'y', 'position': {}}],
+        last_duration_ms='not-a-number')
+    assert result['id'] == 'conv-0005'
+    conv = store.get_conversation(USER, HOST, 'conv-0005')
+    ids = {m['id'] for m in conv['messages']}
+    assert {'m-bad-pos', 'm-bad-pos2'} <= ids
+    asst = next(m for m in conv['messages'] if m['id'] == 'm-bad-pos2')
+    assert asst['lastDurationMs'] is None  # bad duration coerced to None, not 500
+
+
 def test_tables_prefix_validation():
     assert chat_db.normalize_tables_prefix('') == 'atk_chat_'
     assert chat_db.normalize_tables_prefix('MyChat') == 'mychat_'
@@ -177,6 +192,18 @@ def test_remote_url_builders():
     }) == 'mssql+pymssql://u:p@db:1433/dss?charset=utf8'
     with pytest.raises(chat_db.ChatPersistenceError):
         chat_db.get_remote_db_url('oracle', {})
+
+
+def test_remote_url_dbname_fallback():
+    """DSS connections may carry the database name under database/dbname rather
+    than db — same fallback agents_db uses, so chat and audit resolve to the
+    same DB instead of the URL landing on the server default."""
+    assert chat_db.get_remote_db_url('postgresql', {
+        'user': 'u', 'password': 'p', 'host': 'db', 'port': 5432, 'database': 'dss',
+    }) == 'postgresql://u:p@db:5432/dss'
+    assert chat_db.get_remote_db_url('postgresql', {
+        'user': 'u', 'password': 'p', 'host': 'db', 'port': 5432, 'dbname': 'dss',
+    }) == 'postgresql://u:p@db:5432/dss'
 
 
 def test_config_defaults_to_disabled():

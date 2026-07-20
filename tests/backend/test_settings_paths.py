@@ -35,6 +35,16 @@ def test_blocked_first_segments(path):
     'z.credentialStore.a',
     'kerberos.keytabPath',
     'mesh.authToken',
+    # cloud-credential key families with no secret/token substring (regression:
+    # these escaped the blacklist AND redaction before the <word>key broadening)
+    'params.accountKey',
+    'params.storageAccountKey',
+    'params.accessKey',
+    'params.sharedKey',
+    'params.signingKey',
+    'params.passphrase',
+    'params.keyFile',
+    'params.keyJson',
 ])
 def test_blocked_secret_segments(path):
     ok, reason = sp.check_path(path)
@@ -47,6 +57,11 @@ def test_blocked_secret_segments(path):
     'javaMemory.backendXmx',
     'limits.attachmentBytes',
     'notebooks.autoUnloadEnabled',
+    # non-secret keys the <word>key broadening must NOT catch: bare {key,value}
+    # property leaves and keyspace/keyColumns-style config names
+    'dkuProperties[0].key',
+    'params.keyspace',
+    'params.keyColumns',
 ])
 def test_allowed_paths(path):
     ok, reason = sp.check_path(path)
@@ -100,3 +115,38 @@ def test_set_at_never_creates_subtrees():
         sp.set_at(obj, 'nope[0]', 1)
     with pytest.raises(sp.SettingsPathError):
         sp.set_at({'xs': [1]}, 'xs[5]', 1)
+
+
+def test_redact_secrets_masks_secret_scalars():
+    node = {
+        'internalDatabase': {'connection': {'params': {'password': 'hunter2',
+                                                       'port': 5432}}},
+        'deployerClientSettings': {'apiKey': 'dkuaps-abc', 'url': 'https://x'},
+    }
+    r = sp.redact_secrets(node)
+    assert r['internalDatabase']['connection']['params']['password'] == '<redacted>'
+    assert r['internalDatabase']['connection']['params']['port'] == 5432
+    assert r['deployerClientSettings']['apiKey'] == '<redacted>'
+    assert r['deployerClientSettings']['url'] == 'https://x'
+
+
+def test_redact_secrets_property_rows():
+    rows = [
+        {'key': 'somePassword', 'value': 'x', 'secret': False},
+        {'key': 'memory.max', 'value': '38g', 'secret': False},
+        {'name': 'harmless', 'value': 'y', 'secret': True},
+    ]
+    r = sp.redact_secrets(rows)
+    assert r[0]['value'] == '<redacted>'          # key name matches the regex
+    assert r[1]['value'] == '38g'                 # plain config row survives
+    assert r[2]['value'] == '<redacted>'          # DSS's own secret:true marker
+
+
+def test_redact_secrets_preserves_structure_and_flags():
+    node = {'globalApiKeysSecurity': {'enabled': True, 'clearanceLevel': 3},
+            'allowPerUserSSHKey': True, 'emptyToken': ''}
+    r = sp.redact_secrets(node)
+    # a matching parent key never hides its subtree; booleans/empties untouched
+    assert r['globalApiKeysSecurity'] == {'enabled': True, 'clearanceLevel': 3}
+    assert r['allowPerUserSSHKey'] is True
+    assert r['emptyToken'] == ''

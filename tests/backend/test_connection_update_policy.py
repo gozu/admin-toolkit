@@ -53,12 +53,37 @@ class FakeDssClient:
     'params.apiKeyId',
     'params.keytabPath',
     'params.oauth.clientSecret',
+    # cloud-credential key families with no secret/token substring — these
+    # escaped the blacklist (and redaction) before the <word>key broadening
+    'params.accountKey',
+    'params.storageAccountKey',
+    'params.accessKey',
+    'params.sharedKey',
+    'params.passphrase',
 ])
 def test_secret_paths_refused(path):
     client = FakeClient({'params': {'host': 'x'}})
     with pytest.raises(ToolkitError, match='secret-material'):
         conn_actions._plan_connection_update(
             client, 'local', {'name': 'snow1', 'path': path, 'newValue': 'v'}, {})
+
+
+@pytest.mark.parametrize('key', ['accountKey', 'storageAccountKey', 'accessKey',
+                                 'sharedKey', 'passphrase', 'secretKey', 'apiKey'])
+def test_redact_secrets_covers_cloud_key_families(key):
+    from adk_backend.routes.admin_actions import _redact_secrets
+    out = _redact_secrets({'params': {key: 'PLAINTEXT-CRED', 'host': 'h'}})
+    assert out['params'][key] == '<redacted>'
+    assert out['params']['host'] == 'h'  # non-secret survives
+
+
+def test_redact_secrets_keeps_property_key_names():
+    # bare {key, value} property leaves and keyspace are not credentials
+    from adk_backend.routes.admin_actions import _redact_secrets
+    out = _redact_secrets({'dkuProperties': [{'key': 'env', 'value': 'prod'}],
+                           'params': {'keyspace': 'analytics'}})
+    assert out['dkuProperties'][0]['key'] == 'env'
+    assert out['params']['keyspace'] == 'analytics'
 
 
 def test_plan_binds_expected_current():

@@ -17,6 +17,30 @@ export function getBackendUrl(path: string): string {
   return path;
 }
 
+export class BackendNotRunningError extends Error {
+  constructor() {
+    super(
+      "this webapp's Python backend is not running in DSS. "
+        + 'Start it (webapp → Actions → Start backend), then reload this page.',
+    );
+    this.name = 'BackendNotRunningError';
+  }
+}
+
+// DSS substitutes ${backendUrlPrefix} into the page it serves only while the
+// webapp backend is running; otherwise the placeholder survives verbatim (and,
+// being a truthy string, defeats DSS's own location.href fallback), so every
+// request would hit nginx HTML error pages. Fail fast with an actionable
+// message instead. Link-building callers use getBackendUrl directly and must
+// not throw mid-render, so the check lives here, on the request path only.
+function getRequestUrl(path: string): string {
+  const url = getBackendUrl(path);
+  if (url.includes('${backendUrlPrefix}')) {
+    throw new BackendNotRunningError();
+  }
+  return url;
+}
+
 export class ApiRequestError extends Error {
   status: number;
   statusText: string;
@@ -95,7 +119,7 @@ function withHostHeader(init?: RequestInit): RequestInit {
  * the body stream untouched.
  */
 export async function fetchRaw(path: string, init?: RequestInit): Promise<Response> {
-  const url = getBackendUrl(path);
+  const url = getRequestUrl(path);
   const response = await fetch(url, withHostHeader(init));
   if (response.status === 409) {
     try {
@@ -118,7 +142,7 @@ export async function fetchRaw(path: string, init?: RequestInit): Promise<Respon
 }
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = getBackendUrl(path);
+  const url = getRequestUrl(path);
   const response = await fetch(url, withHostHeader(init));
   if (!response.ok) {
     throw await toApiError(response, url);
@@ -127,7 +151,7 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
 }
 
 export async function fetchText(path: string, init?: RequestInit): Promise<string> {
-  const url = getBackendUrl(path);
+  const url = getRequestUrl(path);
   const response = await fetch(url, withHostHeader(init));
   if (!response.ok) {
     throw await toApiError(response, url);
@@ -136,7 +160,7 @@ export async function fetchText(path: string, init?: RequestInit): Promise<strin
 }
 
 export async function* fetchSse(path: string, init?: RequestInit): AsyncGenerator<SseFrame> {
-  const url = getBackendUrl(path);
+  const url = getRequestUrl(path);
   const response = await fetch(url, withHostHeader(init));
   if (!response.ok) {
     throw await toApiError(response, url);

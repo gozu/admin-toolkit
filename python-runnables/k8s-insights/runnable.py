@@ -139,6 +139,100 @@ def _make_kubectl_runner(cluster_id: str):
     return run
 
 
+# Synthetic cluster-id namespace for kubeconfig-file targets: audits selected
+# from a discovered kubeconfig (containerized-exec config, ~/.kube/...) travel
+# through the existing cluster_id plumbing as 'kubeconfig:<path>'.
+KUBECONFIG_ID_PREFIX = 'kubeconfig:'
+
+
+def _make_file_kubectl_runner(kubeconfig_path: str, context: Optional[str] = None):
+    """Build a `KubectlFn` that shells out to `kubectl --kubeconfig <path>`.
+
+    Used for clusters DSS does not manage via its cluster API — e.g. a custom
+    kubeConfigPath declared on a containerized-execution config. The macro
+    kernel runs on the DSS host as the service user, so the file and any
+    exec-credential helpers (aws, aws-iam-authenticator) resolve exactly as
+    they do for DSS's own containerized execution.
+    """
+    import shlex
+    import shutil
+    import subprocess
+
+    env = dict(os.environ)
+    env['PATH'] = (env.get('PATH') or '') + os.pathsep + '/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin'
+    binary = shutil.which('kubectl', path=env['PATH'])
+    if not binary:
+        raise RuntimeError('kubectl binary not found on host PATH')
+    base = [binary, '--kubeconfig', kubeconfig_path]
+    if context:
+        base += ['--context', context]
+
+    def run(args: str):
+        try:
+            proc = subprocess.run(
+                base + shlex.split(args),
+                capture_output=True, text=True, timeout=120, env=env,
+            )
+        except subprocess.TimeoutExpired:
+            return -1, '', f'kubectl timed out after 120s (args: {args[:120]})'
+        except Exception as exc:
+            return -1, '', f'{type(exc).__name__}: {str(exc)[:300]}'
+        return proc.returncode, proc.stdout or '', proc.stderr or ''
+
+    return run
+
+
+def _kubeconfig_candidates(dip_home: str) -> List[Dict[str, Any]]:
+    """Discovered kubeconfig candidates, deduped against DSS-managed cluster
+    kubeconfigs (those are already reachable as first-class clusters) and
+    stamped with their synthetic cluster id."""
+    listing = P.probe_clusters_list(dip_home)
+    managed_real = {
+        os.path.realpath(c['kubeconfig'])
+        for c in (listing.get('data') or [])
+        if c.get('kubeconfig')
+    }
+    cands = P.probe_kubeconfig_candidates(dip_home).get('data') or []
+    out: List[Dict[str, Any]] = []
+    for c in cands:
+        if c.get('realPath') in managed_real:
+            continue
+        out.append({**c, 'id': KUBECONFIG_ID_PREFIX + c['path']})
+    return out
+
+
+def _kubeconfig_candidate_by_id(dip_home: str, synthetic_id: str) -> Optional[Dict[str, Any]]:
+    for c in _kubeconfig_candidates(dip_home):
+        if c['id'] == synthetic_id and c.get('exists'):
+            return c
+    return None
+
+
+def _kubectl_for(dip_home: str, cluster_id: str):
+    """Resolve a cluster id (DSS-managed or kubeconfig:<path>) to a KubectlFn.
+
+    kubeconfig paths are re-discovered and validated server-side — a requested
+    path that isn't among the discovered candidates is refused, so the macro
+    never runs kubectl against an arbitrary caller-supplied file."""
+    if cluster_id.startswith(KUBECONFIG_ID_PREFIX):
+        cand = _kubeconfig_candidate_by_id(dip_home, cluster_id)
+        if cand is None:
+            raise ValueError(
+                'kubeconfig %r is not among the discovered candidates on this host'
+                % cluster_id[len(KUBECONFIG_ID_PREFIX):]
+            )
+        return _make_file_kubectl_runner(cand['path'], cand.get('context'))
+    return _make_kubectl_runner(cluster_id)
+
+
+def _kubeconfig_display_name(cand: Dict[str, Any]) -> str:
+    if cand.get('execConfig'):
+        return str(cand['execConfig'])
+    if cand.get('currentContext'):
+        return str(cand['currentContext'])
+    return str(cand.get('displayPath') or cand.get('path') or cand.get('id'))
+
+
 def _run_probes(kubectl, dip_home: str, cluster_id: str) -> Dict[str, Dict[str, Any]]:
     """Run all probes in parallel. Returns {probe_name: result_dict}."""
     kubectl_jobs = {
@@ -272,15 +366,15 @@ def _make_dss_source_reader():
     return read_object_source
 
 
-def _resolve_gpu_pod_code(probes_result: Dict[str, Dict[str, Any]], cluster_id: str) -> Dict[str, Any]:
+def _resolve_gpu_pod_code(probes_result: Dict[str, Dict[str, Any]], kubectl) -> Dict[str, Any]:
     """Run the GPU-pod code/usage probe after the parallel pool.
 
     It needs probe_pods output, a DSS api_client (to read code objects) AND the
     kubectl runner (for the live `nvidia-smi` exec), so — like `_resolve_pricing`
-    — it cannot run inside the dataiku-free probe pool. Failures are non-fatal:
-    on any setup error it returns an `ok=False` envelope and the GPU rule (which
-    declares `requires_probes=['probe_gpu_pod_code']`) is simply skipped. When
-    only the kubectl runner is unavailable the probe still runs code-scan-only."""
+    — it cannot run inside the dataiku-free probe pool. The runner is the same
+    one the audit already resolved (DSS-API or kubeconfig-file). Failures are
+    non-fatal: on any setup error it returns an `ok=False` envelope and the GPU
+    rule (which declares `requires_probes=['probe_gpu_pod_code']`) is skipped."""
     started = _now_ms()
     pods_probe = probes_result.get('probe_pods') or {}
     if not pods_probe.get('ok'):
@@ -294,10 +388,6 @@ def _resolve_gpu_pod_code(probes_result: Dict[str, Dict[str, Any]], cluster_id: 
             'error': f'cannot build DSS source reader: {type(exc).__name__}: {str(exc)[:200]}',
             'durationMs': _now_ms() - started,
         }
-    try:
-        kubectl = _make_kubectl_runner(cluster_id)
-    except Exception:
-        kubectl = None  # live nvidia-smi unavailable → probe degrades to code-scan-only
     return P.probe_gpu_pod_code(pods, reader, kubectl)
 
 
@@ -670,25 +760,50 @@ def run_audit(cluster_id_req: str, rules_filter: str) -> Dict[str, Any]:
     if not dip_home:
         return {'ok': False, 'error': 'DIP_HOME not set', 'durationMs': _now_ms() - started}
 
-    chosen = _pick_cluster_id(dip_home, cluster_id_req)
-    if not chosen:
-        listing = P.probe_clusters_list(dip_home)
-        return {
-            'ok': False,
-            'error': f'No matching cluster found (requested={cluster_id_req!r})',
-            'clusters': listing.get('data') or [],
-            'durationMs': _now_ms() - started,
+    kubeconfig_name: Optional[str] = None
+    if cluster_id_req.startswith(KUBECONFIG_ID_PREFIX):
+        cand = _kubeconfig_candidate_by_id(dip_home, cluster_id_req)
+        if cand is None:
+            return {
+                'ok': False,
+                'error': f'kubeconfig {cluster_id_req[len(KUBECONFIG_ID_PREFIX):]!r} is not among the discovered candidates on this host',
+                'durationMs': _now_ms() - started,
+            }
+        kubeconfig_name = _kubeconfig_display_name(cand)
+        chosen = {
+            'id': cluster_id_req,
+            'baseDir': None,
+            'hasKubeconfig': True,
+            'kubeconfig': cand['path'],
         }
-
-    try:
-        kubectl = _make_kubectl_runner(chosen['id'])
-    except Exception as exc:
-        return {
-            'ok': False,
-            'error': f'Cannot reach cluster {chosen["id"]!r} via DSS API: {type(exc).__name__}: {str(exc)[:300]}',
-            'cluster': chosen,
-            'durationMs': _now_ms() - started,
-        }
+        try:
+            kubectl = _make_file_kubectl_runner(cand['path'], cand.get('context'))
+        except Exception as exc:
+            return {
+                'ok': False,
+                'error': f'Cannot use kubeconfig {cand["displayPath"]!r}: {type(exc).__name__}: {str(exc)[:300]}',
+                'cluster': chosen,
+                'durationMs': _now_ms() - started,
+            }
+    else:
+        chosen = _pick_cluster_id(dip_home, cluster_id_req)
+        if not chosen:
+            listing = P.probe_clusters_list(dip_home)
+            return {
+                'ok': False,
+                'error': f'No matching cluster found (requested={cluster_id_req!r})',
+                'clusters': listing.get('data') or [],
+                'durationMs': _now_ms() - started,
+            }
+        try:
+            kubectl = _make_kubectl_runner(chosen['id'])
+        except Exception as exc:
+            return {
+                'ok': False,
+                'error': f'Cannot reach cluster {chosen["id"]!r} via DSS API: {type(exc).__name__}: {str(exc)[:300]}',
+                'cluster': chosen,
+                'durationMs': _now_ms() - started,
+            }
     probes_result = _run_probes(kubectl, dip_home, chosen['id'])
 
     # Resolve pricing once. The result becomes both a top-level envelope key
@@ -708,7 +823,7 @@ def run_audit(cluster_id_req: str, rules_filter: str) -> Dict[str, Any]:
     # GPU-pod code/usage probe — also a post-pool resolution (needs probe_pods +
     # a DSS reader + the kubectl runner). Injected as a normal probe so the GPU
     # rule sees it and the per-pod identity join (_pods_by_node) can read it.
-    probes_result['probe_gpu_pod_code'] = _resolve_gpu_pod_code(probes_result, chosen['id'])
+    probes_result['probe_gpu_pod_code'] = _resolve_gpu_pod_code(probes_result, kubectl)
 
     filter_ids: Optional[Set[str]] = None
     if rules_filter:
@@ -721,6 +836,7 @@ def run_audit(cluster_id_req: str, rules_filter: str) -> Dict[str, Any]:
         'cluster': {
             **_cluster_meta(probes_result, chosen['id']),
             'baseDir': chosen.get('baseDir'),
+            **({'name': kubeconfig_name, 'kubeconfig': chosen.get('kubeconfig')} if kubeconfig_name else {}),
         },
         'probes': _probe_summary(probes_result),
         'findings': findings,
@@ -781,12 +897,17 @@ def cluster_health() -> Dict[str, Any]:
                 cluster_ids.append(cid)
     except Exception:
         pass
+    # Kubeconfig-file targets get health dots too — same synthetic ids the
+    # picker uses, so the frontend health map joins without special-casing.
+    for cand in _kubeconfig_candidates(dip_home):
+        if cand.get('exists'):
+            cluster_ids.append(cand['id'])
 
     def probe_one(cid: str) -> Dict[str, Any]:
         t0 = _now_ms()
         try:
-            kubectl = _make_kubectl_runner(cid)
-            rc, out, err = kubectl('version -o json')
+            kubectl = _kubectl_for(dip_home, cid)
+            rc, out, err = kubectl('version -o json --request-timeout=8s')
         except Exception as exc:
             err_full = f'{type(exc).__name__}: {str(exc)[:600]}'
             cls = P.classify_kubectl_error(err_full)
@@ -823,17 +944,30 @@ def cluster_health() -> Dict[str, Any]:
     if cluster_ids:
         with cf.ThreadPoolExecutor(max_workers=min(8, len(cluster_ids)), thread_name_prefix='k8shealth') as pool:
             futures = {pool.submit(probe_one, cid): cid for cid in cluster_ids}
-            for fut in cf.as_completed(futures, timeout=20):
-                try:
-                    results.append(fut.result(timeout=5))
-                except Exception as exc:
-                    cid = futures[fut]
-                    results.append({
-                        'id': cid, 'ok': False, 'errorClass': 'unknown',
-                        'errorSummary': f'{type(exc).__name__}: {str(exc)[:200]}',
-                        'errorFull': f'{type(exc).__name__}: {exc}',
-                        'latencyMs': 0, 'kubectlServerVersion': None,
-                    })
+            try:
+                for fut in cf.as_completed(futures, timeout=20):
+                    try:
+                        results.append(fut.result(timeout=5))
+                    except Exception as exc:
+                        cid = futures[fut]
+                        results.append({
+                            'id': cid, 'ok': False, 'errorClass': 'unknown',
+                            'errorSummary': f'{type(exc).__name__}: {str(exc)[:200]}',
+                            'errorFull': f'{type(exc).__name__}: {exc}',
+                            'latencyMs': 0, 'kubectlServerVersion': None,
+                        })
+            except cf.TimeoutError:
+                # A hung probe (dead API server behind a kubeconfig) must not
+                # eat the whole health response — report stragglers as network.
+                done_ids = {r['id'] for r in results}
+                for cid in cluster_ids:
+                    if cid not in done_ids:
+                        results.append({
+                            'id': cid, 'ok': False, 'errorClass': 'network',
+                            'errorSummary': 'health probe timed out after 20s',
+                            'errorFull': 'health probe timed out after 20s',
+                            'latencyMs': 20000, 'kubectlServerVersion': None,
+                        })
     results.sort(key=lambda r: r['id'])
     return {'ok': True, 'clusters': results, 'durationMs': _now_ms() - started}
 
@@ -848,6 +982,10 @@ def list_clusters() -> Dict[str, Any]:
         'ok': bool(listing.get('ok')),
         'error': listing.get('error'),
         'clusters': listing.get('data') or [],
+        'kubeconfigCandidates': [
+            {**c, 'name': _kubeconfig_display_name(c)}
+            for c in _kubeconfig_candidates(dip_home)
+        ],
         'durationMs': _now_ms() - started,
     }
 
@@ -867,7 +1005,7 @@ def describe_pod(cluster_id: str, namespace: str, pod_name: str) -> Dict[str, An
     if not (P.is_safe_k8s_name(namespace) and P.is_safe_k8s_name(pod_name)):
         return {'ok': False, 'error': 'invalid namespace or pod name', 'durationMs': _now_ms() - started}
     try:
-        kubectl = _make_kubectl_runner(cluster_id)
+        kubectl = _kubectl_for(_resolve_dip_home(), cluster_id)
     except Exception as exc:
         return {
             'ok': False,

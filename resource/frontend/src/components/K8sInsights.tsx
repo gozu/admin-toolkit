@@ -146,6 +146,10 @@ export function K8sInsights() {
   }, [health.data]);
   const selectedHealth = selectedCluster ? healthById.get(selectedCluster) : undefined;
   const auditBlockedReason = blockedAuditReason(selectedHealth);
+  const selectedEntry = clusters?.clusters?.find((c) => c.id === selectedCluster);
+  const selectedClusterLabel = selectedEntry?.type === 'KUBECONFIG'
+    ? (selectedEntry.name || selectedEntry.displayPath || selectedCluster)
+    : selectedCluster;
 
   // Auto-run only when there's exactly one available cluster, so the common
   // single-cluster case stays one-click while multi-cluster picks are deliberate.
@@ -221,15 +225,31 @@ export function K8sInsights() {
 
   if (clusters && clusters.clusters && clusters.clusters.length === 0) {
     const unavailable = clusters.unavailable || [];
+    const missingKubeconfigs = (clusters.kubeconfigCandidates || []).filter((c) => !c.exists);
     return (
       <div className="w-full py-8 px-4">
         <div className="glass-card p-4">
           <h3 className="text-lg font-semibold mb-1">No active clusters to audit</h3>
           <p className="text-sm text-[var(--text-muted)]">
             A cluster is "active" when it has a kubeconfig on disk or is in state{' '}
-            <span className="font-mono">RUNNING</span>. Start a managed cluster in DSS, or
-            attach an EKS cluster, then refresh this page.
+            <span className="font-mono">RUNNING</span>. Kubeconfigs declared on
+            containerized-execution configs and under <span className="font-mono">~/.kube/</span> are
+            also scanned. Start a managed cluster in DSS, attach an EKS cluster, or set a{' '}
+            <span className="font-mono">kubeConfigPath</span> on a containerized-execution config,
+            then refresh this page.
           </p>
+          {missingKubeconfigs.length > 0 && (
+            <div className="mt-3 text-xs font-mono text-[var(--text-muted)] border-l-2 border-yellow-400/40 pl-2 py-1 space-y-0.5">
+              <div className="text-yellow-200">Declared kubeconfig path{missingKubeconfigs.length === 1 ? '' : 's'} not found on disk:</div>
+              {missingKubeconfigs.map((c) => (
+                <div key={c.path}>
+                  {c.displayPath || c.path}
+                  {c.execConfig ? <span className="text-[var(--text-muted)]"> · exec config {c.execConfig}</span> : null}
+                  {c.source === 'env' ? <span className="text-[var(--text-muted)]"> · $KUBECONFIG</span> : null}
+                </div>
+              ))}
+            </div>
+          )}
           {unavailable.length > 0 && (
             <details className="mt-3 text-xs">
               <summary className="cursor-pointer text-[var(--text-muted)] font-mono">
@@ -315,7 +335,7 @@ export function K8sInsights() {
       {!loading && !data && !error && (
         <div className="glass-card p-4 text-sm text-[var(--text-muted)]">
           {selectedCluster
-            ? <>Click <span className="font-mono">Run audit</span> to scan <span className="font-mono text-[var(--text-primary)]">{selectedCluster}</span>.</>
+            ? <>Click <span className="font-mono">Run audit</span> to scan <span className="font-mono text-[var(--text-primary)]">{selectedClusterLabel}</span>.</>
             : 'Select a cluster to begin.'}
         </div>
       )}
@@ -396,6 +416,26 @@ function K8sClusterPicker({
       <div className="text-xs text-[var(--text-muted)] font-mono">No active clusters available.</div>
     );
   }
+  const dss = clusters.filter((c) => c.type !== 'KUBECONFIG');
+  const kubeconfigs = clusters.filter((c) => c.type === 'KUBECONFIG');
+  const renderOption = (c: K8sInsightsClustersResult['clusters'][number]) => {
+    const h = healthById.get(c.id);
+    const cls = h && !h.ok && h.errorClass ? ` · ${HEALTH_LABEL[h.errorClass]}` : '';
+    if (c.type === 'KUBECONFIG') {
+      const path = c.displayPath && c.displayPath !== c.name ? ` · ${c.displayPath}` : '';
+      return (
+        <option key={c.id} value={c.id}>
+          {c.name || c.id}{path}{cls}
+        </option>
+      );
+    }
+    const state = c.state && c.state !== 'NONE' ? ` · ${c.state.toLowerCase()}` : '';
+    return (
+      <option key={c.id} value={c.id}>
+        {c.id}{state}{cls}
+      </option>
+    );
+  };
   return (
     <div className="flex items-center gap-2 text-sm">
       <label className="text-[var(--text-muted)]">Cluster:</label>
@@ -406,16 +446,14 @@ function K8sClusterPicker({
           disabled={disabled}
           className="bg-[var(--bg-elevated)] border border-white/10 rounded-md pl-6 pr-2 py-1 font-mono text-xs disabled:opacity-50 appearance-none"
         >
-          {clusters.map((c) => {
-            const h = healthById.get(c.id);
-            const state = c.state && c.state !== 'NONE' ? ` · ${c.state.toLowerCase()}` : '';
-            const cls = h && !h.ok && h.errorClass ? ` · ${HEALTH_LABEL[h.errorClass]}` : '';
-            return (
-              <option key={c.id} value={c.id}>
-                {c.id}{state}{cls}
-              </option>
-            );
-          })}
+          {dss.length > 0 && kubeconfigs.length > 0 ? (
+            <>
+              <optgroup label="DSS clusters">{dss.map(renderOption)}</optgroup>
+              <optgroup label="Kubeconfigs on host">{kubeconfigs.map(renderOption)}</optgroup>
+            </>
+          ) : (
+            clusters.map(renderOption)
+          )}
         </select>
         {/* Coloured dot overlay — <option> can't be styled per-option cross-browser */}
         <span

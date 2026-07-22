@@ -22,17 +22,28 @@ _LOGGER = logging.getLogger(__name__)
 def api_k8s_insights_cluster_count():
     """Cheap K8s presence signal for module availability gating.
 
-    Pure DSS API (no macro, no kubeconfig probing): counts clusters registered
-    in DSS. `count: null` means "unknown" — the frontend treats unknown as
-    available and never hides a module on it.
+    Pure DSS API (no macro, no host filesystem probing): counts clusters
+    registered in DSS plus containerized-execution configs that declare a
+    custom kubeConfigPath — those are auditable via `kubectl --kubeconfig`
+    even when no cluster is registered. `count: null` means "unknown" — the
+    frontend treats unknown as available and never hides a module on it.
     """
     client = g.client
 
     def _count():
         try:
-            return {'count': len(client.list_clusters() or [])}
+            count = len(client.list_clusters() or [])
         except Exception:
             return {'count': None}
+        try:
+            settings = client.get_general_settings().get_raw()
+            for cfg in ((settings.get('containerSettings') or {}).get('executionConfigs') or []):
+                krc = cfg.get('kubernetesRuntimeConfig') if isinstance(cfg, dict) else None
+                if isinstance(krc, dict) and krc.get('kubeConfigPath'):
+                    count += 1
+        except Exception:
+            pass
+        return {'count': count}
 
     return jsonify(_cache_get('k8s_cluster_count', _BACKEND_SETTINGS['cache_ttl_overview'], _count))
 
@@ -55,7 +66,10 @@ def api_k8s_insights_clusters():
     "Available" means: registered in DSS (so orphan filesystem dirs from
     deleted clusters are dropped) AND currently has a kubeconfig file on the
     host (DSS writes that file when a cluster is "started" and removes it
-    when stopped, so kubeconfig presence ≈ "turned on").
+    when stopped, so kubeconfig presence ≈ "turned on"). Additionally,
+    kubeconfig files discovered on the host (containerized-exec configs with
+    a custom kubeConfigPath, ~/.kube layouts) are appended as audit targets
+    under synthetic `kubeconfig:<path>` ids.
     """
     client = g.client
     try:
@@ -108,6 +122,31 @@ def api_k8s_insights_clusters():
                 'baseDir': fc.get('baseDir'),
                 'dirFiles': fc.get('dirFiles') or [],
             })
+
+    # Kubeconfig-file targets: containerized-exec configs with a custom
+    # kubeConfigPath plus ~/.kube discoveries, already deduped host-side by
+    # the macro against DSS-managed cluster kubeconfigs. Existing files
+    # become first-class picker entries under their synthetic id; declared
+    # -but-missing paths stay in kubeconfigCandidates for the empty state.
+    candidates = data.get('kubeconfigCandidates') or []
+    for cand in candidates:
+        if not cand.get('exists') or not cand.get('id'):
+            continue
+        available.append({
+            'id': cand['id'],
+            'name': cand.get('name') or cand.get('displayPath') or cand['id'],
+            'type': 'KUBECONFIG',
+            'state': None,
+            'architecture': None,
+            'hasKubeconfig': True,
+            'kubeconfig': cand.get('path'),
+            'source': cand.get('source'),
+            'execConfig': cand.get('execConfig'),
+            'displayPath': cand.get('displayPath'),
+            'kubeCtlContext': cand.get('context'),
+            'currentContext': cand.get('currentContext'),
+            'server': cand.get('server'),
+        })
 
     return jsonify({
         **data,

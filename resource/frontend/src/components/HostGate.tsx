@@ -61,6 +61,28 @@ function stepLifecycle(step: StepView): Lifecycle {
   }
 }
 
+// Numeric segment-wise version compare ('0.4.788' vs '0.4.9'): true when a < b.
+// Non-numeric segments compare lexically; unknown/empty versions never count as older.
+function isVersionOlder(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  const as = a.split('.');
+  const bs = b.split('.');
+  for (let i = 0; i < Math.max(as.length, bs.length); i++) {
+    const av = as[i] ?? '0';
+    const bv = bs[i] ?? '0';
+    const an = Number(av);
+    const bn = Number(bv);
+    const cmp = Number.isFinite(an) && Number.isFinite(bn) ? an - bn : av.localeCompare(bv);
+    if (cmp !== 0) return cmp < 0;
+  }
+  return false;
+}
+
+function probedVersion(s: ProbeState): string | undefined {
+  if (s === undefined || s === 'loading' || !s.ok) return undefined;
+  return s.pluginVersion || undefined;
+}
+
 function dotColor(s: ProbeState): string {
   if (s === undefined || s === 'loading') return 'bg-[var(--text-tertiary)]';
   if (!s.ok || s.pluginInstalled === false) return 'bg-[var(--neon-red)]';
@@ -84,8 +106,10 @@ export function HostGate({ onEnter }: HostGateProps) {
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
-  // One-click install flow.
+  // One-click install flow. installUpgrade is set when the dialog was opened
+  // from an "Upgrade" CTA (remote runs an older toolkit than the local host).
   const [installHost, setInstallHost] = useState<DssHost | null>(null);
+  const [installUpgrade, setInstallUpgrade] = useState<{ from?: string; to?: string } | null>(null);
   const [installSteps, setInstallSteps] = useState<Record<InstallStepKey, StepView>>(initialInstallSteps);
   const [installRunning, setInstallRunning] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
@@ -198,8 +222,9 @@ export function HostGate({ onEnter }: HostGateProps) {
     enterHost(host.id);
   }
 
-  function openInstall(host: DssHost) {
+  function openInstall(host: DssHost, upgrade?: { from?: string; to?: string }) {
     setInstallHost(host);
+    setInstallUpgrade(upgrade ?? null);
     setInstallSteps(initialInstallSteps());
     setInstallError(null);
     setInstallReady(false);
@@ -347,6 +372,7 @@ export function HostGate({ onEnter }: HostGateProps) {
 
   const local = hosts.find((h) => h.id === 'local');
   const remotes = hosts.filter((h) => h.id !== 'local');
+  const localVersion = probedVersion(statuses[local?.id ?? 'local']);
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--bg-app)] text-[var(--text-primary)]">
@@ -406,15 +432,21 @@ export function HostGate({ onEnter }: HostGateProps) {
               No remote DSS hosts configured. Add one in <span className="font-mono">Plugins → Admin Toolkit → Define instances of Remote DSS Hosts</span>.
             </div>
           )}
-          {remotes.map((h) => (
-            <HostCard
-              key={h.id}
-              host={h}
-              status={statuses[h.id]}
-              accent="remote"
-              onClick={() => handlePick(h)}
-            />
-          ))}
+          {remotes.map((h) => {
+            const remoteVersion = probedVersion(statuses[h.id]);
+            const upgradable = isVersionOlder(remoteVersion, localVersion);
+            return (
+              <HostCard
+                key={h.id}
+                host={h}
+                status={statuses[h.id]}
+                accent="remote"
+                onClick={() => handlePick(h)}
+                upgradeTo={upgradable ? localVersion : undefined}
+                onUpgrade={upgradable ? () => openInstall(h, { from: remoteVersion, to: localVersion }) : undefined}
+              />
+            );
+          })}
         </div>
       </main>
 
@@ -458,11 +490,25 @@ export function HostGate({ onEnter }: HostGateProps) {
       {installHost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg rounded-lg border border-[var(--border-glass)] bg-[var(--bg-surface)] p-5 shadow-xl">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)]">Install Admin Toolkit on this host</h2>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+              {installUpgrade ? 'Upgrade Admin Toolkit on this host' : 'Install Admin Toolkit on this host'}
+            </h2>
             <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
-              {installHost.label} is reachable but the Admin Toolkit plugin isn't installed. Install it from git
-              (default) or upload the plugin <code className="text-[var(--neon-cyan)]">.zip</code>, then this builds
-              its code env, creates the support project and provisions the agents on that host.
+              {installUpgrade ? (
+                <>
+                  {installHost.label} runs Admin Toolkit{' '}
+                  <span className="font-mono">{installUpgrade.from ? `v${installUpgrade.from}` : 'an older version'}</span>
+                  {installUpgrade.to && <> — older than this host's <span className="font-mono">v{installUpgrade.to}</span></>}.
+                  Update it from git (default) or upload the plugin <code className="text-[var(--neon-cyan)]">.zip</code>;
+                  the code env, support project and agents on that host are re-checked after the update.
+                </>
+              ) : (
+                <>
+                  {installHost.label} is reachable but the Admin Toolkit plugin isn't installed. Install it from git
+                  (default) or upload the plugin <code className="text-[var(--neon-cyan)]">.zip</code>, then this builds
+                  its code env, creates the support project and provisions the agents on that host.
+                </>
+              )}
             </p>
 
             {!installReady && (
@@ -608,6 +654,13 @@ export function HostGate({ onEnter }: HostGateProps) {
               </div>
             )}
 
+            {installReady && installUpgrade && (
+              <div className="mt-3 rounded border border-[var(--border-glass)] bg-[var(--bg-glass)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+                Upgraded. If that host runs its own Admin Toolkit webapp, restart that webapp's backend
+                so it serves the new build — until then it keeps the old one.
+              </div>
+            )}
+
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
@@ -633,7 +686,9 @@ export function HostGate({ onEnter }: HostGateProps) {
                   disabled={installRunning || (installMode === 'upload' && !uploadFile)}
                   className="rounded bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
                 >
-                  {installRunning ? 'Installing…' : installError ? 'Retry' : 'Install'}
+                  {installRunning
+                    ? (installUpgrade ? 'Upgrading…' : 'Installing…')
+                    : installError ? 'Retry' : installUpgrade ? 'Upgrade' : 'Install'}
                 </button>
               )}
             </div>
@@ -649,9 +704,12 @@ interface HostCardProps {
   status: ProbeState;
   accent: 'local' | 'remote';
   onClick: () => void;
+  /** Set when this host runs an older toolkit than the local host — the version to upgrade to. */
+  upgradeTo?: string;
+  onUpgrade?: () => void;
 }
 
-function HostCard({ host, status, accent, onClick }: HostCardProps) {
+function HostCard({ host, status, accent, onClick, upgradeTo, onUpgrade }: HostCardProps) {
   const accentBorder = accent === 'local' ? 'border-[var(--neon-cyan)]/40' : 'border-[var(--border-glass)]';
   const probed = status !== undefined && status !== 'loading';
   const needsInstall = probed && status.ok && status.pluginInstalled === false;
@@ -681,6 +739,21 @@ function HostCard({ host, status, accent, onClick }: HostCardProps) {
             <div className="text-xs text-[var(--text-tertiary)] font-mono break-all leading-snug">{host.url}</div>
           )}
           <div className="text-xs text-[var(--text-secondary)] mt-1">{dotLabel(status)}</div>
+          {upgradeTo && onUpgrade && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); onUpgrade(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onUpgrade(); }
+              }}
+              className="mt-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono
+                        bg-[var(--neon-yellow)]/10 text-[var(--neon-yellow)]
+                        border border-[var(--neon-yellow)]/30 hover:bg-[var(--neon-yellow)]/20 transition-colors"
+            >
+              Upgrade to v{upgradeTo} →
+            </span>
+          )}
         </div>
         <span className="text-xs text-[var(--text-tertiary)] group-hover:text-[var(--neon-cyan)] transition-colors shrink-0">
           {needsInstall ? 'Install →' : needsSetup ? 'Set up →' : reachable ? 'Enter →' : 'Try →'}

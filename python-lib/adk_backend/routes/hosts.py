@@ -291,8 +291,22 @@ def api_hosts_install_toolkit():
         try:
             plugin = remote_client.get_plugin('admin-toolkit')
             settings = plugin.get_settings()
-            if (settings.get_raw() or {}).get('codeEnvName'):
-                yield sse('codeenv', 'done', 'Code env already built')
+            existing_env = (settings.get_raw() or {}).get('codeEnvName')
+            if existing_env:
+                if already_installed:
+                    # Plugin was just UPDATED: requirements may have changed
+                    # between versions, so re-sync the env's packages to its
+                    # spec. Best-effort — a package-sync failure shouldn't
+                    # fail an otherwise-complete upgrade.
+                    yield sse('codeenv', 'active', 'Refreshing code env packages…')
+                    try:
+                        remote_client.get_code_env('PYTHON', existing_env).update_packages()
+                        yield sse('codeenv', 'done', 'Code env packages refreshed: %s' % existing_env)
+                    except Exception as exc:
+                        yield sse('codeenv', 'done',
+                                  'Code env kept (package refresh failed: %s)' % str(exc)[:150])
+                else:
+                    yield sse('codeenv', 'done', 'Code env already built')
             else:
                 # plugin default interpreter; future result carries envName.
                 future = plugin.create_code_env()

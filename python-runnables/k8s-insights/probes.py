@@ -21,7 +21,7 @@ import json
 import os
 import re
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 
 # A `KubectlFn` is a callable that runs a kubectl command. It accepts the args
@@ -350,6 +350,124 @@ def probe_eks_plugin_gpu_driver(dip_home: str) -> Dict[str, Any]:
         'error': None,
         'durationMs': _now_ms() - started,
     }
+
+
+def _parse_kubeconfig_meta(text: str) -> Dict[str, Any]:
+    """Best-effort context/server extraction from a kubeconfig. PyYAML when the
+    kernel env has it; otherwise a line-regex fallback that only trusts the
+    unambiguous top-level keys."""
+    try:
+        import yaml  # type: ignore
+        doc = yaml.safe_load(text) or {}
+        if isinstance(doc, dict):
+            contexts = [
+                c.get('name') for c in (doc.get('contexts') or [])
+                if isinstance(c, dict) and c.get('name')
+            ]
+            server = None
+            clusters = doc.get('clusters') or []
+            if clusters and isinstance(clusters[0], dict):
+                server = (clusters[0].get('cluster') or {}).get('server')
+            return {
+                'contexts': contexts,
+                'currentContext': doc.get('current-context') or None,
+                'server': server or None,
+            }
+    except Exception:
+        pass
+    cur = re.search(r'^current-context:\s*["\']?([^\s"\']+)', text, re.MULTILINE)
+    server = re.search(r'^\s*server:\s*["\']?([^\s"\']+)', text, re.MULTILINE)
+    return {
+        'contexts': [],
+        'currentContext': cur.group(1) if cur else None,
+        'server': server.group(1) if server else None,
+    }
+
+
+def probe_kubeconfig_candidates(dip_home: str) -> Dict[str, Any]:
+    """Discover kubeconfig files usable for direct `kubectl --kubeconfig` audits.
+
+    Sources, in trust order:
+      1. containerized-execution configs in general-settings.json declaring
+         kubernetesRuntimeConfig.kubeConfigPath (+ optional kubeCtlContext)
+      2. $KUBECONFIG of the DSS service user (may be a colon-separated list)
+      3. ~/.kube/config
+      4. ~/.kube/<dir>/config — one level deep, the common multi-cluster layout
+
+    Non-existent declared paths are still returned (exists=False) so the UI can
+    say "declared but missing" instead of silently dropping them.
+    """
+    started = _now_ms()
+    out: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+
+    def add(path: Any, source: str, context: Any = None, exec_config: Any = None) -> None:
+        raw = str(path or '').strip()
+        if not raw:
+            return
+        expanded = os.path.expanduser(raw)
+        real = os.path.realpath(expanded)
+        if real in seen:
+            return
+        # A missing file is only worth reporting when something declared it
+        # (exec config / $KUBECONFIG); an empty default location is just noise.
+        if not os.path.isfile(expanded) and source not in ('exec-config', 'env'):
+            return
+        seen.add(real)
+        entry: Dict[str, Any] = {
+            'path': expanded,
+            'realPath': real,
+            'displayPath': _home_shortened(expanded),
+            'source': source,
+            'execConfig': exec_config or None,
+            'context': str(context).strip() if context else None,
+            'exists': os.path.isfile(expanded),
+            'contexts': [],
+            'currentContext': None,
+            'server': None,
+        }
+        if entry['exists']:
+            text = _read_file(expanded)
+            if text:
+                entry.update(_parse_kubeconfig_meta(text))
+        out.append(entry)
+
+    gs_text = _read_file(os.path.join(dip_home, 'config', 'general-settings.json'), max_bytes=8 * 1024 * 1024)
+    if gs_text:
+        try:
+            full = json.loads(gs_text)
+        except json.JSONDecodeError:
+            full = {}
+        for cfg in ((full.get('containerSettings') or {}).get('executionConfigs') or []):
+            if not isinstance(cfg, dict):
+                continue
+            krc = cfg.get('kubernetesRuntimeConfig') or {}
+            if isinstance(krc, dict) and krc.get('kubeConfigPath'):
+                add(krc.get('kubeConfigPath'), 'exec-config',
+                    context=krc.get('kubeCtlContext'), exec_config=cfg.get('name'))
+
+    for part in (os.environ.get('KUBECONFIG') or '').split(os.pathsep):
+        add(part, 'env')
+
+    home = os.path.expanduser('~')
+    add(os.path.join(home, '.kube', 'config'), 'home')
+    kube_dir = os.path.join(home, '.kube')
+    try:
+        for name in sorted(os.listdir(kube_dir)):
+            sub = os.path.join(kube_dir, name)
+            if os.path.isdir(sub) and os.path.isfile(os.path.join(sub, 'config')):
+                add(os.path.join(sub, 'config'), 'home-dir')
+    except OSError:
+        pass
+
+    return {'ok': True, 'data': out, 'error': None, 'durationMs': _now_ms() - started}
+
+
+def _home_shortened(path: str) -> str:
+    home = os.path.expanduser('~')
+    if home and home != '~' and path.startswith(home + os.sep):
+        return '~' + path[len(home):]
+    return path
 
 
 def probe_clusters_list(dip_home: str) -> Dict[str, Any]:

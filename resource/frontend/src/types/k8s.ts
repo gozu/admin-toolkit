@@ -219,6 +219,21 @@ export interface K8sInsightsScanResult {
   };
 }
 
+export interface K8sKubeconfigCandidate {
+  /** Synthetic cluster id: `kubeconfig:<path>` — flows through the normal clusterId plumbing. */
+  id: string;
+  path: string;
+  displayPath?: string;
+  name?: string;
+  /** 'exec-config' (containerized execution), 'env' ($KUBECONFIG), 'home' (~/.kube/config), 'home-dir' (~/.kube/<dir>/config). */
+  source?: string | null;
+  execConfig?: string | null;
+  context?: string | null;
+  currentContext?: string | null;
+  server?: string | null;
+  exists: boolean;
+}
+
 export interface K8sInsightsClustersResult {
   ok: boolean;
   error?: string | null;
@@ -232,7 +247,15 @@ export interface K8sInsightsClustersResult {
     type?: string | null;
     architecture?: string | null;
     dirFiles?: string[];
+    source?: string | null;
+    execConfig?: string | null;
+    displayPath?: string | null;
+    kubeCtlContext?: string | null;
+    currentContext?: string | null;
+    server?: string | null;
   }>;
+  /** All discovered kubeconfig files, including declared-but-missing ones (exists=false). */
+  kubeconfigCandidates?: K8sKubeconfigCandidate[];
   unavailable?: Array<{
     id: string;
     state?: string | null;

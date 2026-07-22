@@ -7,7 +7,10 @@ Most expensive/lasting savings live here, especially:
 from typing import Any, Dict, List, Optional, Tuple
 
 from finding import Finding  # type: ignore
-from binpack import PodReq, NodeGroup, compute_floor, parse_cpu_milli, parse_mem_mib  # type: ignore
+from binpack import (  # type: ignore
+    PodReq, NodeGroup, compute_floor, downsize_factor, family_downsize_types,
+    parse_cpu_milli, parse_mem_mib,
+)
 from .base import (
     Rule, ProbeBundle, items, pod_namespace, pod_name, pod_node, pod_phase,
     pod_owner_kind, pod_total_requests, node_name, node_instance_type,
@@ -462,6 +465,23 @@ class Rule20GpuNodeIdle(Rule):
         return out
 
 
+# Kubecost-style right-sizing: recommended request = observed usage / target
+# utilization. 0.75 target == +33% headroom over the live sample.
+RIGHTSIZE_TARGET_UTIL = 0.75
+
+
+def _node_capacity(node: Dict[str, Any]) -> Tuple[int, int]:
+    """(cpu_milli, mem_mib) from status.capacity; falls back to allocatable."""
+    cap = ((node or {}).get('status') or {}).get('capacity') or {}
+    cpu = parse_cpu_milli(cap.get('cpu'))
+    mem = parse_mem_mib(cap.get('memory'))
+    if cpu <= 0 or mem <= 0:
+        acpu, amem, _ = node_allocatable(node)
+        cpu = cpu if cpu > 0 else acpu
+        mem = mem if mem > 0 else amem
+    return cpu, mem
+
+
 class Rule21ClusterFloorProjection(Rule):
     id = 'cluster-floor-projection'
     category = 'cost'
@@ -508,6 +528,7 @@ class Rule21ClusterFloorProjection(Rule):
 
         # Only workload nodes feed the bin-pack.
         groups_by_instance: Dict[str, NodeGroup] = {}
+        sample_node_by_instance: Dict[str, Dict[str, Any]] = {}
         workload_count_by_instance: Dict[str, int] = {}
         full_count_by_instance: Dict[str, int] = {}
         for n in nodes:
@@ -521,6 +542,7 @@ class Rule21ClusterFloorProjection(Rule):
             if instance in groups_by_instance:
                 continue
             cpu, mem, gpu = node_allocatable(n)
+            sample_node_by_instance[instance] = n
             groups_by_instance[instance] = NodeGroup(
                 name=instance,
                 instance_type=instance,
@@ -530,33 +552,57 @@ class Rule21ClusterFloorProjection(Rule):
                 labels=node_labels(n),
                 taints=node_taints(n),
             )
-        node_groups = list(groups_by_instance.values())
+
+        # Downsized same-family candidates (priced by _resolve_pricing): the
+        # floor may keep a pool alive on a cheaper shape instead of only
+        # deciding "keep or drop" the shapes that happen to exist today.
+        # Allocatable = capacity * size-ratio - the observed node's fixed
+        # overhead (capacity - allocatable), which under-credits small nodes
+        # slightly — the conservative direction for a savings estimate.
+        group_instance: Dict[str, str] = {g.name: g.instance_type for g in groups_by_instance.values()}
+        node_groups: List[NodeGroup] = list(groups_by_instance.values())
+        for instance, obs in groups_by_instance.items():
+            if obs.gpu_alloc > 0:
+                continue  # GPU counts don't scale linearly with the size token
+            cap_cpu, cap_mem = _node_capacity(sample_node_by_instance[instance])
+            over_cpu = max(0, cap_cpu - obs.cpu_alloc_milli)
+            over_mem = max(0, cap_mem - obs.mem_alloc_mib)
+            for cand in family_downsize_types(instance):
+                if cand not in price_by_type:
+                    continue
+                factor = downsize_factor(instance, cand)
+                if not factor or factor >= 1:
+                    continue
+                alloc_cpu = int(cap_cpu * factor) - over_cpu
+                alloc_mem = int(cap_mem * factor) - over_mem
+                if alloc_cpu <= 0 or alloc_mem <= 0:
+                    continue
+                labels = dict(obs.labels)
+                labels['node.kubernetes.io/instance-type'] = cand
+                labels.pop('beta.kubernetes.io/instance-type', None)
+                name = f'{cand}~{instance}'
+                node_groups.append(NodeGroup(
+                    name=name,
+                    instance_type=cand,
+                    cpu_alloc_milli=alloc_cpu,
+                    mem_alloc_mib=alloc_mem,
+                    gpu_alloc=0,
+                    labels=labels,
+                    taints=list(obs.taints or []),
+                ))
+                group_instance[name] = cand
+
         usage = _build_usage_index(probes)
-        usage_packed = 0
-        unsized_packed = 0
-        pod_reqs: List[PodReq] = []
-        for p in pods:
-            if pod_owner_kind(p) == 'DaemonSet':
-                continue
-            if is_kube_system_ns(pod_namespace(p)):
-                # Treat kube-system as required overhead; bin-pack assumes one of each group hosts them.
-                continue
-            if pod_phase(p) not in ('Running', 'Pending'):
-                continue
-            cpu_req, mem_req, gpu_req = pod_total_requests(p)
-            if cpu_req <= 0 and mem_req <= 0 and gpu_req <= 0:
-                # Zero-request pods (DSS exec configs / API deployments often set
-                # none) still occupy a node. Dropping them lets the floor reach
-                # 0 nodes and the projection claim ~100% of spend. Pack them by
-                # live usage when metrics exist, else at zero size — either way
-                # they keep the floor at >= 1 node.
-                real = usage.get(f'{pod_namespace(p)}/{pod_name(p)}')
-                if real:
-                    cpu_req, mem_req = real
-                    usage_packed += 1
-                else:
-                    unsized_packed += 1
-            pod_reqs.append(PodReq(
+        packable = [
+            p for p in pods
+            if pod_owner_kind(p) != 'DaemonSet'
+            # kube-system is required overhead; bin-pack assumes one of each group hosts it.
+            and not is_kube_system_ns(pod_namespace(p))
+            and pod_phase(p) in ('Running', 'Pending')
+        ]
+
+        def _pod_req(p: Dict[str, Any], cpu_req: int, mem_req: int, gpu_req: int) -> PodReq:
+            return PodReq(
                 name=f'{pod_namespace(p)}/{pod_name(p)}',
                 namespace=pod_namespace(p),
                 cpu_milli=cpu_req,
@@ -564,66 +610,154 @@ class Rule21ClusterFloorProjection(Rule):
                 gpu=gpu_req,
                 node_selector=((p.get('spec') or {}).get('nodeSelector') or {}),
                 tolerations=((p.get('spec') or {}).get('tolerations') or []),
-            ))
-        result = compute_floor(pod_reqs, node_groups, price_by_type)
-        floor_hourly = 0.0
-        floor_breakdown = []
-        for grp, count in result.by_group.items():
-            inst = groups_by_instance[grp].instance_type
-            cost = (price_by_type.get(inst) or 0.0) * count
-            floor_hourly += cost
-            floor_breakdown.append({'instanceType': inst, 'count': count, 'hourly': cost})
+            )
+
+        # -- "requests" sizing (Karpenter-style): declared requests are hard
+        # constraints. Zero-request pods (DSS exec configs / API deployments
+        # often set none) still occupy a node: pack them by live usage when
+        # metrics exist, else at zero size — either way they keep the floor
+        # at >= 1 node instead of letting it reach 0 and claim ~100% savings.
+        req_pods: List[PodReq] = []
+        usage_packed = 0
+        unsized_packed = 0
+        for p in packable:
+            cpu_req, mem_req, gpu_req = pod_total_requests(p)
+            if cpu_req <= 0 and mem_req <= 0 and gpu_req <= 0:
+                real = usage.get(f'{pod_namespace(p)}/{pod_name(p)}')
+                if real:
+                    cpu_req, mem_req = real
+                    usage_packed += 1
+                else:
+                    unsized_packed += 1
+            req_pods.append(_pod_req(p, cpu_req, mem_req, gpu_req))
+
+        # -- "rightsized" sizing (Kubecost-style): every pod with usage
+        # metrics is sized at observed usage / target utilization, treating
+        # requests as adjustable (they are — DSS containerized execution
+        # configs own them). Pods without usage keep declared requests; GPU
+        # requests are never right-sized.
+        rs_pods: List[PodReq] = []
+        rightsized = 0
+        for p in packable:
+            cpu_req, mem_req, gpu_req = pod_total_requests(p)
+            real = usage.get(f'{pod_namespace(p)}/{pod_name(p)}')
+            if real and (real[0] > 0 or real[1] > 0):
+                cpu_req = int(real[0] / RIGHTSIZE_TARGET_UTIL)
+                mem_req = int(real[1] / RIGHTSIZE_TARGET_UTIL)
+                rightsized += 1
+            rs_pods.append(_pod_req(p, cpu_req, mem_req, gpu_req))
+
         current_hourly = sum((price_by_type.get(inst) or 0.0) * cnt for inst, cnt in full_count_by_instance.items())
         workload_current_hourly = sum((price_by_type.get(inst) or 0.0) * cnt for inst, cnt in workload_count_by_instance.items())
-        consolidation_hourly = max(0.0, workload_current_hourly - floor_hourly)
-        total_savings_hourly = idle_hourly + consolidation_hourly
-        if total_savings_hourly <= 0:
-            return []
-
         total_nodes = sum(full_count_by_instance.values())
         workload_nodes = sum(workload_count_by_instance.values())
-        floor_nodes = sum(result.by_group.values())
-        caveats = ''
-        if usage_packed:
-            caveats += (
-                f' {usage_packed} pod(s) declare no resource requests and were packed by '
-                'live usage instead — set real requests to firm up this estimate.'
-            )
-        if unsized_packed:
-            caveats += (
-                f' {unsized_packed} pod(s) have no requests and no usage metrics; they were '
-                'held at zero size, so the floor may be optimistic.'
-            )
-        return [Finding(
-            id=make_id(self.id, 'cluster'),
-            rule=self.id,
-            severity='high',
-            category='cost',
-            title=f'Cluster floor: ~${total_savings_hourly:.2f}/hr (${total_savings_hourly*730:.0f}/mo) savings via idle reclaim + bin-pack',
-            summary=(
+        headroom_pct = int(round((1.0 / RIGHTSIZE_TARGET_UTIL - 1.0) * 100))
+
+        def _project(mode: str, pod_reqs: List[PodReq]) -> Dict[str, Any]:
+            result = compute_floor(pod_reqs, node_groups, price_by_type)
+            floor_hourly = 0.0
+            by_instance: Dict[str, int] = {}
+            for grp, count in result.by_group.items():
+                if count <= 0:
+                    continue
+                inst = group_instance.get(grp, grp)
+                by_instance[inst] = by_instance.get(inst, 0) + count
+                floor_hourly += (price_by_type.get(inst) or 0.0) * count
+            floor_breakdown = [
+                {'instanceType': inst, 'count': cnt, 'hourly': (price_by_type.get(inst) or 0.0) * cnt}
+                for inst, cnt in by_instance.items()
+            ]
+            consolidation_hourly = max(0.0, workload_current_hourly - floor_hourly)
+            total_savings_hourly = idle_hourly + consolidation_hourly
+            floor_nodes = sum(by_instance.values())
+
+            caveats = ''
+            if mode == 'rightsized':
+                if rightsized:
+                    caveats += (
+                        f' {rightsized} pod(s) were sized from live usage +{headroom_pct}% headroom; '
+                        f'{len(pod_reqs) - rightsized} had no usage metrics and kept their declared requests.'
+                    )
+            elif usage_packed:
+                caveats += (
+                    f' {usage_packed} pod(s) declare no resource requests and were packed by '
+                    'live usage instead — set real requests to firm up this estimate.'
+                )
+            if unsized_packed:
+                caveats += (
+                    f' {unsized_packed} pod(s) have no requests and no usage metrics; they were '
+                    'held at zero size, so the floor may be optimistic.'
+                )
+
+            if mode == 'rightsized':
+                title = (
+                    f'Cluster floor: ~${total_savings_hourly:.2f}/hr (${total_savings_hourly*730:.0f}/mo) '
+                    'savings via idle reclaim + right-sized bin-pack'
+                )
+                pack_clause = (
+                    f'bin-pack to {floor_nodes} node(s) (~${floor_hourly:.2f}/hr) once pod requests are '
+                    f'right-sized to observed usage +{headroom_pct}% headroom (Kubecost-style; requests are '
+                    'adjustable in containerized execution configs).'
+                )
+            else:
+                title = (
+                    f'Cluster floor: ~${total_savings_hourly:.2f}/hr (${total_savings_hourly*730:.0f}/mo) '
+                    'savings via idle reclaim + bin-pack (requests honored)'
+                )
+                pack_clause = (
+                    f'bin-pack to {floor_nodes} node(s) (~${floor_hourly:.2f}/hr) with declared pod requests '
+                    'honored as-is (Karpenter-style — no workload config changes).'
+                )
+            summary = (
                 f'Current spend ~${current_hourly:.2f}/hr across {total_nodes} nodes. '
                 f'{len(idle_node_names)} idle/empty node(s) (~${idle_hourly:.2f}/hr) are reclaimable '
-                f'outright; the remaining {workload_nodes} workload node(s) bin-pack to '
-                f'{floor_nodes} node(s) (~${floor_hourly:.2f}/hr).'
+                f'outright; the remaining {workload_nodes} workload node(s) {pack_clause}'
                 + caveats
-            ),
-            evidence={
-                'currentHourly': round(current_hourly, 3),
-                'currentMonthly': round(current_hourly * 730, 2),
+            )
+            return {
+                'title': title,
+                'summary': summary,
                 'floorHourly': round(floor_hourly, 3),
                 'floorMonthly': round(floor_hourly * 730, 2),
                 'savingsHourly': round(total_savings_hourly, 3),
                 'savingsMonthly': round(total_savings_hourly * 730, 2),
                 'consolidationSavingsMonthly': round(consolidation_hourly * 730, 2),
                 'idleNodeSavingsMonthly': round(idle_hourly * 730, 2),
-                'idleNodeCount': len(idle_node_names),
-                'currentByInstance': full_count_by_instance,
                 'floorBreakdown': floor_breakdown,
                 'unplaceablePods': result.unplaceable[:20],
-                'podsPackedByUsage': usage_packed,
+                'podsPackedByUsage': usage_packed if mode == 'requests' else None,
+                'podsRightsized': rightsized if mode == 'rightsized' else None,
                 'podsWithoutRequestsOrUsage': unsized_packed,
-            },
-            cost_impact_per_month=round(total_savings_hourly * 730, 2),
+            }
+
+        projections = {
+            'rightsized': _project('rightsized', rs_pods),
+            'requests': _project('requests', req_pods),
+        }
+        default = projections['rightsized']
+        if max(p['savingsHourly'] for p in projections.values()) <= 0:
+            return []
+
+        evidence: Dict[str, Any] = {
+            'currentHourly': round(current_hourly, 3),
+            'currentMonthly': round(current_hourly * 730, 2),
+            'idleNodeCount': len(idle_node_names),
+            'currentByInstance': full_count_by_instance,
+            'projections': projections,
+            'defaultProjection': 'rightsized',
+        }
+        # Top-level scalars mirror the default projection so older frontends
+        # (and the overview card fallback) keep reading the same keys.
+        evidence.update({k: v for k, v in default.items() if k not in ('title', 'summary')})
+        return [Finding(
+            id=make_id(self.id, 'cluster'),
+            rule=self.id,
+            severity='high',
+            category='cost',
+            title=default['title'],
+            summary=default['summary'],
+            evidence=evidence,
+            cost_impact_per_month=default['savingsMonthly'],
             remediation=[
                 doc_link_remediation(
                     'Action plan: address the per-pod overrequest findings, then cordon empty nodes',

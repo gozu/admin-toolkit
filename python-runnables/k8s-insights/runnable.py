@@ -322,6 +322,19 @@ def _resolve_pricing(probes: Dict[str, Dict[str, Any]], dip_home: str) -> Dict[s
             'ok': False, 'source': exc.source, 'region': region,
             'priceByType': {}, 'error': exc.reason, 'fetchedAt': started,
         }
+    # Also price smaller same-family sizes so the floor projection can propose
+    # cheaper node shapes (Karpenter-style catalog), not just fewer of the
+    # current ones. Best-effort — a coverage gap skips the candidate, never
+    # fails the audit.
+    from binpack import family_downsize_types  # noqa: E402  # staged sibling module
+    for it in instance_types:
+        for cand in family_downsize_types(it):
+            if cand in price_by_type:
+                continue
+            try:
+                price_by_type[cand] = get_on_demand_usd_per_hour(cand, region, dip_home=dip_home)
+            except PricingSourceError:
+                continue
     return {
         'ok': True, 'source': PRICING_SOURCE_NAME, 'region': region,
         'priceByType': price_by_type, 'error': None, 'fetchedAt': started,

@@ -54,6 +54,53 @@ function severityChip(s: K8sSeverity) {
   );
 }
 
+// The floor finding ships two savings projections; the toggle only swaps which
+// one is displayed — both are computed server-side in the same audit.
+type FloorMode = 'rightsized' | 'requests';
+
+const FLOOR_MODE_META: Record<FloorMode, { label: string; blurb: string }> = {
+  rightsized: {
+    label: 'Right-sized',
+    blurb:
+      'Kubecost-style: pods sized at observed usage +33% headroom — assumes you trim over-sized requests in containerized execution configs.',
+  },
+  requests: {
+    label: 'As requested',
+    blurb:
+      'Karpenter-style: declared pod requests are hard constraints — savings achievable without touching any workload config.',
+  },
+};
+
+interface FloorProjection {
+  title?: string;
+  summary?: string;
+  savingsMonthly?: number;
+  [key: string]: unknown;
+}
+
+function floorProjections(f: K8sFinding | undefined): Partial<Record<FloorMode, FloorProjection>> | null {
+  const p = (f?.evidence as { projections?: unknown } | undefined)?.projections;
+  return p && typeof p === 'object' ? (p as Partial<Record<FloorMode, FloorProjection>>) : null;
+}
+
+// Rewrites the floor finding to the selected projection (title, summary, $/mo,
+// evidence scalars). Old macros without `projections` pass through untouched.
+function projectFloorFinding(f: K8sFinding, mode: FloorMode): K8sFinding {
+  const proj = floorProjections(f)?.[mode];
+  if (!proj) return f;
+  const rest: Record<string, unknown> = { ...(f.evidence as Record<string, unknown>) };
+  delete rest.projections;
+  delete rest.defaultProjection;
+  const { title, summary, ...fields } = proj;
+  return {
+    ...f,
+    title: typeof title === 'string' ? title : f.title,
+    summary: typeof summary === 'string' ? summary : f.summary,
+    costImpactPerMonth: typeof proj.savingsMonthly === 'number' ? proj.savingsMonthly : f.costImpactPerMonth,
+    evidence: { ...rest, ...fields },
+  };
+}
+
 function formatUsd(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—';
   if (value < 1) return `$${value.toFixed(2)}`;
@@ -115,6 +162,7 @@ export function K8sInsights() {
   const [clusterError, setClusterError] = useState<string | null>(null);
   const [selectedCluster, setSelectedCluster] = useState<string>('');
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null);
+  const [floorMode, setFloorMode] = useState<FloorMode>('rightsized');
 
   useEffect(() => {
     let cancelled = false;
@@ -200,7 +248,17 @@ export function K8sInsights() {
     k8sInsightsScan.abort();
   };
 
-  const findings = useMemo<K8sFinding[]>(() => data?.findings || [], [data?.findings]);
+  const findings = useMemo<K8sFinding[]>(
+    () =>
+      (data?.findings || []).map((f) =>
+        f.rule === 'cluster-floor-projection' ? projectFloorFinding(f, floorMode) : f,
+      ),
+    [data?.findings, floorMode],
+  );
+  const floorSwitchable = useMemo(
+    () => floorProjections((data?.findings || []).find((f) => f.rule === 'cluster-floor-projection')) != null,
+    [data?.findings],
+  );
   const groupedFindings = useMemo(() => {
     const groups = new Map<K8sSeverity, K8sFinding[]>();
     for (const s of SEVERITY_ORDER) groups.set(s, []);
@@ -344,7 +402,12 @@ export function K8sInsights() {
         <>
           <K8sProbeDiagBanner cluster={data.cluster} probes={data.probes || {}} />
           <K8sPricingStatusBanner status={data.pricingStatus} />
-          <K8sOverviewCard data={data} />
+          <K8sOverviewCard
+            data={data}
+            findings={findings}
+            floorMode={floorMode}
+            onFloorModeChange={floorSwitchable ? setFloorMode : undefined}
+          />
           <K8sNodeTable nodes={data.nodeBreakdown || []} clusterId={data.cluster?.id || ''} />
           <K8sFindingsList
             grouped={groupedFindings}
@@ -474,10 +537,20 @@ function K8sSavingsRow({ label, value }: { label: string; value: number }) {
   );
 }
 
-function K8sOverviewCard({ data }: { data: NonNullable<ReturnType<typeof k8sInsightsScan.use>['data']> }) {
+function K8sOverviewCard({
+  data,
+  findings,
+  floorMode,
+  onFloorModeChange,
+}: {
+  data: NonNullable<ReturnType<typeof k8sInsightsScan.use>['data']>;
+  findings: K8sFinding[];
+  floorMode: FloorMode;
+  onFloorModeChange?: (mode: FloorMode) => void;
+}) {
   const cost = data.costSnapshot || { currentHourly: null, currentMonthly: null, nodes: [] };
   const pricingOk = data.pricingStatus?.ok !== false;
-  const floorFinding = (data.findings || []).find((f) => f.rule === 'cluster-floor-projection');
+  const floorFinding = findings.find((f) => f.rule === 'cluster-floor-projection');
   // The backend floor rule now splits its savings into workload consolidation vs
   // idle/empty-node reclaim and emits both as evidence; the frontend just reads them.
   const ev = (floorFinding?.evidence ?? {}) as {
@@ -489,7 +562,7 @@ function K8sOverviewCard({ data }: { data: NonNullable<ReturnType<typeof k8sInsi
   // Idle GPU pods hold a GPU node the bin-pack floor must keep (the pod requests a
   // GPU), so their recoverable savings are additive. De-dup per node.
   const gpuWasteByNode = new Map<string, number>();
-  for (const f of data.findings || []) {
+  for (const f of findings) {
     if (f.rule !== 'gpu-pod-not-using-gpu' || (f.costImpactPerMonth ?? 0) <= 0) continue;
     const node = (f.evidence as { node?: string }).node || f.id;
     gpuWasteByNode.set(node, Math.max(gpuWasteByNode.get(node) ?? 0, f.costImpactPerMonth!));
@@ -536,11 +609,40 @@ function K8sOverviewCard({ data }: { data: NonNullable<ReturnType<typeof k8sInsi
           </div>
         )}
       </div>
-      {pricingOk && savingsMonthly != null && savingsMonthly > 0 && (
+      {pricingOk && ((savingsMonthly != null && savingsMonthly > 0) || (floorFinding != null && onFloorModeChange != null)) && (
         <div className="mt-4 pt-3 border-t border-white/10">
-          <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider mb-2">
-            Potential savings
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider">
+              Potential savings
+            </div>
+            {onFloorModeChange && (
+              <div
+                className="inline-flex rounded border border-white/10 overflow-hidden text-[11px] font-mono"
+                role="group"
+                aria-label="Savings estimate mode"
+              >
+                {(['rightsized', 'requests'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => onFloorModeChange(m)}
+                    className={`px-2 py-0.5 transition-colors ${
+                      floorMode === m
+                        ? 'bg-white/15 text-[var(--text-primary)]'
+                        : 'bg-white/[0.03] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/10'
+                    }`}
+                  >
+                    {FLOOR_MODE_META[m].label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+          {onFloorModeChange && (
+            <div className="text-[11px] text-[var(--text-muted)] mb-2 max-w-xl">
+              {FLOOR_MODE_META[floorMode].blurb}
+            </div>
+          )}
           <div className="space-y-1 max-w-xs font-mono text-sm">
             {consolidation > 0 && (
               <K8sSavingsRow label="Consolidate nodes (bin-pack)" value={consolidation} />
@@ -549,7 +651,7 @@ function K8sOverviewCard({ data }: { data: NonNullable<ReturnType<typeof k8sInsi
             {gpuWaste > 0 && <K8sSavingsRow label="Free GPU from idle pods" value={gpuWaste} />}
             <div className="flex justify-between border-t border-white/10 pt-1 mt-1 text-green-300">
               <span>Total</span>
-              <span>{formatUsd(savingsMonthly)}/mo</span>
+              <span>{formatUsd(savingsMonthly ?? 0)}/mo</span>
             </div>
           </div>
         </div>

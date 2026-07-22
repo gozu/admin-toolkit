@@ -9,7 +9,65 @@ any node group at all (oversized) are returned in `unplaceable`, so the rule
 can surface them honestly rather than under-reporting the floor.
 """
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
+
+
+# vCPU units per size token — used only for *ratios* within one family, so the
+# family's absolute vCPU baseline is irrelevant. Sizes with non-linear memory
+# scaling (burstable t*) are excluded at the family level in
+# `family_downsize_types`.
+_SIZE_UNITS = {'medium': 1, 'large': 2, 'xlarge': 4}
+_DOWNSIZE_LADDER = ('large', 'xlarge', '2xlarge', '4xlarge', '8xlarge', '12xlarge', '16xlarge', '24xlarge')
+
+
+def _size_units(size: str) -> Optional[int]:
+    if size in _SIZE_UNITS:
+        return _SIZE_UNITS[size]
+    if size.endswith('xlarge'):
+        prefix = size[:-len('xlarge')]
+        if not prefix:
+            return 4
+        try:
+            return 4 * int(prefix)
+        except ValueError:
+            return None
+    return None
+
+
+def family_downsize_types(instance_type: str) -> List[str]:
+    """Smaller same-family EC2 sizes for `instance_type`, largest first.
+
+    Only families where CPU *and* memory scale linearly with the size token
+    qualify — burstable `t*` families don't (vCPU stays flat while memory
+    doubles), so they return []. Unknown size tokens (metal, odd suffixes)
+    also return [].
+    """
+    if '.' not in (instance_type or ''):
+        return []
+    family, size = instance_type.split('.', 1)
+    if not family or family.startswith('t'):
+        return []
+    units = _size_units(size)
+    if units is None:
+        return []
+    out = [f'{family}.{cand}' for cand in _DOWNSIZE_LADDER
+           if (_size_units(cand) or 0) < units]
+    out.reverse()  # largest candidate first
+    return out
+
+
+def downsize_factor(observed_type: str, candidate_type: str) -> Optional[float]:
+    """Resource ratio candidate/observed within a family (e.g. 2xlarge->large = 0.25)."""
+    try:
+        _, obs_size = observed_type.split('.', 1)
+        _, cand_size = candidate_type.split('.', 1)
+    except ValueError:
+        return None
+    obs_units = _size_units(obs_size)
+    cand_units = _size_units(cand_size)
+    if not obs_units or not cand_units:
+        return None
+    return cand_units / obs_units
 
 
 @dataclass

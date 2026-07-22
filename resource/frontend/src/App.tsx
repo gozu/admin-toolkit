@@ -73,25 +73,30 @@ function AppContent() {
     return () => window.removeEventListener('admin-toolkit:macro-project-missing', onMacroProjectMissing);
   }, [liveMode]);
 
-  // Encrypted remote-host keys: reconcile with the cookie on boot, and pop the
-  // unlock modal when a request comes back 409 remote-keys-locked.
-  const [showHostKeyUnlock, setShowHostKeyUnlock] = useState(false);
+  // Encrypted remote-host keys: reconcile with the cookie on boot. Modal
+  // visibility is derived from the store (api.ts marks it locked on 409
+  // remote-keys-locked, unlockAll marks it unlocked) plus one local bit:
+  // "dismissed", scoped to a single locked episode so any re-lock (forget on
+  // this device, expired cookie) re-arms the prompt.
   const { configured: hostKeyConfigured, unlocked: hostKeyUnlocked } = useHostKeyState();
+  const hostKeyLocked = liveMode && hostKeyConfigured && !hostKeyUnlocked;
+  const [hostKeyDismissed, setHostKeyDismissed] = useState(false);
+  const [prevHostKeyLocked, setPrevHostKeyLocked] = useState(hostKeyLocked);
+  if (hostKeyLocked !== prevHostKeyLocked) {
+    setPrevHostKeyLocked(hostKeyLocked);
+    if (hostKeyLocked) setHostKeyDismissed(false);
+  }
+  const showHostKeyUnlock = hostKeyLocked && !hostKeyDismissed;
   useEffect(() => {
     if (liveMode) hydrateHostKeyStatus();
   }, [liveMode]);
   useEffect(() => {
-    if (liveMode && hostKeyConfigured && !hostKeyUnlocked) setShowHostKeyUnlock(true);
-  }, [liveMode, hostKeyConfigured, hostKeyUnlocked]);
-  useEffect(() => {
-    const onLocked = () => {
-      if (liveMode) setShowHostKeyUnlock(true);
-    };
+    // A request 409'd while already locked and dismissed: re-open the modal.
+    const onLocked = () => setHostKeyDismissed(false);
     window.addEventListener('admin-toolkit:remote-keys-locked', onLocked);
     return () => window.removeEventListener('admin-toolkit:remote-keys-locked', onLocked);
-  }, [liveMode]);
+  }, []);
   const handleHostKeyUnlocked = useCallback(() => {
-    setShowHostKeyUnlock(false);
     bumpSessionEpoch();
     setReloadKey((k) => k + 1);
   }, []);
@@ -274,7 +279,7 @@ function AppContent() {
           locked. One password also unlocks the advanced action pages. */}
       <UnlockModal
         isOpen={showHostKeyUnlock}
-        onClose={() => setShowHostKeyUnlock(false)}
+        onClose={() => setHostKeyDismissed(true)}
         onUnlocked={handleHostKeyUnlocked}
       />
     </>

@@ -42,4 +42,3 @@ export { DirTreeSection } from './DirTreeSection';
 export { ApiDirTreeSection } from './ApiDirTreeSection';
 export { DebugPanel } from './DebugPanel';
 export { CommandPalette } from './CommandPalette';
-export { ContainerExecs } from './ContainerExecs';

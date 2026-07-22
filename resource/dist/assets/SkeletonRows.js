@@ -1,0 +1,1 @@
+import{ct as e,dt as t}from"./index.js";var n=t(e(),1),r=[`60%`,`40%`,`75%`];function i({rows:e=3,cols:t}){return(0,n.jsx)(n.Fragment,{children:Array.from({length:e},(e,i)=>(0,n.jsx)(`tr`,{"aria-hidden":`true`,children:Array.from({length:t},(e,t)=>(0,n.jsx)(`td`,{children:(0,n.jsx)(`div`,{className:`skeleton-bar`,style:{width:r[t%r.length]}})},t))},i))})}export{i as t};

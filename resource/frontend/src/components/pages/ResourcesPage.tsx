@@ -12,8 +12,8 @@ import {
 } from '../../state/resourceSamples';
 
 /** Merged Memory + CPU page. One SSE stream per host feeds the utilization
- * strip, doughnuts and process table: 1s /proc ticks locally, 15s/60s macro
- * ticks on remote hosts (server-driven). */
+ * strip, doughnuts and process table: 1s /proc ticks locally; macro ticks on
+ * remote hosts at the user-picked period (default 1s, Live usage header). */
 export function ResourcesPage() {
   const { state } = useDiag();
   const { parsedData } = state;

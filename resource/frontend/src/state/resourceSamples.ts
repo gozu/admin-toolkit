@@ -10,9 +10,11 @@ import type { MemoryInfo } from '../types';
 // Live resource sampling for the Resources page: one long-lived SSE
 // connection to /api/host/resource-stream for EVERY host. The server pushes
 // `sample` (raw cumulative counters — diffed client-side into CPU%/MEM%) and
-// `processes` (per-PID snapshot) frames. The cadence is server-driven: 1s
-// /proc reads locally, 15s/60s macro runs on remote hosts (each remote
-// sample is a DSS macro job — the interval constants here are display-only).
+// `processes` (per-PID snapshot) frames. The cadence is server-driven: local
+// is a fixed 1s /proc read; remote hosts default to 1s too but each remote
+// sample is a DSS macro job, so the period is user-configurable (persisted,
+// sent as ?period= — the Live usage header owns the picker). The `ps`
+// snapshot stays on its own ~60s server-side cadence either way.
 // Samples stay in this store; parsedData.memoryInfo remains the one-shot
 // diagnostic snapshot used by configuration analysis and reports.
 // ─────────────────────────────────────────────────────────────────────────
@@ -59,21 +61,37 @@ export interface ResourceSamplesState {
   status: ResourcePollStatus;
   samples: ResourceSample[];
   intervalMs: number;
+  /** Active host is remote → the period picker applies (local is pinned at 1s). */
+  remote: boolean;
   error: string | null;
 }
 
 // 120 intervals + the seed sample = 2 min of history at the 1s stream cadence.
 export const MAX_SAMPLE_SLOTS = 121;
-// Server-side stream ticks (display only — the server drives the cadence).
 const LOCAL_STREAM_MS = 1_000;
-const REMOTE_STREAM_MS = 15_000;
 const MAX_STREAM_RETRIES = 2;
 const STREAM_RETRY_DELAY_MS = 2_000;
+
+// Remote sampling period (each remote tick = a macro job on the target host).
+export const REMOTE_PERIOD_OPTIONS_S: number[] = [1, 2, 5, 15, 30, 60];
+const REMOTE_PERIOD_DEFAULT_S = 1;
+const REMOTE_PERIOD_KEY = 'admin-toolkit:resourceStreamPeriodS';
+
+export function getRemoteStreamPeriodS(): number {
+  try {
+    const raw = Number(localStorage.getItem(REMOTE_PERIOD_KEY));
+    if (REMOTE_PERIOD_OPTIONS_S.includes(raw)) return raw;
+  } catch {
+    /* storage unavailable — fall through to default */
+  }
+  return REMOTE_PERIOD_DEFAULT_S;
+}
 
 const INITIAL_STATE: ResourceSamplesState = {
   status: 'idle',
   samples: [],
   intervalMs: LOCAL_STREAM_MS,
+  remote: false,
   error: null,
 };
 
@@ -164,8 +182,12 @@ function giveUp(err: unknown): void {
 async function runStream(chainId: number): Promise<void> {
   const controller = new AbortController();
   _streamAbort = controller;
+  const path =
+    getActiveHostId() === 'local'
+      ? '/api/host/resource-stream'
+      : `/api/host/resource-stream?period=${getRemoteStreamPeriodS()}`;
   try {
-    for await (const frame of fetchSse('/api/host/resource-stream', {
+    for await (const frame of fetchSse(path, {
       signal: controller.signal,
     })) {
       if (!_active || chainId !== _chain) return;
@@ -200,9 +222,11 @@ export function startResourcePolling(): void {
   if (_active) return;
   _active = true;
   _streamRetries = 0;
+  const remote = getActiveHostId() !== 'local';
   resourceSamplesStore.patch({
     status: 'polling',
-    intervalMs: getActiveHostId() === 'local' ? LOCAL_STREAM_MS : REMOTE_STREAM_MS,
+    intervalMs: remote ? getRemoteStreamPeriodS() * 1000 : LOCAL_STREAM_MS,
+    remote,
     error: null,
   });
   if (!_visibilityHooked) {
@@ -210,6 +234,27 @@ export function startResourcePolling(): void {
     document.addEventListener('visibilitychange', handleVisibility);
   }
   void runStream(++_chain);
+}
+
+/** Change the remote sampling period (the Live usage header picker). Persists
+ * the choice and, when a remote stream is live, kills the current connection
+ * and reopens it so the server picks up the new cadence immediately. Existing
+ * samples are kept — the window label self-heals as new ticks slide in. */
+export function setRemoteStreamPeriodS(seconds: number): void {
+  if (!REMOTE_PERIOD_OPTIONS_S.includes(seconds)) return;
+  try {
+    localStorage.setItem(REMOTE_PERIOD_KEY, String(seconds));
+  } catch {
+    /* storage unavailable — the pick still applies for this session */
+  }
+  if (getActiveHostId() === 'local') return;
+  resourceSamplesStore.patch({ intervalMs: seconds * 1000 });
+  if (_active && !document.hidden) {
+    clearTimer();
+    abortStream();
+    _streamRetries = 0;
+    void runStream(++_chain);
+  }
 }
 
 export function stopResourcePolling(): void {

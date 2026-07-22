@@ -11,8 +11,8 @@ import { getProcessMetrics, subscribeProcessMetrics } from '../../state/processM
  * "as of HH:MM:SS" label always shows the last successful update (never
  * blanks while a refresh is in flight — updates land in place every second),
  * and the single button is a whole-page Stop/Start toggle for the sampler
- * (stream on local, poll chain on remote). Same span/button styling as
- * RefreshControl so the two controls read as one family.
+ * stream. Same span/button styling as RefreshControl so the two controls
+ * read as one family.
  */
 function formatClock(epochMs: number): string {
   return new Date(epochMs).toLocaleTimeString([], { hour12: false });

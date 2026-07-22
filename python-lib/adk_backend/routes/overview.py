@@ -222,10 +222,14 @@ def api_resource_sample():
         return jsonify({'ok': False, 'error': f"{type(e).__name__}: {e}"})
 
 
-# Remote stream cadences — each remote sample is a DSS macro job, so these
-# mirror the retired poll chain (15s sample / 60s `ps`), not the local 1s tick.
-_REMOTE_STREAM_PERIOD_S = 15
-_REMOTE_HEAVY_EVERY = 4
+# Remote stream cadence — each remote sample is a DSS macro job. Defaults to
+# the same 1s tick as local; ?period= (clamped) lets the Resources page dial it
+# back. The `ps` snapshot keeps its own ~60s cadence regardless of period —
+# it's a second macro run per tick and its table doesn't need sub-minute churn.
+_REMOTE_PERIOD_DEFAULT_S = 1
+_REMOTE_PERIOD_MIN_S = 1
+_REMOTE_PERIOD_MAX_S = 600
+_REMOTE_HEAVY_PERIOD_S = 60
 
 
 @bp.route('/api/host/resource-stream')
@@ -239,11 +243,12 @@ def api_resource_stream():
 
     LOCAL host: 1s ticks reading /proc in-process; processes from
     /proc/<pid>/stat tick deltas (no `ps`, no macro run, no g.client).
-    REMOTE host: 15s ticks via the resource-sample macro, `ps` via the
-    process-metrics macro every 4th tick (skipping the first — the page runs
-    its own initial scan, which also carries the 409 macro-project-missing
-    bootstrap flow). Any macro failure mid-stream degrades to an {ok:false}
-    sample frame — headers are already sent, so no error status is possible.
+    REMOTE host: ?period= ticks (default 1s, clamped) via the resource-sample
+    macro, `ps` via the process-metrics macro on a ~60s cadence (skipping the
+    first tick — the page runs its own initial scan, which also carries the
+    409 macro-project-missing bootstrap flow). Any macro failure mid-stream
+    degrades to an {ok:false} sample frame — headers are already sent, so no
+    error status is possible.
     """
     if _safe_request_host_id() == 'local':
         def generate():
@@ -270,6 +275,13 @@ def api_resource_stream():
             except GeneratorExit:
                 return
     else:
+        period = min(
+            _REMOTE_PERIOD_MAX_S,
+            max(_REMOTE_PERIOD_MIN_S,
+                _coerce_int(request.args.get('period'), _REMOTE_PERIOD_DEFAULT_S)),
+        )
+        heavy_every = max(1, round(_REMOTE_HEAVY_PERIOD_S / period))
+
         def generate():
             tick = 0
             try:
@@ -281,7 +293,7 @@ def api_resource_stream():
                     yield "event: sample\ndata: %s\n\n" % json.dumps(sample)
                     if not sample.get('ok'):
                         return
-                    if tick > 0 and tick % _REMOTE_HEAVY_EVERY == 0:
+                    if tick > 0 and tick % heavy_every == 0:
                         try:
                             payload = _process_metrics_macro(g.client)
                         except Exception:
@@ -289,7 +301,7 @@ def api_resource_stream():
                         if isinstance(payload, dict) and payload.get('ok'):
                             yield "event: processes\ndata: %s\n\n" % json.dumps(payload)
                     tick += 1
-                    time.sleep(_REMOTE_STREAM_PERIOD_S)
+                    time.sleep(period)
             except GeneratorExit:
                 return
 

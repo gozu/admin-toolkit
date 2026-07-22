@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
 import {
   MAX_SAMPLE_SLOTS,
+  REMOTE_PERIOD_OPTIONS_S,
   computeResourceSeries,
   resourceSamplesStore,
+  setRemoteStreamPeriodS,
 } from '../../state/resourceSamples';
 
 // Live CPU/MEM utilization strip — pure SVG (modeled on the Mission Control
@@ -32,7 +34,7 @@ function fmtClock(ts: number): string {
 }
 
 export function LiveResourceChart() {
-  const { status, samples, intervalMs } = resourceSamplesStore.use();
+  const { status, samples, intervalMs, remote } = resourceSamplesStore.use();
   const points = useMemo(() => computeResourceSeries(samples), [samples]);
   const n = points.length;
   const last = n > 0 ? points[n - 1] : null;
@@ -97,11 +99,32 @@ export function LiveResourceChart() {
                   : 'animate-pulse bg-[var(--neon-green)]'
             }`}
           />
-          {status === 'paused'
-            ? 'paused — tab in background'
-            : status === 'idle'
-              ? 'stopped'
-              : `streaming · ${Math.round(intervalMs / 1000)}s · ${windowMinutes} min window`}
+          {status === 'paused' ? (
+            'paused — tab in background'
+          ) : status === 'idle' ? (
+            'stopped'
+          ) : remote ? (
+            // Remote cadence is a real cost knob (every tick = a macro job on
+            // the target host), so the period is editable right here.
+            <span className="flex items-center gap-1">
+              {'streaming ·'}
+              <select
+                value={Math.round(intervalMs / 1000)}
+                onChange={(e) => setRemoteStreamPeriodS(Number(e.target.value))}
+                title="Sampling period — each remote sample runs a macro job on the target host"
+                className="cursor-pointer rounded border border-transparent bg-transparent font-mono text-[11px] text-[var(--text-secondary)] hover:border-[var(--border-default)] hover:text-[var(--text-primary)]"
+              >
+                {REMOTE_PERIOD_OPTIONS_S.map((s) => (
+                  <option key={s} value={s} className="bg-[var(--bg-elevated)]">
+                    {s}s
+                  </option>
+                ))}
+              </select>
+              {`· ${windowMinutes} min window`}
+            </span>
+          ) : (
+            `streaming · ${Math.round(intervalMs / 1000)}s · ${windowMinutes} min window`
+          )}
         </span>
       </div>
 

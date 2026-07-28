@@ -214,3 +214,146 @@ def test_aged_entry_young_content_protects_dir(tmp_path):
     fresh.write_bytes(b'live')
     ok, reason = fs_paths.is_deletable_aged_entry(full, str(tmp_path), 'joblogs', 15)
     assert not ok and 'too-young' in reason
+
+
+# ── orphan projects ─────────────────────────────────────────────────────────
+#
+# Live shape verified on akaos: DSS reports PLEASE and YEA (dead projects with
+# a jupyter-run/dku-workdirs/ leftover) alongside `uploads`, which is NOT a
+# project at all — it is managed_datasets/uploads, a shared bucket whose
+# children are named after LIVE projects. The children test below is the one
+# that stops us destroying that.
+
+LIVE = frozenset({'SOL_DEMAND_FORECAST', 'QS_DATA_PREP_1', 'ALIVE'})
+
+
+def _mk_orphan(tmp_path, rel, children=(), size=512):
+    """A <area root>/<KEY> directory with optional named children."""
+    full = tmp_path / rel
+    full.mkdir(parents=True)
+    (full / 'payload.bin').write_bytes(b'x' * size)
+    for child in children:
+        (full / child).mkdir()
+    return str(full)
+
+
+def test_orphan_unknown_area_refused(tmp_path):
+    """config/projects/<KEY> is a ProjectList to DSS too, so an orphan item can
+    carry a `config` area — but a surviving config dir is a project definition
+    DSS failed to load, not debris. Refuse with an explanation."""
+    path = _mk_orphan(tmp_path, 'config/projects/DEADPROJ')
+    ok, reason = fs_paths.is_deletable_orphan_dir(path, str(tmp_path), LIVE)
+    assert not ok and reason == 'unsupported-area (config)'
+
+
+def test_orphan_symlink_refused(tmp_path):
+    real = _mk_orphan(tmp_path, 'elsewhere/DEADPROJ')
+    (tmp_path / 'jupyter-run/dku-workdirs').mkdir(parents=True)
+    link = str(tmp_path / 'jupyter-run/dku-workdirs/DEADPROJ')
+    os.symlink(real, link)
+    ok, reason = fs_paths.is_deletable_orphan_dir(link, str(tmp_path), LIVE)
+    assert not ok and reason == 'symlink'
+
+
+def test_orphan_root_itself_refused(tmp_path):
+    """The area root is never a deletable unit — only <root>/<KEY> is."""
+    _mk_orphan(tmp_path, 'jupyter-run/dku-workdirs/DEADPROJ')
+    root = str(tmp_path / 'jupyter-run/dku-workdirs')
+    ok, reason = fs_paths.is_deletable_orphan_dir(root, str(tmp_path), LIVE)
+    assert not ok and reason == 'outside-allowed-depth'
+
+
+def test_orphan_depth_too_deep_refused(tmp_path):
+    """No per-file drill-in: one level below the key is out of scope."""
+    _mk_orphan(tmp_path, 'jupyter-run/dku-workdirs/DEADPROJ', children=('ipythondir',))
+    deeper = str(tmp_path / 'jupyter-run/dku-workdirs/DEADPROJ/ipythondir')
+    ok, reason = fs_paths.is_deletable_orphan_dir(deeper, str(tmp_path), LIVE)
+    assert not ok and reason == 'outside-allowed-depth'
+
+
+def test_orphan_live_project_key_refused(tmp_path):
+    path = _mk_orphan(tmp_path, 'jupyter-run/dku-workdirs/ALIVE')
+    ok, reason = fs_paths.is_deletable_orphan_dir(path, str(tmp_path), LIVE)
+    assert not ok and reason == 'live-project'
+
+
+def test_orphan_reserved_name_refused(tmp_path):
+    """Secondary defense: DSS-internal names that sit at the key position."""
+    path = _mk_orphan(tmp_path, 'managed_datasets/tmp_upload_box')
+    ok, reason = fs_paths.is_deletable_orphan_dir(path, str(tmp_path), LIVE)
+    assert not ok and reason == 'reserved-name'
+
+
+def test_orphan_bad_key_shape_refused(tmp_path):
+    path = _mk_orphan(tmp_path, 'managed_datasets/not-a-key')
+    ok, reason = fs_paths.is_deletable_orphan_dir(path, str(tmp_path), LIVE)
+    assert not ok and reason == 'not-a-project-key-shape'
+
+
+def test_orphan_with_live_project_children_refused(tmp_path):
+    """THE akaos `uploads` case, under a name the reserved list does NOT cover,
+    so the generic rule is what does the work: a directory at the key position
+    whose own children name live projects is a shared bucket, not a dead
+    project."""
+    path = _mk_orphan(tmp_path, 'managed_datasets/sharedbucket',
+                      children=('SOL_DEMAND_FORECAST', 'QS_DATA_PREP_1'))
+    ok, reason = fs_paths.is_deletable_orphan_dir(path, str(tmp_path), LIVE)
+    assert not ok
+    assert reason == 'contains-live-projects (QS_DATA_PREP_1, SOL_DEMAND_FORECAST)'
+    # and the <KEY>.<dataset> layout DSS uses for shaker samples matches too
+    dotted = _mk_orphan(tmp_path, 'managed_datasets/otherbucket',
+                        children=('ALIVE.sales_monthly',))
+    ok, reason = fs_paths.is_deletable_orphan_dir(dotted, str(tmp_path), LIVE)
+    assert not ok and reason == 'contains-live-projects (ALIVE)'
+
+
+def test_orphan_empty_live_key_set_fails_closed(tmp_path):
+    """Without the live project list every directory looks orphaned — refuse."""
+    path = _mk_orphan(tmp_path, 'jupyter-run/dku-workdirs/DEADPROJ')
+    ok, reason = fs_paths.is_deletable_orphan_dir(path, str(tmp_path), set())
+    assert not ok and reason == 'live-project-list-unavailable'
+
+
+def test_orphan_happy_path_deletable(tmp_path):
+    path = _mk_orphan(tmp_path, 'jupyter-run/dku-workdirs/PLEASE',
+                      children=('ipythondir',))
+    ok, reason = fs_paths.is_deletable_orphan_dir(path, str(tmp_path), LIVE)
+    assert ok, reason
+
+
+def test_scan_orphans_reports_blocked_with_reason(tmp_path):
+    _mk_orphan(tmp_path, 'jupyter-run/dku-workdirs/PLEASE', size=100)
+    _mk_orphan(tmp_path, 'jupyter-run/dku-workdirs/ALIVE', size=100)  # live: not an orphan
+    _mk_orphan(tmp_path, 'managed_datasets/uploads', size=200,
+               children=('SOL_DEMAND_FORECAST',))
+    scan = fs_paths.scan_orphans(str(tmp_path), LIVE)
+
+    assert scan['projectKeys'] == ['PLEASE', 'uploads']  # ALIVE never surfaces
+    assert scan['totalDirs'] == 1
+    assert scan['totalBytes'] == 100  # blocked bytes are reported, not counted
+
+    please = scan['orphans']['PLEASE']
+    assert please['deletableAreas'] == 1 and please['blockedAreas'] == 0
+    assert please['areas'][0]['area'] == 'dkuWorkdirs'
+    assert please['areas'][0]['path'].endswith('/jupyter-run/dku-workdirs/PLEASE')
+
+    uploads = scan['orphans']['uploads']
+    assert uploads['deletableAreas'] == 0 and uploads['blockedAreas'] == 1
+    assert uploads['bytes'] == 200
+    # `uploads` is hard-refused twice over (live children AND reserved name).
+    # The generic rule reports, because it is the one that generalises.
+    assert uploads['areas'][0]['deletable'] is False
+    assert uploads['areas'][0]['reason'] == 'contains-live-projects (SOL_DEMAND_FORECAST)'
+
+
+def test_scan_orphans_project_key_filter(tmp_path):
+    _mk_orphan(tmp_path, 'jupyter-run/dku-workdirs/PLEASE')
+    _mk_orphan(tmp_path, 'jupyter-run/dku-workdirs/YEA')
+    scan = fs_paths.scan_orphans(str(tmp_path), LIVE, project_key='YEA')
+    assert scan['projectKeys'] == ['YEA']
+
+
+def test_orphan_policy_roots_cover_every_area(tmp_path):
+    """POLICY_ROOTS['orphans'] is derived from ORPHAN_AREA_ROOTS — a new area
+    must not be able to drift out of the containment floor."""
+    assert set(fs_paths.POLICY_ROOTS['orphans']) == set(fs_paths.ORPHAN_AREA_ROOTS.values())

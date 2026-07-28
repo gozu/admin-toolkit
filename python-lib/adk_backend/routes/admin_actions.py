@@ -17,6 +17,7 @@ import tempfile
 
 from flask import Blueprint, g, jsonify, request
 
+from adk_backend.caching import _cache_pop_matching
 from adk_backend.clients import _active_support_project, _resolve_macro_project
 from adk_backend.macros import _fs_cleanup_macro
 from adk_backend.utils import advanced
@@ -1029,10 +1030,11 @@ def api_fs_cleanup_scan():
 def api_fs_cleanup_delete():
     body = request.get_json(force=True, silent=True) or {}
     dry_run = bool(body.get('dryRun', True))
+    policy = (body.get('policy') or 'webappruns').strip()
     try:
         result = _fs_cleanup_macro(
             g.client, 'delete',
-            policy=(body.get('policy') or 'webappruns').strip(),
+            policy=policy,
             project_key=(body.get('projectKey') or '').strip() or None,
             min_age_days=body.get('minAgeDays'),
             keep_last_runs=body.get('keepLastRuns'),
@@ -1041,6 +1043,15 @@ def api_fs_cleanup_delete():
     except Exception as exc:
         _LOGGER.error('[fs-cleanup] delete macro failed: %s', exc)
         return jsonify({'ok': False, 'error': str(exc)}), 502
-    _LOGGER.info('[fs-cleanup] delete dryRun=%s deletedRuns=%s reclaimedGB=%s',
-                 dry_run, result.get('totalDeletedRuns'), result.get('totalReclaimedGB'))
+    _LOGGER.info('[fs-cleanup] delete policy=%s dryRun=%s deletedRuns=%s '
+                 'deletedDirs=%s reclaimedGB=%s partial=%s',
+                 policy, dry_run, result.get('totalDeletedRuns'),
+                 result.get('totalDeletedDirs'), result.get('totalReclaimedGB'),
+                 result.get('partial'))
+    if result.get('ok') and not dry_run:
+        # The footprint/dir-tree caches still describe the directories we just
+        # removed. Drop only those (host-scoped) — /api/cache/clear would bump
+        # the session epoch and reset every module store.
+        _cache_pop_matching(lambda key_text: str(key_text).startswith('footprint:')
+                            or str(key_text).startswith('dir_tree:'))
     return jsonify(result), 200 if result.get('ok') else 400

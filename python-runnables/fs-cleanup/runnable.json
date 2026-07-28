@@ -1,7 +1,7 @@
 {
     "meta": {
         "label": "FS Cleanup",
-        "description": "Scan and delete policy-scoped filesystem debris under DIP_HOME: webapp run dirs, aged job dirs, tmp-bucket entries, export artifacts. Roots, depth, age gates, keep-newest-N and running-webapp exclusions are enforced inside this macro.",
+        "description": "Scan and delete policy-scoped filesystem debris under DIP_HOME: webapp run dirs, aged job dirs, tmp-bucket entries, export artifacts, orphan-project locations. Roots, depth, age gates, keep-newest-N, the live-project check and running-webapp exclusions are enforced inside this macro.",
         "icon": "icon-trash",
         "macroRoles": [{"type": "PROJECT_MACROS"}]
     },
@@ -19,7 +19,7 @@
         {
             "name": "policy",
             "label": "Policy",
-            "description": "Which cleanup policy to apply: webappruns, joblogs, tmp or exports.",
+            "description": "Which cleanup policy to apply: webappruns, joblogs, tmp, exports or orphans. For 'orphans' (on-disk artifacts of deleted projects) the macro fetches the live project list itself and refuses if it is unavailable; the containment floor, the reserved-name list and the live-children check are enforced inside the macro, and min_age_days / keep_last_runs are ignored.",
             "type": "STRING",
             "mandatory": true,
             "defaultValue": "webappruns"
@@ -27,7 +27,7 @@
         {
             "name": "project_key",
             "label": "Project key",
-            "description": "Restrict to one project's webapp run dirs. Empty = all projects.",
+            "description": "Restrict to one project's webapp run dirs (or, for the orphans policy, to one orphan key). Empty = all.",
             "type": "STRING",
             "mandatory": false,
             "defaultValue": ""

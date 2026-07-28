@@ -3,12 +3,23 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTableSort } from '../hooks/useTableSort';
 import type { DirEntry, DirTreeData } from '../types';
 
+/** Per-row delete affordance. `blocked` is a hard refusal from the fs-cleanup
+ *  policy (e.g. the node's children name live projects) — it renders as a
+ *  non-interactive chip carrying `reason`, never as an overridable button. */
+export interface DirDeleteState {
+  state: 'none' | 'ready' | 'blocked' | 'deleting';
+  reason?: string;
+}
+
 interface DirTreeTableProps {
   data: DirTreeData;
   onExpand?: (dirPath: string) => Promise<DirEntry | null>;
   expandedNodes?: Map<string, DirEntry>;
   isExpanding?: boolean;
   rootNode?: DirEntry | null;
+  // Optional: DirTreeSection renders this table without the delete column.
+  onDeleteNode?: (node: DirEntry) => void;
+  deleteStateFor?: (node: DirEntry) => DirDeleteState;
 }
 
 function formatSize(bytes: number): string {
@@ -111,6 +122,9 @@ function TreeRow({
   childCount,
   isExpanding,
   onToggle,
+  deleteState,
+  onDelete,
+  showDeleteColumn,
 }: {
   node: DirEntry;
   depth: number;
@@ -121,6 +135,9 @@ function TreeRow({
   childCount: number;
   isExpanding?: boolean;
   onToggle: () => void;
+  deleteState: DirDeleteState;
+  onDelete?: (node: DirEntry) => void;
+  showDeleteColumn: boolean;
 }) {
   const indent = depth * 20;
 
@@ -219,6 +236,45 @@ function TreeRow({
           ) : '-'}
         </span>
       </td>
+
+      {showDeleteColumn && (
+        <td className="py-2 px-3 text-right w-10">
+          {deleteState.state === 'blocked' ? (
+            <span
+              className="text-xs cursor-help"
+              title={deleteState.reason || 'Deletion refused by the fs-cleanup policy'}
+              aria-label={deleteState.reason || 'Deletion refused'}
+            >
+              ⛔
+            </span>
+          ) : deleteState.state !== 'none' ? (
+            <button
+              type="button"
+              // The whole row is a toggle — never let this bubble into it.
+              onClick={(e) => { e.stopPropagation(); onDelete?.(node); }}
+              disabled={deleteState.state === 'deleting'}
+              title={`Delete the on-disk files of orphan project ${node.name}`}
+              aria-label={`Delete orphan project ${node.name}`}
+              className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1 rounded text-[var(--text-muted)] hover:text-[var(--neon-red)] hover:bg-[var(--bg-glass-hover)] disabled:opacity-60"
+            >
+              {deleteState.state === 'deleting' ? (
+                <motion.svg
+                  className="w-3.5 h-3.5 text-[var(--neon-amber)]"
+                  viewBox="0 0 24 24"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                >
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" strokeDasharray="30 70" />
+                </motion.svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              )}
+            </button>
+          ) : null}
+        </td>
+      )}
     </motion.tr>
   );
 }
@@ -263,7 +319,12 @@ function SortHeader({
   );
 }
 
-export function DirTreeTable({ data, onExpand, expandedNodes, isExpanding, rootNode }: DirTreeTableProps) {
+const NO_DELETE: DirDeleteState = { state: 'none' };
+
+export function DirTreeTable({
+  data, onExpand, expandedNodes, isExpanding, rootNode, onDeleteNode, deleteStateFor,
+}: DirTreeTableProps) {
+  const showDeleteColumn = !!deleteStateFor;
   // Render root follows the treemap's drill-down when provided, else the full tree.
   const baseRoot = rootNode ?? data.root;
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(baseRoot ? [baseRoot.path] : []));
@@ -415,6 +476,11 @@ export function DirTreeTable({ data, onExpand, expandedNodes, isExpanding, rootN
               </th>
               <SortHeader field="files" label="Files" sortField={sortField} sortDir={sortDirection} onSort={handleSort} />
               <SortHeader field="items" label="Items" sortField={sortField} sortDir={sortDirection} onSort={handleSort} />
+              {showDeleteColumn && (
+                <th className="py-2 px-3 text-right text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider w-10">
+                  <span className="sr-only">Delete</span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-glass)]">
@@ -431,6 +497,9 @@ export function DirTreeTable({ data, onExpand, expandedNodes, isExpanding, rootN
                   childCount={childCount}
                   isExpanding={isExpanding}
                   onToggle={() => handleToggle(node)}
+                  deleteState={deleteStateFor?.(node) ?? NO_DELETE}
+                  onDelete={onDeleteNode}
+                  showDeleteColumn={showDeleteColumn}
                 />
               ))}
             </AnimatePresence>

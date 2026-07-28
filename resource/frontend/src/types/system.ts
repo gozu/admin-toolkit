@@ -47,6 +47,11 @@ export interface DirEntry {
   fileCount: number; // Number of files (recursive for dirs - includes hidden)
   depth: number;
   hasHiddenChildren: boolean; // True if children were aggregated due to depth limit
+  // Real on-disk locations DSS reported for this node, DIP_HOME-relative
+  // (e.g. `/jupyter-run/dku-workdirs/PLEASE`). `path` above is the synthetic
+  // `/dss-data/...` tree path and is NOT removable — this is the only carrier
+  // of an actual filesystem path. Emitted by the backend on every node.
+  locations?: string[];
 }
 
 export interface DirTreeData {

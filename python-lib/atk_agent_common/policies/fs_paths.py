@@ -18,6 +18,22 @@ Policies:
       never deleted (DSS expects its tmp buckets to exist); entries age out by
       NEWEST inner mtime, with keep-newest-N per group. tmp excludes the
       webappruns bucket (legacy layout overlap with the webappruns policy).
+  orphans — on-disk artifacts in project-keyed directories whose project no
+      longer exists (DSS reports them as `orphanProjects` in the
+      directories-footprint payload, but offers no API to reclaim them).
+      Deletable unit = <area root>/<KEY>, e.g. jupyter-run/dku-workdirs/PLEASE.
+      There is NO age gate: an orphan has no age semantics — the project it
+      belonged to is already gone, so "how old is it" says nothing about
+      whether it is safe to remove.
+
+Orphan identification mirrors DSS's own rule (DataDirectoriesBucketer's
+ProjectList: a directory sitting directly under a project-keyed root, whose
+name matches ^[A-Za-z0-9_]+$ and is not a live project key). DSS's rule has
+false positives — on akaos `managed_datasets/uploads` is reported as an orphan
+project named `uploads` while its children are named after LIVE projects — so
+this policy adds two gates DSS has no reason to implement: a reserved-name
+list and, primarily, a refusal when the directory's own children name live
+projects. Those are hard refusals with no override.
 """
 
 import os
@@ -27,12 +43,68 @@ import time
 
 SAMPLE_LIMIT = 5
 
+# DSS footprint area key → DIP_HOME-relative root, for exactly the areas whose
+# deletable unit is <root>/<PROJECT_KEY>.
+#
+# Deliberately absent, and refused as `unsupported-area` rather than silently
+# skipped:
+#   config  (config/projects/<KEY>)        — a surviving project definition DSS
+#                                            failed to load, not debris
+#   git     (config/projects/<KEY>/.git)   — same, one level deeper
+#   shakerSamples (caches/shaker-samples/<KEY>.*) — not a plain <root>/<KEY>
+#                                            directory (DSS keys it on the text
+#                                            before the first dot)
+ORPHAN_AREA_ROOTS = {
+    'agentTools': 'agent-tools',
+    'analysis': 'analysis-data',
+    'codeStudioResources': 'lib/code_studio',
+    'dkuWorkdirs': 'jupyter-run/dku-workdirs',
+    'docportal': 'docportal/projects',
+    'jobs': 'jobs',
+    'libResources': 'lib/projects',
+    'managedDatasets': 'managed_datasets',
+    'managedFolders': 'managed_folders',
+    'notebookResults': 'notebook_results/jupyter',
+    'preparedBundles': 'prepared_bundles',
+    'projectStandards': 'project-standards',
+    'savedModels': 'saved_models',
+    'scenarios': 'scenarios',
+    'thumbnails': 'thumbnails',
+    'uploadedDatasets': 'uploads',
+    'webApps': 'webappruns',
+    'wikiAttachments': 'wiki-attachments',
+    'workloadFolders': 'workload-folders/webapps',
+}
+
 # Policy name → roots relative to DIP_HOME. Deletion never leaves these.
 POLICY_ROOTS = {
     'webappruns': ('webappruns', 'tmp/webappruns'),
     'joblogs': ('jobs',),
     'tmp': ('tmp',),
     'exports': ('exports',),
+    'orphans': tuple(sorted(set(ORPHAN_AREA_ROOTS.values()))),
+}
+
+# DSS's own project-key shape (PROJECT_KEY_PATTERN). Lowercase is allowed on
+# purpose: a stricter uppercase-only gate would diverge from DSS's
+# classification and silently hide real orphans on instances with lowercase
+# keys — while the live-children rule below is what actually keeps us safe.
+ORPHAN_KEY_RE = re.compile(r'^[A-Za-z0-9_]+$')
+
+# DSS-internal directory names that sit at the project-key position and are
+# never a project. This mirrors DSS's own SomeFolder("tmp_upload_box")
+# exclusion and is the SECONDARY defense only — a hardcoded list can never be
+# complete, which is why is_deletable_orphan_dir's live-children check is the
+# primary one.
+RESERVED_ORPHAN_NAMES = frozenset({'uploads', 'tmp_upload_box', 'initial', 'tmp'})
+
+# Areas DSS reports on an orphan item that this policy will never delete. They
+# are named here (rather than merely left out of ORPHAN_AREA_ROOTS) so a path
+# under one refuses with `unsupported-area (<area>)` — an explanation — instead
+# of the generic `outside-allowed-roots`.
+ORPHAN_UNSUPPORTED_AREA_ROOTS = {
+    'config': 'config/projects',
+    'shakerSamples': 'caches/shaker-samples',
 }
 
 # Aged-entry policies (storage tail): per-policy defaults + excluded groups.
@@ -314,3 +386,149 @@ def scan_aged_entries(dip_home, policy, group=None, min_age_days=None,
     groups = {k: v for k, v in groups.items() if v['deletable'] or v['skipped']}
     return {'groups': groups, 'totalDirs': total_dirs, 'totalBytes': total_bytes,
             'projectKeys': sorted(groups)}
+
+
+# ── orphan projects ─────────────────────────────────────────────────────────
+
+
+def _unsupported_orphan_area(parent_real, dip_home):
+    """Area key when `parent_real` is a root we deliberately refuse to delete
+    from (config/projects, caches/shaker-samples), else None."""
+    for area, rel in sorted(ORPHAN_UNSUPPORTED_AREA_ROOTS.items()):
+        if os.path.realpath(os.path.join(dip_home, rel)) == parent_real:
+            return area
+    return None
+
+
+def _live_child_hits(path, live_project_keys):
+    """Immediate children of `path` that name a live project — matched on the
+    plain name AND on the text before the first dot (DSS's <KEY>.<dataset>
+    layout). Returns (hits, error) so an unreadable directory refuses rather
+    than passing the check by accident."""
+    try:
+        children = os.listdir(path)
+    except OSError as exc:
+        return None, 'listdir-failed: %s' % exc
+    hits = set()
+    for name in children:
+        if name in live_project_keys:
+            hits.add(name)
+            continue
+        head = name.split('.', 1)[0]
+        if head and head in live_project_keys:
+            hits.add(head)
+    return hits, None
+
+
+def is_deletable_orphan_dir(path, dip_home, live_project_keys, now=None):
+    """Authoritative per-directory check for the orphans policy.
+
+    Enforces, in order: symlink refusal, directory, exact depth (the parent
+    must BE one of the orphan area roots, so only <root>/<KEY> qualifies —
+    never a root itself and never anything deeper), DSS's project-key shape,
+    not-a-live-project, the reserved-name list, and finally the primary
+    defense: refuse when the directory's own immediate children name live
+    projects (that is the `managed_datasets/uploads` case, and every future
+    shared bucket DSS forgets to exclude, regardless of its name).
+
+    An empty `live_project_keys` fails CLOSED — without the live list every
+    directory looks orphaned. `now` is accepted for signature parity with the
+    other policies and is unused: orphans have no age semantics.
+
+    Never raises; returns (ok, reason).
+    """
+    del now  # orphans have no age gate — see the module docstring
+    try:
+        st = os.lstat(path)
+    except OSError as exc:
+        return False, 'stat-failed: %s' % exc
+    if stat_mod.S_ISLNK(st.st_mode):
+        return False, 'symlink'
+    if not stat_mod.S_ISDIR(st.st_mode):
+        return False, 'not-a-directory'
+    real = os.path.realpath(path)
+    parent = os.path.dirname(real)
+    roots = resolve_roots(dip_home, 'orphans')
+    if not any(parent == root_real for _, root_real in roots):
+        unsupported = _unsupported_orphan_area(parent, dip_home)
+        if unsupported:
+            return False, 'unsupported-area (%s)' % unsupported
+        if any(_contained_under(real, root_real) for _, root_real in roots):
+            return False, 'outside-allowed-depth'
+        return False, 'outside-allowed-roots'
+    basename = os.path.basename(real)
+    if not ORPHAN_KEY_RE.match(basename):
+        return False, 'not-a-project-key-shape'
+    live_project_keys = set(live_project_keys or ())
+    if basename in live_project_keys:
+        return False, 'live-project'
+    if basename in RESERVED_ORPHAN_NAMES:
+        return False, 'reserved-name'
+    hits, err = _live_child_hits(real, live_project_keys)
+    if err:
+        return False, err
+    if hits:
+        return False, 'contains-live-projects (%s)' % ', '.join(sorted(hits)[:5])
+    if not live_project_keys:
+        return False, 'live-project-list-unavailable'
+    return True, 'ok'
+
+
+def orphan_candidates(dip_home, live_project_keys, project_key=None):
+    """[(key, area, path)] of the directories DSS would classify as orphan
+    projects — directory, project-key shape, not a live project key. Sizes and
+    the safety gates are NOT applied here; every caller (scan AND delete) runs
+    is_deletable_orphan_dir on each path itself."""
+    live_project_keys = set(live_project_keys or ())
+    out = []
+    for area, rel in sorted(ORPHAN_AREA_ROOTS.items()):
+        root = os.path.realpath(os.path.join(dip_home, rel))
+        if not os.path.isdir(root):
+            continue
+        try:
+            names = sorted(os.listdir(root))
+        except OSError:
+            continue
+        for name in names:
+            if project_key and name != project_key:
+                continue
+            if not ORPHAN_KEY_RE.match(name) or name in live_project_keys:
+                continue
+            full = os.path.join(root, name)
+            if os.path.islink(full) or not os.path.isdir(full):
+                continue
+            out.append((name, area, full))
+    return out
+
+
+def scan_orphans(dip_home, live_project_keys, project_key=None):
+    """Enumerate orphan-project locations on the FILESYSTEM (not from the
+    footprint payload — the payload is a report, this is the thing we delete).
+
+    Returns {'orphans': {KEY: {'areas': [{area, path, bytes, deletable,
+    reason}], 'bytes', 'deletableAreas', 'blockedAreas'}}, 'totalDirs',
+    'totalBytes', 'projectKeys'}. `totalBytes`/`totalDirs` count only the
+    DELETABLE locations — they are what the caller's delete cap measures.
+    Blocked locations are still reported, with their refusal reason, so the UI
+    can explain the refusal instead of hiding it.
+    """
+    orphans = {}
+    total_dirs = 0
+    total_bytes = 0
+    for key, area, full in orphan_candidates(dip_home, live_project_keys,
+                                             project_key=project_key):
+        ok, reason = is_deletable_orphan_dir(full, dip_home, live_project_keys)
+        size = _dir_size(full)
+        entry = orphans.setdefault(key, {'areas': [], 'bytes': 0,
+                                         'deletableAreas': 0, 'blockedAreas': 0})
+        entry['areas'].append({'area': area, 'path': full, 'bytes': size,
+                               'deletable': ok, 'reason': reason})
+        entry['bytes'] += size
+        if ok:
+            entry['deletableAreas'] += 1
+            total_dirs += 1
+            total_bytes += size
+        else:
+            entry['blockedAreas'] += 1
+    return {'orphans': orphans, 'totalDirs': total_dirs, 'totalBytes': total_bytes,
+            'projectKeys': sorted(orphans)}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { DirTreemap } from './DirTreemap';
 import { DirTreeTable, type DirDeleteState } from './DirTreeTable';
@@ -80,9 +80,17 @@ export function ApiDirTreeSection() {
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'warn' | 'error'; text: string } | null>(null);
   const [showUnlock, setShowUnlock] = useState(false);
+  const noticeRef = useRef<HTMLDivElement | null>(null);
 
   const scope = state.scope;
   const projectKey = state.projectKey;
+
+  // The banner sits above the treemap, but the row that triggers it is usually
+  // far down a scrolled table — a refusal the user never sees is not an
+  // explanation. Bring it into view whenever it changes.
+  useEffect(() => {
+    if (notice) noticeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [notice]);
 
   const handleLoad = useCallback(() => {
     if (!state.isLoading) {
@@ -278,6 +286,7 @@ export function ApiDirTreeSection() {
     <div className="col-span-full flex flex-col flex-1 min-h-0">
       {notice && (
         <motion.div
+          ref={noticeRef}
           initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
           className={`mb-3 px-3 py-2 rounded text-sm border ${

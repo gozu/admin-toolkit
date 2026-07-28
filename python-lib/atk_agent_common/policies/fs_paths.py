@@ -426,10 +426,10 @@ def is_deletable_orphan_dir(path, dip_home, live_project_keys, now=None):
     Enforces, in order: symlink refusal, directory, exact depth (the parent
     must BE one of the orphan area roots, so only <root>/<KEY> qualifies —
     never a root itself and never anything deeper), DSS's project-key shape,
-    not-a-live-project, the reserved-name list, and finally the primary
-    defense: refuse when the directory's own immediate children name live
-    projects (that is the `managed_datasets/uploads` case, and every future
-    shared bucket DSS forgets to exclude, regardless of its name).
+    not-a-live-project, the primary defense — refuse when the directory's own
+    immediate children name live projects (the `managed_datasets/uploads` case,
+    and every future shared bucket DSS forgets to exclude, regardless of its
+    name) — and finally the reserved-name backstop.
 
     An empty `live_project_keys` fails CLOSED — without the live list every
     directory looks orphaned. `now` is accepted for signature parity with the
@@ -462,13 +462,18 @@ def is_deletable_orphan_dir(path, dip_home, live_project_keys, now=None):
     live_project_keys = set(live_project_keys or ())
     if basename in live_project_keys:
         return False, 'live-project'
-    if basename in RESERVED_ORPHAN_NAMES:
-        return False, 'reserved-name'
+    # The live-children rule runs BEFORE the reserved-name list on purpose: both
+    # are hard refusals, but this one is the generic defense and gives the more
+    # informative reason. Verified on akaos — `managed_datasets/uploads` refuses
+    # as `contains-live-projects (QS_DATA_PREP_1, SOL_DEMAND_FORECAST)` rather
+    # than the far less explanatory `reserved-name`.
     hits, err = _live_child_hits(real, live_project_keys)
     if err:
         return False, err
     if hits:
         return False, 'contains-live-projects (%s)' % ', '.join(sorted(hits)[:5])
+    if basename in RESERVED_ORPHAN_NAMES:
+        return False, 'reserved-name'
     if not live_project_keys:
         return False, 'live-project-list-unavailable'
     return True, 'ok'

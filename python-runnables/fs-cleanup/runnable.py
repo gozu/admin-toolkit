@@ -238,6 +238,37 @@ def _live_project_keys():
     return keys, None
 
 
+class _LiveProjectCache:
+    """Re-reads the live project list on demand, memoized for a couple of
+    seconds.
+
+    The delete pass re-checks every directory against a FRESH list rather than
+    the one the scan used: a delete over many locations takes time, and in that
+    window an admin can create a project under an orphan's key. Deleting a live
+    project's data is the one outcome this policy exists to prevent, so the
+    snapshot must not outlive the pass. The memo keeps a wide delete from
+    hammering the API while holding the staleness window to seconds.
+    """
+
+    TTL = 2.0
+
+    def __init__(self):
+        self._keys = None
+        self._fetched_at = 0.0
+
+    def get(self):
+        """(keys, warning). keys is None when the list cannot be fetched — the
+        caller must abort, never fall back to the last good snapshot."""
+        now = time.time()
+        if self._keys is not None and (now - self._fetched_at) < self.TTL:
+            return self._keys, None
+        keys, warning = _live_project_keys()
+        if keys is None:
+            return None, warning
+        self._keys, self._fetched_at = keys, now
+        return keys, None
+
+
 def _rmtree_collecting(path, before_bytes):
     """rmtree that gathers per-path failures instead of raising, then classifies
     the outcome by what is actually left on disk. Returns
@@ -267,7 +298,8 @@ def _rmtree_collecting(path, before_bytes):
 def _delete_orphans(dip_home, target_key, max_delete_gb, dry_run):
     """Orphan-project delete: scan, cap, then re-enumerate and re-apply the
     per-directory policy floor immediately before each rmtree."""
-    live_keys, warning = _live_project_keys()
+    live = _LiveProjectCache()
+    live_keys, warning = live.get()
     warnings = [warning] if warning else []
     if live_keys is None:
         return {
@@ -305,15 +337,37 @@ def _delete_orphans(dip_home, target_key, max_delete_gb, dry_run):
             dip_home, live_keys, project_key=target_key or None):
         out = per_key.setdefault(key, {'areas': [], 'deletedAreas': 0, 'partialAreas': 0,
                                        'reclaimedBytes': 0, 'blocked': []})
+        # Re-read the live project list per location, not once per run: the key
+        # may have become a real project since the scan.
+        live_now, live_warning = live.get()
+        if live_now is None:
+            warnings.append(live_warning)
+            out['blocked'].append({'path': full, 'reason': 'live-projects-unavailable'})
+            if len(skipped) < 20:
+                skipped.append({'path': full, 'reason': 'live-projects-unavailable'})
+            partial = True
+            break  # we can no longer tell an orphan from a live project — stop
         # Authoritative re-check at delete time — the directory may have changed
         # (project recreated, dir swapped for a symlink) since enumeration.
-        ok, reason = fs_paths.is_deletable_orphan_dir(full, dip_home, live_keys)
+        ok, reason = fs_paths.is_deletable_orphan_dir(full, dip_home, live_now)
         if not ok:
             out['blocked'].append({'path': full, 'reason': reason})
             if len(skipped) < 20:
                 skipped.append({'path': full, 'reason': reason})
             continue
         size = fs_paths._dir_size(full)
+        # The cap was checked against the scan's sizes; enforce it again on the
+        # sizes measured now, cumulatively, so a subtree that grew in between
+        # cannot carry the run past the ceiling the caller agreed to.
+        if reclaimed + size > cap_bytes:
+            out['blocked'].append({'path': full, 'reason': 'cap-exceeded-at-delete'})
+            if len(skipped) < 20:
+                skipped.append({'path': full, 'reason': 'cap-exceeded-at-delete'})
+            warnings.append(
+                'stopped at the %s GB cap: candidates grew between scan and delete, '
+                '%.2f GB reclaimed before stopping.' % (max_delete_gb, reclaimed / (1024 ** 3)))
+            partial = True
+            break
         if dry_run:
             status, errors = 'deleted', []
         else:

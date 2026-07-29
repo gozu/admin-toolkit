@@ -5,6 +5,7 @@ import re
 
 from flask import Blueprint, g, jsonify, request
 
+from adk_backend.build_info import BUILD_VERSION
 from adk_backend.caching import (
     _CACHE, _CACHE_INFLIGHT_ERRORS, _CACHE_LOCK,
     _bump_session_epoch, _clear_shared_project_code_env_usage,
@@ -68,7 +69,22 @@ def _plugin_version() -> str:
 
 @bp.route('/api/mode')
 def api_mode():
-    return jsonify({'mode': 'live', 'version': _plugin_version()})
+    """Data-source probe — also the stale-backend tripwire.
+
+    `version` is what DSS has *installed* (what the browser is running, since
+    the frontend is served from the plugin); `runningVersion` is what this
+    process was built from. They diverge exactly when the plugin was updated
+    under a webapp backend that was never restarted — see build_info.py.
+    Staleness is only claimed when the installed version is actually known, so
+    a failed plugin lookup degrades to "looks fine" rather than a false alarm.
+    """
+    installed = _plugin_version()
+    return jsonify({
+        'mode': 'live',
+        'version': installed,
+        'runningVersion': BUILD_VERSION,
+        'backendStale': bool(installed) and installed != BUILD_VERSION,
+    })
 
 
 @bp.route('/api/cache/clear', methods=['POST'])

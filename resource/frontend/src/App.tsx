@@ -29,6 +29,7 @@ import { PageRouter } from './components/layout/PageRouter';
 import { CommandPalette } from './components/CommandPalette';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 import { UnlockModal } from './components/UnlockModal';
+import { StaleBackendGate } from './components/StaleBackendGate';
 import { hydrateHostKeyStatus, useHostKeyState } from './state/hostKeyUnlockStore';
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { FxLayer } from './fx/FxLayer';
@@ -282,6 +283,10 @@ function AppContent() {
         onClose={() => setHostKeyDismissed(true)}
         onUnlocked={handleHostKeyUnlocked}
       />
+
+      {/* Plugin updated under a running webapp backend — blocks the whole app
+          from the very first screen, since nothing it shows can be trusted. */}
+      <StaleBackendGate />
     </>
   );
 }

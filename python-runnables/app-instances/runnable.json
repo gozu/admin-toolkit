@@ -1,0 +1,16 @@
+{
+    "meta": {
+        "label": "App Instances",
+        "description": "Read-only inventory of app-template / app-instance projects from <DIP_HOME>/config/projects/*/params.json. Returns the app-instance fields DSS strips from the public API — appInstanceCreatorFullId (the App-as-recipe that created the instance) and isTemporaryAppInstance — which are what make exact creator attribution and orphan detection possible.",
+        "icon": "icon-copy",
+        "macroRoles": [
+            {
+                "type": "PROJECT_MACROS"
+            }
+        ]
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": []
+}

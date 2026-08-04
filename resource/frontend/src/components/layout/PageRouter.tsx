@@ -36,6 +36,7 @@ import { FilesystemPage } from '../pages/FilesystemPage';
 import { ResourcesPage } from '../pages/ResourcesPage';
 import { ProjectsPage } from '../pages/ProjectsPage';
 import { ProjectComputePage } from '../pages/ProjectComputePage';
+import { AppInstancesPage } from '../pages/AppInstancesPage';
 import { ProjectCostPage } from '../pages/ProjectCostPage';
 import { UsersPage } from '../pages/UsersPage';
 import { AdoptionPage } from '../pages/AdoptionPage';
@@ -129,6 +130,8 @@ function renderPage(activePage: PageId, adoptionVisible: boolean): React.ReactNo
       return <ResourcesPage />;
     case 'projects':
       return <ProjectsPage />;
+    case 'app-instances':
+      return <AppInstancesPage />;
     case 'project-compute':
       return <ProjectComputePage />;
     case 'project-cost':

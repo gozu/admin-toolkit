@@ -88,6 +88,9 @@ export const MODULES: readonly ModuleDefinition[] = [
   // PROJECTS
   { id: 'project-cleaner', label: 'Project Cleaner', navLabel: 'Cleaner', section: 'Projects', navSection: 'PROJECTS', keywords: ['clean', 'delete', 'inactive', 'project'], tool: true, availability: 'always', lifecycle: { fields: ['projectCleanerLoading'] } },
   { id: 'projects', label: 'Projects', navLabel: 'Insights', section: 'Projects', navSection: 'PROJECTS', keywords: ['project', 'footprint', 'permissions'], availability: 'always', lifecycle: { fields: ['projectFootprintLoading'] } },
+  // On-demand sweep (one settings fetch per App_ recipe): noLoadGlyph keeps
+  // appInstancesLoading out of the global "Analysis complete" aggregate.
+  { id: 'app-instances', label: 'App Instances', navLabel: 'App Instances', section: 'Projects', navSection: 'PROJECTS', keywords: ['app', 'application', 'instance', 'template', 'app-as-recipe', 'keepinstance', 'keep', 'orphan', 'temporary', 'run', 'leftover', 'sprawl'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['appInstancesLoading'] } },
   { id: 'project-compute', label: 'Compute', section: 'Projects', navSection: 'PROJECTS', keywords: ['compute', 'project', 'usage', 'workload'], availability: 'always', lifecycle: { fields: ['projectComputeLoading'] } },
   { id: 'project-cost', label: 'Cost / CRU', navLabel: 'Cost', section: 'Projects', navSection: 'PROJECTS', keywords: ['cost', 'cru', 'compute', 'resource', 'usage', 'memory', 'cpu', 'llm', 'audit'], streamEndpoint: '/api/cru/stream', availability: 'always', lifecycle: { fields: ['projectCostLoading'] } },
 
@@ -152,7 +155,7 @@ export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'OVERVIEW', items: ['mission-control', 'summary', 'filesystem', 'resources'] },
   { title: 'AGENTS', items: ['agents', 'agent-tuning', 'agent-settings', 'agent-explainer'], experimental: true },
   { title: 'CONNECTIONS', items: ['connections-inventory', 'connections-insights', 'connections-health', 'connections-fs-migration'] },
-  { title: 'PROJECTS', items: ['project-cleaner', 'projects', 'project-compute', 'project-cost'] },
+  { title: 'PROJECTS', items: ['project-cleaner', 'projects', 'app-instances', 'project-compute', 'project-cost'] },
   { title: 'USERS', items: ['users', 'adoption', 'user-churn'] },   // 'adoption' restored from ['users']
   { title: 'PLUGINS', items: ['plugins-installed', 'plugins'] },
   { title: 'CODE ENVS', items: ['code-envs', 'code-envs-cleaner', 'code-envs-comparison', 'code-envs-broken'] },

@@ -366,6 +366,7 @@ MODULE_COVERAGE = {
     'connections-fs-migration': "domain:connections-usage detail='fs'",
     'project-cleaner': 'sensor:storage_footprint (cleanup candidates)',
     'projects': 'domain:projects + sensor:storage_footprint',
+    'app-instances': 'waiver:SSE-only sweep — the App_ recipe settings fetch and the config-tree macro have no agent read path',
     'project-compute': 'sensor:compute_cost (context types)',
     'project-cost': 'domain:cost-detail',
     'users': 'domain:users',

@@ -19,6 +19,7 @@ _LOG_CLEANER_MACRO_ID = 'pyrunnable_admin-toolkit_log-cleaner'
 _DOCKER_GOVERNOR_MACRO_ID = 'pyrunnable_admin-toolkit_docker-governor'
 _K8S_APPLY_MACRO_ID = 'pyrunnable_admin-toolkit_k8s-apply'
 _FS_CLEANUP_MACRO_ID = 'pyrunnable_admin-toolkit_fs-cleanup'
+_APP_INSTANCES_MACRO_ID = 'pyrunnable_admin-toolkit_app-instances'
 
 
 def _host_metrics_macro(client: Any) -> Dict[str, Any]:
@@ -163,6 +164,29 @@ def _adoption_events_macro(client: Any, **params: Any) -> Dict[str, Any]:
         if value is not None:
             macro_params[key] = value
     run_id = macro.run(params=macro_params, wait=True)
+    result = macro.get_result(run_id, as_type='json')
+    if not isinstance(result, dict):
+        return {'ok': False, 'error': f'macro returned non-dict: {type(result).__name__}'}
+    return result
+
+
+def _app_instances_macro(client: Any) -> Dict[str, Any]:
+    """Invoke the app-instances macro on the active host. Returns the config-tree
+    inventory of app templates and app instances (see
+    python-runnables/app-instances/runnable.py for shape:
+    {ok, rows:[{projectKey, projectAppType, generatingAppId,
+    appInstanceCreatorFullId, isTemporaryAppInstance}], unreadable, ...}).
+
+    Supplies the two fields DSS strips from the public API — the creating App
+    recipe and the temporary flag — so the App Instances page can attribute
+    instances to recipes and detect orphans exactly.
+
+    Raises MacroProjectMissing if ADMINTOOLKIT doesn't exist on the host —
+    the @errorhandler converts that to a 409 the frontend can react to.
+    """
+    project = _resolve_macro_project(client)
+    macro = project.get_macro(_APP_INSTANCES_MACRO_ID)
+    run_id = macro.run(params={}, wait=True)
     result = macro.get_result(run_id, as_type='json')
     if not isinstance(result, dict):
         return {'ok': False, 'error': f'macro returned non-dict: {type(result).__name__}'}

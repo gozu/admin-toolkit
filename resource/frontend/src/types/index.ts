@@ -2,6 +2,7 @@
 // under `import ... from '../types'`. `export *` carries both types and the
 // runtime helpers (isTerminal/isActive from lifecycle.ts).
 export * from './adoption';
+export * from './appInstances';
 export * from './codeEnvs';
 export * from './comparison';
 export * from './connections';

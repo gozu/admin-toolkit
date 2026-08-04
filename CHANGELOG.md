@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.809] - 2026-08-04
+
+### Added
+- **Projects → App Instances**: tracks the project sprawl that App-as-recipe runs leave behind. Every run of an `App_<appId>` recipe instantiates the app into a `RUN_<recipe>_<random>` project and deletes it on success — unless the recipe's Advanced tab has **Keep instance** ticked, in which case every run adds a project permanently. The page groups app templates with the recipes that call them and the instance projects they produced, surfacing the three conditions DSS's own `AppAsRecipeInstanceDetector` warns about: recipes keeping instances (the cause), leftovers from failed runs, and orphans whose creating recipe was deleted. Instances land immediately from two API calls (`list_apps()` + `list_projects()`, which carries `projectAppType`/`generatingAppId`); the `keepInstance` sweep streams behind it over SSE because `list_recipes()` omits `params`, so each `App_` recipe needs its own settings fetch.
+- **`app-instances` macro**: reads `appInstanceCreatorFullId` and `isTemporaryAppInstance` from `<DIP_HOME>/config/projects/*/params.json` — DSS strips both from every public-API projection, and the creator id is what makes exact instance → recipe attribution and orphan detection possible. When the macro is unavailable the page degrades to app-level counts and says so; it never guesses attribution from the project label. Note the field is overloaded: for instances created from an app's homepage it holds the app id, so it counts as a recipe reference only when it differs from `generatingAppId`.
+- **Turn off Keep instance** (advanced-gated): flips `params.keepInstance` on an offending App recipe so successful runs delete their instance again. Fixes the cause only — existing instance projects are never touched by this route.
+
 ## [0.4.774] - 2026-07-20
 
 ### Fixed

@@ -104,6 +104,7 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 | Connections | FS Migration 🔴 | Migrate data off filesystem connections, with owner outreach |
 | Projects | Cleaner 🔴 | Backup + delete inactive projects |
 | Projects | Insights | Per-project footprint and health |
+| Projects | App Instances 🔴 | App-as-recipe sprawl: instances per template, `keepInstance` recipes, orphans |
 | Projects | Compute | Compute usage by project |
 | Projects | Cost | CRU and project spend analysis |
 | Users | Users | Ownership, activity, accountability |

@@ -219,8 +219,10 @@ export function CodeEnvsBrokenPage() {
           <button
             type="button"
             onClick={() => (streaming ? abortCodeEnvAdvice(row) : askLlm(row))}
-            disabled={!streaming && !llmId}
-            title={streaming ? 'Stop this analysis' : llmId ? undefined : noLlmReason}
+            // Only *asking* needs a model — advice already fetched stays
+            // readable (the picker resets whenever the page remounts).
+            disabled={!streaming && !entry && !llmId}
+            title={streaming ? 'Stop this analysis' : entry || llmId ? undefined : noLlmReason}
             className={
               streaming
                 ? 'inline-flex items-center gap-1.5 rounded border border-[var(--neon-red)]/40 px-2 py-1 text-xs text-[var(--neon-red)] hover:bg-[var(--neon-red)]/10'
@@ -425,7 +427,13 @@ export function CodeEnvsBrokenPage() {
           row={adviceRow}
           entry={advice[adviceKey(adviceRow)]}
           onClose={() => setAdviceRow(null)}
-          onRetry={() => void requestCodeEnvAdvice(adviceRow, llmId, llmLabel)}
+          // Re-ask on the model that produced this entry, so a retry after a
+          // remount doesn't depend on the picker still holding a selection.
+          onRetry={() => {
+            const entry = advice[adviceKey(adviceRow)];
+            const id = entry?.llmId || llmId;
+            if (id) void requestCodeEnvAdvice(adviceRow, id, entry?.llmLabel || llmLabel);
+          }}
         />
       )}
     </div>

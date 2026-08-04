@@ -3,6 +3,7 @@
 import pytest
 
 from adk_backend import code_env_build as ceb
+from adk_backend.routes import code_env_broken as broken
 
 
 def _banner(title, ts='2026/08/04 13:13:26.021'):
@@ -177,3 +178,135 @@ def test_derive_dates_ignores_garbage_timestamps():
         {'name': 'rebuildImage.log', 'lastModified': '2500'},
     ]
     assert ceb.derive_dates(entries) == (None, 2500)
+
+
+# ---- per-attempt history parsing ----
+
+def test_split_install_attempts_excludes_jupyter_section():
+    """The jupyter-support banner also says "install" but never runs
+    `pip install ... -r`, so it must not count as a deployment attempt."""
+    log = (
+        _banner('install packages', '2026/07/30 09:00:00.000')
+        + 'Collecting pandas==2.2.0 (from -r /tmp/req100.txt (line 1))\n'
+        + 'Successfully installed pandas-2.2.0\n'
+        + _banner('install Jupyter support', '2026/07/30 09:01:12.000')
+        + 'Collecting ipykernel\nSuccessfully installed ipykernel-6.29.5\n'
+        + _banner('list packages', '2026/07/30 09:02:00.000') + 'pandas 2.2.0\n'
+        + _banner('install packages', '2026/08/04 13:13:26.021')
+        + 'Collecting numpy==1.99.0 (from -r /tmp/req101.txt (line 1))\n'
+        + _FAILED_INSTALL
+    )
+    attempts = ceb.split_install_attempts(log)
+    assert [a['ts'] for a in attempts] == ['2026/07/30 09:00:00', '2026/08/04 13:13:26']
+    assert all('ipykernel' not in a['text'] for a in attempts)
+
+
+def test_reconstruct_requested_spec_merges_forms_in_line_order():
+    """Both pip echo forms carry the requirements-file origin; ordering follows
+    the (line N) marker, not log order."""
+    text = (
+        'Requirement already satisfied: requests>=2.31 in /data/lib/site-packages '
+        '(from -r /tmp/req5.txt (line 3))\n'
+        'Collecting pandas==2.2.0 (from -r /tmp/req5.txt (line 1))\n'
+        'Collecting numpy==1.26.4 (from -r /tmp/req5.txt (line 2))\n'
+    )
+    assert ceb.reconstruct_requested_spec(text) == [
+        'pandas==2.2.0', 'numpy==1.26.4', 'requests>=2.31']
+
+
+def test_reconstruct_requested_spec_excludes_transitive_deps():
+    """Transitive deps carry "(from <package>->...)" — only the literal
+    "(from -r" marks what the administrator actually requested."""
+    text = (
+        'Collecting pandas==2.2.0 (from -r /tmp/req5.txt (line 1))\n'
+        'Collecting python-dateutil>=2.8.2 (from pandas==2.2.0->-r /tmp/req5.txt (line 1))\n'
+        'Collecting six>=1.5 (from python-dateutil>=2.8.2->pandas==2.2.0->-r /tmp/req5.txt (line 1))\n'
+        'Collecting pandas==2.2.0 (from -r /tmp/req5.txt (line 1))\n'
+    )
+    assert ceb.reconstruct_requested_spec(text) == ['pandas==2.2.0']
+
+
+def test_format_attempt_history_skips_last_and_walks_newest_first():
+    log = (
+        _banner('install packages', '2026/07/28 10:00:00.000')
+        + 'Collecting numpy==1.99.0 (from -r /tmp/req1.txt (line 1))\n'
+        + 'ERROR: No matching distribution found for numpy==1.99.0\n'
+        + _banner('install packages', '2026/07/29 11:00:00.000')
+        + 'Collecting numpy==1.26.4 (from -r /tmp/req2.txt (line 1))\n'
+        + 'Successfully installed numpy-1.26.4\n'
+        + _banner('install packages', '2026/08/04 13:13:26.021')
+        + 'Collecting numpy==2.0.0 (from -r /tmp/req3.txt (line 1))\n'
+        + 'ERROR: ResolutionImpossible\n'
+    )
+    out = broken._format_attempt_history(ceb.split_install_attempts(log))
+    # The last attempt is excluded — its error excerpt is already in the prompt.
+    assert 'numpy==2.0.0' not in out
+    assert out.index('2026/07/29 11:00:00') < out.index('2026/07/28 10:00:00')
+    assert 'succeeded' in out and 'numpy==1.26.4' in out
+    assert 'No matching distribution found for numpy==1.99.0' in out
+
+
+def test_format_attempt_history_budgets_and_elides():
+    attempts = [
+        {'ts': '2026/07/%02d 10:00:00' % (i + 1),
+         'text': 'Collecting foo==%d.0 (from -r /tmp/r.txt (line 1))\n' % i}
+        for i in range(8)
+    ]
+    out = broken._format_attempt_history(attempts)
+    assert out.count('Attempt at') == 5
+    assert '(older attempts elided)' in out
+    # Newest prior attempts survive; the oldest fall off; the last is skipped.
+    assert '2026/07/07' in out
+    assert '2026/07/01' not in out
+    assert '2026/07/08' not in out
+
+
+def test_format_attempt_history_single_attempt_yields_empty():
+    attempts = ceb.split_install_attempts(
+        _banner('install packages')
+        + 'Collecting numpy==1.26.4 (from -r /tmp/r.txt (line 1))\n')
+    assert len(attempts) == 1
+    assert broken._format_attempt_history(attempts) == ''
+
+
+# ---- advice prompt spec block ----
+
+def test_format_spec_context_full_definition():
+    out = broken._format_spec_context({
+        'specPackageList': 'pandas==2.2.0\nnumpy==1.26.4',
+        'mandatoryPackageList': 'pyarrow<12\npandas>=1.3',
+        'specCondaEnvironment': 'dependencies:\n  - blas',
+        'actualPackageList': 'numpy==1.26.4\npandas==2.2.0',
+    })
+    assert 'Requirements (specPackageList):' in out
+    assert 'pandas==2.2.0' in out
+    assert 'DSS mandatory base packages' in out and 'pyarrow<12' in out
+    assert 'Conda spec:' in out and 'blas' in out
+    assert 'Installed packages (pip freeze):' in out
+
+
+def test_format_spec_context_degrades_on_blank_or_missing_keys():
+    """R envs may lack every key — blank spec renders (empty), blank freeze
+    renders (unavailable), optional sections disappear entirely."""
+    out = broken._format_spec_context({'specPackageList': '  ', 'actualPackageList': None})
+    assert '(empty)' in out
+    assert '(unavailable)' in out
+    assert 'mandatory' not in out.lower()
+    assert 'Conda spec' not in out
+
+
+def test_format_spec_context_truncates_over_cap():
+    out = broken._format_spec_context({
+        'specPackageList': 'x' * 5000,
+        'actualPackageList': 'y' * 20000,
+    })
+    assert out.count('… (truncated)') == 2
+    assert len(out) < 15000
+
+
+def test_format_spec_context_preserves_spec_comments():
+    """requirements.txt comments often explain the pin — the LLM should see them."""
+    out = broken._format_spec_context({
+        'specPackageList': '# needed for the forecasting project\nprophet==1.1.5',
+    })
+    assert '# needed for the forecasting project' in out

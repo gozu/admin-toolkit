@@ -268,22 +268,31 @@ def api_app_instances_scan():
 
         # Orphans need BOTH halves: a creator id from the macro and the full
         # recipe sweep to check it against. Either missing ⇒ unknown, not zero.
+        # The instance rows already went out with the inventory event, so the
+        # verdicts travel here as key lists and the client patches them in —
+        # a count alone would leave every row rendering as undetermined.
         known_recipe_ids: Set[str] = {r['fullId'] for r in recipes}
-        orphans = 0
-        if attribution.get('available') and not failed_projects:
+        determinable = attribution.get('available') and not failed_projects
+        orphan_keys: List[str] = []
+        attached_keys: List[str] = []
+        if determinable:
             for instance in instances:
                 full_id = instance.get('creatorFullId')
-                if full_id:
-                    instance['orphan'] = full_id not in known_recipe_ids
-                    if instance['orphan']:
-                        orphans += 1
+                if not full_id:
+                    continue
+                if full_id in known_recipe_ids:
+                    attached_keys.append(instance['projectKey'])
+                else:
+                    orphan_keys.append(instance['projectKey'])
 
         yield "event: done\ndata: %s\n\n" % json.dumps({
             'projectsScanned': scanned,
             'appRecipes': len(recipes),
             'keepInstanceOn': sum(1 for r in recipes if r['keepInstance'] is True),
             'instances': len(instances),
-            'orphans': orphans if (attribution.get('available') and not failed_projects) else None,
+            'orphans': len(orphan_keys) if determinable else None,
+            'orphanKeys': orphan_keys,
+            'attachedKeys': attached_keys,
             'failedProjects': failed_projects,
             'totalMs': int((time.time() - t0) * 1000),
         })

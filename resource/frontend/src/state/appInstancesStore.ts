@@ -23,6 +23,8 @@ type AppInstancesEvent =
       projectsScanned: number;
       keepInstanceOn: number;
       orphans: number | null;
+      orphanKeys: string[];
+      attachedKeys: string[];
       failedProjects: { projectKey: string; error: string }[];
     };
 
@@ -65,6 +67,8 @@ export const appInstancesScan = createModuleScanStore<AppInstancesResult, AppIns
           projectsScanned: Number(data.projectsScanned) || 0,
           keepInstanceOn: Number(data.keepInstanceOn) || 0,
           orphans: data.orphans === null || data.orphans === undefined ? null : Number(data.orphans),
+          orphanKeys: (data.orphanKeys as string[]) ?? [],
+          attachedKeys: (data.attachedKeys as string[]) ?? [],
           failedProjects:
             (data.failedProjects as { projectKey: string; error: string }[]) ?? [],
         };
@@ -113,12 +117,25 @@ export const appInstancesScan = createModuleScanStore<AppInstancesResult, AppIns
       case 'done': {
         const current = state.data ?? EMPTY;
         const on = ev.keepInstanceOn;
+        // Orphan verdicts can only be settled once the recipe sweep is in, so
+        // they arrive here and are folded back onto rows the inventory event
+        // already delivered. Rows in neither list keep `orphan: null`
+        // (undetermined) — never a default of false.
+        const orphanSet = new Set(ev.orphanKeys);
+        const attachedSet = new Set(ev.attachedKeys);
         return {
           data: {
             ...current,
             projectsScanned: ev.projectsScanned,
             failedProjects: ev.failedProjects,
             orphans: ev.orphans,
+            instances: current.instances.map((instance) =>
+              orphanSet.has(instance.projectKey)
+                ? { ...instance, orphan: true }
+                : attachedSet.has(instance.projectKey)
+                  ? { ...instance, orphan: false }
+                  : instance,
+            ),
           },
           scanPhase: 'complete',
           scanMessage: `${current.instances.length} instance${current.instances.length === 1 ? '' : 's'} · ${on} recipe${on === 1 ? '' : 's'} keeping instances`,

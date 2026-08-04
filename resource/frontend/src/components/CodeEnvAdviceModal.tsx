@@ -52,6 +52,19 @@ export function CodeEnvAdviceModal({ row, entry, onClose, onRetry }: CodeEnvAdvi
           </div>
         )}
 
+        {entry?.status === 'stopped' && (
+          <div className="flex items-center gap-3 rounded-lg border border-[var(--neon-yellow)]/30 bg-[var(--neon-yellow)]/10 px-4 py-3 text-sm text-[var(--neon-yellow)]">
+            <span className="flex-1">Stopped mid-answer — this advice is incomplete.</span>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="rounded px-2 py-1 text-xs font-medium text-[var(--accent)] hover:underline"
+            >
+              Ask again
+            </button>
+          </div>
+        )}
+
         {waiting ? (
           <div className="flex items-center gap-3 px-1 py-6 text-sm text-[var(--text-secondary)]">
             <Spinner size="h-4 w-4" color="border-[var(--neon-cyan)]" />

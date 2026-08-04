@@ -4,7 +4,7 @@ import { createSyncStore } from './createSyncStore';
 import type { BrokenEnvRow } from '../types';
 
 export interface AdviceEntry {
-  status: 'streaming' | 'done' | 'error';
+  status: 'streaming' | 'done' | 'stopped' | 'error';
   llmId: string;
   llmLabel: string;
   text: string;
@@ -30,15 +30,21 @@ export function clearCodeEnvAdvice(): void {
 }
 
 /**
- * Stop a streaming request and drop its entry, so the row returns to its
- * unasked state and can be re-asked (possibly against another model).
+ * Stop a streaming request. Whatever streamed so far is kept under 'stopped';
+ * a request killed before its first chunk has nothing to show, so its entry is
+ * dropped and the row returns to its unasked state.
  */
 export function abortCodeEnvAdvice(row: BrokenEnvRow): void {
   const key = adviceKey(row);
   controllers.get(key)?.abort();
   controllers.delete(key);
   const current = codeEnvAdviceStore.get();
-  if (!(key in current)) return;
+  const entry = current[key];
+  if (!entry) return;
+  if (entry.text) {
+    codeEnvAdviceStore.set({ ...current, [key]: { ...entry, status: 'stopped' } });
+    return;
+  }
   const next = { ...current };
   delete next[key];
   codeEnvAdviceStore.set(next);

@@ -228,7 +228,13 @@ export function CodeEnvsBrokenPage() {
             }
           >
             {streaming && <Spinner size="h-3 w-3" color="border-[var(--accent)]" />}
-            {streaming ? 'Abort' : entry ? 'View advice' : 'Ask LLM'}
+            {streaming
+              ? 'Abort'
+              : entry
+                ? entry.status === 'stopped'
+                  ? 'View partial'
+                  : 'View advice'
+                : 'Ask LLM'}
           </button>
         );
       },

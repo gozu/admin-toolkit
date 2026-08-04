@@ -15,4 +15,4 @@ missing endpoints. Import it at module scope so the value is frozen at backend
 boot alongside the rest of the code it describes.
 """
 
-BUILD_VERSION = '0.4.805'
+BUILD_VERSION = '0.4.806'

@@ -35,10 +35,10 @@ callers; sync stores implement (or omit) their own guards — see §3.
 
 ## 2. Module inventory
 
-35 modules in `MODULES` (`utils/moduleRegistry.ts:61`). Availability policies
+36 modules in `MODULES` (`utils/moduleRegistry.ts:61`). Availability policies
 other than `always` (5 modules, resolved in `utils/pageAvailability.ts`) hide
 the module from nav on a settled, definitive absence signal. `noLoadGlyph`
-(13 modules) excludes the module's lifecycle fields from the global
+(14 modules) excludes the module's lifecycle fields from the global
 "Analysis complete" aggregate (`SHARED_LOADING_FIELDS`,
 `utils/moduleRegistry.ts:178`).
 
@@ -68,6 +68,7 @@ the module from nav on a settled, definitive absence signal. `noLoadGlyph`
 | code-envs (Cleaner) | CODE ENVS | always (tool) | ✓ | codeEnvs phase + cleaner/replacement endpoints | – |
 | code-envs-cleaner (Insights) | CODE ENVS | always | ✓ | codeEnvs phase `/api/code-envs` + `/sizes` | – |
 | code-envs-comparison | CODE ENVS | always | ✓ | `codeEnvComparisonScan` ← `/api/code-envs/compare` (idle-warmed) | – |
+| code-envs-broken | CODE ENVS | always | – | `codeEnvBrokenScan` ← `/api/code-envs/broken/scan`; manual `/api/code-envs/broken/advice` | ✓ |
 | container-execs | AI COMPUTE | **container-exec** (tool) | ✓ | `containerExecsStore` ← `/api/container-execs/stream` | ✓ |
 | image-cleaner | AI COMPUTE | **container-registry** (tool) | ✓ | `imageCleanerDetectScan` ← `detect-provider`; manual scan SSE | ✓ |
 | cs-template-replacement | AI COMPUTE | always (tool) | – | `csTemplateScan` ← `/api/cs-template/projects` | – |

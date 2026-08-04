@@ -94,3 +94,41 @@ export interface CodeEnvCompareResult {
   yellow: CodeEnvCompareYellow[];
   analyzedCount: number;
 }
+
+// Code Environment build-failure types (Code Envs → Broken). Dates are
+// log-derived epoch-ms (DSS exposes no creation/update date on a code env) and
+// are null when the build log listing carries no usable mtime.
+export interface BrokenEnvUsage {
+  projectKey?: string;
+  projectName?: string;
+  usageType?: string;
+  objectType?: string;
+  objectId?: string;
+  objectName?: string;
+}
+
+export interface BrokenEnvRow {
+  name: string;
+  lang: string;
+  deploymentMode: string;
+  pythonVersion: string;
+  status: 'OK' | 'FAILED' | 'LOG_UNAVAILABLE' | 'NO_BUILD_LOG';
+  failureClass: string | null;
+  failureLabel: string | null;
+  logName: string | null;
+  errorExcerpt: string;
+  createdOn: number | null;
+  lastBuildOn: number | null;
+  sizeBytes: number | null;
+  usageCount: number | null;
+  usages: BrokenEnvUsage[];
+  usagesTruncated: boolean;
+}
+
+export interface CodeEnvBrokenResult {
+  rows: BrokenEnvRow[];
+  indeterminate: BrokenEnvRow[];
+  okCount: number;
+  total: number;
+  sizesAvailable: boolean;
+}

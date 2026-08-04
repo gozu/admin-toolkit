@@ -42,6 +42,7 @@ import { AdoptionPage } from '../pages/AdoptionPage';
 import { UserChurnPage } from '../pages/UserChurnPage';
 import { CodeEnvsInsightsPage } from '../pages/CodeEnvsPage';
 import { CodeEnvsComparisonPage } from '../pages/CodeEnvsComparisonPage';
+import { CodeEnvsBrokenPage } from '../pages/CodeEnvsBrokenPage';
 import { ConnectionsInventoryPage } from '../pages/ConnectionsInventoryPage';
 import { ConnectionsInsightsPage } from '../pages/ConnectionsInsightsPage';
 import { ConnectionsHealthPage } from '../pages/ConnectionsHealthPage';
@@ -144,6 +145,8 @@ function renderPage(activePage: PageId, adoptionVisible: boolean): React.ReactNo
       return <CodeEnvsInsightsPage readOnly />;
     case 'code-envs-comparison':
       return <CodeEnvsComparisonPage />;
+    case 'code-envs-broken':
+      return <CodeEnvsBrokenPage />;
     case 'connections-inventory':
       return <ConnectionsInventoryPage />;
     case 'connections-insights':

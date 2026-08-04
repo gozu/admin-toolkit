@@ -147,6 +147,7 @@ TOOLKIT_PAGES = {
     'code-envs': 'Code env cleaner: sizes, usage, delete candidates',
     'code-envs-cleaner': 'Code env insights: deprecated Python, largest envs',
     'code-envs-comparison': 'Package diff between two code envs',
+    'code-envs-broken': 'Code envs whose last build attempt failed, from the build logs',
     'container-execs': 'Container exec configs with requests/limits',
     'image-cleaner': 'Docker registry images: sprawl + delete candidates',
     'cs-template-replacement': 'CS template replacement across projects',

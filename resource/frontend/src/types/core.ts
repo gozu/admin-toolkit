@@ -190,6 +190,7 @@ export interface ParsedData {
   codeEnvSizesLoading?: Lifecycle;
   codeEnvReplacementLoading?: Lifecycle;
   codeEnvsComparisonLoading?: Lifecycle;
+  codeEnvsBrokenLoading?: Lifecycle;
   containerExecsLoading?: Lifecycle;
   imageCleanerLoading?: Lifecycle;
   csTemplateReplacementLoading?: Lifecycle;
@@ -310,6 +311,7 @@ export type PageId =
   | 'code-envs'
   | 'code-envs-cleaner'
   | 'code-envs-comparison'
+  | 'code-envs-broken'
   | 'container-execs'
   | 'cs-template-replacement'
   | 'connections-inventory'

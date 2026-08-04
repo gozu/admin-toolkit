@@ -194,3 +194,12 @@ export function formatCpuCoresCompact(cpuCores: string | undefined): string {
   }
   return cpuCores ?? '';
 }
+
+/**
+ * Format a DSS interpreter token ("PYTHON311") as a dotted version ("3.11").
+ * Unrecognised tokens pass through unchanged.
+ */
+export function formatInterpreter(raw: string): string {
+  const match = /^PYTHON(\d)(\d+)$/.exec(raw);
+  return match ? `${match[1]}.${match[2]}` : raw;
+}

@@ -84,6 +84,7 @@ const MODULE_PAGES = [
   ['src/components/ContainerExecs.tsx',           'containerExecsScan'],
   ['src/components/CSTemplateReplacement.tsx',    'csTemplateScan'],
   ['src/components/pages/CodeEnvsPage.tsx',       'managedFoldersScan'],
+  ['src/components/pages/CodeEnvsBrokenPage.tsx', 'codeEnvBrokenScan'],
   ['src/components/pages/DbHealthPage.tsx',       'dbHealthConnectionsStore'],
   ['src/components/ImageCleaner.tsx',             'imageCleanerDetectScan'],
   ['src/components/ProjectSqlPushdownTable.tsx',  'sqlPushdownScan'],

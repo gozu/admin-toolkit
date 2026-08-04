@@ -114,6 +114,9 @@ export const MODULES: readonly ModuleDefinition[] = [
   { id: 'code-envs', label: 'Cleaner', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['python', 'environment', 'package', 'clean', 'delete', 'unused', 'replace', 'migration'], tool: true, availability: 'always', lifecycle: { fields: ['codeEnvsLoading', 'codeEnvSizesLoading', 'codeEnvCleanerLoading', 'codeEnvReplacementLoading'] } },
   { id: 'code-envs-cleaner', label: 'Insights', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['python', 'environment', 'package', 'clean', 'unused', 'review', 'read-only'], availability: 'always', lifecycle: { fields: ['codeEnvsLoading', 'codeEnvSizesLoading'] } },
   { id: 'code-envs-comparison', label: 'Comparison', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['compare', 'duplicate', 'version', 'mismatch'], availability: 'always', lifecycle: { fields: ['codeEnvsComparisonLoading'] } },
+  // On-demand build-log scan (one log read per env): noLoadGlyph keeps
+  // codeEnvsBrokenLoading out of the global "Analysis complete" aggregate.
+  { id: 'code-envs-broken', label: 'Broken', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['broken', 'failed', 'build', 'rebuild', 'upgrade', 'error', 'log', 'remediation', 'llm'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['codeEnvsBrokenLoading'] } },
 
   // AI COMPUTE
   { id: 'container-execs', label: 'Container Execs', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['container', 'execution', 'kubernetes', 'k8s', 'compute', 'gpu', 'project', 'recipe', 'webapp'], streamEndpoint: '/api/container-execs/stream', tool: true, availability: 'container-exec', lifecycle: { fields: ['containerExecsLoading'] } },
@@ -152,7 +155,7 @@ export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'PROJECTS', items: ['project-cleaner', 'projects', 'project-compute', 'project-cost'] },
   { title: 'USERS', items: ['users', 'adoption', 'user-churn'] },   // 'adoption' restored from ['users']
   { title: 'PLUGINS', items: ['plugins-installed', 'plugins'] },
-  { title: 'CODE ENVS', items: ['code-envs', 'code-envs-cleaner', 'code-envs-comparison'] },
+  { title: 'CODE ENVS', items: ['code-envs', 'code-envs-cleaner', 'code-envs-comparison', 'code-envs-broken'] },
   { title: 'AI COMPUTE', items: ['container-execs', 'image-cleaner', 'cs-template-replacement', 'llm-audit', 'k8s-insights'] },
   { title: 'MISC', items: ['settings', 'logs', 'sanity-check', 'db-health', 'report', 'feedback'] },
 ] as const;

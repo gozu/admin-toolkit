@@ -19,6 +19,11 @@ Usage
   python scripts/codeenv_build_report.py --all               # include healthy envs
 
 Needs an admin API key: the log routes are under /admin/code-envs/.
+
+The parsing core (isolate_last_build / classify / extract_error) is duplicated
+in python-lib/adk_backend/code_env_build.py, which backs the webapp's Code Envs
+-> Broken page; this file stays standalone so it can be handed to a customer.
+Keep the two in sync by hand.
 """
 
 from __future__ import annotations

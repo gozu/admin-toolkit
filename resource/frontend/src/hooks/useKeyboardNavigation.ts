@@ -21,6 +21,7 @@ const PAGE_ORDER: PageId[] = [
   'project-cleaner',
   'code-envs',
   'code-envs-comparison',
+  'code-envs-broken',
 ];
 
 const NUMBER_KEY_MAP: Record<string, PageId> = {

@@ -376,6 +376,7 @@ MODULE_COVERAGE = {
     'code-envs': 'domain:code-envs',
     'code-envs-cleaner': 'domain:code-envs',
     'code-envs-comparison': 'domain:code-envs',
+    'code-envs-broken': 'waiver:build-log parsing surface — no agent read path to the per-env logs',
     'container-execs': 'toolkit_get:container-execs',
     'image-cleaner': 'action:image-delete planner grounding + toolkit_get:docker-usage',
     'cs-template-replacement': 'toolkit_get:cs-templates + cs-template-projects (read-only; migrate stays excluded)',

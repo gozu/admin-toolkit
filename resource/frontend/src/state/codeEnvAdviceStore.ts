@@ -29,6 +29,21 @@ export function clearCodeEnvAdvice(): void {
   codeEnvAdviceStore.set({});
 }
 
+/**
+ * Stop a streaming request and drop its entry, so the row returns to its
+ * unasked state and can be re-asked (possibly against another model).
+ */
+export function abortCodeEnvAdvice(row: BrokenEnvRow): void {
+  const key = adviceKey(row);
+  controllers.get(key)?.abort();
+  controllers.delete(key);
+  const current = codeEnvAdviceStore.get();
+  if (!(key in current)) return;
+  const next = { ...current };
+  delete next[key];
+  codeEnvAdviceStore.set(next);
+}
+
 function patchEntry(key: string, patch: Partial<AdviceEntry>): void {
   const current = codeEnvAdviceStore.get();
   const entry = current[key];

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { codeEnvBrokenScan } from '../../state/codeEnvBrokenStore';
 import {
+  abortCodeEnvAdvice,
   adviceKey,
   clearCodeEnvAdvice,
   codeEnvAdviceStore,
@@ -71,8 +72,13 @@ export function CodeEnvsBrokenPage() {
     void reportLlmsStore.load();
   }, []);
 
-  const llmId = selectedLlmId || llms[0]?.id || '';
+  // No implicit model: the picker starts blank so the advice always runs on a
+  // model the operator picked on purpose.
+  const llmId = selectedLlmId;
   const llmLabel = llms.find((l) => l.id === llmId)?.label || llmId;
+  const noLlmReason = llms.length
+    ? 'Pick an LLM above first'
+    : 'No LLM available on this instance';
 
   const lifecycle = codeEnvBrokenScan.lifecycle();
   const rows = data?.rows ?? [];
@@ -208,18 +214,21 @@ export function CodeEnvsBrokenPage() {
       label: 'Advice',
       render: (row) => {
         const entry = advice[adviceKey(row)];
+        const streaming = entry?.status === 'streaming';
         return (
           <button
             type="button"
-            onClick={() => askLlm(row)}
-            disabled={!llmId}
-            title={llmId ? undefined : 'No LLM available on this instance'}
-            className="inline-flex items-center gap-1.5 rounded border border-[var(--border-default)] px-2 py-1 text-xs text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => (streaming ? abortCodeEnvAdvice(row) : askLlm(row))}
+            disabled={!streaming && !llmId}
+            title={streaming ? 'Stop this analysis' : llmId ? undefined : noLlmReason}
+            className={
+              streaming
+                ? 'inline-flex items-center gap-1.5 rounded border border-[var(--neon-red)]/40 px-2 py-1 text-xs text-[var(--neon-red)] hover:bg-[var(--neon-red)]/10'
+                : 'inline-flex items-center gap-1.5 rounded border border-[var(--border-default)] px-2 py-1 text-xs text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50'
+            }
           >
-            {entry?.status === 'streaming' && (
-              <Spinner size="h-3 w-3" color="border-[var(--accent)]" />
-            )}
-            {entry ? (entry.status === 'streaming' ? 'Consulting…' : 'View advice') : 'Ask LLM'}
+            {streaming && <Spinner size="h-3 w-3" color="border-[var(--accent)]" />}
+            {streaming ? 'Abort' : entry ? 'View advice' : 'Ask LLM'}
           </button>
         );
       },
@@ -228,7 +237,10 @@ export function CodeEnvsBrokenPage() {
 
   return (
     <div className="w-full py-4 space-y-4">
-      <div className="glass-card p-3 space-y-2">
+      {/* z-20: the page cascade animation leaves every section with an identity
+          transform, i.e. its own stacking context — without a z-index this card
+          (and the model dropdown inside it) paints under the grid below. */}
+      <div className="glass-card relative z-20 p-3 space-y-2">
         <div className="flex flex-wrap items-center gap-3">
           <div className="min-w-0">
             <h4 className="text-lg font-semibold text-[var(--text-primary)]">
@@ -245,7 +257,13 @@ export function CodeEnvsBrokenPage() {
                 llms={llms}
                 selectedId={llmId}
                 onChange={setSelectedLlmId}
-                placeholder={llmsLoading && !llmsLoaded ? 'Loading models…' : 'No LLM available'}
+                placeholder={
+                  llmsLoading && !llmsLoaded
+                    ? 'Loading models…'
+                    : llms.length
+                      ? 'Pick an LLM…'
+                      : 'No LLM available'
+                }
                 className="w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-elevated)] px-3 py-1.5 text-sm font-mono text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
               />
             </div>

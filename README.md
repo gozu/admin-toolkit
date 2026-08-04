@@ -314,6 +314,7 @@ Everything lives on the **Settings** page (plus the plugin preset for secrets):
 
 - **Thresholds & scoring** — inactive-project days, code-env sprawl limits, Python/Spark minimums, capacity floors, and the six health-score weights. Defaults are sensible; tune them to your fleet.
 - **Mail channel** — pick the DSS messaging channel used by outreach campaigns.
+- **Feedback sender** — in-app feedback is sent from the DSS email of the admin who submits it. Set an address here when your SMTP relay only accepts one envelope sender (a no-reply mailbox); leave it empty to keep the per-admin default.
 - **DB Health connection** — point the DB Health tool at your PostgreSQL runtimedb (read-only analysis).
 - **Save tables as datasets** — optionally pick a connection so any UI table can be exported as a managed dataset in the webapp's project.
 - **Agents chat persistence** — in the plugin settings, `chat_storage` turns on server-side conversation history for the Agents page: Off (browser-only, the default), Built-in SQLite, or a Remote SQL connection (PostgreSQL / SQL Server, with a configurable table prefix). Conversations are stored per user and per fleet host; storage changes apply on the next webapp backend restart.

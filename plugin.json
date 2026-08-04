@@ -157,15 +157,6 @@
             "visibilityCondition": "false"
         },
         {
-            "name": "feedback_sender_email",
-            "label": "Feedback sender address (webapp-managed)",
-            "description": "Managed in webapp Settings \u2192 Messaging; declared here (hidden) so DSS keeps the value. Empty = the toolkit sends feedback as the signed-in admin's DSS email.",
-            "type": "STRING",
-            "mandatory": false,
-            "defaultValue": "",
-            "visibilityCondition": "false"
-        },
-        {
             "name": "outreach_mail_channel",
             "label": "Outreach mail channel (webapp-managed)",
             "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value.",

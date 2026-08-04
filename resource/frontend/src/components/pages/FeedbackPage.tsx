@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchJson, fetchRaw } from '../../utils/api';
-import { describeFeedbackSender, type FeedbackSender } from '../../utils/feedbackSender';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { fetchRaw } from '../../utils/api';
 import { useAppVersion } from '../../state/appVersionStore';
 import { getActiveHost } from '../../state/hostStore';
 import { feedbackFromPageStore } from '../../state/feedbackFromPage';
@@ -72,30 +71,6 @@ export function FeedbackPage() {
   // The page the user came from is captured once, at mount, from the stash the
   // header button set just before navigating here.
   const [fromPageId] = useState(() => feedbackFromPageStore.get());
-
-  // Who this feedback is sent as (configured override, else the signed-in
-  // admin's DSS email). The same address seeds the reply-to field, so a reply
-  // reaches the person who reported — untouched if they type their own.
-  const [senderInfo, setSenderInfo] = useState<FeedbackSender | null>(null);
-  const [defaultEmail, setDefaultEmail] = useState('');
-  useEffect(() => {
-    let cancelled = false;
-    fetchJson<FeedbackSender>('/api/feedback/sender')
-      .then((res) => {
-        if (cancelled) return;
-        setSenderInfo(res);
-        const seed = res.currentUserEmail || res.override;
-        if (!seed) return;
-        setDefaultEmail(seed);
-        setEmail((prev) => prev || seed);
-      })
-      .catch(() => {
-        /* sender line is informational — a failure must not block feedback */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Mail-channel picker — which DSS channel sends this feedback. Shares the
   // localStorage key with Settings so a choice carries across both. The feedback
@@ -264,7 +239,7 @@ export function FeedbackPage() {
         if (res.ok) {
           setStatus('success');
           setMessage('');
-          setEmail(defaultEmail);
+          setEmail('');
           setFiles([]);
           removeBundle();
           return;
@@ -294,7 +269,6 @@ export function FeedbackPage() {
       message,
       type,
       email,
-      defaultEmail,
       website,
       files,
       bundle,
@@ -394,11 +368,6 @@ export function FeedbackPage() {
               autoComplete="email"
               className="w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-elevated)] text-[var(--text-primary)] px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
             />
-            {senderInfo && (
-              <p className="mt-1.5 text-xs text-[var(--text-muted)]">
-                Sent as {describeFeedbackSender(senderInfo)} — change it in Settings → Messaging.
-              </p>
-            )}
           </div>
 
           {/* Mail channel — which DSS channel sends this feedback */}

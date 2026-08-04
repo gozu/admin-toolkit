@@ -1,21 +1,20 @@
 """In-app feedback route (EAP) — emails feedback + attachments via the same
 DSS mail channel the outreach campaigns use (adk_backend.mail)."""
-import inspect
 import logging
 import mimetypes
 import os
 import re
 import tempfile
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 from flask import Blueprint, g, jsonify, request
 
-from adk_backend.clients import MACRO_PROJECT_KEY, _local_thread_client
+from adk_backend.clients import MACRO_PROJECT_KEY
 from adk_backend.mail import (
     _get_configured_mail_channel, _get_mail_channel, _list_mail_channels,
 )
-from adk_backend.utils import advanced, local_only
+from adk_backend.utils import local_only
 
 bp = Blueprint('feedback', __name__)
 _LOGGER = logging.getLogger(__name__)
@@ -44,125 +43,6 @@ _FEEDBACK_RATE_MAX = 5            # max submissions …
 _FEEDBACK_RATE_WINDOW_S = 600     # … per 10 minutes, per (host, client IP)
 # Per-gunicorn-worker (not global) — acceptable for EAP volume.
 _FEEDBACK_RATE: Dict[str, List[float]] = {}
-
-_EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-
-# ─────────────────────────────────────────────────────────────────────────
-# Sender address
-#
-# The recipient above is fixed (feedback reaches the toolkit author); the
-# SENDER is the admin who is using the toolkit. DSS resolves the browsing
-# user from the browser's own session headers, so the default sender is that
-# user's DSS email. Instances whose SMTP relay only accepts one envelope
-# sender (a no-reply/service mailbox) override it with this plugin param,
-# managed from webapp Settings → Messaging. Declared hidden in plugin.json so
-# DSS does not prune the saved value on plugin update.
-# Empty sender ⇒ send() keeps the mail channel's own configured sender.
-# ─────────────────────────────────────────────────────────────────────────
-FEEDBACK_SENDER_PARAM = 'feedback_sender_email'
-_PLUGIN_ID = 'admin-toolkit'
-
-
-def _feedback_sender_override() -> str:
-    """The configured sender override ('' when unset). Plugin settings live on
-    the LOCAL instance — always the local client, never g.client."""
-    try:
-        raw = _local_thread_client().get_plugin(_PLUGIN_ID).get_settings().get_raw()
-        config = raw.get('config', {}) if isinstance(raw, dict) else {}
-        return (config.get(FEEDBACK_SENDER_PARAM) or '').strip()
-    except Exception as exc:
-        _LOGGER.debug('[feedback] sender override read failed: %s', exc)
-        return ''
-
-
-def _browsing_user() -> Tuple[str, str]:
-    """(login, email) of the DSS user whose browser made this request.
-
-    Same mechanism as chat identity: the webapp is served same-origin with
-    DSS, so the browser's session headers reach us and the LOCAL client can
-    resolve them. Returns ('', '') whenever that fails (no session, API key
-    identity with no matching user, older DSS) — the caller degrades to the
-    channel's own sender rather than erroring."""
-    try:
-        client = _local_thread_client()
-        auth = client.get_auth_info_from_browser_headers(dict(request.headers))
-        login = str((auth or {}).get('authIdentifier') or '').strip()
-        if not login:
-            return '', ''
-        raw = client.get_user(login).get_settings().get_raw()
-        email = str((raw or {}).get('email') or '').strip()
-        return login, (email if _EMAIL_RE.match(email) else '')
-    except Exception as exc:
-        _LOGGER.debug('[feedback] browsing-user lookup failed: %s', exc)
-        return '', ''
-
-
-def _resolve_sender() -> Dict[str, str]:
-    """Resolve the envelope sender for this request.
-
-    Order: configured override → browsing admin's DSS email → channel default
-    (an empty sender, which send() reads as "use the channel's sender")."""
-    override = _feedback_sender_override()
-    login, email = _browsing_user()
-    if override:
-        source = 'override'
-        sender = override
-    elif email:
-        source = 'user'
-        sender = email
-    else:
-        source = 'channel'
-        sender = ''
-    return {'sender': sender, 'source': source, 'override': override,
-            'currentUser': login, 'currentUserEmail': email}
-
-
-def _send_with_sender(channel_obj: Any, sender: str, *args: Any, **kwargs: Any) -> Optional[str]:
-    """channel.send(...), passing `sender` only when this DSS build accepts it.
-
-    The sender kwarg is not in every DSS version's messaging-channel client,
-    and the toolkit runs against whatever dataikuapi the host DSS ships.
-    Returns the sender actually applied ('' = the channel's own)."""
-    if sender:
-        try:
-            supported = 'sender' in inspect.signature(channel_obj.send).parameters
-        except (TypeError, ValueError):
-            supported = False
-        if supported:
-            channel_obj.send(*args, sender=sender, **kwargs)
-            return sender
-        _LOGGER.warning(
-            '[feedback] this DSS build ignores a custom sender — sending as the '
-            'mail channel default instead of %s', sender,
-        )
-    channel_obj.send(*args, **kwargs)
-    return ''
-
-
-@bp.route('/api/feedback/sender', methods=['GET'])
-@local_only
-def api_feedback_sender_get():
-    """Who this instance's feedback will be sent as (and the override, if set)."""
-    return jsonify({'ok': True, **_resolve_sender()})
-
-
-@bp.route('/api/feedback/sender', methods=['POST'])
-@advanced
-@local_only
-def api_feedback_sender_set():
-    """Set (or clear, with an empty value) the feedback sender override."""
-    body = request.get_json(force=True, silent=True) or {}
-    email = re.sub(r'[\r\n]', '', str(body.get('email') or '')).strip()
-    if email and not _EMAIL_RE.match(email):
-        return jsonify({'ok': False, 'error': 'Invalid sender email address'}), 400
-    try:
-        settings = _local_thread_client().get_plugin(_PLUGIN_ID).get_settings()
-        settings.get_raw().setdefault('config', {})[FEEDBACK_SENDER_PARAM] = email
-        settings.save()
-    except Exception as exc:
-        _LOGGER.warning('[feedback] sender override save failed: %s', exc)
-        return jsonify({'ok': False, 'error': f'Could not save: {exc}'}), 502
-    return jsonify({'ok': True, **_resolve_sender()})
 
 
 def _feedback_safe_name(name: str) -> str:
@@ -207,7 +87,7 @@ def api_feedback():
         return jsonify({'error': f'Message exceeds {_FEEDBACK_MAX_MSG_LEN} characters'}), 400
 
     reply_email = re.sub(r'[\r\n]', '', (request.form.get('email') or '').strip())
-    if reply_email and not _EMAIL_RE.match(reply_email):
+    if reply_email and not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', reply_email):
         return jsonify({'error': 'Invalid reply email address'}), 400
 
     diagnostics = (request.form.get('diagnostics') or '').strip()
@@ -257,18 +137,10 @@ def api_feedback():
     # Must use the macro-project fallback, NOT the empty-string self-reject path.
     project_key = os.environ.get('DKU_CURRENT_PROJECT_KEY') or MACRO_PROJECT_KEY
 
-    # Sent AS the admin using the toolkit (or the configured override) so the
-    # reply lands with them and the relay sees one of its own addresses.
-    sender_info = _resolve_sender()
-    sender = sender_info['sender']
-
     subject = re.sub(r'[\r\n]', '', f'[admin-toolkit feedback] {fb_type}')
     body_lines = [message, '']
     if reply_email:
         body_lines.append(f'Reply-to: {reply_email}')
-        body_lines.append('')
-    elif sender:
-        body_lines.append(f'From: {sender}')
         body_lines.append('')
     if diagnostics:
         body_lines.append('Diagnostics:')
@@ -298,8 +170,7 @@ def api_feedback():
             handles.append(handle)
             content_type = mimetypes.guess_type(safe_name)[0] or 'application/octet-stream'
             attachments.append((safe_name, handle, content_type))
-        sender = _send_with_sender(
-            channel_obj, sender,
+        channel_obj.send(
             project_key, [FEEDBACK_RECIPIENT], subject, body,
             attachments=attachments or None, plain_text=True,
         )
@@ -325,8 +196,7 @@ def api_feedback():
 
     _FEEDBACK_RATE[rate_key] = recent + [now]
     _LOGGER.info(
-        "[feedback] sent type=%s files=%d host=%s channel=%s sender=%s (%s)",
+        "[feedback] sent type=%s files=%d host=%s channel=%s",
         fb_type, len(uploads), getattr(g, 'host_id', 'local'), selected,
-        sender or '<channel default>', sender_info['source'],
     )
-    return jsonify({'ok': True, 'sender': sender})
+    return jsonify({'ok': True})

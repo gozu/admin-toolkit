@@ -10,6 +10,7 @@ import { FindingWhitelistCard } from '../FindingWhitelistCard';
 import { AlgorithmReviewCard } from '../AlgorithmReviewCard';
 import { PerfAutoTuneCard } from '../PerfAutoTuneCard';
 import { SupportBundleCard } from '../SupportBundleCard';
+import { FeedbackSenderField } from '../FeedbackSenderField';
 import { datasetExportConfigStore } from '../../state/datasetExportConfigStore';
 
 export const SELECTED_MAIL_CHANNEL_STORAGE_KEY = 'selectedMailChannel';
@@ -58,7 +59,8 @@ export function SettingsPage() {
         <div>
           <h3 className="text-lg font-semibold text-[var(--text-primary)]">Messaging</h3>
           <p className="text-sm text-[var(--text-muted)]">
-            Select the DSS mail channel used for outreach emails. Only email-type messaging channels are listed.
+            Select the DSS mail channel used for outreach emails, and the address in-app feedback
+            is sent from. Only email-type messaging channels are listed.
           </p>
         </div>
         <label className="block space-y-1 max-w-sm">
@@ -81,6 +83,7 @@ export function SettingsPage() {
             </p>
           )}
         </label>
+        <FeedbackSenderField />
       </section>
 
       <section className="glass-card p-4 space-y-3">

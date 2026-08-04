@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.797",
+    "version": "0.4.798",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -152,6 +152,15 @@
             "description": "Superseded by 'Toolkit storage' above. Kept declared (hidden) so DSS does not prune an existing value on plugin update; still used when Toolkit storage is unset.",
             "type": "SELECT",
             "getChoicesFromPython": true,
+            "mandatory": false,
+            "defaultValue": "",
+            "visibilityCondition": "false"
+        },
+        {
+            "name": "feedback_sender_email",
+            "label": "Feedback sender address (webapp-managed)",
+            "description": "Managed in webapp Settings \u2192 Messaging; declared here (hidden) so DSS keeps the value. Empty = the toolkit sends feedback as the signed-in admin's DSS email.",
+            "type": "STRING",
             "mandatory": false,
             "defaultValue": "",
             "visibilityCondition": "false"

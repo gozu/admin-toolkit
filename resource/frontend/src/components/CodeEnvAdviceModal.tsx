@@ -13,6 +13,35 @@ interface CodeEnvAdviceModalProps {
   onRetry: () => void;
 }
 
+// Keep model output passive: links, images, and raw HTML must never create
+// browser-initiated requests from untrusted remediation text.
+const SAFE_ADVICE_MARKDOWN_ELEMENTS = [
+  'p',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'ul',
+  'ol',
+  'li',
+  'strong',
+  'em',
+  'del',
+  'blockquote',
+  'code',
+  'pre',
+  'hr',
+  'br',
+  'table',
+  'thead',
+  'tbody',
+  'tr',
+  'th',
+  'td',
+] as const;
+
 export function CodeEnvAdviceModal({ row, entry, onClose, onRetry }: CodeEnvAdviceModalProps) {
   const waiting = !entry || (entry.status === 'streaming' && !entry.text);
 
@@ -72,7 +101,14 @@ export function CodeEnvAdviceModal({ row, entry, onClose, onRetry }: CodeEnvAdvi
           </div>
         ) : (
           <div className="ai-analysis-markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.text}</ReactMarkdown>
+            <ReactMarkdown
+              allowedElements={SAFE_ADVICE_MARKDOWN_ELEMENTS}
+              remarkPlugins={[remarkGfm]}
+              skipHtml
+              unwrapDisallowed
+            >
+              {entry.text}
+            </ReactMarkdown>
           </div>
         )}
       </div>

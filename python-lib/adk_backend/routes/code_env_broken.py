@@ -24,6 +24,8 @@ from adk_backend.code_env_build import (
     derive_dates,
     extract_error,
     isolate_last_build,
+    reconstruct_requested_spec,
+    split_install_attempts,
 )
 from adk_backend.footprint import _footprint_available
 from adk_backend.routes.code_envs import _get_code_env_size_map
@@ -185,7 +187,10 @@ _ADVICE_SYSTEM_PROMPT = (
     "package(s) and version(s) involved and give the concrete fix: a version to "
     "pin, a constraint to loosen, a system library to install, a proxy/index "
     "setting to correct. If the log is insufficient to be certain, say what to "
-    "check next. Do not restate the log and do not add pleasantries.\n\n"
+    "check next. When a history of previous install attempts is present, "
+    "compare them: identify what the administrator changed between deployments "
+    "and whether it moved toward or away from the fix. Do not restate the log "
+    "and do not add pleasantries.\n\n"
     "Answer in markdown with exactly these sections:\n"
     "## Diagnosis — what broke and why, in two or three sentences.\n"
     "## Fix — numbered steps with the exact commands or DSS UI paths "
@@ -201,6 +206,91 @@ Build log excerpt:
 ---
 {error}
 ---"""
+
+_ADVICE_SPEC_SECTION = """
+
+Environment definition:
+{spec}"""
+
+_ADVICE_HISTORY_SECTION = """
+
+Previous install attempts (newest first; the most recent, failing attempt is \
+excluded — its log excerpt is above):
+{history}"""
+
+_HISTORY_MAX_ATTEMPTS = 5
+_HISTORY_MAX_CHARS = 6000
+
+
+def _cap_text(text: str, limit: int) -> str:
+    text = (text or '').strip()
+    if len(text) > limit:
+        return text[:limit].rstrip() + '\n… (truncated)'
+    return text
+
+
+def _format_spec_context(definition: Dict[str, Any]) -> str:
+    """Prompt block with the env's requirements and installed packages.
+
+    Pure (definition dict in, str out) so tests need no client stubs. The
+    mandatory list is part of the effective requirements: DSS installs it
+    combined with the user spec, and post-upgrade conflicts are frequently
+    spec-vs-mandatory. R envs may lack these keys entirely — every section
+    degrades rather than raising.
+    """
+    spec = str(definition.get('specPackageList') or '')
+    mandatory = str(definition.get('mandatoryPackageList') or '')
+    conda = str(definition.get('specCondaEnvironment') or '')
+    actual = str(definition.get('actualPackageList') or '')
+
+    sections = ['Requirements (specPackageList):\n---\n%s\n---'
+                % (_cap_text(spec, 4000) or '(empty)')]
+    if mandatory.strip():
+        sections.append(
+            'DSS mandatory base packages (installed combined with the requirements):'
+            '\n---\n%s\n---' % _cap_text(mandatory, 2000))
+    if conda.strip():
+        sections.append('Conda spec:\n---\n%s\n---' % _cap_text(conda, 2000))
+    sections.append('Installed packages (pip freeze):\n---\n%s\n---'
+                    % (_cap_text(actual, 10000) or '(unavailable)'))
+    return '\n\n'.join(sections)
+
+
+def _format_attempt_history(attempts: List[Dict[str, Any]]) -> str:
+    """Prompt block summarising prior install attempts, newest first.
+
+    Skips the last attempt (its error excerpt is already in the prompt), so a
+    single-attempt env yields '' and the section is omitted. Budgeted to
+    _HISTORY_MAX_ATTEMPTS / _HISTORY_MAX_CHARS with an elision note.
+    """
+    prior = attempts[:-1]
+    if not prior:
+        return ''
+    blocks: List[str] = []
+    total = 0
+    elided = False
+    for attempt in reversed(prior):
+        if len(blocks) >= _HISTORY_MAX_ATTEMPTS or total >= _HISTORY_MAX_CHARS:
+            elided = True
+            break
+        failure_class, failure_label = classify(attempt['text'])
+        lines = ['Attempt at %s — %s' % (attempt.get('ts') or 'unknown time',
+                                         failure_label or 'succeeded')]
+        specs = reconstruct_requested_spec(attempt['text'])
+        if specs:
+            lines.append('Requested: %s' % ', '.join(specs))
+        else:
+            lines.append('Requested: (not reconstructable from the log)')
+        if failure_class:
+            first_error = extract_error(attempt['text'], max_lines=1, max_chars=300)
+            if first_error:
+                lines.append('Error: %s' % first_error.splitlines()[0])
+        block = '\n'.join(lines)
+        blocks.append(block)
+        total += len(block)
+    if elided:
+        blocks.append('(older attempts elided)')
+    return '\n\n'.join(blocks)
 
 
 @bp.route('/api/code-envs/broken/advice', methods=['POST'])
@@ -220,6 +310,43 @@ def api_code_env_broken_advice():
             return
 
         try:
+            # Spec + attempt history are fetched server-side at advice time
+            # (fresher than the scan row, and the scan payload stays lean).
+            # g.client is host-aware, so a remote-host scan reads the remote
+            # env; either fetch failing degrades to a note, advice still runs.
+            spec_block = ''
+            history_block = ''
+            if env_name and env_lang:
+                yield "event: phase\ndata: %s\n\n" % json.dumps(
+                    {"phase": "Fetching environment spec & history"})
+                try:
+                    definition = g.client.get_code_env(env_lang, env_name).get_definition()
+                    spec_block = _format_spec_context(definition or {})
+                except Exception as exc:
+                    spec_block = '(unavailable: %s: %s)' % (type(exc).__name__, str(exc)[:200])
+                try:
+                    env = g.client.get_code_env(env_lang, env_name)
+                    log_names = {str(e.get('name') or '') for e in env.list_logs() or []
+                                 if isinstance(e, dict)}
+                    log_name = next((n for n in _LOG_PREFERENCE if n in log_names), None)
+                    if log_name:
+                        attempts = split_install_attempts(str(env.get_log(log_name) or ''))
+                        history_block = _format_attempt_history(attempts)
+                except Exception as exc:
+                    history_block = '(unavailable: %s: %s)' % (type(exc).__name__, str(exc)[:200])
+
+            user_prompt = _ADVICE_USER_PROMPT.format(
+                env=env_name,
+                lang=env_lang,
+                python=python_version or 'n/a',
+                label=failure_label or 'unknown',
+                error=error_excerpt or '(no detail)',
+            )
+            if spec_block:
+                user_prompt += _ADVICE_SPEC_SECTION.format(spec=spec_block)
+            if history_block:
+                user_prompt += _ADVICE_HISTORY_SECTION.format(history=history_block)
+
             yield "event: phase\ndata: %s\n\n" % json.dumps({"phase": "Sending to LLM"})
 
             # The mesh call runs on the local toolkit project even when the scan
@@ -228,13 +355,7 @@ def api_code_env_broken_advice():
             completion = project.get_llm(llm_id).new_completion()
             completion.settings['maxOutputTokens'] = 4096
             completion.with_message(message=_ADVICE_SYSTEM_PROMPT, role='system')
-            completion.with_message(message=_ADVICE_USER_PROMPT.format(
-                env=env_name,
-                lang=env_lang,
-                python=python_version or 'n/a',
-                label=failure_label or 'unknown',
-                error=error_excerpt or '(no detail)',
-            ), role='user')
+            completion.with_message(message=user_prompt, role='user')
 
             # Try streaming first, fall back to non-streamed
             try:

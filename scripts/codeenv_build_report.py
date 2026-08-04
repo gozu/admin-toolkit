@@ -105,6 +105,63 @@ def isolate_last_build(text: str) -> str:
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Per-attempt history
+# ──────────────────────────────────────────────────────────────────────
+
+# DSS writes each deployment's requirements to a temp reqNNN.txt and deletes
+# it, so no spec history exists as files — but pip echoes every top-level
+# requirement back with its origin: "Collecting <spec> (from -r ...req....txt
+# (line N))" or "Requirement already satisfied: <spec> in ... (from -r ...
+# (line N))". Transitive deps carry "(from <package>->...)" instead, so
+# requiring the literal "(from -r" keeps only what the administrator asked
+# for. The append-only log thus reconstructs each attempt's requested spec.
+_ATTEMPT_TS = re.compile(r"\bat (\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})")
+_PIP_REQ_MARKER = re.compile(r"pip install[^\n]* -r[ \t]|\(from -r ")
+_REQ_ORIGIN = re.compile(
+    r"^(?:Collecting|Requirement already satisfied:?)\s+(?P<spec>\S+)"
+    r"[^\n]*?\(from -r [^\n]*?\(line (?P<line>\d+)\)",
+    re.M,
+)
+
+
+def split_install_attempts(text: str) -> List[Dict[str, Any]]:
+    """Split an append-only build log into pip-install attempts, oldest first.
+
+    Each attempt: {"ts": "YYYY/MM/DD hh:mm:ss" | None, "text": section}. Only
+    sections that actually install from a requirements file count — the
+    jupyter-support section also matches _INSTALL_TITLE ("install ipykernel")
+    but never runs ``pip install ... -r`` nor logs "(from -r" origins.
+    """
+    banners = list(_BANNER.finditer(text))
+    attempts: List[Dict[str, Any]] = []
+    for i, m in enumerate(banners):
+        if not _INSTALL_TITLE.search(m.group("title")):
+            continue
+        end = banners[i + 1].start() if i + 1 < len(banners) else len(text)
+        section = text[m.start():end]
+        if not _PIP_REQ_MARKER.search(section):
+            continue
+        ts = _ATTEMPT_TS.search(section)
+        attempts.append({"ts": ts.group(1) if ts else None, "text": section})
+    return attempts
+
+
+def reconstruct_requested_spec(attempt_text: str) -> List[str]:
+    """Recover the top-level requirements one install attempt was given,
+    ordered by requirements-file line number, deduped."""
+    found: List[Tuple[int, str]] = []
+    seen = set()
+    for m in _REQ_ORIGIN.finditer(attempt_text):
+        spec = m.group("spec")
+        if spec in seen:
+            continue
+        seen.add(spec)
+        found.append((int(m.group("line")), spec))
+    found.sort(key=lambda pair: pair[0])
+    return [spec for _, spec in found]
+
+
+# ──────────────────────────────────────────────────────────────────────
 # Failure classification
 # ──────────────────────────────────────────────────────────────────────
 

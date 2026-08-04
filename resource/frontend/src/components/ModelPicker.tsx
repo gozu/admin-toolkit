@@ -82,10 +82,18 @@ export function ModelPicker({
   const open = useCallback(() => {
     setIsOpen(true);
     setQuery('');
-    setExpanded(selected ? new Set([groupKey(selected)]) : new Set());
+    // Open on the selected model's group; with nothing selected yet, a lone
+    // connection expands so the list never opens on headers alone.
+    setExpanded(
+      selected
+        ? new Set([groupKey(selected)])
+        : groups.length === 1
+          ? new Set([groups[0].connection])
+          : new Set(),
+    );
     setActiveId(selected?.id ?? null);
     requestAnimationFrame(() => inputRef.current?.focus());
-  }, [selected]);
+  }, [selected, groups]);
 
   const close = useCallback(() => {
     setIsOpen(false);

@@ -229,6 +229,13 @@ const icons: Record<string, ReactNode> = {
       <path d="M10 12h4" />
     </svg>
   ),
+  // Layered copies — an app template and the instance projects stamped from it.
+  'app-instances': (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+    </svg>
+  ),
   'project-compute': (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="9" width="13" height="10" rx="1" />

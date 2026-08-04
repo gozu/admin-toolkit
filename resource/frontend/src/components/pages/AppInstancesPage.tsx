@@ -18,6 +18,11 @@ interface TemplateGroup {
   orphans: number;
   /** True when DSS lists no such app — the template was deleted underneath its instances. */
   missing: boolean;
+  /** Is this app reachable as an `App_<appId>` recipe at all? `useAsRecipe`
+   *  comes from the app manifest; a template deleted out from under its callers
+   *  no longer reports it, so a found App_ recipe also counts as proof.
+   *  Everything keepInstance-related is meaningless when this is false. */
+  isRecipeApp: boolean;
 }
 
 function fmtRelative(ms: number | null, nowMs: number): string {
@@ -61,6 +66,7 @@ export function AppInstancesPage() {
         keepOn: 0,
         orphans: 0,
         missing: false,
+        isRecipeApp: false,
       });
     }
     // An instance can outlive its template. Synthesise a row for those app ids
@@ -84,6 +90,7 @@ export function AppInstancesPage() {
           keepOn: 0,
           orphans: 0,
           missing: true,
+          isRecipeApp: false,
         };
         byApp.set(appId, group);
       }
@@ -100,9 +107,12 @@ export function AppInstancesPage() {
       group.instances.push(instance);
       if (instance.orphan === true) group.orphans += 1;
     }
-    return [...byApp.values()].filter(
-      (group) => group.instances.length > 0 || group.recipes.length > 0,
-    );
+    return [...byApp.values()]
+      .filter((group) => group.instances.length > 0 || group.recipes.length > 0)
+      .map((group) => ({
+        ...group,
+        isRecipeApp: group.app.useAsRecipe || group.recipes.length > 0,
+      }));
   }, [data]);
 
   const rescan = () => {
@@ -132,6 +142,10 @@ export function AppInstancesPage() {
   const totalInstances = data?.instances.length ?? 0;
   const keepOnTotal = data?.recipes.filter((r) => r.keepInstance === true).length ?? 0;
   const attribution = data?.attribution;
+  // Instances DSS attributes to an App recipe run. Zero of these on a host that
+  // still has instances is the common case, and the reason three columns read
+  // n/a — worth stating outright rather than leaving the operator to infer it.
+  const recipeCreated = data?.instances.filter((i) => i.creatorFullId).length ?? 0;
 
   const columns: ColumnDef<TemplateGroup>[] = [
     {
@@ -184,12 +198,12 @@ export function AppInstancesPage() {
       label: 'As recipe',
       align: 'center',
       headerTooltip: 'App carries useAsRecipeSettings — it can be run as an App_<appId> recipe',
-      sortValue: (group) => (group.app.useAsRecipe ? 1 : 0),
+      sortValue: (group) => (group.isRecipeApp ? 1 : 0),
       render: (group) =>
-        group.app.useAsRecipe ? (
+        group.isRecipeApp ? (
           <span className="text-[var(--text-secondary)]">yes</span>
         ) : (
-          <span className="text-[var(--text-tertiary)]">—</span>
+          <span className="text-[var(--text-tertiary)]">no</span>
         ),
     },
     {
@@ -201,13 +215,30 @@ export function AppInstancesPage() {
       sortValue: (group) => group.keepOn,
       defaultSortDir: 'desc',
       render: (group) => {
-        if (!group.recipes.length) return <span className="text-[var(--text-tertiary)]">—</span>;
+        // "n/a" and "0 of 0" are different facts and must not both render as a
+        // dash: the first means the flag cannot exist for this app, the second
+        // means it can but nothing calls the app from a flow yet.
+        if (!group.isRecipeApp) {
+          return (
+            <span
+              className="text-[var(--text-tertiary)]"
+              title="Only App-as-recipe apps have a Keep instance setting"
+            >
+              n/a
+            </span>
+          );
+        }
         return (
           <span
             className={
               group.keepOn > 0
                 ? 'font-mono text-xs text-[var(--neon-red)]'
                 : 'font-mono text-xs text-[var(--text-secondary)]'
+            }
+            title={
+              group.recipes.length
+                ? undefined
+                : 'Usable as a recipe, but no flow calls it — nothing to keep instances'
             }
           >
             {group.keepOn} of {group.recipes.length}
@@ -226,7 +257,12 @@ export function AppInstancesPage() {
       hidden: () => !attribution?.available,
       cellClassName: (group) =>
         group.orphans > 0 ? 'text-[var(--neon-red)]' : 'text-[var(--text-tertiary)]',
-      render: (group) => group.orphans || '—',
+      render: (group) =>
+        group.isRecipeApp ? (
+          group.orphans
+        ) : (
+          <span title="Only recipe-created instances can be orphaned">n/a</span>
+        ),
     },
     {
       id: 'last',
@@ -301,6 +337,17 @@ export function AppInstancesPage() {
                 {data.orphans} orphaned
               </span>
             )}
+          </div>
+        )}
+
+        {complete && data && attribution?.available && totalInstances > 0 && recipeCreated === 0 && (
+          <div className="text-xs text-[var(--text-muted)]">
+            None of these {totalInstances} instance{totalInstances === 1 ? '' : 's'} was created by
+            an App recipe run — they were instantiated from an app&apos;s homepage. That is why{' '}
+            <strong>Keep instance</strong> and <strong>Orphaned</strong> read{' '}
+            <span className="font-mono">n/a</span>: both only exist for App-as-recipe runs. Project
+            growth from manual instantiation is a separate mechanism, and deleting those instances
+            is a user decision rather than leftover run debris.
           </div>
         )}
 

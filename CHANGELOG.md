@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.812] - 2026-08-05
+
+### Added
+- **Projects → Scenarios enrichments** — the six live signals a diagnostic dump could never carry, all riding the same SSE sweep:
+  - **Last run** column from real run history (`get_last_runs`, one extra call per scenario): outcome dot + recency, with duration, 10-run average and a compressed outcome strip in the tooltip. Failure streaks ≥2 get a red `N× failed` chip.
+  - **Silent failures**: a failing scenario with no active reporter gets a `silent` chip — it breaks and nobody hears about it.
+  - **Overlap risk**: average completed run outlasting the shortest active trigger interval gets an `overlap` chip (DSS queues/suppresses fires while a run is in flight, so the schedule silently degrades).
+  - **Broken/dormant chains**: `follow_scenariorun` triggers are resolved against the whole estate after the sweep (param shape `{projectKey, scenarioId, outcomeFilter}` verified against `FollowScenarioRunTriggerParams` in dataiku-dip.jar). A target that no longer exists ⇒ `chain broken`; a target that is disabled or has no active trigger of its own ⇒ `chain dormant`. Verdicts ship in the done event and are patched onto rows, App-Instances-style; an incomplete sweep leaves them unknown rather than guessed. Trigger summaries now name the followed scenario ("After PROJ.scenario").
+  - **Timezone-normalized clustering**: every temporal trigger ships `serverShiftMinutes` (server UTC offset − trigger-zone offset, current DST rules) and the timeline/load-distribution math folds it in, so a 09:00 Asia/Tokyo trigger lands at its true server-time slot; summaries name non-server zones.
+  - **Run-as validity**: an explicitly-set `runAsUser` that is missing or disabled (one `list_users()` call per sweep) gets a red `run-as` chip; implicit defaults are never guessed.
+  - A **Signals** row above the table totals all of the above across every category, so issues on rows hidden by the default filter stay visible. Fixtures for all six signals live in the `ATK_SCEN` project on akaos.
+
 ## [0.4.811] - 2026-08-05
 
 ### Added

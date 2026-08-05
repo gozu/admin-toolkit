@@ -15,11 +15,13 @@ import {
   countScenarioCategories,
   filterScenariosByCategories,
   scenarioTriggerSummary,
+  minActiveIntervalMs,
+  overlapRisk,
 } from '../../utils/scenarioSchedule';
 import type { ScenarioRow } from '../../types';
 
 const GRID_COLS =
-  'minmax(6rem,0.9fr) minmax(9rem,1.3fr) minmax(8rem,1.2fr) minmax(4.5rem,0.6fr) minmax(18rem,3.2fr)';
+  'minmax(6rem,0.85fr) minmax(9rem,1.3fr) minmax(8rem,1.15fr) minmax(4.5rem,0.55fr) minmax(5rem,0.7fr) minmax(16rem,3fr)';
 
 const CATEGORY_META: Record<
   ScenarioCategory,
@@ -51,6 +53,13 @@ const CATEGORY_META: Record<
   },
 };
 
+const OUTCOME_COLORS: Record<string, string> = {
+  SUCCESS: 'var(--neon-green)',
+  WARNING: 'var(--neon-amber)',
+  FAILED: 'var(--neon-red)',
+  ABORTED: 'var(--neon-red)',
+};
+
 /** "in 34 min" / "in 2 h" / "in 3 d" — DSS's own nextRun vs the scan finish
  *  time (never the wall clock: the React Compiler purity rule bans Date.now()
  *  in render). */
@@ -62,6 +71,24 @@ function fmtUntil(ms: number | null, nowMs: number): string {
   if (mins < 60) return `in ${mins} min`;
   if (mins < 48 * 60) return `in ${Math.round(mins / 60)} h`;
   return `in ${Math.round(mins / 1440)} d`;
+}
+
+function fmtAgo(ms: number | null, nowMs: number): string {
+  if (!ms) return '—';
+  if (!nowMs) return new Date(ms).toLocaleString();
+  const mins = Math.round((nowMs - ms) / 60_000);
+  if (mins <= 0) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  if (mins < 48 * 60) return `${Math.round(mins / 60)} h ago`;
+  return `${Math.round(mins / 1440)} d ago`;
+}
+
+function fmtDuration(ms: number | null): string {
+  if (ms == null) return '?';
+  if (ms < 1000) return `${(ms / 1000).toFixed(1)} s`;
+  if (ms < 120_000) return `${Math.round(ms / 1000)} s`;
+  if (ms < 2 * 3_600_000) return `${Math.round(ms / 60_000)} min`;
+  return `${(ms / 3_600_000).toFixed(1)} h`;
 }
 
 export function ScenariosPage() {
@@ -90,6 +117,34 @@ export function ScenariosPage() {
     () => allScenarios.filter((s) => s.running).length,
     [allScenarios],
   );
+  // Health signals across ALL scenarios (not just the filtered view) — the
+  // filter defaults to active-time-based, and a broken chain on an event-based
+  // row must not be invisible.
+  const signals = useMemo(() => {
+    let failing = 0;
+    let silent = 0;
+    let overlap = 0;
+    let badRunAs = 0;
+    for (const s of allScenarios) {
+      if (s.failureStreak >= 1) {
+        failing++;
+        if (s.activeReporters === 0) silent++;
+      }
+      if (overlapRisk(s)) overlap++;
+      if (s.runAsInvalid) badRunAs++;
+    }
+    const chains = data?.chainIssues ?? [];
+    return {
+      failing,
+      silent,
+      overlap,
+      badRunAs,
+      chainsBroken: chains.filter((c) => c.kind === 'missing').length,
+      chainsDormant: chains.filter((c) => c.kind === 'dormant').length,
+      any: failing + overlap + badRunAs + chains.length > 0,
+    };
+  }, [allScenarios, data]);
+
   const shownRows = useMemo(
     () =>
       filterScenariosByCategories(allScenarios, categoryFilter).sort(
@@ -139,9 +194,10 @@ export function ScenariosPage() {
             </h4>
             <p className="mt-0.5 max-w-3xl text-xs text-[var(--text-muted)]">
               When scenarios are <em>configured</em> to fire, projected onto one shared timeline —
-              clustering (dozens of scenarios at 02:00) shows up as a load spike. The timeline
-              plots configured trigger times and ignores per-trigger timezones;{' '}
-              <strong>Next run</strong> is DSS&apos;s own computation and is the ground truth.
+              clustering (dozens of scenarios at 02:00) shows up as a load spike. Trigger times are
+              normalized to server time{data?.serverTz ? ` (${data.serverTz})` : ''};{' '}
+              <strong>Next run</strong> is DSS&apos;s own computation, and{' '}
+              <strong>Last run</strong> comes from the real run history.
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -203,11 +259,71 @@ export function ScenariosPage() {
           </div>
         )}
 
+        {data && signals.any && (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-xs text-[var(--text-muted)]">Signals:</span>
+            {signals.failing > 0 && (
+              <span
+                className="badge badge-critical"
+                title="Newest completed run FAILED or ABORTED"
+              >
+                {signals.failing} failing
+              </span>
+            )}
+            {signals.silent > 0 && (
+              <span
+                className="badge badge-warning"
+                title="Failing with no active reporter — nobody hears about it"
+              >
+                {signals.silent} failing silently
+              </span>
+            )}
+            {signals.overlap > 0 && (
+              <span
+                className="badge badge-warning"
+                title="Average run outlasts the shortest trigger interval — the scenario cannot keep up with its own schedule"
+              >
+                {signals.overlap} overlap risk
+              </span>
+            )}
+            {signals.chainsBroken > 0 && (
+              <span
+                className="badge badge-critical"
+                title="follow-scenario triggers whose target scenario no longer exists"
+              >
+                {signals.chainsBroken} broken chain{signals.chainsBroken === 1 ? '' : 's'}
+              </span>
+            )}
+            {signals.chainsDormant > 0 && (
+              <span
+                className="badge badge-warning"
+                title="follow-scenario triggers whose target is disabled or has no active trigger — the chain only moves on manual runs"
+              >
+                {signals.chainsDormant} dormant chain{signals.chainsDormant === 1 ? '' : 's'}
+              </span>
+            )}
+            {signals.badRunAs > 0 && (
+              <span
+                className="badge badge-critical"
+                title="Run-as login no longer exists or is disabled"
+              >
+                {signals.badRunAs} bad run-as
+              </span>
+            )}
+          </div>
+        )}
+
+        {complete && data && !data.usersChecked && (
+          <div className="text-xs text-[var(--text-muted)]">
+            User list unavailable — run-as validity was not checked.
+          </div>
+        )}
+
         {complete && data && data.failedProjects.length > 0 && (
           <div className="text-xs text-[var(--neon-yellow)]">
             {data.failedProjects.length} project
             {data.failedProjects.length === 1 ? '' : 's'} could not be read — the schedule below is
-            a floor, not a total.
+            a floor, not a total, and chain verdicts are off rather than guessed.
           </div>
         )}
 
@@ -288,7 +404,7 @@ export function ScenariosPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <div className="min-w-[64rem]">
+              <div className="min-w-[70rem]">
                 {/* Load-distribution strip, aligned to the timeline axis */}
                 <div
                   className="grid items-end px-4 pt-3 pb-2 border-b border-[var(--border-glass)] gap-x-2"
@@ -296,7 +412,7 @@ export function ScenariosPage() {
                 >
                   <div
                     className="text-[10px] uppercase tracking-wide text-[var(--text-muted)] self-center"
-                    style={{ gridColumn: '1 / 5' }}
+                    style={{ gridColumn: '1 / 6' }}
                   >
                     Load distribution
                     <span className="ml-1 normal-case tracking-normal">
@@ -330,6 +446,7 @@ export function ScenariosPage() {
                   <div>Scenario</div>
                   <div>Trigger</div>
                   <div>Next run</div>
+                  <div>Last run</div>
                   <div className="relative h-4">
                     {ticks
                       .filter((t) => t.major && t.label)
@@ -373,6 +490,10 @@ export function ScenariosPage() {
   );
 }
 
+function outcomeInitials(outcomes: string[]): string {
+  return outcomes.map((o) => o.charAt(0)).join(' ');
+}
+
 function ScenarioTimelineRow({
   scenario,
   segments,
@@ -396,6 +517,23 @@ function ScenarioTimelineRow({
   ]
     .filter(Boolean)
     .join(' · ');
+
+  const hasOverlap = overlapRisk(scenario);
+  const overlapTitle = hasOverlap
+    ? `Average run ${fmtDuration(scenario.avgDurationMs)} outlasts the shortest trigger interval ${fmtDuration(minActiveIntervalMs(scenario))} — fires queue up behind runs that cannot keep pace`
+    : undefined;
+
+  const lastRunTitle = scenario.lastRunOutcome
+    ? `${scenario.lastRunOutcome} · took ${fmtDuration(
+        scenario.lastRunEnd && scenario.lastRunStart
+          ? scenario.lastRunEnd - scenario.lastRunStart
+          : null,
+      )} · avg ${fmtDuration(scenario.avgDurationMs)} over ${scenario.runsSampled} run${
+        scenario.runsSampled === 1 ? '' : 's'
+      } · recent: ${outcomeInitials(scenario.recentOutcomes)}`
+    : scenario.runsError
+      ? `Run history unreadable: ${scenario.runsError}`
+      : 'No completed runs on record';
 
   return (
     <div
@@ -437,6 +575,53 @@ function ScenarioTimelineRow({
             test
           </span>
         )}
+        {scenario.failureStreak >= 2 && (
+          <span
+            className="badge badge-critical shrink-0"
+            title={`The last ${scenario.failureStreak} completed runs failed or were aborted`}
+          >
+            {scenario.failureStreak}&times; failed
+          </span>
+        )}
+        {scenario.failureStreak >= 1 && scenario.activeReporters === 0 && (
+          <span
+            className="badge badge-warning shrink-0"
+            title="Failing with no active reporter configured — nobody hears about it"
+          >
+            silent
+          </span>
+        )}
+        {hasOverlap && (
+          <span className="badge badge-warning shrink-0" title={overlapTitle}>
+            overlap
+          </span>
+        )}
+        {scenario.chainIssue && (
+          <span
+            className={
+              scenario.chainIssue.kind === 'missing'
+                ? 'badge badge-critical shrink-0'
+                : 'badge badge-warning shrink-0'
+            }
+            title={
+              scenario.chainIssue.kind === 'missing'
+                ? `Follows ${scenario.chainIssue.target}, which no longer exists — this trigger will never fire`
+                : `Follows ${scenario.chainIssue.target}, which is disabled or has no active trigger — the chain only moves on manual runs`
+            }
+          >
+            {scenario.chainIssue.kind === 'missing' ? 'chain broken' : 'chain dormant'}
+          </span>
+        )}
+        {scenario.runAsInvalid && (
+          <span
+            className="badge badge-critical shrink-0"
+            title={`Runs as ${scenario.runAsUser}, which ${
+              scenario.runAsInvalid === 'missing' ? 'no longer exists' : 'is disabled'
+            }`}
+          >
+            run-as {scenario.runAsInvalid}
+          </span>
+        )}
       </div>
       <div
         className={
@@ -455,6 +640,33 @@ function ScenarioTimelineRow({
         title={scenario.nextRun ? new Date(scenario.nextRun).toLocaleString() : 'Nothing scheduled'}
       >
         {fmtUntil(scenario.nextRun, nowMs)}
+      </div>
+      <div className="flex items-center gap-1.5 truncate text-xs" title={lastRunTitle}>
+        {scenario.lastRunOutcome ? (
+          <>
+            <span
+              className="inline-block h-2 w-2 shrink-0 rounded-full"
+              style={{
+                backgroundColor:
+                  OUTCOME_COLORS[scenario.lastRunOutcome] ?? 'var(--text-tertiary)',
+              }}
+            />
+            <span
+              className={
+                'truncate ' +
+                (scenario.failureStreak >= 1
+                  ? 'text-[var(--neon-red)]'
+                  : 'text-[var(--text-secondary)]')
+              }
+            >
+              {fmtAgo(scenario.lastRunStart, nowMs)}
+            </span>
+          </>
+        ) : (
+          <span className="text-[var(--text-tertiary)]">
+            {scenario.runsError ? 'unreadable' : 'never'}
+          </span>
+        )}
       </div>
       <ScheduleTrack ticks={ticks} segments={segments} active={scenario.active} />
     </div>

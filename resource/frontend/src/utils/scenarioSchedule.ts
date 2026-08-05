@@ -4,8 +4,11 @@
 // Plots *configured* schedules (when scenarios are set to fire), not past runs.
 // All math is done in UTC against a normalized reference window because, for
 // recurring schedules, the absolute calendar date is cosmetic; only the
-// relative layout matters. Per-trigger timezones are ignored by this synthetic
-// projection — the page pairs it with DSS's own `nextRun` for ground truth.
+// relative layout matters. Per-trigger timezones ARE folded in via the
+// backend-computed `serverShiftMinutes` (clock time wrapped mod 24h into
+// server time — a fire pushed across midnight keeps its server clock time but
+// may show on the configured weekday rather than the shifted one); the page
+// still pairs the projection with DSS's own `nextRun` for ground truth.
 
 import type { ScenarioRow, ScenarioTrigger } from '../types';
 
@@ -78,6 +81,12 @@ function pad2(n: number): string {
 
 function timeOfDayLabel(hour: number, minute: number): string {
   return `${pad2(hour)}:${pad2(minute)}`;
+}
+
+/** Configured clock time shifted into server time, wrapped to [0, 1440). */
+function serverMinutes(p: NonNullable<ScenarioTrigger['temporal']>): number {
+  const base = (p.hour ?? 0) * 60 + (p.minute ?? 0) + (p.serverShiftMinutes ?? 0);
+  return ((base % 1440) + 1440) % 1440;
 }
 
 // ---------------------------------------------------------------------------
@@ -161,7 +170,10 @@ export function temporalSummary(t: ScenarioTrigger): string {
   const rf = Math.max(1, p.repeatFrequency || 1);
   const hour = p.hour ?? 0;
   const minute = p.minute ?? 0;
-  const at = timeOfDayLabel(hour, minute);
+  // Configured local time (matching the DSS UI) + the zone when not server —
+  // the timeline dash, by contrast, sits at the server-time position.
+  const tz = p.timezone && p.timezone !== 'SERVER' ? ` (${p.timezone})` : '';
+  const at = timeOfDayLabel(hour, minute) + tz;
 
   switch (p.frequency) {
     case 'Daily':
@@ -199,7 +211,11 @@ export function scenarioTriggerSummary(scenario: ScenarioRow): string {
   if (kind === 'event') {
     return scenario.triggers
       .filter((t) => t.type !== 'temporal' && t.active)
-      .map((t) => eventTriggerLabel(t.type))
+      .map((t) =>
+        t.follow?.scenarioId
+          ? `After ${t.follow.projectKey ? `${t.follow.projectKey}.` : ''}${t.follow.scenarioId}`
+          : eventTriggerLabel(t.type),
+      )
       .join('; ');
   }
   return 'No active trigger';
@@ -246,9 +262,7 @@ function computeWindowOccurrences(
 ): RawOccurrences {
   const p = trigger.temporal!;
   const rf = Math.max(1, p.repeatFrequency || 1);
-  const hour = p.hour ?? 0;
-  const minute = p.minute ?? 0;
-  const todMs = hour * HOUR + minute * MINUTE;
+  const todMs = serverMinutes(p) * MINUTE;
   const windowMs = end - start;
   const cap = 1000;
 
@@ -313,8 +327,8 @@ function computeWindowOccurrences(
     case 'Hourly': {
       const step = rf * HOUR;
       const estimate = Math.floor(windowMs / step) + 1;
-      // align first fire to :minute
-      let fire = dayStart(start) + minute * MINUTE;
+      // align first fire to :minute (in server time — matters for half-hour zones)
+      let fire = dayStart(start) + (serverMinutes(p) % 60) * MINUTE;
       while (fire < start) fire += step;
       if (estimate > DENSE_THRESHOLD) {
         const last = (() => {
@@ -366,9 +380,7 @@ interface TimeOfDayResult {
 function computeTimeOfDay(trigger: ScenarioTrigger): TimeOfDayResult {
   const p = trigger.temporal!;
   const rf = Math.max(1, p.repeatFrequency || 1);
-  const hour = p.hour ?? 0;
-  const minute = p.minute ?? 0;
-  const base = hour * 60 + minute;
+  const base = serverMinutes(p);
 
   switch (p.frequency) {
     case 'Daily':
@@ -537,6 +549,42 @@ function bucketLabel(range: RangeKey, index: number): string {
     default:
       return String(index);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Overlap risk — runs slower than the schedule fires
+// ---------------------------------------------------------------------------
+
+/** Smallest nominal period across a scenario's active temporal triggers, in
+ *  ms. Weekly divides the rf-week span by the number of selected days;
+ *  Monthly approximates a month as 30 days. Null when nothing is scheduled. */
+export function minActiveIntervalMs(scenario: ScenarioRow): number | null {
+  let min: number | null = null;
+  for (const t of scenario.triggers) {
+    if (t.type !== 'temporal' || !t.active || !t.temporal) continue;
+    const p = t.temporal;
+    const rf = Math.max(1, p.repeatFrequency || 1);
+    let interval: number;
+    switch (p.frequency) {
+      case 'Minutely': interval = rf * MINUTE; break;
+      case 'Hourly': interval = rf * HOUR; break;
+      case 'Daily': interval = rf * DAY; break;
+      case 'Weekly': interval = (rf * 7 * DAY) / Math.max(1, p.daysOfWeek?.length ?? 1); break;
+      case 'Monthly': interval = rf * 30 * DAY; break;
+      default: interval = DAY;
+    }
+    if (min === null || interval < min) min = interval;
+  }
+  return min;
+}
+
+/** True when the average completed run outlasts the shortest schedule
+ *  interval — DSS then queues/suppresses trigger fires (delayed-triggers
+ *  behavior) and the scenario can never keep up with its own schedule. */
+export function overlapRisk(scenario: ScenarioRow): boolean {
+  if (scenario.avgDurationMs == null) return false;
+  const interval = minActiveIntervalMs(scenario);
+  return interval !== null && scenario.avgDurationMs > interval;
 }
 
 /** Peak time-of-day clustering across point-scheduled (non-dense) triggers — the

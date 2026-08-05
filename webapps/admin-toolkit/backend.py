@@ -199,6 +199,7 @@ from adk_backend.routes.misc import bp as misc_bp
 from adk_backend.routes.overview import bp as overview_bp
 from adk_backend.routes.plugins import bp as plugins_bp
 from adk_backend.routes.projects import bp as projects_bp
+from adk_backend.routes.scenarios import bp as scenarios_bp
 from adk_backend.routes.settings import bp as settings_bp
 from adk_backend.routes.user_churn import bp as user_churn_bp
 
@@ -238,6 +239,7 @@ app.register_blueprint(misc_bp)
 app.register_blueprint(overview_bp)
 app.register_blueprint(plugins_bp)
 app.register_blueprint(projects_bp)
+app.register_blueprint(scenarios_bp)
 app.register_blueprint(settings_bp)
 app.register_blueprint(user_churn_bp)
 

@@ -367,6 +367,7 @@ MODULE_COVERAGE = {
     'project-cleaner': 'sensor:storage_footprint (cleanup candidates)',
     'projects': 'domain:projects + sensor:storage_footprint',
     'app-instances': 'waiver:SSE-only sweep — the App_ recipe settings fetch and the config-tree macro have no agent read path',
+    'scenarios': 'domain:scenarios (per-project trigger/next-run reads; the schedule projection and clustering are UI-side derivations of the same data)',
     'project-compute': 'sensor:compute_cost (context types)',
     'project-cost': 'domain:cost-detail',
     'users': 'domain:users',

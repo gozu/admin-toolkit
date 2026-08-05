@@ -176,6 +176,7 @@ export interface ParsedData {
   connectionsAuditLoading?: Lifecycle;
   projectCleanerLoading?: Lifecycle;
   appInstancesLoading?: Lifecycle;
+  scenariosLoading?: Lifecycle;
   projectFootprintLoading?: Lifecycle;
   projectComputeLoading?: Lifecycle;
   projectCostLoading?: Lifecycle;
@@ -323,6 +324,7 @@ export type PageId =
   | 'sanity-check'
   | 'project-cleaner'
   | 'app-instances'
+  | 'scenarios'
   | 'project-compute'
   | 'project-cost'
   | 'plugins-installed'

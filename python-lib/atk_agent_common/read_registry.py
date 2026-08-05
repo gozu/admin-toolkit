@@ -138,6 +138,7 @@ TOOLKIT_PAGES = {
     'project-cleaner': 'Per-project cleanup: exports, webapp runs, tmp',
     'projects': 'Project inventory: owners, sizes, activity',
     'app-instances': 'App-as-recipe sprawl: instances per template, keepInstance recipes, orphans',
+    'scenarios': 'Scenario schedules: triggers, projected fire timeline, load clustering, next runs',
     'project-compute': 'Compute usage by context type',
     'project-cost': 'Cost/CRU: treemap, daily series, leaderboard',
     'users': 'User inventory: profiles, groups, seats',

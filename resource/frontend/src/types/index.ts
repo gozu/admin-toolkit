@@ -16,6 +16,7 @@ export * from './llmAudit';
 export * from './logs';
 export * from './plugins';
 export * from './projects';
+export * from './scenarios';
 export * from './settings';
 export * from './system';
 export * from './userChurn';

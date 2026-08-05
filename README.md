@@ -105,6 +105,7 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 | Projects | Cleaner 🔴 | Backup + delete inactive projects |
 | Projects | Insights | Per-project footprint and health |
 | Projects | App Instances 🔴 | App-as-recipe sprawl: instances per template, `keepInstance` recipes, orphans |
+| Projects | Scenarios | Scenario schedules on one timeline: trigger categories, load clustering, live next runs |
 | Projects | Compute | Compute usage by project |
 | Projects | Cost | CRU and project spend analysis |
 | Users | Users | Ownership, activity, accountability |

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.811] - 2026-08-05
+
+### Added
+- **Projects → Scenarios**: the diag-parser Scenario Schedules card, ported to live inputs. Every scenario on the host is classified into the four trigger categories (active/inactive time-based, event-based, no trigger) and its configured schedule is projected onto a shared 24h/7-day/month/quarter timeline, with the load-distribution strip and the clustering advisor ("N scenarios fire around 02:00 — stagger the triggers"). The dump build parsed `config/projects/*/scenarios/*.json` client-side; here a per-project SSE sweep (`/api/scenarios/scan`) rebuilds the same normalized trigger shape from the public API — the listing is one call per project, and the structured trigger params each cost a per-scenario settings fetch that streams behind an immediate inventory event.
+- Running live also adds what a dump never carried: a **Next run** column fed by DSS's own `nextRun` computation (the timeline projection ignores per-trigger timezones; this column is ground truth), **running now** badges straight off the listing, `markedAsTest` markers, run-as / last-modified-by detail in the row tooltip, and scenario names that deep-link into DSS. Rows whose settings fetch fails degrade to the listing's own trigger digest instead of disappearing.
+
 ## [0.4.809] - 2026-08-04
 
 ### Added

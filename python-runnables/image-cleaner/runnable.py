@@ -200,6 +200,7 @@ def _scan_ecr(cutoff):
                         'digest': img.get('imageDigest', ''),
                         'tags': img.get('imageTags') or [],
                         'pushedAt': pushed.isoformat() if hasattr(pushed, 'isoformat') else str(pushed),
+                        'sizeBytes': img.get('imageSizeInBytes'),
                         'deletable': pushed_date < cutoff,
                     })
         except Exception as exc:

@@ -201,7 +201,7 @@ def _matches_dataiku(name: str) -> bool:
 class RegistryAdapter:
     """Base. Subclasses implement list_repositories / list_images / head_image / delete_images.
 
-    list_images returns [{digest, tags, pushedAt (isoformat)}]
+    list_images returns [{digest, tags, pushedAt (isoformat), sizeBytes (int|None)}]
     head_image returns {pushedAt: date} or None if missing
     delete_images returns (deleted, failed) — lists of {repo, digest[, reason]}
     """
@@ -257,6 +257,7 @@ class EcrAdapter(RegistryAdapter):
                     'digest': img.get('imageDigest', ''),
                     'tags': img.get('imageTags', []),
                     'pushedAt': pushed.isoformat() if hasattr(pushed, 'isoformat') else str(pushed),
+                    'sizeBytes': img.get('imageSizeInBytes'),
                 })
         return out
 
@@ -388,6 +389,7 @@ class AcrAdapter(RegistryAdapter):
                     'digest': m.get('digest', ''),
                     'tags': list(m.get('tags', []) or []),
                     'pushedAt': str(pushed),
+                    'sizeBytes': m.get('imageSize'),
                 })
         return out
 
@@ -481,6 +483,7 @@ class GarAdapter(RegistryAdapter):
                 'digest': digest,
                 'tags': list(img.tags) if img.tags else [],
                 'pushedAt': pushed.isoformat() if pushed else '',
+                'sizeBytes': int(getattr(img, 'image_size_bytes', 0)) or None,
             })
         return out
 
@@ -914,6 +917,7 @@ def api_image_cleaner_scan():
                         'digest': img.get('digest', ''),
                         'tags': img.get('tags', []) or [],
                         'pushedAt': pushed_iso,
+                        'sizeBytes': img.get('sizeBytes'),
                         'deletable': pushed_date < cutoff,
                     })
                 images.sort(key=lambda x: x['pushedAt'])

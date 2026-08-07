@@ -10,6 +10,7 @@ import { SkeletonRows } from './common/SkeletonRows';
 import { Spinner } from './common/Spinner';
 import { StatTile } from './common/StatTile';
 import { fetchJson, fetchRaw } from '../utils/api';
+import { formatBytes } from '../utils/formatters';
 import { parseSseStream } from '../utils/sseStream';
 import {
   imageCleanerDetectScan,
@@ -25,6 +26,7 @@ interface RegistryImage {
   digest: string;
   tags: string[];
   pushedAt: string;
+  sizeBytes?: number | null;
   deletable: boolean;
 }
 
@@ -44,6 +46,11 @@ const PROVIDER_LABELS: Record<Provider, string> = {
   acr: 'Azure ACR (beta)',
   gar: 'Google Artifact Registry (beta)',
 };
+
+// ECR, ACR (beyond tier-included storage) and Google Artifact Registry all bill
+// registry storage at the same $0.10 per GB-month, so a single reference rate
+// covers every provider this page can scan.
+const STORAGE_USD_PER_GB_MONTH = 0.1;
 
 // ── Sort helpers ──
 
@@ -312,6 +319,18 @@ export function ImageCleaner() {
   const deletableRows = useMemo(() => visibleRows.filter((r) => r.image.deletable), [visibleRows]);
   const keptRows = useMemo(() => visibleRows.filter((r) => !r.image.deletable), [visibleRows]);
 
+  const deletableBytes = useMemo(
+    () => deletableRows.reduce((sum, r) => sum + (r.image.sizeBytes ?? 0), 0),
+    [deletableRows],
+  );
+  const deletableCostValue = useMemo(() => {
+    // Sizes can be missing (e.g. remote scans against a pre-update macro) — a
+    // dash is honest there, while $0.00 is honest when nothing is deletable.
+    if (deletableRows.length > 0 && deletableBytes === 0) return '—';
+    const usd = (deletableBytes / 1024 ** 3) * STORAGE_USD_PER_GB_MONTH;
+    return usd > 0 && usd < 0.005 ? '<$0.01/mo' : `$${usd.toFixed(2)}/mo`;
+  }, [deletableRows, deletableBytes]);
+
   const selectedDeletableRows = useMemo(
     () => deletableRows.filter((r) => selectedKeys.has(r.key)),
     [deletableRows, selectedKeys],
@@ -511,7 +530,7 @@ export function ImageCleaner() {
         {(hasResults || scanLoading) && (
           <>
             <section className="glass-card p-4">
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-5 gap-4">
                 <StatTile value={scanRepos.length} label="Repositories" />
                 <StatTile value={visibleRows.length} label="Total Images" />
                 <StatTile
@@ -523,6 +542,15 @@ export function ImageCleaner() {
                   value={keptRows.length}
                   label="Kept"
                   valueClassName="text-[var(--neon-green)]"
+                />
+                <StatTile
+                  value={deletableCostValue}
+                  label={
+                    deletableBytes > 0
+                      ? `${formatBytes(deletableBytes, 1)} deletable @ $0.10/GB·mo`
+                      : 'Deletable Storage Cost'
+                  }
+                  valueClassName="text-[var(--warning)]"
                 />
               </div>
             </section>

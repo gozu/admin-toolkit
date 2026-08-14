@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.815] - 2026-08-14
+
+### Changed
+- **Connection health**: `${projectKey}`-style connections are no longer just skipped (0.4.814) — they now get a real verdict. When the instance-level test dies on variable expansion, the scan re-tests with a trivial statement (`SELECT 1`, dialect-aware) through DSS's SQL query API in the context of a project that actually uses the connection — there the variables expand and endpoint + credentials are genuinely exercised (the test endpoint itself ignores every context parameter; probed empirically). The context project comes free from the usage-scan memo when available, else from a lazy, per-epoch-cached walk of project datasets (capped at 500 listings). Probes run outside the 10s per-test deadline with their own 30s budget, since a suspended Snowflake warehouse can be slow to auto-resume. A passing probe reports **ok** with a note naming the query and project (visible in the Insights health tooltip); a failing probe is a genuine **fail** with the project context named. Skipped-with-reason remains only where no probe is possible: non-SQL connection types, or connections no project uses.
+
 ## [0.4.814] - 2026-08-14
 
 ### Fixed

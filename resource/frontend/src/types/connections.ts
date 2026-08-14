@@ -14,6 +14,9 @@ export interface ConnectionHealthResult {
   type: string;
   status: 'ok' | 'fail' | 'skipped';
   error?: string;
+  /** How an `ok` was reached when the plain test couldn't run (e.g. verified
+   * via in-context SQL probe for `${projectKey}`-style connections). */
+  note?: string;
 }
 
 export interface SanityCheckMessage {

@@ -35,6 +35,7 @@ export interface ConnectionInsightsRow {
   auditSeverity: 'critical' | 'warning' | 'info' | null;
   auditIssues: string[];
   healthStatus: 'ok' | 'fail' | 'skipped' | null;
+  /** Failure/skip reason, or the verification note for a probed `ok`. */
   healthError?: string;
 }
 
@@ -117,7 +118,7 @@ export function buildConnectionInsightsRows(parsedData: ParsedData): ConnectionI
       auditSeverity,
       auditIssues,
       healthStatus: h ? h.status : null,
-      healthError: h?.error,
+      healthError: h?.error ?? h?.note,
     };
   });
 

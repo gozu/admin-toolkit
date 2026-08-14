@@ -210,18 +210,179 @@ def _classify_conn_test_failure(name, conn_type, error_msg):
     """Turn a non-OK test outcome into a result event.
 
     "Unknown DSS variable: <x>" means the connection switches database/schema/
-    role on project-scoped variables (${projectKey}); the instance-level probe
-    has no project context to expand them, while DSS's own in-context test
-    passes — skipped-with-reason, never 'fail' (which would count as broken in
-    the health score cap and the daily triage).
+    role on project-scoped variables (${projectKey}); the instance-level test
+    endpoint has no project context to expand them (and ignores every context
+    parameter — probed empirically), while DSS's own in-context use works. The
+    `contextProbe` marker sends these through `_probe_in_context` for a real
+    verdict; the skipped-with-reason shape is the fallback when no probe is
+    possible — never 'fail', which would count as broken in the health score
+    cap and the daily triage.
     """
     sanitized = (_CONN_TEST_SANITIZE_RE.sub('***', error_msg)[:200]
                  if error_msg else 'Connection test failed')
     if 'Unknown DSS variable' in (error_msg or ''):
         return {'name': name, 'type': conn_type, 'status': 'skipped',
                 'error': 'Uses project-scoped variables — not testable outside '
-                         'a project (%s)' % sanitized}
+                         'a project (%s)' % sanitized,
+                'contextProbe': True}
     return {'name': name, 'type': conn_type, 'status': 'fail', 'error': sanitized}
+
+
+# In-context probe: a trivial statement through /sql/queries/ with a using
+# project's projectKey expands the variables and exercises endpoint +
+# credentials for real. Its own deadline, longer than _CONN_TEST_TIMEOUT_S —
+# a suspended Snowflake warehouse can take >10s to auto-resume.
+_SQL_PROBE_TIMEOUT_S = 30
+_SQL_PROBE_MAX_WALK = 500  # hard cap on per-project dataset listings per epoch
+_SQL_PROBE_QUERIES = {
+    'oracle': 'SELECT 1 FROM DUAL',
+    'db2': 'SELECT 1 FROM SYSIBM.SYSDUMMY1',
+}
+_SQL_PROBE_DEFAULT_QUERY = 'SELECT 1'
+_SQL_PROBE_TYPES = {
+    'snowflake', 'postgresql', 'mysql', 'sqlserver', 'oracle', 'redshift',
+    'bigquery', 'athena', 'greenplum', 'teradata', 'vertica', 'saphana',
+    'netezza', 'synapse', 'trino', 'starburst', 'presto', 'databricks',
+    'exasol', 'db2', 'mariadb', 'clickhouse', 'singlestore',
+}
+
+# (host, epoch) -> {connection name -> projectKey using it, None = no user}.
+_CONN_CONTEXT_MEMO: Dict[Tuple[str, int], Dict[str, Optional[str]]] = {}
+# (host, epoch) -> {projectKey -> frozenset(connection names its datasets
+# reference)} — each project's datasets are listed at most once per epoch.
+_PROJECT_CONNS_CACHE: Dict[Tuple[str, int], Dict[str, frozenset]] = {}
+_CONN_CONTEXT_LOCK = threading.Lock()
+
+
+def _dataset_conn_name(params: Any) -> Optional[str]:
+    """params.connection from a dataset listing entry; tolerates the
+    stringified params some DSS versions return."""
+    if isinstance(params, str):
+        import ast
+        parsed = None
+        for parse in (json.loads, ast.literal_eval):
+            try:
+                parsed = parse(params)
+                break
+            except Exception:
+                continue
+        params = parsed
+    if isinstance(params, dict):
+        conn = params.get('connection')
+        return str(conn) if conn else None
+    return None
+
+
+def _project_dataset_conns(client: Any, project_key: str) -> frozenset:
+    conns = set()
+    try:
+        for ds in client.get_project(project_key).list_datasets():
+            conn = _dataset_conn_name(ds.get('params'))
+            if conn:
+                conns.add(conn)
+    except Exception as exc:
+        _LOGGER.debug('[conn_probe] list_datasets failed for %s: %s', project_key, exc)
+    return frozenset(conns)
+
+
+def _find_context_project(name: str, ctx_key: Tuple[str, int]) -> Optional[str]:
+    """A project whose assets reference connection `name`, or None.
+
+    The usage-scan memo answers for free when the Insights sweep already ran
+    this epoch; otherwise walk the project list, caching each project's
+    referenced connections. Serialized by _CONN_CONTEXT_LOCK so concurrent
+    probes share the growing cache instead of racing duplicate scans.
+    """
+    with _CONN_CONTEXT_LOCK:
+        memo = _CONN_CONTEXT_MEMO.setdefault(ctx_key, {})
+        if name in memo:
+            return memo[name]
+        with _CONN_USAGES_MEMO_LOCK:
+            usage_payloads = [v for k, v in _CONN_USAGES_MEMO.items()
+                              if k[0] == ctx_key[0] and k[1] == ctx_key[1]]
+        for payload in usage_payloads:
+            for bucket in ('datasetUsages', 'llmUsages'):
+                for usage in payload.get(bucket) or []:
+                    if usage.get('name') != name:
+                        continue
+                    for proj in usage.get('projects') or []:
+                        if proj.get('projectKey'):
+                            memo[name] = str(proj['projectKey'])
+                            return memo[name]
+        cache = _PROJECT_CONNS_CACHE.setdefault(ctx_key, {})
+        client = _thread_client()
+        fetched = 0
+        for project in _list_projects_catalog_cheap(client):
+            pk = project['key']
+            if pk not in cache:
+                if fetched >= _SQL_PROBE_MAX_WALK:
+                    _LOGGER.info('[conn_probe] %s: project walk capped at %d',
+                                 name, _SQL_PROBE_MAX_WALK)
+                    break
+                cache[pk] = _project_dataset_conns(client, pk)
+                fetched += 1
+            if name in cache[pk]:
+                memo[name] = pk
+                return pk
+        memo[name] = None
+        return None
+
+
+def _sql_probe(name: str, conn_type: str, project_key: str) -> None:
+    """Run the probe statement on the connection with a project context;
+    raises on any failure (including a failure streamed mid-results)."""
+    client = _thread_client()
+    query = _SQL_PROBE_QUERIES.get((conn_type or '').lower(), _SQL_PROBE_DEFAULT_QUERY)
+    q = client.sql_query(query, connection=name, project_key=project_key)
+    for _ in q.iter_rows():
+        pass
+    q.verify()
+
+
+def _probe_in_context(name, conn_type, ctx_key, fallback):
+    """Second chance for a variable-expansion failure: probe in a using
+    project's context for a real ok/fail verdict. When no probe is possible
+    (non-SQL type, no using project), return `fallback` — the
+    skipped-with-reason result — with the reason extended to say why."""
+    query = _SQL_PROBE_QUERIES.get((conn_type or '').lower(), _SQL_PROBE_DEFAULT_QUERY)
+    if (conn_type or '').lower() not in _SQL_PROBE_TYPES:
+        fallback['error'] += '; no in-context SQL probe for this connection type'
+        return fallback
+    try:
+        project_key = _find_context_project(name, ctx_key)
+    except Exception as exc:
+        _LOGGER.debug('[conn_probe] context lookup failed for %s: %s', name, exc)
+        project_key = None
+    if not project_key:
+        fallback['error'] += ('; no project uses it, so there is no context '
+                              'to expand them in')
+        return fallback
+    inner = ThreadPoolExecutor(max_workers=1)
+    try:
+        inner.submit(_sql_probe, name, conn_type, project_key).result(
+            timeout=_SQL_PROBE_TIMEOUT_S)
+        return {'name': name, 'type': conn_type, 'status': 'ok',
+                'note': 'params use project-scoped variables — verified with '
+                        '%s in project %s' % (query, project_key)}
+    except FuturesTimeoutError:
+        return {'name': name, 'type': conn_type, 'status': 'fail',
+                'error': 'in-context probe (%s in project %s) timed out (>%ds)'
+                         % (query, project_key, _SQL_PROBE_TIMEOUT_S)}
+    except Exception as exc:
+        msg = str(exc)
+        if 'Unknown DSS variable' in msg:
+            # Unexpandable even with a using project's context (variable
+            # defined only in some other project?) — not provably broken.
+            fallback['error'] += ('; still unexpanded with project %s context (%s)'
+                                  % (project_key,
+                                     _CONN_TEST_SANITIZE_RE.sub('***', msg)[:120]))
+            return fallback
+        return {'name': name, 'type': conn_type, 'status': 'fail',
+                'error': '%s (probed with %s in project %s)'
+                         % (_CONN_TEST_SANITIZE_RE.sub('***', msg)[:200],
+                            query, project_key)}
+    finally:
+        inner.shutdown(wait=False)
 
 
 @bp.route('/api/connections/health')
@@ -249,20 +410,26 @@ def api_connection_health():
                 return {'name': name, 'type': conn_type, 'status': 'skipped'}
             return _classify_conn_test_failure(name, conn_type, msg)
 
-    def _test_one(name, conn_type):
+    def _test_one(name, conn_type, ctx_key):
         # Per-test deadline via a dedicated single-worker executor: the outer
         # pool slot frees after _CONN_TEST_TIMEOUT_S even if the SDK call
         # hangs; the abandoned thread finishes (and is discarded) in the
         # background. The adk ThreadPoolExecutor propagates host context.
         inner = ThreadPoolExecutor(max_workers=1)
         try:
-            return inner.submit(_test_one_inner, name, conn_type).result(
+            result = inner.submit(_test_one_inner, name, conn_type).result(
                 timeout=_CONN_TEST_TIMEOUT_S)
         except FuturesTimeoutError:
             return {'name': name, 'type': conn_type, 'status': 'fail',
                     'error': 'test timed out (>%ds)' % _CONN_TEST_TIMEOUT_S}
         finally:
             inner.shutdown(wait=False)
+        if result.pop('contextProbe', False):
+            # Deliberately outside the per-test deadline: the probe may pay for
+            # a one-time project walk and a warehouse auto-resume, under its
+            # own _SQL_PROBE_TIMEOUT_S.
+            result = _probe_in_context(name, conn_type, ctx_key, result)
+        return result
 
     def generate():
         t0 = time.time()
@@ -303,7 +470,9 @@ def api_connection_health():
         pool = ThreadPoolExecutor(max_workers=workers)
         try:
             futures = {
-                pool.submit(_test_one, name, (config.get('type', 'unknown') if isinstance(config, dict) else 'unknown')): name
+                pool.submit(_test_one, name,
+                            (config.get('type', 'unknown') if isinstance(config, dict) else 'unknown'),
+                            (memo_key[0], epoch)): name
                 for name, config in items if name
             }
             for future in as_completed(futures):
@@ -347,6 +516,10 @@ def api_connection_health():
             for k in stale:
                 _CONN_HEALTH_MEMO.pop(k, None)
             _CONN_HEALTH_MEMO[memo_key] = {'results': collected_results, 'done': done_payload}
+        with _CONN_CONTEXT_LOCK:
+            for probe_cache in (_CONN_CONTEXT_MEMO, _PROJECT_CONNS_CACHE):
+                for k in [k for k in probe_cache if k[1] != epoch]:
+                    probe_cache.pop(k, None)
         yield "event: done\ndata: %s\n\n" % json.dumps(done_payload)
 
     return _sse_response(generate)

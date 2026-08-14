@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.814] - 2026-08-14
+
+### Fixed
+- **Connection health**: connections whose params switch database/schema/role on project-scoped variables (Snowflake with `${projectKey}`, typically) failed the instance-level probe with "Unknown DSS variable: projectKey" — even though DSS's own test button passes, because the variable only expands inside a project context. These now report as **skipped** with the reason ("Uses project-scoped variables — not testable outside a project"), visible in the Insights health tooltip, instead of counting as broken in the Health Issues table, the health-score broken-connection cap and the daily triage sweep.
+
+## [0.4.813] - 2026-08-07
+
+### Added
+- **Docker Images**: estimated monthly storage cost of the deletable images, shown as a tile next to the reclaimable-size total. Flat $0.10 per GB-month across ECR/ACR/GAR — an order-of-magnitude figure for prioritizing cleanups, not a bill.
+
 ## [0.4.812] - 2026-08-05
 
 ### Added

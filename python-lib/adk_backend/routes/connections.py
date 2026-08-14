@@ -9,6 +9,7 @@ with `stream_with_context`. Worker threads use the host-context-propagating
 import hashlib
 import json
 import logging
+import re
 import threading
 import time
 from concurrent.futures import TimeoutError as FuturesTimeoutError, as_completed
@@ -202,6 +203,26 @@ _CONN_HEALTH_MEMO_LOCK = threading.Lock()
 # 'fail' and its worker thread is left to finish in the background.
 _CONN_TEST_TIMEOUT_S = 10
 
+_CONN_TEST_SANITIZE_RE = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b|/[\w/.-]{4,}')
+
+
+def _classify_conn_test_failure(name, conn_type, error_msg):
+    """Turn a non-OK test outcome into a result event.
+
+    "Unknown DSS variable: <x>" means the connection switches database/schema/
+    role on project-scoped variables (${projectKey}); the instance-level probe
+    has no project context to expand them, while DSS's own in-context test
+    passes — skipped-with-reason, never 'fail' (which would count as broken in
+    the health score cap and the daily triage).
+    """
+    sanitized = (_CONN_TEST_SANITIZE_RE.sub('***', error_msg)[:200]
+                 if error_msg else 'Connection test failed')
+    if 'Unknown DSS variable' in (error_msg or ''):
+        return {'name': name, 'type': conn_type, 'status': 'skipped',
+                'error': 'Uses project-scoped variables — not testable outside '
+                         'a project (%s)' % sanitized}
+    return {'name': name, 'type': conn_type, 'status': 'fail', 'error': sanitized}
+
 
 @bp.route('/api/connections/health')
 def api_connection_health():
@@ -211,9 +232,6 @@ def api_connection_health():
     tested earlier in this epoch, replay the cached events and skip the
     141×850ms work. Global Refresh bumps the epoch and invalidates the memo.
     """
-    import re
-    _SANITIZE_RE = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b|/[\w/.-]{4,}')
-
     def _test_one_inner(name, conn_type):
         try:
             client = _thread_client()
@@ -224,14 +242,12 @@ def api_connection_health():
             error_msg = ''
             if isinstance(resp, dict):
                 error_msg = resp.get('connectionErrorMsg') or resp.get('message') or ''
-            sanitized = _SANITIZE_RE.sub('***', error_msg)[:200] if error_msg else 'Connection test failed'
-            return {'name': name, 'type': conn_type, 'status': 'fail', 'error': sanitized}
+            return _classify_conn_test_failure(name, conn_type, error_msg)
         except Exception as exc:
             msg = str(exc)
             if 'NotImplementedException' in msg or 'not implemented' in msg.lower():
                 return {'name': name, 'type': conn_type, 'status': 'skipped'}
-            sanitized = _SANITIZE_RE.sub('***', msg)[:200]
-            return {'name': name, 'type': conn_type, 'status': 'fail', 'error': sanitized}
+            return _classify_conn_test_failure(name, conn_type, msg)
 
     def _test_one(name, conn_type):
         # Per-test deadline via a dedicated single-worker executor: the outer

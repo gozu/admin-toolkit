@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.815] - 2026-08-14
+## [0.4.817] - 2026-08-24
+
+### Fixed
+- **Agents chat**: the wheel-up unstick from 0.4.816 now only disengages transcript-following when the transcript actually overflows — a trackpad jiggle over a short conversation no longer silently stops the stream from following.
+
+## [0.4.816] - 2026-08-24
+
+### Added
+- **Agents chat — type while the agent works**: the composer stays live during a turn. Enter (or the new Queue button next to Stop) queues the message as a dimmed bubble at the tail of the transcript; the agent reads the queue in order at its next idle moment — after the turn finishes, errors, or is stopped. Each queued bubble carries corner controls: ✕ removes it from the queue, ↑ opens an in-place editor (ArrowUp in the empty composer edits the newest one). Editing holds the whole queue so a half-edited message can never be sent; Enter commits, Esc restores the original, and deleting every character removes the message from the queue immediately. Slash-palette and prompt-library sends mid-turn queue the same way instead of being silently dropped, as do plan approvals racing a settle. Queues are session-scoped (module store: they survive page navigation, deliberately not reloads) and are cleared with their conversation by New conversation / delete.
+
+### Fixed
+- **Agents chat scrollback is never dragged back to the bottom**: while a reply streamed, the transcript re-pinned to the bottom on every smoothed frame (~24ms) with a CSS-smooth animation the user's own scrollback had to out-scroll. The pin is now instant, any upward scroll releases it immediately — wheel, scrollbar drag, or keys, detected by scroll direction with the pin's own scroll echoes ignored — and following re-engages when you scroll back near the bottom, send a message, or hit "↓ Latest".
 
 ### Changed
 - **Connection health**: `${projectKey}`-style connections are no longer just skipped (0.4.814) — they now get a real verdict. When the instance-level test dies on variable expansion, the scan re-tests with a trivial statement (`SELECT 1`, dialect-aware) through DSS's SQL query API in the context of a project that actually uses the connection — there the variables expand and endpoint + credentials are genuinely exercised (the test endpoint itself ignores every context parameter; probed empirically). The context project comes free from the usage-scan memo when available, else from a lazy, per-epoch-cached walk of project datasets (capped at 500 listings). Probes run outside the 10s per-test deadline with their own 30s budget, since a suspended Snowflake warehouse can be slow to auto-resume. A passing probe reports **ok** with a note naming the query and project (visible in the Insights health tooltip); a failing probe is a genuine **fail** with the project context named. Skipped-with-reason remains only where no probe is possible: non-SQL connection types, or connections no project uses.

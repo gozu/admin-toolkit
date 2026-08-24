@@ -6,7 +6,7 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.741-blue)
+![Version](https://img.shields.io/badge/version-0.4.817-blue)
 ![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-plugin-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -33,7 +33,7 @@ It scores what it finds, explains *why* something is unhealthy, and — behind a
 
 ## Feature tour
 
-The toolkit is organized into 9 sidebar sections covering 33 pages. Pages marked **tool** perform mutations and are hidden behind the [Advanced Actions unlock](#advanced-actions-red-unlock).
+The toolkit is organized into 9 sidebar sections covering 38 pages. Pages marked **tool** are advanced-action surfaces and are hidden behind the [Advanced Actions unlock](#advanced-actions-red-unlock).
 
 ### Overview
 
@@ -45,7 +45,7 @@ Instance vitals at a glance. **Mission Control** is the dense operations wall fo
 
 ### Agents
 
-Chat with three AI agents that administer the fleet through the LLM Mesh: **Health Triage** (fleet sweeps and triage reports), **Scoping Architect** (sizing and migration dossiers), and **Ops Actuator** (plans and — only after your explicit approval — executes admin actions: project cleanup, DB maintenance, K8s right-sizing, plus a gated remediation suite of rotated-log cleanup, docker cache pruning, policy-validated kubectl fixes, code-env consolidation and a blacklist-guarded generic settings mutator — every gate enforced below the model, in macro/executor code). Admins can opt the reversible, capped cleanups into **auto-remediation** during the daily triage sweep (`auto_remediate_actions`, off by default; skips and results are reported in the digest). Agent turns are natively traced via DSS ≥ 14.5 **Agent Interaction Logging** — a one-click **"Set up Trace Explorer"** button auto-provisions the logging dataset and Dataiku's Trace Explorer webapp, after which every turn has an **"open trace ↗"** action that opens the explorer directly on that turn's trace. Conversations can optionally be **persisted server-side** (`chat_storage` plugin setting: built-in SQLite or a PostgreSQL/SQL Server connection, scoped per user and per fleet host) so chats survive refreshes, backend restarts and host switches, with a History drawer to reopen, rename or delete past conversations. Sensor agents propose risk-colored **action-item checklists** you can hand to the actuator in one click; every execution is HMAC-token-gated, kill-switch-guarded, audited to Postgres with provenance, and deep-linked into the native DSS UI. A built-in prompt library ships ~30 curated prompts per agent plus one "megaprompt" that audits the whole instance, and ⓘ info-dots explain every concept in place. The agents layer ships inside this plugin (agent tools + plugin agents) — [`docs/agents-reference.md`](docs/agents-reference.md) is the full developer reference (architecture, system prompts, wire protocol, safety model).
+The **ATK Admin Agent** is one generalist across fleet health triage, scoping, investigation, and guarded administration. It combines read-only sensors with a plan → approve → execute protocol: every mutation is checked below the model by the master kill-switch, capability gates, an exact-target HMAC confirmation token, the backend's Advanced Actions gate, and executor policy. **Tuning** versions prompt/model overrides, **Permissions** controls read/write/execute and autonomous access per capability, and **How it works** explains the safety model in-product. Agent turns can use DSS ≥ 14.5 **Agent Interaction Logging** and a one-click Trace Explorer handoff. Conversations can optionally persist in built-in SQLite or Remote SQL, scoped per user and fleet host; all agent tools and the generalist ship inside this plugin.
 
 ### Connections
 
@@ -55,7 +55,7 @@ Chat with three AI agents that administer the fleet through the LLM Mesh: **Heal
 
 ### Projects
 
-**Insights** computes the per-project footprint: size on disk, code envs, scenarios, flow complexity, permissions, and a health grade for every project. **Compute** attributes compute usage to projects. **Cost** analyzes CRU and project spend signals. **Cleaner** *(tool)* finds projects inactive for a configurable number of days (no active scenarios, no deployed bundles), backs them up to a managed folder, and deletes them.
+**Insights** computes the per-project footprint: size on disk, code envs, scenarios, flow complexity, permissions, and a health grade for every project. **App Instances** traces App-as-recipe sprawl, `keepInstance` causes, leftovers, and orphans. **Scenarios** projects schedules onto a shared timeline and surfaces failures, silence, overlap, broken/dormant chains, and invalid run-as users. **Compute** attributes compute usage to projects. **Cost** analyzes CRU and project spend signals. **Cleaner** *(tool)* finds projects inactive for a configurable number of days (no active scenarios, no deployed bundles), backs them up to a managed folder, and deletes them.
 
 <div align="center"><img src="docs/screenshots/projects-insights.png" alt="Project footprint — size, code envs and per-project health" width="850" /></div>
 
@@ -63,7 +63,7 @@ Chat with three AI agents that administer the fleet through the LLM Mesh: **Heal
 
 ### Users
 
-Ownership and accountability: who owns which projects, code envs, and LLM assets, joined with login activity — the page to open before offboarding someone.
+Ownership and accountability: who owns which projects, code envs, and LLM assets, joined with login activity. **Activity** covers adoption, engagement, cohorts, retention, builders, and technology trends. **Churn** estimates dormant accounts, account lifecycle, seat reuse, and reclaim candidates — the set of pages to open before offboarding someone.
 
 ### Plugins
 
@@ -71,7 +71,7 @@ Ownership and accountability: who owns which projects, code envs, and LLM assets
 
 ### Code Envs
 
-The deepest module — code-env sprawl is usually the #1 health problem on a mature instance. **Insights** is the read-only view: every env with owner, Python version, size on disk, and exact usage (recipes, notebooks, scenarios, webapps, code studios). **Cleaner** *(tool)* deletes unused envs and migrates usages from one env to another. **Comparison** finds duplicate and near-duplicate envs worth merging.
+The deepest module — code-env sprawl is usually the #1 health problem on a mature instance. **Insights** is the read-only view: every env with owner, Python version, size on disk, and exact usage (recipes, notebooks, scenarios, webapps, code studios). **Cleaner** *(tool)* deletes unused envs and migrates usages from one env to another. **Comparison** finds duplicate and near-duplicate envs worth merging. **Broken** scans failed builds, shows the relevant log excerpt, and can use an approved LLM to explain remediation.
 
 <div align="center"><img src="docs/screenshots/code-envs.png" alt="Code env insights — 168 envs with size, usage and owner" width="850" /></div>
 
@@ -92,9 +92,10 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 | Section | Page | What it does |
 |---|---|---|
 | Overview | Mission Control | Dense operations wall for fleet-wide health |
-| Agents | Agents | Chat with the triage/scoping/actuator agents; plan → approve → execute cards |
+| Agents | Agents | Chat with the generalist admin agent; investigate, plan → approve → execute |
 | Agents | Tuning | Versioned prompt overrides + model override for the agents |
 | Agents | Permissions | Per-action agent read/write/execute permissions and safety gates |
+| Agents | How it works | Interactive tour of agent plans, approvals, tokens, permissions, audit and autonomy |
 | Overview | Summary | Composite health score, issues, instance facts |
 | Overview | Filesystem | Mount usage, data-dir treemap + directory tree |
 | Overview | Resources | Live system/process memory and CPU, workload headroom |
@@ -104,17 +105,19 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 | Connections | FS Migration 🔴 | Migrate data off filesystem connections, with owner outreach |
 | Projects | Cleaner 🔴 | Backup + delete inactive projects |
 | Projects | Insights | Per-project footprint and health |
-| Projects | App Instances 🔴 | App-as-recipe sprawl: instances per template, `keepInstance` recipes, orphans |
+| Projects | App Instances | App-as-recipe sprawl: instances per template, `keepInstance` recipes, orphans |
 | Projects | Scenarios | Scenario schedules on one timeline: trigger categories, load clustering, live next/last runs, failure/silence/overlap/chain/run-as signals |
 | Projects | Compute | Compute usage by project |
 | Projects | Cost | CRU and project spend analysis |
 | Users | Users | Ownership, activity, accountability |
 | Users | Activity | Adoption, engagement, retention, and activity trends |
+| Users | Churn | Account lifecycle, dormant seats, reassignment estimates and reclaim candidates |
 | Plugins | Installed | Plugin inventory with usage |
 | Plugins | Plugin Sync 🔴 | Compare/push plugins across hosts |
 | Code Envs | Cleaner 🔴 | Delete unused envs, migrate usages |
 | Code Envs | Insights | Read-only env inventory with exact usages |
 | Code Envs | Comparison | Find duplicate/mergeable envs |
+| Code Envs | Broken | Failed-build inventory, log evidence and optional LLM remediation analysis |
 | AI Compute | Container Execs 🔴 | Live K8s workload inventory (SSE stream) |
 | AI Compute | Docker Images 🔴 | Prune stale images from ECR/ACR/GAR |
 | AI Compute | CS Templates 🔴 | Replace code studio templates |
@@ -135,14 +138,14 @@ The composite 0–100 score is built from six weighted categories:
 
 | Category | Default weight |
 |---|---|
-| Code Environments | 35% |
-| Project Footprint | 30% |
-| System Capacity | 15% |
-| Security & Isolation | 10% |
-| Version Currency | 5% |
-| Runtime Config | 5% |
+| Code Environments | 15% |
+| Project Footprint | 15% |
+| System Capacity | 30% |
+| Security & Isolation | 0% |
+| Version Currency | 10% |
+| Runtime Config | 30% |
 
-Categories aggregate 13 individually toggleable health checks — Python versions, Spark version, memory availability, filesystem capacity, open-files limit, user isolation, cgroups (enabled + empty targets), code envs per project, project size pressure, disabled features, Java memory limits, and runtime database. **Every weight and threshold is tunable in Settings**, so the score reflects *your* definition of healthy.
+Categories aggregate individually toggleable health checks across Python and Spark versions, memory and filesystem capacity, open-files limits, isolation and cgroups, code-env and project pressure, disabled features, Java memory, runtime database, and other source-backed findings. A zero-weight category can still surface issues, and critical cap rules can clamp the overall score. **Every weight and threshold is tunable in Settings**, so the score reflects *your* definition of healthy.
 
 ## Architecture
 
@@ -152,11 +155,11 @@ flowchart LR
         SPA["React 19 SPA<br/>Vite + Tailwind + Chart.js"]
     end
     subgraph Webapp["DSS plugin webapp"]
-        API["Flask backend<br/>35 route groups, SSE streaming,<br/>caching + prewarm"]
+        API["Flask backend<br/>39 route groups, SSE streaming,<br/>caching + prewarm"]
     end
     subgraph DSS["Dataiku DSS (local or remote)"]
         PYAPI["DSS Python API<br/>(reads + gated writes)"]
-        MACROS["15 privileged macros<br/>(ADMINTOOLKIT project)"]
+        MACROS["16 privileged macros<br/>(ADMINTOOLKIT project)"]
         HOST["Host resources:<br/>filesystem, /proc, kubectl,<br/>Docker registries, runtimedb"]
     end
     SPA -->|"fetch + SSE, X-DSS-Host-Id"| API
@@ -172,7 +175,7 @@ Pure DSS API operations talk to the instance directly. Anything host-bound (file
 ### Requirements
 
 - A Dataiku DSS instance and **global admin** rights (to install the plugin and use the toolkit meaningfully).
-- Python 3.9+ available for the plugin code env. All Python dependencies (Flask, boto3, azure-identity, google-cloud-artifact-registry, psycopg2, …) are declared in the plugin's code-env spec and installed automatically when DSS builds it.
+- Python 3.10–3.13 available for the plugin code env. All Python dependencies (Flask, boto3, azure-identity, google-cloud-artifact-registry, psycopg2, …) are declared in the plugin's code-env spec and installed automatically when DSS builds it.
 - For remote-host scanning, a **personal API key belonging to an admin user** on each remote DSS instance you want to scan — created from that user's **profile → API keys → New API key**. A global API key from **Settings → Security → Global API keys** will **not** work: it has no associated DSS user, so the remote rejects it with an error.
 - Network access from the DSS instance to GitHub if you install from git. If that is not possible, install from a plugin ZIP instead.
 
@@ -335,11 +338,11 @@ In addition, Under Settings, you can create python notebooks with the same algor
 ```
 plugin.json                  # plugin manifest (params, version, secrets)
 webapps/admin-toolkit/       # Flask webapp entrypoint
-python-lib/                  # backend: adk_backend/ (35 route groups) + shared libs
-python-runnables/            # 15 host-bound macros (host/resource/process metrics, adoption, K8s, images, DB, CS, CRU, triage, and cleanup/governance actions)
+python-lib/                  # backend: adk_backend/ (39 route groups) + shared libs
+python-runnables/            # 16 host-bound macros (host/resource/process metrics, adoption, K8s, images, DB, CS, CRU, triage, and cleanup/governance actions)
 python-lib/atk_agent_common/ # agents layer shared lib (tools impl, actuator, triage, audit)
-python-agents/               # 3 plugin agents (health-triage, scoping-architect, ops-actuator)
-python-agent-tools/          # 11 agent tools over the toolkit's sensor APIs
+python-agents/               # 1 generalist plugin agent (ATK Admin Agent)
+python-agent-tools/          # 13 agent tools over the toolkit's sensor and guarded-action APIs
 code-env/python/spec/        # plugin code env dependency spec
 resource/frontend/           # React SPA (src/, public/, tests/)
 scripts/                     # deploy + contract-check tooling (scripts/agents/ = agent test harness)

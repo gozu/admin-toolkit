@@ -681,7 +681,7 @@ def _exec_settings_set(client, host, target):
     raw = general.get_raw()
     current = settings_paths.get_at(raw, path)
     expected = target.get('expectedCurrent')
-    if json.dumps(current, sort_keys=True, default=str) != json.dumps(expected, sort_keys=True, default=str):
+    if not confirm.values_match(current, expected):
         raise ToolkitError(
             'Setting %s drifted between plan and execute (expected %s, found %s) — refusing.'
             % (path, json.dumps(expected, default=str)[:200], json.dumps(current, default=str)[:200]),

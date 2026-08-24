@@ -21,6 +21,7 @@ from adk_backend.caching import _cache_pop_matching
 from adk_backend.clients import _active_support_project, _resolve_macro_project
 from adk_backend.macros import _fs_cleanup_macro
 from adk_backend.utils import advanced
+from atk_agent_common import confirm
 from atk_agent_common.policies import settings_paths
 from atk_agent_common.policies import toolkit_scenarios as _toolkit_scenario_policy
 
@@ -457,7 +458,7 @@ def _impl_connection_update(client, body):
     definition = conn.get_definition()
     current = settings_paths.get_at(definition, path)
     expected = body.get('expectedCurrent')
-    if json.dumps(current, sort_keys=True, default=str) != json.dumps(expected, sort_keys=True, default=str):
+    if _drifted(current, expected):
         return {'ok': False,
                 'error': 'Connection %s %s drifted between plan and execute '
                          '(expected %s, found %s) — refusing.'
@@ -579,8 +580,7 @@ def _impl_project_export(client, body):
 
 
 def _drifted(current, expected):
-    return json.dumps(current, sort_keys=True, default=str) != \
-        json.dumps(expected, sort_keys=True, default=str)
+    return not confirm.values_match(current, expected)
 
 
 def _drift_refusal(what, expected, current):

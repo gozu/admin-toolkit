@@ -39,12 +39,28 @@ def _strip_nulls(node):
     makes signing match that reality. It is behaviour-preserving: executors
     read target.get(k), so a key set to None and an absent key already act
     identically, and any action that survives transport unchanged has no None
-    keys to drop (so this is a no-op for it)."""
+    keys to drop (so this is a no-op for it).
+
+    Integral floats normalize to int for the same reason: the model echoing a
+    planned target freely respells 1.0 as 1 (json.dumps spells them "1.0" vs
+    "1"), which must not read as drift — non-integral floats like 0.5 have
+    only one spelling. bool is not a float subclass, so True/False pass
+    through untouched."""
     if isinstance(node, dict):
         return {k: _strip_nulls(v) for k, v in node.items() if v is not None}
     if isinstance(node, list):
         return [_strip_nulls(v) for v in node]
+    if isinstance(node, float) and node.is_integer():
+        return int(node)
     return node
+
+
+def values_match(current, expected):
+    """Executor-side drift comparison with the SAME normalization token
+    signing uses — an echo respelling 1.0 as 1 or dropping a null key is
+    transport noise, not drift."""
+    return json.dumps(_strip_nulls(current), sort_keys=True, default=str) == \
+        json.dumps(_strip_nulls(expected), sort_keys=True, default=str)
 
 
 def canonical_target(target):

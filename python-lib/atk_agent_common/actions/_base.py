@@ -11,6 +11,7 @@ Two patterns recur across the catalog:
 
 import json
 
+from .. import confirm
 from ..errors import ToolkitError
 from ..policies import settings_paths
 
@@ -78,5 +79,4 @@ def spec(action, shape, risk, planner, executor, batchable=False, local_only=Fal
 
 
 def value_drifted(current, expected):
-    return json.dumps(current, sort_keys=True, default=str) != \
-        json.dumps(expected, sort_keys=True, default=str)
+    return not confirm.values_match(current, expected)

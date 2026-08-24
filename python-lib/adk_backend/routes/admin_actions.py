@@ -593,6 +593,16 @@ def _drift_refusal(what, expected, current):
 def _impl_project_set_cluster(client, body):
     project_key = body.get('projectKey') or ''
     cluster_id = body.get('clusterId') or ''
+    # Existence guard: an LLM echoing a synthetic id (e.g. the k8s audit's
+    # "kubeconfig:<path>") would otherwise poison the project with a dangling
+    # reference that fires ERR_CLUSTERS_INVALID_SELECTED and can break DSS
+    # agent-tool kernel init.
+    valid = sorted(str(c.get('id')) for c in (client.list_clusters() or []))
+    if cluster_id not in valid:
+        return {'ok': False, 'error': 'Cluster %r does not exist on this instance '
+                                      '(existing: %s) — refusing to write a dangling '
+                                      'cluster reference.'
+                                      % (cluster_id, ', '.join(valid) or '(none)')}
     settings = client.get_project(project_key).get_settings()
     raw = settings.get_raw()
     current = (raw.get('settings') or {}).get('k8sCluster')

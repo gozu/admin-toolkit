@@ -386,3 +386,14 @@ def test_legacy_batchable_flips():
     from atk_agent_common import actuator
     assert {'db-vacuum', 'db-analyze', 'plugin-deploy',
             'project-delete'} <= actuator.BATCHABLE_ACTIONS
+
+
+def test_impl_project_set_cluster_refuses_unknown_cluster():
+    class _Client:
+        def list_clusters(self):
+            return [{'id': 'eks-prod'}]
+    out = admin_actions._impl_project_set_cluster(_Client(), {
+        'projectKey': 'P1',
+        'clusterId': 'kubeconfig:/data/dataiku/.kube/config'})
+    assert out['ok'] is False
+    assert 'does not exist' in out['error'] and 'eks-prod' in out['error']

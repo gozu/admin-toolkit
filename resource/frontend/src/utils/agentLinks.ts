@@ -21,7 +21,7 @@
 // image-delete has no DSS page (registry-side object) → no link; API keys have
 // no per-key page → no link.
 
-import { getDssBaseUrl } from './codeEnvUsageLinks';
+import { webappOriginBaseUrl } from './codeEnvUsageLinks';
 import { hostStore } from '../state/hostStore';
 
 const enc = encodeURIComponent;
@@ -33,7 +33,7 @@ export function hostBaseUrl(hostId: string | undefined): string {
     const host = hostStore.get().hosts.find((h) => h.id === id);
     if (host?.url) return host.url.replace(/\/+$/, '');
   }
-  return getDssBaseUrl();
+  return webappOriginBaseUrl();
 }
 
 /** Trace Explorer's native "Explore trace" handoff key (utils/config.ts of

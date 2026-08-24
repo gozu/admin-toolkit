@@ -56,6 +56,10 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
   const reducedMotion = useReducedMotion();
   const adoptionVisible = useAdoptionVisible();
   const appVersion = useAppVersion();
+  // Node id of the instance whose data is on screen (local, remote, or zip) —
+  // session-epoch reset keeps it tracking the viewed host. Nothing renders
+  // until the id is known: no host-label fallback by design.
+  const nodeId = parsedData.instanceInfo?.nodeId;
   const eggBufRef = useRef('');
   const darkEggBufRef = useRef('');
 
@@ -493,26 +497,35 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         className="app-topbar-overlay relative pointer-events-none hidden lg:flex items-center justify-center"
         style={{ gridColumn: '1 / -1', gridRow: '1' }}
       >
-        <button
-          type="button"
-          onClick={onBackToHosts}
-          title="Back to host picker"
-          className="pointer-events-auto flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-[var(--bg-hover)] transition-colors"
-        >
-          <img
-            src={dkulogo}
-            alt="Dataiku"
-            className="h-5 w-5"
-          />
-          <span
-            className="text-base font-bold text-[var(--text-primary)] tracking-tight"          >
-            ADMIN
-          </span>
-          <span
-            className="text-base font-bold text-[#2AB1AC] tracking-tight -ml-1.5"          >
-            TOOLKIT
-          </span>
-        </button>
+        <div className="relative flex items-center">
+          <button
+            type="button"
+            onClick={onBackToHosts}
+            title="Back to host picker"
+            className="pointer-events-auto flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            <img
+              src={dkulogo}
+              alt="Dataiku"
+              className="h-5 w-5"
+            />
+            <span
+              className="text-base font-bold text-[var(--text-primary)] tracking-tight"          >
+              ADMIN
+            </span>
+            <span
+              className="text-base font-bold text-[#2AB1AC] tracking-tight -ml-1.5"          >
+              TOOLKIT
+            </span>
+          </button>
+          {nodeId && (
+            <span
+              className="absolute left-full top-1/2 -translate-y-1/2 ml-3 whitespace-nowrap max-w-[16rem] truncate px-1.5 py-0.5 text-[10px] font-mono rounded bg-[var(--neon-cyan)]/10 text-[var(--neon-cyan)] border border-[var(--neon-cyan)]/30"
+            >
+              {nodeId}
+            </span>
+          )}
+        </div>
       </motion.div>
 
       {/* Main content area — scrollable */}

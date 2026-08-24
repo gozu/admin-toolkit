@@ -16,7 +16,7 @@ import { useCollapsible } from '../../hooks/useCollapsible';
 import { useModuleAvailability } from '../../hooks/useModuleAvailability';
 import { MODULE_BY_ID, MODULE_NAV_SECTIONS } from '../../utils/moduleRegistry';
 import { useAppVersion } from '../../state/appVersionStore';
-import { getActiveHost } from '../../state/hostStore';
+import { getDssBaseUrl } from '../../utils/codeEnvUsageLinks';
 import { useRedVisible } from '../../state/redUnlockStore';
 import { EGG_GATED_PAGES, useAdoptionVisible } from '../../state/adoptionUnlockStore';
 import { ExternalLinkIcon } from '../ExternalLinkIcon';
@@ -940,8 +940,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
   // Shared navigation behaviour for both the rail rows and the expanded tiles.
   function handleNavClick(pageId: PageId, label: string) {
     if (pageId === 'sanity-check') {
-      const base = getActiveHost().url || window.location.origin;
-      const url = `${base.replace(/\/$/, '')}/admin/maintenance/sanitycheck/`;
+      const url = `${getDssBaseUrl()}/admin/maintenance/sanitycheck/`;
       addDebugLog(`External: open ${url} (clicked "${label}")`, 'navigation');
       window.open(url, '_blank', 'noopener,noreferrer');
       return;

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useDiag } from '../context/DiagContext';
-import { getBackendUrl } from '../utils/api';
+import { getDssBaseUrl } from '../utils/codeEnvUsageLinks';
 import { ScanIncompleteNotice } from './ScanIncompleteNotice';
 import { DataGrid } from './common/DataGrid';
 import { Spinner } from './common/Spinner';
@@ -271,15 +271,7 @@ export function LlmAuditTable() {
     return { ripoff: r.size, obsolete: o.size };
   }, [grouped]);
 
-  const dssBaseUrl = useMemo(() => {
-    const bUrl = getBackendUrl('/');
-    try {
-      const u = new URL(bUrl, window.location.origin);
-      return `${u.protocol}//${u.host}`;
-    } catch {
-      return '';
-    }
-  }, []);
+  const dssBaseUrl = getDssBaseUrl();
 
   const columns = useMemo<ColumnDef<GroupedRow>[]>(
     () => [

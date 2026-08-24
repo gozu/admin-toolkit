@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal } from './Modal';
 import { useModal } from '../hooks/useModal';
-import { fetchJson, getBackendUrl } from '../utils/api';
+import { fetchJson } from '../utils/api';
+import { getDssBaseUrl } from '../utils/codeEnvUsageLinks';
 import { formatBytes } from '../utils/formatters';
 import { csTemplateScan } from '../state/csTemplateStore';
 
@@ -59,11 +60,6 @@ interface MigrateResponse {
   durationMs?: number;
 }
 
-function getDssBaseUrl(): string {
-  const backendUrl = getBackendUrl('/');
-  const parsed = new URL(backendUrl, window.location.origin);
-  return `${parsed.protocol}//${parsed.host}`;
-}
 
 function StateChip({ state }: { state: string | null | undefined }) {
   if (!state) {
@@ -256,7 +252,7 @@ export function CSTemplateReplacement() {
   const [result, setResult] = useState<MigrateResponse | null>(null);
   const confirmModal = useModal();
 
-  const baseUrl = useMemo(() => getDssBaseUrl(), []);
+  const baseUrl = getDssBaseUrl();
 
   useEffect(() => {
     if (!scanStarted) {

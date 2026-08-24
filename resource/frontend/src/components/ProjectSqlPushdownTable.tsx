@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Card } from './Card';
 import { ScanIncompleteNotice } from './ScanIncompleteNotice';
-import { getBackendUrl } from '../utils/api';
-import { dssUrls } from '../utils/codeEnvUsageLinks';
+import { dssUrls, getDssBaseUrl } from '../utils/codeEnvUsageLinks';
 import {
   getSqlPushdownScan,
   restartSqlPushdownScan,
@@ -193,15 +192,7 @@ export function ProjectSqlPushdownTable() {
     startSqlPushdownScan();
   }, []);
 
-  const dssBaseUrl = useMemo(() => {
-    const bUrl = getBackendUrl('/');
-    try {
-      const u = new URL(bUrl, window.location.origin);
-      return `${u.protocol}//${u.host}`;
-    } catch {
-      return '';
-    }
-  }, []);
+  const dssBaseUrl = getDssBaseUrl();
 
   const progressPct = useMemo(() => {
     if (!scan.total || scan.total <= 0) return 0;

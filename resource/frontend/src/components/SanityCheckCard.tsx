@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDiag } from '../context/DiagContext';
-import { getBackendUrl } from '../utils/api';
+import { getDssBaseUrl } from '../utils/codeEnvUsageLinks';
 import { useTableSort } from '../hooks/useTableSort';
 import { runSanityCheck } from '../state/sanityCheckScan';
 import { Spinner } from './common/Spinner';
@@ -363,15 +363,7 @@ export function SanityCheckCard() {
     return s;
   }, [parsedData.projects]);
 
-  const dssBaseUrl = useMemo(() => {
-    const bUrl = getBackendUrl('/');
-    try {
-      const u = new URL(bUrl, window.location.origin);
-      return `${u.protocol}//${u.host}`;
-    } catch {
-      return '';
-    }
-  }, []);
+  const dssBaseUrl = getDssBaseUrl();
 
   const rescan = useCallback(
     async (opts: { force?: boolean } = {}) => {

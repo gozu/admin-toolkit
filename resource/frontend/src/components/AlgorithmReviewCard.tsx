@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { fetchJson, ApiRequestError } from '../utils/api';
 import { useRedState } from '../state/redUnlockStore';
+import { dssUrls } from '../utils/codeEnvUsageLinks';
 
 interface NotebookResult {
   file: string;
@@ -154,7 +155,7 @@ function AlgorithmReviewResultView({ result }: { result: AlgorithmReviewResult }
                 </span>
               ) : (
                 <a
-                  href={`${window.location.origin}/projects/${encodeURIComponent(result.projectKey)}/notebooks/jupyter/${encodeURIComponent(nb.notebookName)}/`}
+                  href={dssUrls.notebook(result.projectKey, nb.notebookName)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[var(--accent)] hover:underline break-all"

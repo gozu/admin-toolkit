@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useDiag } from '../context/DiagContext';
-import { fetchRaw, getBackendUrl } from '../utils/api';
+import { fetchRaw } from '../utils/api';
+import { getDssBaseUrl } from '../utils/codeEnvUsageLinks';
 import { parseSseStream } from '../utils/sseStream';
 import { DataGrid } from './common/DataGrid';
 import { Spinner } from './common/Spinner';
@@ -98,15 +99,7 @@ export function ConnectionHealthCard() {
   const results = useMemo(() => parsedData.connectionHealth || [], [parsedData.connectionHealth]);
   const total = parsedData.connectionHealthTotal ?? null;
 
-  const dssBaseUrl = useMemo(() => {
-    const bUrl = getBackendUrl('/');
-    try {
-      const u = new URL(bUrl, window.location.origin);
-      return `${u.protocol}//${u.host}`;
-    } catch {
-      return '';
-    }
-  }, []);
+  const dssBaseUrl = getDssBaseUrl();
 
   const rescan = useCallback(async () => {
     abortRef.current?.abort();

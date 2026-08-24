@@ -1,4 +1,5 @@
 import { getBackendUrl } from './api';
+import { getActiveHost } from '../state/hostStore';
 import type { CodeEnvUsageRef } from '../types';
 
 function encodeSegment(value: string | undefined): string {
@@ -9,10 +10,20 @@ function objectType(usage: CodeEnvUsageRef): string {
   return String(usage.objectType || usage.usageType || 'OBJECT').toUpperCase();
 }
 
-export function getDssBaseUrl(): string {
+/** Origin serving THIS webapp (the primary/local DSS). Use only for links that
+ * must stay on the webapp's own instance (self-links, cross-host fallbacks). */
+export function webappOriginBaseUrl(): string {
   const backendUrl = getBackendUrl('/');
   const parsed = new URL(backendUrl, window.location.origin);
   return `${parsed.protocol}//${parsed.host}`;
+}
+
+/** Base URL of the DSS instance whose data is on screen: the active host's
+ * configured url for remotes, the webapp's own origin for 'local'. */
+export function getDssBaseUrl(): string {
+  const host = getActiveHost();
+  if (host.id !== 'local' && host.url) return host.url.replace(/\/+$/, '');
+  return webappOriginBaseUrl();
 }
 
 export function objectLabel(usage: CodeEnvUsageRef): string {

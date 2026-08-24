@@ -1,4 +1,4 @@
-import { getDssBaseUrl } from './codeEnvUsageLinks';
+import { webappOriginBaseUrl } from './codeEnvUsageLinks';
 
 // Deep links back to *this* webapp's own DSS page — the one place an admin can
 // stop and start its Python backend.
@@ -46,7 +46,7 @@ function trimBase(href: string): string {
  * (e.g. the bundle is being served outside DSS entirely).
  */
 export function webappSelfLink(): WebappSelfLink | null {
-  const base = trimBase(getDssBaseUrl());
+  const base = trimBase(webappOriginBaseUrl());
 
   // 1. Shell URL (or our own, when the app was opened un-framed): carries the
   //    `{id}_{name}` segment the settings route requires.

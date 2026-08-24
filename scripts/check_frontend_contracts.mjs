@@ -331,6 +331,41 @@ for (const offender of scanForPreResolvedBackendUrls('src')) {
   fail(`${offender} passes getBackendUrl(...) into a fetch helper — helpers own backend URL resolution.`);
 }
 
+// Multi-instance contract: deep links must target the ACTIVE host, not the
+// webapp's own origin. Building URLs from window.location.origin silently pins
+// them to the scanning instance — use getDssBaseUrl() (viewed host) or
+// webappOriginBaseUrl() (deliberate self-link) from utils/codeEnvUsageLinks.ts.
+const WINDOW_ORIGIN_ALLOWLIST = new Set([
+  'src/utils/codeEnvUsageLinks.ts', // the canonical builders themselves
+  'src/state/triageSettingsStore.ts', // toolkitUrl: the webapp's OWN url, by definition
+]);
+
+function scanForWindowOrigin(dir, results = []) {
+  if (!fs.existsSync(path.join(root, dir))) return results;
+  for (const entry of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+    const rel = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === 'tests' || entry.name.startsWith('.')) continue;
+      scanForWindowOrigin(rel, results);
+      continue;
+    }
+    if (!/\.(ts|tsx)$/.test(entry.name)) continue;
+    if (WINDOW_ORIGIN_ALLOWLIST.has(rel)) continue;
+    const body = fs.readFileSync(path.join(root, rel), 'utf8');
+    if (body.includes('window.location.origin')) {
+      results.push(rel);
+    }
+  }
+  return results;
+}
+
+for (const offender of scanForWindowOrigin('src')) {
+  fail(
+    `${offender} builds a URL from window.location.origin — that pins the link to the scanning host. ` +
+      'Use getDssBaseUrl() (active host) or webappOriginBaseUrl() (deliberate self-link) from utils/codeEnvUsageLinks.ts.',
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Unified lifecycle contracts (post-refactor)
 // ─────────────────────────────────────────────────────────────────────────

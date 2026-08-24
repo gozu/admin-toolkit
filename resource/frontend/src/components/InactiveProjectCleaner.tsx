@@ -5,7 +5,8 @@ import { useSortableTable } from '../hooks/useSortableTable';
 import { Button } from './common/Button';
 import { ConfirmDeleteDialog } from './common/ConfirmDeleteDialog';
 import { StatTile } from './common/StatTile';
-import { fetchJson, getBackendUrl } from '../utils/api';
+import { fetchJson } from '../utils/api';
+import { getDssBaseUrl } from '../utils/codeEnvUsageLinks';
 import { getActiveHostId } from '../state/hostStore';
 import { managedFoldersScan } from '../state/managedFoldersStore';
 import {
@@ -207,15 +208,7 @@ export function InactiveProjectCleaner() {
     }
   }, [deleteTarget, deleteModal, effectiveFolderId]);
 
-  const dssBaseUrl = useMemo(() => {
-    const bUrl = getBackendUrl('/');
-    try {
-      const u = new URL(bUrl, window.location.origin);
-      return `${u.protocol}//${u.host}`;
-    } catch {
-      return '';
-    }
-  }, []);
+  const dssBaseUrl = getDssBaseUrl();
 
   if (isLoading) {
     return (

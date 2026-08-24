@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal } from './Modal';
 import { useModal } from '../hooks/useModal';
 import { useTableSort } from '../hooks/useTableSort';
-import { fetchJson, getBackendUrl } from '../utils/api';
+import { fetchJson } from '../utils/api';
+import { getDssBaseUrl } from '../utils/codeEnvUsageLinks';
 import { ProgressIndicator } from './common/ProgressIndicator';
 import { SkeletonRows } from './common/SkeletonRows';
 import { ScanIncompleteNotice } from './ScanIncompleteNotice';
@@ -46,11 +47,6 @@ function encodeSegment(value: string | undefined): string {
   return encodeURIComponent(value || '');
 }
 
-function getDssBaseUrl(): string {
-  const backendUrl = getBackendUrl('/');
-  const parsed = new URL(backendUrl, window.location.origin);
-  return `${parsed.protocol}//${parsed.host}`;
-}
 
 function projectUrl(baseUrl: string, projectKey: string | undefined): string {
   return `${baseUrl}/projects/${encodeSegment(projectKey)}/`;
@@ -487,7 +483,7 @@ export function ContainerExecs() {
     () => Object.entries(data?.nonCarrierCounts || {}).filter(([, count]) => count > 0),
     [data?.nonCarrierCounts],
   );
-  const dssBaseUrl = useMemo(() => getDssBaseUrl(), []);
+  const dssBaseUrl = getDssBaseUrl();
 
   const toggleProjectExpanded = (projectKey: string) => {
     setExpandedProjects((prev) => {

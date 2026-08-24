@@ -280,19 +280,22 @@ def probe_dss_general_settings(dip_home: str) -> Dict[str, Any]:
     for cfg in execs:
         if not isinstance(cfg, dict):
             continue
+        krc = cfg.get('kubernetesRuntimeConfig') or {}
+        res = krc.get('kubernetesResources') or {}
         cleaned.append({
             'name': cfg.get('name'),
             'type': cfg.get('type'),
             'usableBy': cfg.get('usableBy'),
-            'kubernetesNamespace': cfg.get('kubernetesNamespace'),
-            'memRequestMB': cfg.get('memRequestMB'),
-            'memLimitMB': cfg.get('memLimitMB'),
-            'cpuRequest': cfg.get('cpuRequest'),
-            'cpuLimit': cfg.get('cpuLimit'),
-            'gpuRequest': cfg.get('gpuRequest'),
-            'nodeSelector': cfg.get('nodeSelector'),
-            'tolerations': cfg.get('tolerations'),
-            'envBindings': cfg.get('envBindings'),
+            'kubernetesNamespace': krc.get('kubernetesNamespace'),
+            'memRequestMB': res.get('memRequestMB'),
+            'memLimitMB': res.get('memLimitMB'),
+            'cpuRequest': res.get('cpuRequest'),
+            'cpuLimit': res.get('cpuLimit'),
+            'gpuRequest': next((l.get('value') for l in (res.get('customLimits') or [])
+                                if isinstance(l, dict) and l.get('key') == 'nvidia.com/gpu'), None),
+            'nodeSelector': krc.get('nodeSelector'),
+            'tolerations': krc.get('tolerations'),
+            'envBindings': krc.get('envBindings'),
         })
     return {
         'ok': True,

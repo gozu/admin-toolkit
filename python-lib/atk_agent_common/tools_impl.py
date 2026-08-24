@@ -644,7 +644,9 @@ def _domain_settings(client, host, domain, name_filter, detail, top_n, page):
         'containerExec': {
             'defaultExecutionConfig': container.get('defaultExecutionConfig'),
             'configCount': len(execs),
-            'configs': [shaping.pick(e, ('name', 'type', 'kubernetesResources'))
+            'configs': [dict(shaping.pick(e, ('name', 'type')),
+                             kubernetesResources=((e.get('kubernetesRuntimeConfig') or {})
+                                                  .get('kubernetesResources')))
                         for e in execs[:top_n]]},
         'spark': _compact_unknown(visible.get('sparkSettings') or {}, top_n),
         'internalDatabase': _compact_unknown(

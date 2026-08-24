@@ -808,7 +808,8 @@ def _check_disabled_features(raw):
 def _extract_exec_resource_configs(raw_settings):
     """Port of utils/execResources.ts extractExecResourceConfigs: absent or
     malformed executionConfigs ⇒ None (skip semantics); present-but-empty ⇒ []
-    (scores 100). Resource fields are FLAT on each config."""
+    (scores 100). Resource fields are NESTED under each config's
+    kubernetesRuntimeConfig.kubernetesResources (live DSS shape)."""
     container = (raw_settings or {}).get('containerSettings') or {}
     configs = container.get('executionConfigs')
     if not isinstance(configs, list):
@@ -821,13 +822,14 @@ def _extract_exec_resource_configs(raw_settings):
     for cfg in configs:
         if not isinstance(cfg, dict):
             continue
+        res = (((cfg.get('kubernetesRuntimeConfig') or {}).get('kubernetesResources')) or {})
         out.append({
             'name': str(cfg.get('name')) if cfg.get('name') is not None else '',
             'type': str(cfg.get('type')) if cfg.get('type') is not None else None,
-            'memRequestMB': num(cfg.get('memRequestMB')),
-            'memLimitMB': num(cfg.get('memLimitMB')),
-            'cpuRequest': num(cfg.get('cpuRequest')),
-            'cpuLimit': num(cfg.get('cpuLimit')),
+            'memRequestMB': num(res.get('memRequestMB')),
+            'memLimitMB': num(res.get('memLimitMB')),
+            'cpuRequest': num(res.get('cpuRequest')),
+            'cpuLimit': num(res.get('cpuLimit')),
         })
     return out
 

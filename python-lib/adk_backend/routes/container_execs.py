@@ -79,7 +79,11 @@ def _cex_clean_config(config: Dict[str, Any]) -> Dict[str, Any]:
         'kubernetesNamespace', 'repositoryURL', 'baseImageType', 'prePushMode',
         'nodeSelector', 'dockerTLSVerify',
     ]
-    return {key: config.get(key) for key in keys if key in config}
+    cleaned = {key: config.get(key) for key in keys if key in config}
+    krc = config.get('kubernetesRuntimeConfig')
+    if isinstance(krc, dict):
+        cleaned.update({key: krc[key] for key in ('kubernetesNamespace', 'nodeSelector') if key in krc})
+    return cleaned
 
 
 def _cex_add_row(rows: List[Dict[str, Any]], **kwargs) -> None:

@@ -105,7 +105,8 @@ export interface ParsedData {
   authSettings?: AuthSettings;
   containerSettings?: ContainerSettings;
   containerExecDefaults?: ContainerExecDefaults;
-  /** Per-exec-config resource fields (flat memRequestMB/memLimitMB/cpu*) —
+  /** Per-exec-config resource fields (memRequestMB/memLimitMB/cpu*, read from
+   *  each config's kubernetesRuntimeConfig.kubernetesResources) —
    *  extracted from raw settings by utils/execResources. Absent (`undefined`)
    *  ⇒ the exec-config-resources score component silently skips. */
   execResourceConfigs?: ExecResourceConfig[];

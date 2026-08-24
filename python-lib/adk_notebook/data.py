@@ -1288,7 +1288,11 @@ def _cex_clean_config(config: Dict[str, Any]) -> Dict[str, Any]:
     keys = ['name', 'type', 'usableBy', 'allowedGroups', 'workloadType', 'dockerNetwork',
             'kubernetesNamespace', 'repositoryURL', 'baseImageType', 'prePushMode',
             'nodeSelector', 'dockerTLSVerify']
-    return {key: config.get(key) for key in keys if key in config}
+    cleaned = {key: config.get(key) for key in keys if key in config}
+    krc = config.get('kubernetesRuntimeConfig')
+    if isinstance(krc, dict):
+        cleaned.update({key: krc[key] for key in ('kubernetesNamespace', 'nodeSelector') if key in krc})
+    return cleaned
 
 
 def _cex_explicit_config(selection: Any) -> Optional[str]:

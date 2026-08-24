@@ -219,6 +219,76 @@ def _attribute_instances(client: Any, instances: List[Dict[str, Any]]) -> Dict[s
     }
 
 
+def _orphan_verdicts(instances: List[Dict[str, Any]],
+                     recipes: List[Dict[str, Any]],
+                     attribution: Dict[str, Any],
+                     failed_projects: List[Dict[str, str]]) -> Tuple[bool, List[str], List[str]]:
+    """(determinable, orphanKeys, attachedKeys).
+
+    Orphans need BOTH halves: a creator id from the macro and the full recipe
+    sweep to check it against. Either missing ⇒ unknown, not zero.
+    """
+    known_recipe_ids: Set[str] = {r['fullId'] for r in recipes}
+    determinable = bool(attribution.get('available')) and not failed_projects
+    orphan_keys: List[str] = []
+    attached_keys: List[str] = []
+    if determinable:
+        for instance in instances:
+            full_id = instance.get('creatorFullId')
+            if not full_id:
+                continue
+            if full_id in known_recipe_ids:
+                attached_keys.append(instance['projectKey'])
+            else:
+                orphan_keys.append(instance['projectKey'])
+    return determinable, orphan_keys, attached_keys
+
+
+@bp.route('/api/app-instances/summary')
+def api_app_instances_summary():
+    """Synchronous JSON twin of the SSE scan — the agent read path.
+
+    config_inspect(domain='app-instances') consumes this; the agent client
+    cannot follow SSE, so the same sweep runs to completion here and returns
+    one payload. Same collectors, same macro attribution, same orphan
+    semantics as the page (orphans=None when not determinable, never 0).
+    """
+    client = g.client
+    apps = _collect_apps(client)
+    instances, scannable = _collect_projects(client)
+    attribution = _attribute_instances(client, instances)
+
+    recipes: List[Dict[str, Any]] = []
+    failed_projects: List[Dict[str, str]] = []
+    workers = max(1, min(8, _parallel_workers()))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_scan_project_recipes, client, key): key for key in scannable}
+        for future in as_completed(futures):
+            key = futures[future]
+            try:
+                row = future.result()
+            except Exception as exc:
+                _LOGGER.exception("[app-instances] summary worker failed for %s", key)
+                row = {'projectKey': key, 'recipes': [],
+                       'error': '%s: %s' % (type(exc).__name__, str(exc)[:200])}
+            if row['error']:
+                failed_projects.append({'projectKey': key, 'error': row['error']})
+            recipes.extend(row['recipes'])
+
+    determinable, orphan_keys, attached_keys = _orphan_verdicts(
+        instances, recipes, attribution, failed_projects)
+    return jsonify({
+        'apps': apps,
+        'instances': instances,
+        'appRecipes': recipes,
+        'attribution': attribution,
+        'orphanDeterminable': determinable,
+        'orphanKeys': orphan_keys,
+        'attachedKeys': attached_keys,
+        'failedProjects': failed_projects,
+    })
+
+
 @bp.route('/api/app-instances/scan')
 def api_app_instances_scan():
     """Stream the app-instance inventory, then the App_ recipe sweep, via SSE."""
@@ -266,24 +336,11 @@ def api_app_instances_scan():
                     'scanned': scanned,
                 })
 
-        # Orphans need BOTH halves: a creator id from the macro and the full
-        # recipe sweep to check it against. Either missing ⇒ unknown, not zero.
         # The instance rows already went out with the inventory event, so the
         # verdicts travel here as key lists and the client patches them in —
         # a count alone would leave every row rendering as undetermined.
-        known_recipe_ids: Set[str] = {r['fullId'] for r in recipes}
-        determinable = attribution.get('available') and not failed_projects
-        orphan_keys: List[str] = []
-        attached_keys: List[str] = []
-        if determinable:
-            for instance in instances:
-                full_id = instance.get('creatorFullId')
-                if not full_id:
-                    continue
-                if full_id in known_recipe_ids:
-                    attached_keys.append(instance['projectKey'])
-                else:
-                    orphan_keys.append(instance['projectKey'])
+        determinable, orphan_keys, attached_keys = _orphan_verdicts(
+            instances, recipes, attribution, failed_projects)
 
         yield "event: done\ndata: %s\n\n" % json.dumps({
             'projectsScanned': scanned,

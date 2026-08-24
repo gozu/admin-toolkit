@@ -306,7 +306,11 @@ def _domain_code_envs(client, host, domain, name_filter, detail, top_n, page):
                       progress_path='/api/code-envs/progress')
     envs = data.get('codeEnvs') or []
     if flt:
-        envs = [e for e in envs if flt in (e.get('name') or '').lower()]
+        # env-name substring OR exact project key: name_filter=<projectKey>
+        # returns exactly the envs that project uses — the drill step the
+        # project-codenv-* remediation route depends on.
+        envs = [e for e in envs if flt in (e.get('name') or '').lower()
+                or any(flt == str(k).lower() for k in (e.get('projectKeys') or []))]
     thresholds = client.get('/api/settings/threshold-defaults')
     # Same fallback as the scoring twins (health.py, userMatrix.ts) and
     # plugin.json's thresh_deprecated_python_prefixes default, so config_inspect
@@ -560,6 +564,45 @@ def _domain_connections_usage(client, host, domain, name_filter, detail, top_n, 
             fs_rows = [r for r in fs_rows if flt in (r.get('connection') or '').lower()]
         out['localFilesystemUsages'] = fs_rows[:max(1, top_n * 2)]
     return out
+
+
+def _domain_app_instances(client, host, domain, name_filter, detail, top_n, page):
+    # Synchronous twin of the App Instances page sweep (macro-attributed
+    # creator recipes; the public API strips them). Heavy: per-App_-recipe
+    # settings fetches across every scannable project.
+    data = client.get('/api/app-instances/summary', host=host, heavy=True)
+    flt = (name_filter or '').lower()
+    instances = data.get('instances') or []
+    recipes = data.get('appRecipes') or []
+    if flt:
+        instances = [i for i in instances
+                     if flt in (i.get('projectKey') or '').lower()
+                     or flt in str(i.get('generatingAppId') or '').lower()
+                     or flt in str(i.get('creatorFullId') or '').lower()]
+        recipes = [r for r in recipes if flt in (r.get('fullId') or '').lower()
+                   or flt in str(r.get('appId') or '').lower()]
+    return {
+        'apps': (data.get('apps') or [])[:top_n],
+        'instanceCount': len(data.get('instances') or []),
+        'instances': [shaping.pick(i, ('projectKey', 'generatingAppId',
+                                       'creatorFullId', 'creatorProjectKey',
+                                       'creatorRecipeName', 'isTemporary',
+                                       'owner', 'lastModified'))
+                      for i in instances[:max(1, top_n * 2)]],
+        'keepInstanceOn': [shaping.pick(r, ('fullId', 'appId'))
+                           for r in recipes if r.get('keepInstance') is True][:top_n],
+        'attribution': data.get('attribution'),
+        'orphanDeterminable': data.get('orphanDeterminable'),
+        'orphanKeys': data.get('orphanKeys'),
+        'attachedKeys': (data.get('attachedKeys') or [])[:max(1, top_n * 2)],
+        'failedProjectCount': len(data.get('failedProjects') or []),
+        'note': ('orphanKeys = instance projects whose creating App recipe no longer '
+                 'exists (macro-attributed, never guessed from labels); cleanup = '
+                 'project-delete (backup-first). orphanDeterminable=false means '
+                 'UNKNOWN, not zero — never propose deletion then. keepInstanceOn '
+                 'recipes are the CAUSE of instance sprawl; the flag is toggled on '
+                 'the App Instances page, not by a catalogued action.'),
+    }
 
 
 def _compact_unknown(payload, top_n):

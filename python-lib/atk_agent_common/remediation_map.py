@@ -166,8 +166,20 @@ REMEDIATIONS = [
               'backup-first delete, several envs as ONE batched item (targets[]).'),
     ]),
     ('project-codenv-*', [
-        _spec('code-env-consolidate', 'medium', 'Consolidate per-project env sprawl onto shared '
-              'envs; the plan enumerates every recipe/notebook/webapp/scenario touched.'),
+        _spec('code-env-consolidate', 'medium', 'The finding names only PROJECT KEYS; the '
+              'action needs concrete sourceEnvName+targetEnvName — DRILL before proposing: '
+              'config_inspect code-envs name_filter=<projectKey> returns exactly the envs '
+              'that project uses. GATE: envs serving structurally different needs (GPU vs '
+              'CPU stacks, conflicting version pins, a plugin-managed env) should NOT be '
+              'merged — propose whitelisting under project-code-envs instead. Pick the '
+              'survivor by package math: the superset env on a supported Python wins; '
+              'never target an unused/empty env, never retire an env other projects '
+              'share. Propose with retireSource:false (planning is read-only and '
+              'enumerates every recipe/notebook/webapp/scenario touched); validate by '
+              'scenario-run of the project\'s load-bearing scenario going green; retiring '
+              'the drained source is a SEPARATE backup-first code-env-delete item. '
+              'Neither env covers the other and both live ⇒ a merged env is admin work '
+              '(ADVISORY; no catalogued env-create action exists).'),
     ]),
     ('code-env-size*', [
         _spec('code-env-consolidate', 'medium', 'Merge oversized near-duplicate envs, then '
@@ -256,6 +268,52 @@ REMEDIATIONS = [
         _spec('scenario-disable', 'medium', 'Failure-storm or log-spamming scenarios are '
               'disabled (auto-triggers off) — reversible with scenario-enable; history '
               'records the toggle.'),
+    ]),
+    ('sanity-*SNOWFLAKE_NO_AUTOFASTWRITE*', [
+        _spec('connection-update', 'medium', 'Enable auto fast-write on the flagged '
+              'Snowflake connection — GATE first: if the same connection is also '
+              'broken-unused, propose connection-delete instead (never both for one '
+              'connection). Ground on the ACTUAL definition (config_inspect connections '
+              'name_filter=<name>) and use only param paths observed there, never '
+              'guessed ones. Auto fast-write needs an existing cloud-storage staging '
+              'connection (S3/GCS/Azure) usable by the same projects '
+              '(connections-usage) — none present ⇒ ADVISORY, say why. Verify after: '
+              'connection-test passes and the sanity warning clears on re-read.'),
+    ]),
+    ('sanity-*SPARK_NO_GROUP_WITH_DETAILS_READ_ACCESS*', [
+        _spec('connection-update', 'medium', 'Grant detail-read groups on the flagged '
+              'Spark connection. Derive candidates from observed usage, never invent: '
+              'connections-usage names the projects/users on it, the users domain maps '
+              'them to groups — propose the SMALLEST existing group set covering the '
+              'actual Spark users. Global credentials on the connection ⇒ note that '
+              'detail-read can expose them and stay narrowest. Usage empty or spanning '
+              'unrelated groups ⇒ policy call: ADVISORY listing candidate groups with '
+              'user counts for the admin to pick. Verify by re-reading the definition '
+              'and the sanity warning clearing.'),
+    ]),
+    ('sanity-*APP_AS_RECIPE*', [
+        _spec('project-delete', 'medium', 'Orphan app instances (creating App recipe '
+              'deleted) are dead projects: identify them via config_inspect '
+              'app-instances — trust orphanKeys only when orphanDeterminable=true '
+              '(macro-attributed, never guessed from project labels). Per-candidate '
+              'safety sweep before proposing: nothing exposed/shared, no scenario '
+              'references, no recent activity — then ONE batched project-delete '
+              '(backup-first) whose evidence names each deleted parent recipe. Any '
+              'doubt ⇒ ADVISORY with the candidate list. TOO_MANY_INSTANCES is the '
+              'cause, not a delete target: recommend switching the recipe\'s '
+              'keepInstance flag off (App Instances page — no catalogued action '
+              'mutates it). Verify: sanity re-read shows the warning cleared.'),
+    ]),
+    ('sanity-*GIT_PROJECT_NOT_MIGRATED*', [
+        _spec('notification-send', 'low', 'Post-upgrade housekeeping, score-exempt by '
+              'default — never sell it as health-score points. The migration itself is '
+              'human work: each flagged project\'s branches must be checked out once on '
+              'the current DSS version (project Version Control page) by someone with '
+              'write access, in-flight work committed first. Do the legwork: name the '
+              'projects from the sanity details, resolve owner (projects domain) and '
+              'email (users domain), and offer ONE notification-send carrying that '
+              'precise checklist. Branch checkout mutates working state — never script '
+              'it; python-run only when the admin explicitly asks (per-run code ack).'),
     ]),
 
     # ── users & licenses ─────────────────────────────────────────────────────

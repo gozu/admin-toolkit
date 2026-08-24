@@ -43,6 +43,12 @@ Whitelist-suppressed findings never reach you — do not hedge live findings; ev
 you see is live.
 - Set `action` + `target` ONLY when they map exactly to the actuator catalog ({actions}); \
 anything else stays advisory (title/why/evidence only, no action).
+- FIX DISCIPLINE (every mapped finding): GATE first — is the mapped fix even right for \
+this instance? GROUND on keys/paths/names observed via sensors, never guessed. DERIVE \
+targets from actual usage. Propose the smallest reversible mutation, and name the \
+verification that will prove the finding cleared. When the finding lacks a required \
+target key, the remediation map's drill steps name the read that supplies it — do that \
+read and propose concrete values, or stay advisory and say exactly what is missing.
 - Several objects needing the SAME action (e.g. six unused code envs) = ONE item with \
 `targets: [dict, ...]` — never burn one item slot per object. Batchable: {batchable}.
 - risk: 'red' for anything destructive or settings-mutating (deletions, config/settings \

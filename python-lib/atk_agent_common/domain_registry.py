@@ -85,7 +85,9 @@ DOMAINS = (
     _domain(
         'code-envs',
         'Code environments: totals, deprecated-Python and unused envs, largest '
-        'by size (whitelist-aware).',
+        'by size (whitelist-aware). name_filter also takes an exact PROJECT '
+        'KEY and returns exactly the envs that project uses — the drill step '
+        'for per-project consolidation.',
         '_domain_code_envs',
         parsed_fields=('codeEnvs', 'codeEnvSizes', 'codeEnvsExpectedCount',
                        'provisionalCodeEnvs', 'codeEnvsCompare',
@@ -93,7 +95,7 @@ DOMAINS = (
                        'skippedEnvCount'),
         fix_actions=('code-env-delete', 'code-env-update', 'code-env-consolidate',
                      'plugin-code-env-rebuild'),
-        filters=('name_filter = env name substring',),
+        filters=('name_filter = env name substring OR exact project key',),
         heavy=True,
         fields=('totals', 'deprecatedPython', 'unused', 'largest')),
     _domain(
@@ -202,6 +204,20 @@ DOMAINS = (
         filters=('name_filter = PROJECT KEY (required)',),
         project_scoped=True,
         fields=('activities',)),
+    _domain(
+        'app-instances',
+        'App-as-recipe sprawl: app templates with instance counts, instance '
+        'projects with exact creator-recipe attribution (macro-backed; the '
+        'public API strips it), App_ recipes with their keepInstance flag, '
+        'and the orphanKeys verdict (instances whose creating recipe was '
+        'deleted) — the grounding for orphan-instance cleanup. '
+        'orphanDeterminable=false means unknown, not zero.',
+        '_domain_app_instances',
+        fix_actions=('project-delete',),
+        filters=('name_filter = project key / app id / recipe substring',),
+        heavy=True,
+        fields=('apps', 'instances', 'keepInstanceOn', 'orphanKeys',
+                'attachedKeys', 'attribution', 'orphanDeterminable')),
     _domain(
         'adoption',
         'Adoption/engagement analytics: totals, licensing seats vs per-profile '
@@ -366,7 +382,7 @@ MODULE_COVERAGE = {
     'connections-fs-migration': "domain:connections-usage detail='fs'",
     'project-cleaner': 'sensor:storage_footprint (cleanup candidates)',
     'projects': 'domain:projects + sensor:storage_footprint',
-    'app-instances': 'waiver:SSE-only sweep — the App_ recipe settings fetch and the config-tree macro have no agent read path',
+    'app-instances': 'domain:app-instances',
     'scenarios': 'domain:scenarios (per-project trigger/next-run reads; the schedule projection and clustering are UI-side derivations of the same data)',
     'project-compute': 'sensor:compute_cost (context types)',
     'project-cost': 'domain:cost-detail',

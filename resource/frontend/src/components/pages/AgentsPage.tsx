@@ -294,9 +294,12 @@ export function AgentsPage() {
 
   // Wheel-up intent, caught before the scroll position even changes — closes
   // the one-frame race where a streamed-frame pin lands between the user's
-  // wheel input and its scroll event.
+  // wheel input and its scroll event. Only when there's actually somewhere to
+  // scroll back to: a trackpad jiggle over a short transcript must not
+  // silently stop the follow.
   const handleWheel = useCallback((e: WheelEvent<HTMLDivElement>) => {
-    if (e.deltaY < 0) {
+    const el = e.currentTarget;
+    if (e.deltaY < 0 && el.scrollHeight > el.clientHeight + 4) {
       stickToBottomRef.current = false;
       setAtBottom(false);
     }

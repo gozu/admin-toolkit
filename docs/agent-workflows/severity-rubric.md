@@ -232,7 +232,11 @@ v0.1.013 (both twins):
 - **DSS's own sanity check** — `runtime_config` component (weight 0.10):
   40 with any surviving ERROR / 75 with only WARNINGs; one issue per
   distinct code (max 5, ERRORs first), computed from whitelist-filtered
-  messages.
+  messages. Built-in score exemption (both scorer twins):
+  `WARN_GIT_PROJECT_NOT_MIGRATED` (post-upgrade "check out each branch to
+  migrate it" housekeeping) never affects the score or emits an issue — it
+  stays visible raw on the Sanity Check page only. All other codes score
+  normally.
 
 All three honor the per-item whitelist (rules `connection-broken`,
 `exec-config-resources`, `sanity-check`). When an input is absent (older

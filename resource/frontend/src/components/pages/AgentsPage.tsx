@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useDiag } from '../../context/DiagContext';
 import { fetchJson } from '../../utils/api';
@@ -26,14 +26,16 @@ import {
   agentsChatStore,
   approvePlans,
   clearAllConversations,
+  clearQueuedEditing,
   deriveTitle,
   ensureChatBootstrapped,
+  patchQueuedMessage,
   provisionAgents,
   provisionTraceExplorer,
+  queueAgentMessage,
   rejectPlans,
   retryLastTurn,
   selectAgent,
-  sendAgentMessage,
   submitActionItemsToActuator,
   type ActionItemData,
   type AgentInfo,
@@ -42,6 +44,7 @@ import {
   type PresetMeta,
   type ProvisionResult,
 } from '../../state/agentsChatStore';
+import { QueuedMessageList } from '../agents/QueuedMessageList';
 
 interface AgentsListResponse {
   available: boolean;
@@ -107,6 +110,10 @@ export function AgentsPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const stickToBottomRef = useRef(true);
+  const lastScrollTopRef = useRef(0);
+  // scrollTop value our own bottom pin landed on — its scroll event is an
+  // echo, not user intent, and must never (un)stick.
+  const lastPinnedTopRef = useRef(-1);
 
   const chatState = agentsChatStore.use();
   const selectedId = chatState.selectedAgentId;
@@ -123,6 +130,20 @@ export function AgentsPage() {
     [chatState.activeConvIdByAgent, chatState.conversations],
   );
   const streaming = conversation?.streaming ?? false;
+  const agent = useMemo(() => findAgent(agents), [agents]);
+  // Messages typed mid-turn, waiting for the agent to go idle.
+  const queued = useMemo(
+    () => (agent ? (chatState.queuedByAgent[agent.id] ?? []) : []),
+    [agent, chatState.queuedByAgent],
+  );
+
+  // Navigating away mid-edit must not strand an editing flag — it holds the
+  // whole queue (drain skips an editing head) until something clears it.
+  useEffect(() => {
+    const agentId = agent?.id;
+    if (!agentId) return;
+    return () => clearQueuedEditing(agentId);
+  }, [agent]);
 
   // Unsent drafts survive navigation + reload (cleared on send).
   useEffect(() => {
@@ -134,7 +155,6 @@ export function AgentsPage() {
     }
   }, [draft]);
 
-  const agent = useMemo(() => findAgent(agents), [agents]);
   // A conversation whose agent no longer exists (a retired pre-4c specialist)
   // stays readable but cannot continue — its kernel is gone.
   const conversationOrphaned = Boolean(
@@ -237,23 +257,49 @@ export function AgentsPage() {
     return out;
   }, [messages, now]);
 
-  // Autoscroll while streaming, unless the user scrolled up. The empty-state
-  // hero anchors to the top instead — pinning it to the bottom clips the bird
-  // mark when the hero is taller than the viewport (composer autofocus would
-  // otherwise drag the scroll down too).
+  // Autoscroll while streaming, unless the user scrolled up. The pin is
+  // INSTANT (no scroll-smooth on the container): it re-fires on every
+  // streamed frame, and a smooth animation would fight — and win against —
+  // the user's own scrollback. The empty-state hero anchors to the top
+  // instead — pinning it to the bottom clips the bird mark when the hero is
+  // taller than the viewport (composer autofocus would otherwise drag the
+  // scroll down too).
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    if (messages.length === 0) el.scrollTop = 0;
-    else if (stickToBottomRef.current) el.scrollTop = el.scrollHeight;
-  }, [messages, streaming]);
+    if (messages.length === 0 && queued.length === 0) {
+      el.scrollTop = 0;
+    } else if (stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+      lastPinnedTopRef.current = el.scrollTop;
+      lastScrollTopRef.current = el.scrollTop;
+    }
+  }, [messages, streaming, queued]);
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const prev = lastScrollTopRef.current;
+    lastScrollTopRef.current = el.scrollTop;
+    // Echo of our own bottom pin — ignore, it carries no user intent.
+    if (el.scrollTop === lastPinnedTopRef.current) return;
+    // Any upward movement is the user (pins only ever move down): release the
+    // pin immediately, however small the scroll — never drag them back down.
+    // Scrolling back to within 80px of the bottom re-engages following.
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const stick = el.scrollTop < prev - 1 ? false : nearBottom;
     stickToBottomRef.current = stick;
     setAtBottom(stick);
+  }, []);
+
+  // Wheel-up intent, caught before the scroll position even changes — closes
+  // the one-frame race where a streamed-frame pin lands between the user's
+  // wheel input and its scroll event.
+  const handleWheel = useCallback((e: WheelEvent<HTMLDivElement>) => {
+    if (e.deltaY < 0) {
+      stickToBottomRef.current = false;
+      setAtBottom(false);
+    }
   }, []);
 
   const jumpToLatest = useCallback(() => {
@@ -270,8 +316,8 @@ export function AgentsPage() {
     () => (draft.startsWith('/') ? filterPaletteEntries(draft.slice(1)) : []),
     [draft],
   );
-  const paletteOpen =
-    paletteMatches.length > 0 && !paletteDismissed && !streaming && !conversationOrphaned;
+  // Open even mid-turn — a picked prompt simply queues like any other send.
+  const paletteOpen = paletteMatches.length > 0 && !paletteDismissed && !conversationOrphaned;
 
   const pickPrompt = useCallback((entry: PaletteEntry) => {
     setDraft(entry.prompt);
@@ -288,26 +334,30 @@ export function AgentsPage() {
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [draft]);
 
-  // Keyboard lands in the composer on arrival and when a turn settles.
+  // Keyboard lands in the composer on arrival and when a turn settles — but
+  // never steals it from a queued message's inline editor.
   useEffect(() => {
-    if (!loadingAgents && agent && !streaming && !conversationOrphaned) {
-      composerRef.current?.focus();
-    }
+    if (loadingAgents || !agent || conversationOrphaned) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLTextAreaElement && active !== composerRef.current) return;
+    composerRef.current?.focus();
   }, [loadingAgents, agent, streaming, conversationOrphaned]);
 
   /** One agent, one thread: every message — free-form or library prompt of
    * any flavor — goes to the generalist. The library's role/group concept
-   * shapes prompt text only, never the routing, so it never reaches here. */
+   * shapes prompt text only, never the routing, so it never reaches here.
+   * Always routed through the queue: an idle agent gets it immediately, a
+   * busy one gets it at the next settle (the queued bubble shows meanwhile). */
   const send = useCallback(
     (text: string, preset?: PresetMeta) => {
       const trimmed = text.trim();
-      if (!trimmed || streaming || !agent || conversationOrphaned) return;
+      if (!trimmed || !agent || conversationOrphaned) return;
       setDraft('');
       stickToBottomRef.current = true;
       if (agent.id !== selectedId) selectAgent(agent.id);
-      void sendAgentMessage(agent.id, trimmed, undefined, preset);
+      queueAgentMessage(agent.id, trimmed, undefined, preset);
     },
-    [agent, selectedId, streaming, conversationOrphaned],
+    [agent, selectedId, conversationOrphaned],
   );
 
   const sendDraft = send;
@@ -565,7 +615,8 @@ export function AgentsPage() {
             <div
               ref={scrollRef}
               onScroll={handleScroll}
-              className="chat-scroll-fade relative z-[1] h-full overflow-y-auto scroll-smooth"
+              onWheel={handleWheel}
+              className="chat-scroll-fade relative z-[1] h-full overflow-y-auto"
             >
               <div className={`${COLUMN} space-y-4`}>
               {messages.length === 0 && (
@@ -703,6 +754,9 @@ export function AgentsPage() {
                     )}
                   </div>
                 )}
+                {agent && queued.length > 0 && (
+                  <QueuedMessageList agentId={agent.id} queue={queued} />
+                )}
               </div>
             </div>
             <AnimatePresence>
@@ -807,6 +861,13 @@ export function AgentsPage() {
                       return;
                     }
                   }
+                  // ArrowUp in an empty composer recalls the newest queued
+                  // message into its inline editor (readline-style).
+                  if (e.key === 'ArrowUp' && draft === '' && queued.length > 0 && agent) {
+                    e.preventDefault();
+                    patchQueuedMessage(agent.id, queued[queued.length - 1].id, { editing: true });
+                    return;
+                  }
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     sendDraft(draft);
@@ -817,19 +878,29 @@ export function AgentsPage() {
                   conversationOrphaned
                     ? 'Read-only conversation (retired agent) — start a new conversation to continue.'
                     : streaming
-                      ? 'Agent is working…'
+                      ? 'Agent is working — Enter queues your message for when it finishes'
                       : 'Message the agent — "/" for prompts, Enter to send'
                 }
-                disabled={streaming || conversationOrphaned}
+                disabled={conversationOrphaned}
                 className="agent-composer flex-1 px-3 py-2 text-sm rounded-lg bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] resize-none overflow-y-auto disabled:opacity-60"
               />
               {streaming ? (
-                <button
-                  onClick={() => selectedId && abortAgentTurn(selectedId)}
-                  className="px-3.5 py-2 text-sm font-medium rounded-lg bg-[var(--neon-red)] text-white hover:opacity-90 transition-opacity"
-                >
-                  Stop
-                </button>
+                <>
+                  <button
+                    onClick={() => sendDraft(draft)}
+                    disabled={!draft.trim()}
+                    className="px-3.5 py-2 text-sm font-medium rounded-lg border border-[var(--accent)]/40 bg-[var(--accent-muted)] text-[var(--accent)] hover:brightness-110 transition-[filter] disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Queue this message — the agent reads it as soon as the current turn finishes"
+                  >
+                    Queue
+                  </button>
+                  <button
+                    onClick={() => selectedId && abortAgentTurn(selectedId)}
+                    className="px-3.5 py-2 text-sm font-medium rounded-lg bg-[var(--neon-red)] text-white hover:opacity-90 transition-opacity"
+                  >
+                    Stop
+                  </button>
+                </>
               ) : (
                 <button
                   onClick={() => sendDraft(draft)}

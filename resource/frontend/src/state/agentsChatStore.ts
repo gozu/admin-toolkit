@@ -191,6 +191,19 @@ export interface ConversationMeta {
   lastModified?: string;
 }
 
+/** A message typed while the agent was mid-turn — sent automatically the next
+ * time the agent goes idle. `display`/`preset` ride along exactly as they
+ * would on a direct send. */
+export interface QueuedMessage {
+  id: string;
+  text: string;
+  display?: string;
+  preset?: PresetMeta;
+  /** Being edited inline — holds the whole queue (order is preserved) until
+   * the edit is committed or the message is removed. */
+  editing?: boolean;
+}
+
 export interface TraceExplorerStatus {
   installed: boolean;
   provisioned: boolean;
@@ -231,6 +244,10 @@ interface AgentsChatState {
   persistence: ChatPersistenceState;
   conversationList: ConversationMeta[];
   traceExplorer: TraceExplorerStatus | null;
+  /** Messages waiting for the agent to go idle, in send order. Session-only:
+   * deliberately NOT in the localStorage snapshot — a reload kills the stream
+   * they were waiting on, and auto-sending on load would surprise. */
+  queuedByAgent: Record<string, QueuedMessage[]>;
 }
 
 const INITIAL_STATE: AgentsChatState = {
@@ -240,6 +257,7 @@ const INITIAL_STATE: AgentsChatState = {
   persistence: { loaded: false, enabled: false },
   conversationList: [],
   traceExplorer: null,
+  queuedByAgent: {},
 };
 
 export const agentsChatStore = createSyncStore<AgentsChatState>(INITIAL_STATE, {
@@ -685,6 +703,7 @@ export async function deleteConversation(conversationId: string): Promise<void> 
   const conv = conversations[conversationId];
   delete conversations[conversationId];
   const activeConvIdByAgent = { ...state.activeConvIdByAgent };
+  const queuedByAgent = { ...state.queuedByAgent };
   if (conv && activeConvIdByAgent[conv.agentId] === conversationId) {
     // Deleting the agent's active conversation while it streams: abort the
     // in-flight turn first, or its next SSE frame would putConversation() the
@@ -693,10 +712,14 @@ export async function deleteConversation(conversationId: string): Promise<void> 
     abortControllers.get(conv.agentId)?.abort();
     abortControllers.delete(conv.agentId);
     delete activeConvIdByAgent[conv.agentId];
+    // Queued messages were addressed to this conversation — drop them too, or
+    // the settle drain would replay them into a fresh conversation.
+    delete queuedByAgent[conv.agentId];
   }
   agentsChatStore.patch({
     conversations,
     activeConvIdByAgent,
+    queuedByAgent,
     conversationList: state.conversationList.filter((c) => c.id !== conversationId),
   });
   try {
@@ -984,6 +1007,81 @@ export function abortAgentTurn(agentId: string): void {
   abortControllers.get(agentId)?.abort();
 }
 
+// ── message queue (type while the agent works) ──────────────────────────────
+
+function putQueue(agentId: string, queue: QueuedMessage[]): void {
+  const state = agentsChatStore.get();
+  agentsChatStore.patch({ queuedByAgent: { ...state.queuedByAgent, [agentId]: queue } });
+}
+
+/** Single entry point for user sends: queues the message and drains right
+ * away, so an idle agent still receives it immediately (one code path — no
+ * racy "was it streaming when I checked?" branch in the UI). */
+export function queueAgentMessage(
+  agentId: string,
+  text: string,
+  display?: string,
+  preset?: PresetMeta,
+): void {
+  const state = agentsChatStore.get();
+  const queue = state.queuedByAgent[agentId] || [];
+  putQueue(agentId, [...queue, { id: newId(), text, display, preset }]);
+  drainAgentQueue(agentId);
+}
+
+export function removeQueuedMessage(agentId: string, id: string): void {
+  const state = agentsChatStore.get();
+  const queue = state.queuedByAgent[agentId] || [];
+  putQueue(
+    agentId,
+    queue.filter((msg) => msg.id !== id),
+  );
+  // Removing the head (possibly one that was holding the queue in edit mode)
+  // may unblock the rest.
+  drainAgentQueue(agentId);
+}
+
+export function patchQueuedMessage(
+  agentId: string,
+  id: string,
+  patch: Partial<Omit<QueuedMessage, 'id'>>,
+): void {
+  const state = agentsChatStore.get();
+  const queue = state.queuedByAgent[agentId] || [];
+  putQueue(
+    agentId,
+    queue.map((msg) => (msg.id === id ? { ...msg, ...patch } : msg)),
+  );
+  if (patch.editing === false) drainAgentQueue(agentId);
+}
+
+/** Safety net for navigation away mid-edit: an editing flag left behind would
+ * hold the queue forever. Called on Agents page unmount. */
+export function clearQueuedEditing(agentId: string): void {
+  const state = agentsChatStore.get();
+  const queue = state.queuedByAgent[agentId] || [];
+  if (!queue.some((msg) => msg.editing)) return;
+  putQueue(
+    agentId,
+    queue.map((msg) => (msg.editing ? { ...msg, editing: false } : msg)),
+  );
+  drainAgentQueue(agentId);
+}
+
+/** Send the head of the queue if the agent is idle. In-order only: a head
+ * that is being edited holds everything behind it (sending #2 before #1
+ * would reorder the conversation the user composed). Re-invoked after every
+ * settled turn, queue mutation, and edit commit. */
+export function drainAgentQueue(agentId: string): void {
+  const state = agentsChatStore.get();
+  const queue = state.queuedByAgent[agentId] || [];
+  const next = queue[0];
+  if (!next || next.editing) return;
+  if (getConversation(agentId).streaming) return;
+  putQueue(agentId, queue.slice(1));
+  void sendAgentMessage(agentId, next.text, next.display, next.preset);
+}
+
 /** Start a fresh chat session: drop the active conversation of EVERY agent,
  * not just the visible one. Sample prompts route by hidden role (triage /
  * scoping / actuator), so clearing only the selected agent leaves the other
@@ -993,7 +1091,7 @@ export function abortAgentTurn(agentId: string): void {
 export function clearAllConversations(): void {
   for (const controller of abortControllers.values()) controller.abort();
   abortControllers.clear();
-  agentsChatStore.patch({ conversations: {}, activeConvIdByAgent: {} });
+  agentsChatStore.patch({ conversations: {}, activeConvIdByAgent: {}, queuedByAgent: {} });
 }
 
 /** Send one user message and stream the agent's reply into the store.
@@ -1009,7 +1107,12 @@ export async function sendAgentMessage(
   preset?: PresetMeta,
 ): Promise<void> {
   const base = getConversation(agentId);
-  if (base.streaming) return;
+  if (base.streaming) {
+    // Mid-turn sends queue instead of dropping (drain is a no-op right now —
+    // the settle path drains for real).
+    queueAgentMessage(agentId, text, display, preset);
+    return;
+  }
 
   const shown = display ?? preset?.title;
   const segments: Segment[] = [{ type: 'text', text: shown ?? text }];
@@ -1248,5 +1351,10 @@ async function streamTurn(
       // (or just the user message when the reply was aborted pre-token).
       persistWhere(settled, (msg) => turnIds.includes(msg.id));
     }
+    // The agent is idle again — send the next queued message, if any. Runs
+    // after every settle (success, error, or Stop): a queued message is
+    // explicit user intent to continue. Deleted-conversation paths already
+    // cleared the queue, so this can't resurrect anything.
+    drainAgentQueue(agentId);
   }
 }

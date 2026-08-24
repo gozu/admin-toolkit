@@ -672,6 +672,10 @@ def _score_exec_config_resources(configs, is_whitelisted):
 
 _SANITY_MAX_ISSUES = 5
 _SANITY_DESC_MAX = 280
+# Codes exempt from scoring by default (no whitelist entry needed): routine
+# post-upgrade housekeeping, not an instance-health signal. Exempt messages
+# still render raw on the Sanity Check page.
+_SANITY_SCORE_EXEMPT_CODES = frozenset({'WARN_GIT_PROJECT_NOT_MIGRATED'})
 
 
 def _score_sanity_check(messages, is_whitelisted):
@@ -681,6 +685,7 @@ def _score_sanity_check(messages, is_whitelisted):
     sanityCheckMaxSeverity."""
     surviving = [m for m in messages
                  if m.get('severity') in ('ERROR', 'WARNING')
+                 and str(m.get('code')) not in _SANITY_SCORE_EXEMPT_CODES
                  and not is_whitelisted('sanity-check', str(m.get('code')))]
     if not surviving:
         return 100, []

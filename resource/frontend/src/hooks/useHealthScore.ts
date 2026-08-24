@@ -1055,6 +1055,11 @@ function scoreExecConfigResources(
 
 const SANITY_MAX_ISSUES = 5;
 const SANITY_DESC_MAX = 280;
+// Codes exempt from scoring by default (no whitelist entry needed): routine
+// post-upgrade housekeeping, not an instance-health signal. Exempt messages
+// still render raw on the Sanity Check page. Mirrors _SANITY_SCORE_EXEMPT_CODES
+// in atk_agent_common/health.py — keep the twins in sync.
+const SANITY_SCORE_EXEMPT_CODES = new Set(['WARN_GIT_PROJECT_NOT_MIGRATED']);
 
 /**
  * DSS's own sanity check: one issue per distinct surviving ERROR code
@@ -1070,6 +1075,7 @@ function scoreSanityCheck(
   const surviving = messages.filter(
     (m) =>
       (m.severity === 'ERROR' || m.severity === 'WARNING') &&
+      !SANITY_SCORE_EXEMPT_CODES.has(String(m.code)) &&
       !isWhitelisted('sanity-check', String(m.code)),
   );
   if (surviving.length === 0) return { score: 100, issues: [] };

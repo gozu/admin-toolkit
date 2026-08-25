@@ -12,7 +12,9 @@
 //   admin.security.users.edit     → /admin/security/users/edit/<login>/
 //   plugin.summary                → /plugins/<id>/summary/
 //   project home                  → /projects/<KEY>/
-//   projects.project.scenarios.scenario → /projects/<KEY>/scenarios/<id>/
+//   projects.project.scenarios.scenario.settings → /projects/<KEY>/scenarios/<id>/settings
+//     (the parent's url is `/:scenarioId` with no trailing slash — `/scenarios/<id>/`
+//      matches nothing; `/settings` is the concrete leaf)
 //   projects.project.jobs.job     → /projects/<KEY>/jobs/<jobId>/
 //   projects.project.notebooks.jupyter_notebook → /projects/<KEY>/notebooks/jupyter/<name>/
 //   projects.project.continuous-activities.continuous-activity → /projects/<KEY>/continuous-activities/<recipeId>/
@@ -143,7 +145,7 @@ export function dssLinkForAction(
     case 'scenario-kill':
     case 'scenario-run':
       return t.projectKey && t.scenarioId
-        ? `${base}/projects/${enc(String(t.projectKey))}/scenarios/${enc(String(t.scenarioId))}/`
+        ? `${base}/projects/${enc(String(t.projectKey))}/scenarios/${enc(String(t.scenarioId))}/settings`
         : null;
     case 'continuous-activity-stop':
       return t.projectKey && t.recipeId

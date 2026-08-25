@@ -47,7 +47,7 @@ export function objectUrl(baseUrl: string, usage: CodeEnvUsageRef): string {
   if (type.includes('RECIPE')) return `${baseUrl}/projects/${pk}/recipes/${id}/`;
   if (type.includes('NOTEBOOK') || type.includes('JUPYTER')) return `${baseUrl}/projects/${pk}/notebooks/jupyter/${id}/`;
   if (type.includes('WEBAPP')) return `${baseUrl}/projects/${pk}/webapps/${id}/`;
-  if (type.includes('SCENARIO')) return `${baseUrl}/projects/${pk}/scenarios/${id}/`;
+  if (type.includes('SCENARIO')) return `${baseUrl}/projects/${pk}/scenarios/${id}/settings`;
   return projectUrl(baseUrl, usage.projectKey);
 }
 
@@ -66,7 +66,10 @@ export const dssUrls = {
     name
       ? `${getDssBaseUrl()}/projects/${enc(pk)}/webapps/${enc(id)}_${enc(name)}/view`
       : `${getDssBaseUrl()}/projects/${enc(pk)}/webapps/`,
-  scenario: (pk: string, id: string) => `${getDssBaseUrl()}/projects/${enc(pk)}/scenarios/${enc(id)}/`,
+  // The scenario state's url is `/:scenarioId` with NO trailing slash (unlike
+  // recipes/jobs/notebooks), so `/scenarios/<id>/` matches no state at all —
+  // `/settings` is the concrete leaf. Verified against the live 14.7 state table.
+  scenario: (pk: string, id: string) => `${getDssBaseUrl()}/projects/${enc(pk)}/scenarios/${enc(id)}/settings`,
   // Dataset parent state is abstract — `/explore/` is the canonical leaf.
   dataset: (pk: string, name: string) => `${getDssBaseUrl()}/projects/${enc(pk)}/datasets/${enc(name)}/explore/`,
   // Saved-model parent state is abstract — `/versions/` is the canonical leaf.

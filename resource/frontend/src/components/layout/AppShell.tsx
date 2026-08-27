@@ -18,6 +18,7 @@ import { feedbackFromPageStore } from '../../state/feedbackFromPage';
 import { subscribeSessionEpoch } from '../../state/sessionCache';
 import { unlockAdoption, useAdoptionVisible } from '../../state/adoptionUnlockStore';
 import { pushToast } from '../../state/toastStore';
+import { anonCollect, isAnonEnabled, toggleAnonMode } from '../../utils/anonymize';
 
 const COLLAPSE_BREAKPOINT = 1280;
 const SIDEBAR_COLLAPSED = 56;
@@ -62,6 +63,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
   const nodeId = parsedData.instanceInfo?.nodeId;
   const eggBufRef = useRef('');
   const darkEggBufRef = useRef('');
+  const anonEggBufRef = useRef('');
 
   // Scroll-to-top: rAF-throttled scrollTop tracking on <main>
   const mainRef = useRef<HTMLElement | null>(null);
@@ -150,6 +152,34 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [toggleDssDark]);
+
+  // Hidden screenshot mode: type the keyword outside any input to flip
+  // display anonymization on/off. Both directions reload — the DOM rewriter
+  // only ever starts (or stays off) from a clean boot.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const el = document.activeElement as HTMLElement | null;
+      const tag = el?.tagName.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || el?.isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
+      anonEggBufRef.current = (anonEggBufRef.current + e.key.toLowerCase()).slice(-4);
+      if (anonEggBufRef.current === 'anon') {
+        anonEggBufRef.current = '';
+        toggleAnonMode();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  // Screenshot mode: parsedData is the one data blob that doesn't always come
+  // through fetchJson (zip-import mode, derived fields) — feed it to the
+  // entity collector, debounced across the load ritual's rapid patches.
+  useEffect(() => {
+    if (!isAnonEnabled()) return;
+    const t = setTimeout(() => anonCollect(parsedData), 400);
+    return () => clearTimeout(t);
+  }, [parsedData]);
 
   // Reconcile the unlock UI with the HttpOnly cookie once on boot.
   useEffect(() => {

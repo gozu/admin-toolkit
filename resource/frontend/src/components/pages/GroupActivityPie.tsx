@@ -9,6 +9,7 @@ import {
   type TooltipItem,
 } from 'chart.js';
 import { BASE_TOOLTIP_STYLE, baseLegendLabels } from '../../utils/chartConfig';
+import { anonText } from '../../utils/anonymize';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -49,8 +50,13 @@ export function GroupActivityPie({
   let hue = 0;
   const colors = slices.map((s) => (s.muted ? grey : palette[Math.min(hue++, VIZ_SLOTS.length - 1)]));
 
+  // Canvas text is out of the DOM rewriter's reach — alias group names here
+  // (identity function while screenshot mode is off).
   const chartData = {
-    labels: slices.map((s) => (s.label.length > 22 ? `${s.label.slice(0, 19)}…` : s.label)),
+    labels: slices.map((s) => {
+      const label = anonText(s.label);
+      return label.length > 22 ? `${label.slice(0, 19)}…` : label;
+    }),
     datasets: [
       {
         data: slices.map((s) => s.value),
@@ -114,8 +120,9 @@ export function GroupActivityPie({
         displayColors: false,
         callbacks: {
           title: (items: TooltipItem<'doughnut'>[]) =>
-            items.length ? (slices[items[0].dataIndex]?.label ?? '') : '',
-          label: (ctx: TooltipItem<'doughnut'>) => slices[ctx.dataIndex]?.lines ?? '',
+            items.length ? anonText(slices[items[0].dataIndex]?.label ?? '') : '',
+          label: (ctx: TooltipItem<'doughnut'>) =>
+            (slices[ctx.dataIndex]?.lines ?? []).map(anonText),
         },
       },
     },

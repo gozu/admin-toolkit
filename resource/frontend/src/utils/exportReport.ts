@@ -1,4 +1,5 @@
 import { extractAllCSS } from './extractCSS';
+import { anonText } from './anonymize';
 
 /**
  * Export the report overlay as a self-contained HTML file.
@@ -9,6 +10,9 @@ export async function exportReportAsHtml(
   company: string,
   theme: string,
 ): Promise<void> {
+  // Screenshot mode: the cloned slides are already aliased by the DOM
+  // rewriter, but the title/filename interpolate `company` directly.
+  const displayCompany = anonText(company);
   // 1. Extract all active CSS via CSSOM
   const combinedCSS = extractAllCSS();
 
@@ -88,7 +92,7 @@ export async function exportReportAsHtml(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Health Check - ${company} - ${date}</title>
+<title>Health Check - ${displayCompany} - ${date}</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&display=swap');
 ${combinedCSS}
@@ -105,7 +109,7 @@ ${clone.outerHTML}
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `health-check-${company}-${date}.html`;
+  a.download = `health-check-${displayCompany}-${date}.html`;
   a.click();
   URL.revokeObjectURL(a.href);
 }

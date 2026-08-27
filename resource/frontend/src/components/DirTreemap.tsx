@@ -4,6 +4,7 @@ import { Chart as ChartJS, Tooltip, Legend } from 'chart.js';
 import { TreemapController, TreemapElement } from 'chartjs-chart-treemap';
 import { Chart } from 'react-chartjs-2';
 import type { DirEntry, DirTreeData } from '../types';
+import { anonText } from '../utils/anonymize';
 
 // Register treemap components
 ChartJS.register(TreemapController, TreemapElement, Tooltip, Legend);
@@ -278,7 +279,9 @@ export function DirTreemap({ data, onExpand, expandedNodes, isExpanding, onVisib
           formatter: (ctx: { raw?: { _data?: { name?: string; size?: number } } }) => {
             const raw = ctx.raw?._data;
             if (!raw) return '';
-            return raw.name || '';
+            // Canvas text is out of the DOM rewriter's reach — alias here
+            // (identity function while screenshot mode is off).
+            return anonText(raw.name || '');
           },
           color: '#f0f0f5',
           font: {
@@ -310,7 +313,7 @@ export function DirTreemap({ data, onExpand, expandedNodes, isExpanding, onVisib
             const raw = ctx.raw?._data;
             if (!raw) return '';
             const lines = [
-              raw.name || 'Unknown',
+              anonText(raw.name || 'Unknown'),
               `Size: ${formatSize(raw.size || 0)}`,
             ];
             if (raw.isDir) {

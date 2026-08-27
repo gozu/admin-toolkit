@@ -4,6 +4,7 @@ import { Chart as ChartJS, Tooltip, Legend } from 'chart.js';
 import { TreemapController, TreemapElement } from 'chartjs-chart-treemap';
 import { Chart } from 'react-chartjs-2';
 import type { CruProjectRow } from '../types';
+import { anonText } from '../utils/anonymize';
 import type { CostLens } from './pages/projectCost/lens';
 import {
   formatSeconds,
@@ -85,7 +86,9 @@ export function ProjectCostTreemap({ rows, lens, selectedKey, onSelect }: Projec
             display: true,
             align: 'center' as const,
             position: 'middle' as const,
-            formatter: (ctx: { raw?: { _data?: { name?: string } } }) => ctx.raw?._data?.name || '',
+            // Canvas text is out of the DOM rewriter's reach — alias here
+            // (identity function while screenshot mode is off).
+            formatter: (ctx: { raw?: { _data?: { name?: string } } }) => anonText(ctx.raw?._data?.name || ''),
             color: '#f0f0f5',
             font: { family: "'JetBrains Mono', monospace", size: 11, weight: 'bold' as const },
           },
@@ -116,7 +119,7 @@ export function ProjectCostTreemap({ rows, lens, selectedKey, onSelect }: Projec
               if (!d) return '';
               const r = d.row;
               const lines = [
-                r.projectKey,
+                anonText(r.projectKey),
                 `Memory: ${r.memGBh.toFixed(1)} GB·h`,
                 `CPU: ${r.cpuH.toFixed(2)} CPU·h`,
               ];

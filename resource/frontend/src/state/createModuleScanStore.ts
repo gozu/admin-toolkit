@@ -185,6 +185,7 @@ export function createModuleScanStore<TData, TEvent>(
     field: opts.loadingField,
     subscribe: store.subscribe,
     lifecycle,
+    rawData: () => store.get().data,
     snapshot: () => {
       const s = store.get();
       return {

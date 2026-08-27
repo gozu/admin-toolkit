@@ -2,6 +2,7 @@ import { getActiveHostId } from '../state/hostStore';
 import { markLockedFromServer } from '../state/redUnlockStore';
 import { markLockedFromServer as markHostKeyLockedFromServer } from '../state/hostKeyUnlockStore';
 import { parseSseStream, type SseFrame } from './sseStream';
+import { anonCollect } from './anonymize';
 
 export function getBackendUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) {
@@ -147,7 +148,11 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
   if (!response.ok) {
     throw await toApiError(response, url);
   }
-  return response.json() as Promise<T>;
+  const data = await (response.json() as Promise<T>);
+  // Screenshot mode: harvest identifying entities from every JSON payload
+  // (no-op while the mode is off).
+  anonCollect(data);
+  return data;
 }
 
 export async function fetchText(path: string, init?: RequestInit): Promise<string> {

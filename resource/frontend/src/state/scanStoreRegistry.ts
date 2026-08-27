@@ -10,6 +10,10 @@ export interface RegisteredScanStore {
   // timings + a small data summary). Consumed by the diagnostic-bundle builder;
   // stores that don't provide it are simply omitted from the data summary.
   snapshot?: () => unknown;
+  // Optional full data payload. Consumed by the screenshot-mode entity
+  // collector (utils/anonymize), which must see SSE-fed data that never
+  // passes through fetchJson.
+  rawData?: () => unknown;
 }
 
 const stores: RegisteredScanStore[] = [];

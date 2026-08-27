@@ -3,10 +3,18 @@
 // Typing the keyword in the shell (see AppShell) flips a localStorage flag and
 // reloads. While on, every identifying string the app has seen in data —
 // people, projects, connections, code envs, hosts, clusters, groups, emails —
-// is rewritten to a stable fictional cast (Acme Corp, cartoon characters, fun
-// project codenames) at the DOM level: a TreeWalker pass plus a
-// MutationObserver over document.body, with explicit hooks for canvas chart
-// labels and the report export, which a DOM pass can't reach.
+// is rewritten to a stable fictional alias (characters, codenames and places
+// drawn from all over fiction; the org itself renders as Acme Corp/acme.com)
+// at the DOM level: a TreeWalker pass plus a MutationObserver over
+// document.body, with explicit hooks for canvas chart labels and the report
+// export, which a DOM pass can't reach.
+//
+// Aliases never contain digits (counters overflow into adjective compounds,
+// not numeric suffixes), and "acme" appears only in the org name and domain,
+// never inside connection/env/object names. Scenario names are deliberately
+// NOT anonymized, and generic UI vocabulary (module labels, common DSS terms)
+// is stoplisted so a customer object named e.g. "Overview" can never cause the
+// app's own chrome to be rewritten.
 //
 // Display-only by design: API calls, hrefs and DSS-bound exports carry real
 // values, and CSV table exports inherit the aliases because they scrape the
@@ -19,7 +27,11 @@
 import { getRegisteredScanStores, type RegisteredScanStore } from '../state/scanStoreRegistry';
 
 const MODE_KEY = 'admin-toolkit:screenshotMode';
-const DICT_KEY = 'admin-toolkit:screenshotDict';
+// v2: bumped when the alias scheme changed (numberless, no acme-prefixed
+// names, UI-word stoplist) so dictionaries minted by the old scheme are
+// discarded rather than kept alive by persistence.
+const DICT_KEY = 'admin-toolkit:screenshotDict2';
+const LEGACY_DICT_KEY = 'admin-toolkit:screenshotDict';
 
 type EntityClass =
   | 'person' | 'email' | 'group' | 'org' | 'project' | 'object' | 'connection'
@@ -27,61 +39,287 @@ type EntityClass =
   | 'cluster' | 'namespace' | 'registry' | 'cloudid' | 'ip';
 
 // ── Alias pools ──────────────────────────────────────────────────────────────
+// Display names only — logins (first-initial + last name, falling back to
+// first.last) and emails (first.last@acme.com) derive from them. When the cast
+// runs out, new people are minted from the first-name × last-name grid, which
+// gives tens of thousands of digit-free combinations.
 
-// [displayName, login] — logins hand-set so they stay unique within the pool.
-const CAST: ReadonlyArray<readonly [string, string]> = [
-  ['Bugs Bunny', 'bbunny'], ['Daffy Duck', 'dduck'], ['Porky Pig', 'ppig'],
-  ['Elmer Fudd', 'efudd'], ['Wile Coyote', 'wcoyote'], ['Road Runner', 'rrunner'],
-  ['Yosemite Sam', 'ysam'], ['Tweety Bird', 'tbird'], ['Sylvester Cat', 'sylvester'],
-  ['Foghorn Leghorn', 'fleghorn'], ['Marvin Martian', 'mmartian'],
-  ['Speedy Gonzales', 'sgonzales'], ['Lola Bunny', 'lbunny'], ['Petunia Pig', 'petunia'],
-  ['Taz Devil', 'tdevil'], ['Fred Flintstone', 'fflintstone'],
-  ['Wilma Flintstone', 'wflintstone'], ['Barney Rubble', 'brubble'],
-  ['Betty Rubble', 'berubble'], ['Pebbles Flintstone', 'pflintstone'],
-  ['George Jetson', 'gjetson'], ['Jane Jetson', 'jjetson'], ['Judy Jetson', 'judyj'],
-  ['Elroy Jetson', 'ejetson'], ['Scooby Doo', 'sdoo'], ['Shaggy Rogers', 'srogers'],
-  ['Velma Dinkley', 'vdinkley'], ['Daphne Blake', 'dblake'], ['Fred Jones', 'fjones'],
-  ['Yogi Bear', 'ybear'], ['Booboo Bear', 'bbear'], ['Cindy Bear', 'cbear'],
-  ['Huckleberry Hound', 'hhound'], ['Top Cat', 'tcat'], ['Johnny Bravo', 'jbravo'],
-  ['Mickey Mouse', 'mmouse'], ['Minnie Mouse', 'minmouse'], ['Donald Duck', 'donduck'],
-  ['Daisy Duck', 'daduck'], ['Scrooge McDuck', 'smcduck'], ['Huey Duck', 'hduck'],
-  ['Dewey Duck', 'deduck'], ['Louie Duck', 'lduck'], ['Launchpad McQuack', 'lmcquack'],
-  ['Darkwing Duck', 'dwduck'], ['Goofy Goof', 'ggoof'], ['Max Goof', 'mgoof'],
-  ['Olive Oyl', 'ooyl'], ['Felix Cat', 'fcat'], ['Tom Cat', 'tomcat'],
-  ['Jerry Mouse', 'jmouse'], ['Spike Bulldog', 'sbulldog'], ['Droopy Dog', 'ddog'],
-  ['Rocky Squirrel', 'rsquirrel'], ['Bullwinkle Moose', 'bmoose'],
-  ['Boris Badenov', 'bbadenov'], ['Natasha Fatale', 'nfatale'],
-  ['Dudley Doright', 'ddoright'], ['Snidely Whiplash', 'swhiplash'],
-  ['Charlie Brown', 'cbrown'], ['Lucy Pelt', 'lpelt'], ['Linus Pelt', 'lipelt'],
-  ['Sally Brown', 'sbrown'], ['Peppermint Patty', 'ppatty'],
+const CAST: readonly string[] = [
+  // Looney Tunes
+  'Bugs Bunny', 'Daffy Duck', 'Porky Pig', 'Elmer Fudd', 'Wile Coyote',
+  'Yosemite Sam', 'Tweety Bird', 'Foghorn Leghorn', 'Marvin Martian',
+  'Speedy Gonzales', 'Lola Bunny',
+  // Hanna-Barbera
+  'Fred Flintstone', 'Wilma Flintstone', 'Barney Rubble', 'Betty Rubble',
+  'Pebbles Flintstone', 'George Jetson', 'Jane Jetson', 'Judy Jetson',
+  'Elroy Jetson', 'Scooby Doo', 'Shaggy Rogers', 'Velma Dinkley',
+  'Daphne Blake', 'Fred Jones', 'Yogi Bear', 'Huckleberry Hound',
+  // Disney / Pixar
+  'Mickey Mouse', 'Minnie Mouse', 'Donald Duck', 'Daisy Duck',
+  'Scrooge McDuck', 'Launchpad McQuack', 'Darkwing Duck', 'Buzz Lightyear',
+  'Woody Pride', 'Bob Parr', 'Helen Parr', 'Edna Mode', 'Judy Hopps',
+  'Nick Wilde',
+  // More toons
+  'Tom Cat', 'Jerry Mouse', 'Rocky Squirrel', 'Bullwinkle Moose',
+  'Boris Badenov', 'Natasha Fatale', 'Johnny Bravo', 'Dipper Pines',
+  'Mabel Pines', 'Kim Possible', 'Ron Stoppable', 'Danny Fenton',
+  'April Oneil', 'Casey Jones', 'Arnold Shortman', 'Helga Pataki',
+  'Doug Funnie', 'Patti Mayonnaise', 'Steven Universe', 'Finn Mertens',
+  // Peanuts
+  'Charlie Brown', 'Sally Brown', 'Lucy Van Pelt', 'Linus Van Pelt',
+  'Peppermint Patty',
+  // Simpsons / Futurama
+  'Homer Simpson', 'Marge Simpson', 'Bart Simpson', 'Lisa Simpson',
+  'Maggie Simpson', 'Ned Flanders', 'Montgomery Burns', 'Waylon Smithers',
+  'Moe Szyslak', 'Seymour Skinner', 'Edna Krabappel', 'Nelson Muntz',
+  'Ralph Wiggum', 'Troy McClure', 'Philip Fry', 'Turanga Leela',
+  'Bender Rodriguez', 'Hubert Farnsworth', 'Amy Wong', 'Hermes Conrad',
+  'John Zoidberg', 'Zapp Brannigan', 'Rick Sanchez', 'Morty Smith',
+  'Summer Smith',
+  // SpongeBob
+  'Spongebob Squarepants', 'Patrick Star', 'Squidward Tentacles',
+  'Sandy Cheeks', 'Eugene Krabs', 'Sheldon Plankton',
+  // Star Wars
+  'Luke Skywalker', 'Leia Organa', 'Han Solo', 'Lando Calrissian',
+  'Obiwan Kenobi', 'Padme Amidala', 'Poe Dameron', 'Rey Skywalker',
+  'Mace Windu', 'Ahsoka Tano', 'Din Djarin', 'Jyn Erso', 'Cassian Andor',
+  // Star Trek
+  'James Kirk', 'Leonard McCoy', 'Nyota Uhura', 'Montgomery Scott',
+  'Hikaru Sulu', 'Pavel Chekov', 'Jean Luc Picard', 'William Riker',
+  'Beverly Crusher', 'Deanna Troi', 'Benjamin Sisko', 'Kira Nerys',
+  'Kathryn Janeway',
+  // Tolkien
+  'Frodo Baggins', 'Bilbo Baggins', 'Samwise Gamgee', 'Peregrin Took',
+  'Meriadoc Brandybuck', 'Rosie Cotton',
+  // Harry Potter
+  'Harry Potter', 'Hermione Granger', 'Ron Weasley', 'Ginny Weasley',
+  'Albus Dumbledore', 'Minerva McGonagall', 'Severus Snape', 'Luna Lovegood',
+  'Neville Longbottom', 'Draco Malfoy', 'Sirius Black', 'Remus Lupin',
+  'Rubeus Hagrid', 'Nymphadora Tonks',
+  // Marvel
+  'Peter Parker', 'Tony Stark', 'Steve Rogers', 'Bruce Banner',
+  'Natasha Romanoff', 'Wanda Maximoff', 'Stephen Strange', 'Carol Danvers',
+  'Scott Lang', 'Matt Murdock', 'Jessica Jones', 'Luke Cage', 'Peter Quill',
+  'Nick Fury', 'Pepper Potts', 'Miles Morales', 'Gwen Stacy', 'Reed Richards',
+  'Susan Storm', 'Ben Grimm', 'Charles Xavier', 'Jean Grey', 'Ororo Munroe',
+  // DC
+  'Clark Kent', 'Lois Lane', 'Jimmy Olsen', 'Bruce Wayne',
+  'Alfred Pennyworth', 'Dick Grayson', 'Barbara Gordon', 'Selina Kyle',
+  'Diana Prince', 'Barry Allen', 'Hal Jordan', 'Arthur Curry', 'Oliver Queen',
+  // Game of Thrones
+  'Jon Snow', 'Arya Stark', 'Sansa Stark', 'Eddard Stark', 'Tyrion Lannister',
+  'Cersei Lannister', 'Jaime Lannister', 'Daenerys Targaryen',
+  'Brienne Tarth', 'Samwell Tarly', 'Petyr Baelish', 'Jorah Mormont',
+  'Davos Seaworth', 'Margaery Tyrell',
+  // Dune / Foundation / Hitchhiker's / Discworld
+  'Paul Atreides', 'Leto Atreides', 'Duncan Idaho', 'Gurney Halleck',
+  'Liet Kynes', 'Hari Seldon', 'Arthur Dent', 'Ford Prefect',
+  'Zaphod Beeblebrox', 'Tricia McMillan', 'Sam Vimes', 'Havelock Vetinari',
+  'Esme Weatherwax', 'Gytha Ogg', 'Moist Lipwig', 'Tiffany Aching',
+  // Sherlock
+  'Sherlock Holmes', 'John Watson', 'Mycroft Holmes', 'Irene Adler',
+  'James Moriarty',
+  // Classic literature
+  'Elizabeth Bennet', 'Fitzwilliam Darcy', 'Jane Eyre', 'Edward Rochester',
+  'Jay Gatsby', 'Nick Carraway', 'Daisy Buchanan', 'Atticus Finch',
+  'Scout Finch', 'Holden Caulfield', 'Ebenezer Scrooge', 'Oliver Twist',
+  'David Copperfield', 'Philip Pirrip', 'Phileas Fogg', 'Jean Valjean',
+  'Edmond Dantes', 'Victor Frankenstein', 'Mina Harker', 'Jonathan Harker',
+  'Jim Hawkins', 'Tom Sawyer', 'Huckleberry Finn', 'Anne Shirley',
+  // Children's & YA books
+  'Gilbert Blythe', 'Jo March', 'Amy March', 'Beth March', 'Mary Poppins',
+  'Wendy Darling', 'Dorothy Gale', 'Willy Wonka', 'Charlie Bucket',
+  'Veruca Salt', 'Matilda Wormwood', 'Pippi Longstocking',
+  'Katniss Everdeen', 'Peeta Mellark', 'Percy Jackson', 'Annabeth Chase',
+  'Lyra Belacqua', 'Will Parry', 'Lee Scoresby', 'Artemis Fowl',
+  'Holly Short', 'Ender Wiggin', 'Susan Pevensie', 'Edmund Pevensie',
+  'Lucy Pevensie',
+  // Film
+  'Peter Venkman', 'Egon Spengler', 'Ray Stantz', 'Winston Zeddemore',
+  'Marty McFly', 'Emmett Brown', 'Ellen Ripley', 'Sarah Connor',
+  'John McClane', 'Alan Grant', 'Ellie Sattler', 'Ian Malcolm',
+  'Inigo Montoya', 'Jack Sparrow', 'Elizabeth Swann', 'Indiana Jones',
+  'Marion Ravenwood', 'James Bond', 'Forrest Gump', 'Ferris Bueller',
+  'Elle Woods', 'Rocky Balboa', 'Apollo Creed', 'Napoleon Dynamite',
+  // Firefly / Battlestar
+  'Malcolm Reynolds', 'Zoe Washburne', 'Hoban Washburne', 'Kaylee Frye',
+  'Inara Serra', 'Jayne Cobb', 'River Tam', 'Simon Tam', 'Kara Thrace',
+  'William Adama', 'Gaius Baltar', 'Laura Roslin',
+  // Doctor Who / Buffy / X-Files
+  'Rose Tyler', 'Amy Pond', 'Rory Williams', 'Clara Oswald', 'River Song',
+  'Donna Noble', 'Jack Harkness', 'Buffy Summers', 'Willow Rosenberg',
+  'Xander Harris', 'Rupert Giles', 'Cordelia Chase', 'Fox Mulder',
+  'Dana Scully',
+  // Stranger Things
+  'Mike Wheeler', 'Nancy Wheeler', 'Dustin Henderson', 'Lucas Sinclair',
+  'Will Byers', 'Joyce Byers', 'Jim Hopper', 'Steve Harrington',
+  'Robin Buckley', 'Eddie Munson',
+  // Breaking Bad
+  'Walter White', 'Jesse Pinkman', 'Skyler White', 'Hank Schrader',
+  'Saul Goodman', 'Gus Fring', 'Kim Wexler',
+  // The Office / Parks & Rec
+  'Michael Scott', 'Dwight Schrute', 'Jim Halpert', 'Pam Beesly',
+  'Andy Bernard', 'Kevin Malone', 'Angela Martin', 'Oscar Martinez',
+  'Stanley Hudson', 'Creed Bratton', 'Kelly Kapoor', 'Erin Hannon',
+  'Leslie Knope', 'Ron Swanson', 'Tom Haverford', 'April Ludgate',
+  'Andy Dwyer', 'Ben Wyatt', 'Ann Perkins', 'Donna Meagle',
+  // Sitcoms
+  'Liz Lemon', 'Jack Donaghy', 'Tracy Jordan', 'Jenna Maroney',
+  'Jake Peralta', 'Amy Santiago', 'Rosa Diaz', 'Terry Jeffords',
+  'Raymond Holt', 'Charles Boyle', 'Gina Linetti', 'Jeff Winger',
+  'Britta Perry', 'Abed Nadir', 'Troy Barnes', 'Annie Edison',
+  'Shirley Bennett', 'Maurice Moss', 'Roy Trenneman', 'Jen Barber',
+  'Douglas Reynholm', 'Richard Hendricks', 'Erlich Bachman',
+  'Dinesh Chugtai', 'Bertram Gilfoyle', 'Jared Dunn', 'Monica Hall',
+  'Gavin Belson', 'Ted Lasso', 'Rebecca Welton', 'Roy Kent', 'Keeley Jones',
+  'Jamie Tartt', 'Nathan Shelley', 'George Costanza', 'Elaine Benes',
+  'Cosmo Kramer', 'Chandler Bing', 'Monica Geller', 'Ross Geller',
+  'Rachel Green', 'Phoebe Buffay', 'Joey Tribbiani', 'Sam Malone',
+  'Diane Chambers', 'Rebecca Howe', 'Norm Peterson', 'Cliff Clavin',
+  'Frasier Crane', 'Daphne Moon', 'Dorothy Zbornak', 'Blanche Devereaux',
+  'Rose Nylund', 'Sophia Petrillo', 'Johnny Rose', 'Moira Rose',
+  'David Rose', 'Alexis Rose', 'Stevie Budd',
+  // Drama
+  'Don Draper', 'Peggy Olson', 'Roger Sterling', 'Joan Holloway',
+  'Pete Campbell', 'Betty Draper', 'Jed Bartlet', 'Josh Lyman',
+  'Toby Ziegler', 'Sam Seaborn', 'Leo McGarry', 'Gregory House',
+  'James Wilson', 'Lisa Cuddy', 'Robert Chase', 'Eric Foreman',
+  'John Dorian', 'Elliot Reid', 'Perry Cox', 'Benjamin Pierce',
+  'Margaret Houlihan', 'Maxwell Klinger',
+  // Games
+  'Gordon Freeman', 'Alyx Vance', 'Barney Calhoun', 'Ash Ketchum',
+  'Gary Oak', 'Garrus Vakarian',
+  // Anime & Ghibli
+  'Naruto Uzumaki', 'Sasuke Uchiha', 'Sakura Haruno', 'Kakashi Hatake',
+  'Hinata Hyuga', 'Edward Elric', 'Alphonse Elric', 'Winry Rockbell',
+  'Roy Mustang', 'Riza Hawkeye', 'Spike Spiegel', 'Faye Valentine',
+  'Shinji Ikari', 'Rei Ayanami', 'Misato Katsuragi', 'Usagi Tsukino',
+  'Light Yagami', 'Sophie Hatter', 'Howl Pendragon', 'Chihiro Ogino',
+  // Addams Family
+  'Gomez Addams', 'Morticia Addams', 'Wednesday Addams', 'Pugsley Addams',
 ];
 
+// First × last grid for people beyond the cast (cross-universe mashups —
+// "Frodo Skywalker" — are a feature, not a bug).
+const FIRSTS: string[] = [];
+const LASTS: string[] = [];
+{
+  const fs = new Set<string>();
+  const ls = new Set<string>();
+  for (const full of CAST) {
+    const parts = full.split(' ');
+    fs.add(parts[0]);
+    ls.add(parts[parts.length - 1]);
+  }
+  FIRSTS.push(...fs);
+  LASTS.push(...ls);
+}
+
+// Adjectives prepended when a pool wraps — the overflow story everywhere, so
+// no alias ever carries a numeric suffix.
+const ADJ = [
+  'crimson', 'midnight', 'turbo', 'cosmic', 'emerald', 'thunder', 'shadow',
+  'golden', 'iron', 'neon', 'arctic', 'blazing', 'quantum', 'mystic',
+  'scarlet', 'obsidian', 'silver', 'wild', 'lucky', 'rogue', 'stellar',
+  'atomic', 'velvet', 'copper', 'phantom', 'royal', 'electric', 'amber',
+];
+
+// Project codenames (bare — never "Project X", never numbered).
 const CODENAMES = [
-  'KRAKEN', 'MOONSHOT', 'JACKALOPE', 'TUMBLEWEED', 'SASQUATCH', 'STARDUST',
-  'THUNDERCLAP', 'MARSHMALLOW', 'PORCUPINE', 'ZEPPELIN', 'FLAMINGO', 'AVOCADO',
-  'BLIZZARD', 'CACTUS', 'DYNAMITE', 'ECLIPSE', 'FIREFLY', 'GUMDROP',
-  'HULLABALOO', 'ICEBERG', 'JUKEBOX', 'KAZOO', 'LIGHTHOUSE', 'MONGOOSE',
-  'NARWHAL', 'OCTOPUS', 'PINBALL', 'QUICKSAND', 'ROADTRIP', 'SUBMARINE',
-  'TORNADO', 'UKULELE', 'VOLCANO', 'WAFFLES', 'XYLOPHONE', 'YETI', 'ZIGZAG',
-  'BUMBLEBEE', 'CANNONBALL', 'DOODLEBUG', 'FIZZBANG', 'GIZMO', 'HONEYPOT',
-  'IGLOO', 'JALOPY', 'KUMQUAT', 'LLAMA', 'MERMAID', 'NIMBUS', 'OUTBACK',
-  'PELICAN', 'QUASAR', 'RICKSHAW', 'SNORKEL', 'TADPOLE', 'WHIRLWIND', 'BANJO',
-  'CATAPULT', 'DIRIGIBLE',
+  'kraken', 'moonshot', 'jackalope', 'tumbleweed', 'sasquatch', 'stardust',
+  'thunderclap', 'marshmallow', 'porcupine', 'zeppelin', 'flamingo',
+  'avocado', 'blizzard', 'cactus', 'dynamite', 'eclipse', 'firefly',
+  'gumdrop', 'hullabaloo', 'iceberg', 'jukebox', 'kazoo', 'lighthouse',
+  'mongoose', 'narwhal', 'octopus', 'pinball', 'quicksand', 'roadtrip',
+  'submarine', 'tornado', 'ukulele', 'volcano', 'waffles', 'xylophone',
+  'yeti', 'zigzag', 'bumblebee', 'cannonball', 'doodlebug', 'fizzbang',
+  'gizmo', 'honeypot', 'igloo', 'jalopy', 'kumquat', 'llama', 'mermaid',
+  'nimbus', 'outback', 'pelican', 'quasar', 'rickshaw', 'snorkel', 'tadpole',
+  'whirlwind', 'banjo', 'catapult', 'dirigible', 'griffin', 'pegasus',
+  'phoenix', 'basilisk', 'chimera', 'hydra', 'minotaur', 'centaur', 'golem',
+  'kelpie', 'wyvern', 'banshee', 'valkyrie', 'leviathan', 'manticore',
+  'sphinx', 'thunderbird', 'wendigo', 'zephyr', 'avalon', 'camelot',
+  'xanadu', 'valhalla', 'olympus',
 ];
 
-// The ACME mail-order catalog — connections, code envs and DSS objects.
-const ACME_WORDS = [
-  'anvil', 'dynamite', 'rocket', 'magnet', 'catapult', 'slingshot',
-  'trampoline', 'mallet', 'boulder', 'piano', 'tunnel', 'glue', 'springs',
-  'horn', 'skates', 'jetpack', 'decoy', 'tent', 'paint', 'drill', 'crowbar',
-  'pulley', 'lever', 'bellows', 'whistle', 'mousetrap', 'birdseed', 'fuse',
-  'gears', 'periscope', 'stilts', 'raft', 'kite', 'lasso', 'telescope',
+// DSS objects (datasets, recipes, models…) — fictional artifacts.
+const OBJECT_WORDS = [
+  'mithril', 'kryptonite', 'vibranium', 'adamantium', 'unobtainium',
+  'dilithium', 'mjolnir', 'lightsaber', 'palantir', 'horcrux', 'excalibur',
+  'batmobile', 'tricorder', 'delorean', 'hoverboard', 'flubber', 'portkey',
+  'holocron', 'kyber', 'beskar', 'allspark', 'energon', 'dragonglass',
+  'stormbreaker', 'elderwand', 'narsil', 'glamdring', 'anduril', 'silmaril',
+  'arkenstone', 'tesseract', 'bifrost', 'gungnir', 'neuralyzer', 'ectoplasm',
+  'babel_fish', 'flux_capacitor', 'proton_pack', 'red_pill', 'infinity_stone',
 ];
 
+// Connections — fictional places (a data warehouse named gringotts).
+const PLACES = [
+  'gringotts', 'rivendell', 'hogsmeade', 'winterfell', 'gotham', 'metropolis',
+  'wakanda', 'asgard', 'tatooine', 'dagobah', 'endor', 'naboo', 'coruscant',
+  'krypton', 'vulcan', 'atlantis', 'eldorado', 'wonderland', 'neverland',
+  'narnia', 'mordor', 'moria', 'isengard', 'fangorn', 'lothlorien', 'erebor',
+  'braavos', 'valyria', 'meereen', 'kamino', 'mustafar', 'alderaan', 'hoth',
+  'jakku', 'arrakis', 'caladan', 'trantor', 'terminus', 'gallifrey',
+  'vormir', 'knowhere', 'xandar', 'sakaar', 'latveria', 'genosha',
+  'themyscira',
+];
+
+// Code envs — fictional potions & substances (suffixed _env).
+const ENV_WORDS = [
+  'polyjuice', 'veritaserum', 'amortentia', 'wolfsbane', 'mandrake',
+  'bezoar', 'gillyweed', 'pixiedust', 'senzu', 'melange', 'soylent',
+  'midichlorian', 'bacta', 'carbonite', 'slurm', 'lembas', 'miruvor',
+  'butterbeer', 'firewhisky', 'skooma', 'elixir', 'mana', 'aether',
+  'orichalcum', 'phazon', 'tiberium', 'vespene', 'positronic',
+];
+
+// Groups — fictional crews and factions.
 const CREWS = [
   'toon-squad', 'scooby-gang', 'looney-tunes', 'flintstones', 'jetsons',
   'powerpuffs', 'rugrats', 'animaniacs', 'thundercats', 'gummi-bears',
-  'ducktales', 'care-bears', 'smurfs', 'snorks', 'wacky-racers', 'herculoids',
+  'ducktales', 'care-bears', 'smurfs', 'snorks', 'wacky-racers',
+  'herculoids', 'fellowship', 'avengers', 'ghostbusters', 'goonies',
+  'starfleet', 'jedi-order', 'gryffindor', 'hufflepuff', 'ravenclaw',
+  'slytherin', 'night-watch', 'browncoats', 'rebel-alliance', 'planeteers',
+  'power-rangers', 'teen-titans', 'justice-league', 'autobots',
+  'sailor-scouts', 'straw-hats', 'mystery-inc',
+];
+
+// LLMs — fictional AIs.
+const AI_NAMES = [
+  'hal', 'jarvis', 'glados', 'skynet', 'tars', 'kitt', 'marvin', 'ultron',
+  'friday', 'edith', 'samantha', 'baymax', 'gerty', 'wintermute', 'multivac',
+  'shodan', 'holly', 'deep-thought',
+];
+
+// K8s clusters — fictional ships.
+const SHIPS = [
+  'serenity', 'nostromo', 'rocinante', 'galactica', 'normandy', 'bebop',
+  'swordfish', 'sulaco', 'icarus', 'axiom', 'event-horizon', 'heart-of-gold',
+  'red-dwarf', 'planet-express', 'milano', 'benatar', 'waverider',
+  'andromeda', 'prometheus', 'hyperion',
+];
+
+// K8s namespaces — fictional towns.
+const TOWNS = [
+  'springfield', 'bedrock', 'quahog', 'hill-valley', 'sunnydale', 'hawkins',
+  'derry', 'gravity-falls', 'bikini-bottom', 'toontown', 'duckburg',
+  'emerald-city', 'smallville', 'riverdale', 'twin-peaks', 'arkham', 'shire',
+  'brigadoon', 'stars-hollow', 'pawnee', 'mos-eisley', 'godrics-hollow',
+];
+
+// Hosts, node ids and cloud/install ids — NATO words.
+const NATO = [
+  'alpha', 'bravo', 'charlie', 'delta', 'echo', 'foxtrot', 'golf', 'hotel',
+  'india', 'juliet', 'kilo', 'lima', 'mike', 'november', 'oscar', 'papa',
+  'quebec', 'romeo', 'sierra', 'tango', 'uniform', 'victor', 'whiskey',
+  'xray', 'yankee', 'zulu',
+];
+
+const AWS_REGIONS = [
+  'us-east-1', 'us-west-2', 'eu-west-1', 'eu-central-1', 'ap-southeast-1',
+  'ca-central-1',
 ];
 
 // Values never treated as identifying, per class.
@@ -95,6 +333,33 @@ const GROUP_STOP = new Set([
   'public', 'default', 'readers', 'writers', 'all',
 ]);
 const HOST_STOP = new Set(['local', 'local dss']);
+
+// Never identifying, for ANY class: the app's own chrome (nav sections,
+// module labels) and generic DSS/UI vocabulary. Registering one of these —
+// because some customer dashboard or dataset happens to carry the name —
+// would make the global matcher rewrite the app's own UI text.
+const GENERIC_STOP = new Set([
+  // nav sections + module labels (utils/moduleRegistry.ts)
+  'overview', 'agents', 'connections', 'projects', 'users', 'plugins',
+  'code envs', 'ai compute', 'misc', 'mission control', 'summary',
+  'filesystem', 'resources', 'inventory', 'insights', 'health',
+  'fs migration', 'project cleaner', 'app instances', 'scenarios', 'compute',
+  'cost / cru', 'activity', 'churn & seats', 'installed', 'plugin sync',
+  'cleaner', 'comparison', 'broken', 'container execs', 'docker images',
+  'replace cs template', 'model audit', 'k8s insights', 'agent tuning',
+  'agent permissions', 'how agents work', 'settings', 'errors',
+  'sanity check', 'db health', 'report', 'feedback',
+  // generic vocabulary
+  'agent', 'project', 'scenario', 'user', 'connection', 'dataset',
+  'datasets', 'recipe', 'recipes', 'model', 'models', 'dashboard',
+  'dashboards', 'notebook', 'notebooks', 'wiki', 'insight', 'job', 'jobs',
+  'log', 'logs', 'home', 'default', 'main', 'admin', 'administrator', 'test',
+  'data', 'general', 'global', 'local', 'shared', 'none', 'unknown', 'total',
+  'other', 'all', 'error', 'warning', 'success', 'failed', 'active',
+  'inactive', 'design', 'automation', 'deployer', 'govern', 'api', 'python',
+  'spark', 'sql', 'managed', 'builtin', 'built-in', 'filesystem_managed',
+  'filesystem_folders', 'filesystem_root',
+]);
 
 // ── Mode flag ────────────────────────────────────────────────────────────────
 
@@ -136,6 +401,7 @@ let matcherVersion = -1;
 
 function loadDict(): void {
   try {
+    globalThis.localStorage?.removeItem(LEGACY_DICT_KEY);
     const raw = globalThis.localStorage?.getItem(DICT_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw) as { dict?: Record<string, string>; counters?: Partial<Record<EntityClass, number>> };
@@ -169,28 +435,65 @@ function next(cls: EntityClass): number {
   return n;
 }
 
-function fromPool(pool: readonly string[], n: number, sep: string): string {
+/** Pool pick that overflows into adjective compounds ("crimson_kraken"),
+ *  never numeric suffixes. */
+function poolAlias(pool: readonly string[], n: number, sep: string): string {
   const i = n - 1;
-  const cycle = Math.floor(i / pool.length);
-  return pool[i % pool.length] + (cycle > 0 ? `${sep}${cycle + 1}` : '');
+  let name = pool[i % pool.length];
+  let cycle = Math.floor(i / pool.length);
+  while (cycle > 0) {
+    name = ADJ[(cycle - 1) % ADJ.length] + sep + name;
+    cycle = Math.floor((cycle - 1) / ADJ.length);
+  }
+  return name;
 }
 
-function nextCharacter(): { display: string; login: string } {
-  const n = next('person');
-  const i = n - 1;
-  if (i < CAST.length) {
-    const [display, login] = CAST[i];
-    return { display, login };
-  }
-  const k = i - CAST.length + 1;
-  return { display: `Toon ${k}`, login: `toon${k}` };
+function titleWords(s: string, sep: string): string {
+  return s
+    .split(sep)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
 }
 
 function emailFor(display: string): string {
-  return `${display.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/ /g, '.')}@acme.com`;
+  return `${display.toLowerCase().replace(/[^a-z ]/g, '').trim().replace(/ +/g, '.')}@acme.com`;
+}
+
+function loginFor(display: string): string {
+  const parts = display.toLowerCase().replace(/[^a-z ]/g, '').trim().split(/ +/);
+  if (parts.length < 2) return parts[0] ?? 'toon';
+  const short = parts[0].charAt(0) + parts[parts.length - 1];
+  return aliasValues.has(short) ? parts.join('.') : short;
+}
+
+/** Next unused fictional person. All three forms (display, login, email) are
+ *  reserved together so no two people can ever share any of them. */
+function nextCharacter(): { display: string; login: string } {
+  for (let tries = 0; tries < 5000; tries++) {
+    const i = next('person') - 1;
+    let display: string;
+    if (i < CAST.length) {
+      display = CAST[i];
+    } else {
+      const k = i - CAST.length;
+      const f = k % FIRSTS.length;
+      const d = Math.floor(k / FIRSTS.length);
+      display = `${FIRSTS[f]} ${LASTS[(f + d) % LASTS.length]}`;
+    }
+    const login = loginFor(display);
+    const mail = emailFor(display);
+    if (!aliasValues.has(display) && !aliasValues.has(login) && !aliasValues.has(mail)) {
+      aliasValues.add(display);
+      aliasValues.add(login);
+      aliasValues.add(mail);
+      return { display, login };
+    }
+  }
+  return { display: CAST[0], login: loginFor(CAST[0]) };
 }
 
 const NODE_SUFFIX_RE = /-(design|automation|api|deployer|govern)$/;
+const KEYISH_RE = /^[A-Z0-9_]+$/;
 
 function mint(value: string, cls: EntityClass): string {
   switch (cls) {
@@ -202,37 +505,44 @@ function mint(value: string, cls: EntityClass): string {
       const c = nextCharacter();
       return emailFor(c.display);
     }
-    case 'group': return fromPool(CREWS, next('group'), '-');
+    case 'group': return poolAlias(CREWS, next('group'), '-');
     case 'org': return 'Acme Corp';
     case 'project': {
-      const code = fromPool(CODENAMES, next('project'), '');
-      const isKeyish = /^[A-Z0-9_]+$/.test(value);
-      return isKeyish ? code : `Project ${code.charAt(0)}${code.slice(1).toLowerCase()}`;
+      const code = poolAlias(CODENAMES, next('project'), '_');
+      return KEYISH_RE.test(value) ? code.toUpperCase() : titleWords(code, '_');
     }
-    case 'object': return fromPool(ACME_WORDS, next('object'), '_');
-    case 'connection': return `acme_${fromPool(ACME_WORDS, next('connection'), '_')}`;
-    case 'codeenv': return `${fromPool(ACME_WORDS, next('codeenv'), '_')}_env`;
-    case 'llm': return `acme-llm-${next('llm')}`;
-    case 'hostlabel': return `Acme DSS ${next('hostlabel')}`;
-    case 'hosturl': return `https://dss${next('hosturl')}.acme.com`;
+    case 'object': {
+      const w = poolAlias(OBJECT_WORDS, next('object'), '_');
+      return KEYISH_RE.test(value) ? w.toUpperCase() : w;
+    }
+    case 'connection': return poolAlias(PLACES, next('connection'), '_');
+    case 'codeenv': return `${poolAlias(ENV_WORDS, next('codeenv'), '_')}_env`;
+    case 'llm': {
+      const w = poolAlias(AI_NAMES, next('llm'), '-');
+      return /[A-Z\s]/.test(value) ? titleWords(w, '-') : w;
+    }
+    case 'hostlabel': return `DSS ${titleWords(poolAlias(NATO, next('hostlabel'), '-'), '-')}`;
+    case 'hosturl': return `https://dss-${poolAlias(NATO, next('hosturl'), '-')}.acme.com`;
     case 'nodeid': {
       const m = value.match(NODE_SUFFIX_RE);
-      return m ? `acme-${m[1]}` : `acme-node-${next('nodeid')}`;
+      const base = poolAlias(NATO, next('nodeid'), '-');
+      return m ? `${base}-${m[1]}` : `dss-${base}`;
     }
-    case 'installid': return `acme-install-${next('installid')}`;
-    case 'cluster': return `acme-cluster-${next('cluster')}`;
-    case 'namespace': return `acme-ns-${next('namespace')}`;
-    case 'registry': {
-      const n = next('registry');
-      return `12345678901${n % 10}.dkr.ecr.us-east-1.amazonaws.com`;
-    }
-    case 'cloudid': return `acme-cloud-id-${next('cloudid')}`;
+    case 'installid': return `install-${poolAlias(NATO, next('installid'), '-')}`;
+    case 'cluster': return poolAlias(SHIPS, next('cluster'), '-');
+    case 'namespace': return poolAlias(TOWNS, next('namespace'), '-');
+    case 'registry': return `123456789012.dkr.ecr.${AWS_REGIONS[(next('registry') - 1) % AWS_REGIONS.length]}.amazonaws.com`;
+    case 'cloudid': return `cloud-${poolAlias(NATO, next('cloudid'), '-')}`;
     case 'ip': {
       const n = next('ip');
       return `10.42.${Math.floor(n / 256) % 256}.${n % 256}`;
     }
   }
 }
+
+// Classes whose alias may legitimately repeat (a fixed brand / a small
+// realistic pool) — everything else re-mints on collision.
+const DUP_OK = new Set<EntityClass>(['org', 'registry', 'person', 'email']);
 
 function register(rawValue: unknown, cls: EntityClass): void {
   if (typeof rawValue !== 'string') return;
@@ -242,17 +552,21 @@ function register(rawValue: unknown, cls: EntityClass): void {
   if (/^\d+$/.test(value)) return;
   if (dict[value] !== undefined || aliasValues.has(value)) return;
   const lower = value.toLowerCase();
+  if (GENERIC_STOP.has(lower)) return;
   if (cls === 'person' && PERSON_STOP.has(lower)) return;
   if (cls === 'group' && GROUP_STOP.has(lower)) return;
   if (cls === 'hostlabel' && HOST_STOP.has(lower)) return;
-  const alias = mint(value, cls);
+  let alias = mint(value, cls);
+  for (let tries = 0; aliasValues.has(alias) && !DUP_OK.has(cls) && tries < 50; tries++) {
+    alias = mint(value, cls);
+  }
   dict[value] = alias;
   aliasValues.add(alias);
   // Lowercase twin for uppercase project keys: K8s pod names and container
   // labels carry them lowercased. Length-gated to avoid eating common words.
   if (cls === 'project' && /^[A-Z0-9_]{5,}$/.test(value) && !/^\d/.test(value)) {
     const lc = value.toLowerCase();
-    if (dict[lc] === undefined && !aliasValues.has(lc)) {
+    if (dict[lc] === undefined && !aliasValues.has(lc) && !GENERIC_STOP.has(lc)) {
       dict[lc] = alias.toLowerCase();
       aliasValues.add(alias.toLowerCase());
     }
@@ -277,7 +591,7 @@ const FIELD_MAP: Record<string, EntityClass> = {
   referencingProjects: 'project', projectKeyForSend: 'project', projectName: 'project',
   datasetName: 'object', recipeName: 'object', creatorRecipeName: 'object',
   objectName: 'object', assetName: 'object', notebookName: 'object',
-  appId: 'object', scenarioName: 'object',
+  appId: 'object',
   connection: 'connection', connectionName: 'connection',
   codeEnvName: 'codeenv', codeEnvNames: 'codeenv', envName: 'codeenv',
   sourceEnvName: 'codeenv', targetEnvName: 'codeenv', codeEnv: 'codeenv',
@@ -297,7 +611,8 @@ interface UserLike { login?: unknown; displayName?: unknown; email?: unknown }
 /** Users seed as linked triples so one character owns login + name + email. */
 function seedUser(u: UserLike): void {
   const login = typeof u.login === 'string' ? u.login.trim() : '';
-  if (!login || login.length < 3 || PERSON_STOP.has(login.toLowerCase())) return;
+  const loginLower = login.toLowerCase();
+  if (!login || login.length < 3 || PERSON_STOP.has(loginLower) || GENERIC_STOP.has(loginLower)) return;
   if (dict[login] === undefined && !aliasValues.has(login)) {
     const c = nextCharacter();
     dict[login] = c.login;
@@ -347,12 +662,18 @@ function walkForEntities(v: unknown, depth: number): void {
       // fall through: server/vpcId etc. picked up by the generic walk
     }
     const cls = FIELD_MAP[k]
-      ?? ((k === 'name' || k === 'label') && ('projectKey' in o || 'projectName' in o)
+      // Object names ({name/label, projectKey} rows) — but never scenario rows
+      // (scenario names stay real by user decision; their projectKey /
+      // runAsUser / lastModifiedBy still alias via FIELD_MAP).
+      ?? ((k === 'name' || k === 'label')
+        && ('projectKey' in o || 'projectName' in o)
+        && !('scenarioType' in o) && !('scenarioId' in o)
         ? 'object'
         : undefined)
       // Host records ({id, label, url}): the label and the short host id both
-      // render (host cards, feedback context, audit host column).
-      ?? ((k === 'label' || k === 'id') && 'url' in o && 'label' in o
+      // render (host cards, feedback context, audit host column). `id` is
+      // required so plain {label, url} link rows never register.
+      ?? ((k === 'label' || k === 'id') && 'id' in o && 'url' in o && 'label' in o
         ? 'hostlabel'
         : undefined);
     if (typeof val === 'string') {

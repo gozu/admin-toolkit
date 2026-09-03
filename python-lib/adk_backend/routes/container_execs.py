@@ -654,10 +654,8 @@ def _cex_try_private_mltask_save(
         'origin': origin if len(origin) < 100 else origin[:97] + '...',
         'cookieHeaderLen': len(cookie_header),
         'cookieCount': cookie_header.count(';') + 1 if cookie_header else 0,
-        'cookieNames': ctx.get('cookie_names', []),
         'xsrfPresent': bool(xsrf),
         'xsrfLen': len(xsrf),
-        'xsrfSource': ctx.get('xsrf_source') or '',
         'referer': referer if len(referer) < 120 else referer[:117] + '...',
     }
     diag['privateAttempt'] = attempt
@@ -773,7 +771,9 @@ def _cex_replace_bundle_remap(client: Any, row: Dict[str, Any], target_config: s
 def _cex_browser_ctx(req: Any) -> Dict[str, Any]:
     """Forwardable browser session (origin + cookies + XSRF token) for the
     private ML-task save endpoint. Shared with the Compute Placement migrate
-    route, which reuses `_cex_apply_replace_row`."""
+    route, which reuses `_cex_apply_replace_row`. Only used to build the
+    forwarded request; the diag payload reports counts/lengths, never cookie
+    names or values."""
     xsrf_cookie = next(
         (name for name in req.cookies.keys() if name.startswith('dss_xsrf_token_')),
         '',
@@ -782,9 +782,7 @@ def _cex_browser_ctx(req: Any) -> Dict[str, Any]:
         'origin': req.headers.get('Origin') or '',
         'referer': req.headers.get('Referer') or '',
         'cookie_header': req.headers.get('Cookie') or '',
-        'cookie_names': sorted(req.cookies.keys()),
         'xsrf': req.cookies.get(xsrf_cookie, '') if xsrf_cookie else '',
-        'xsrf_source': xsrf_cookie,
     }
 
 

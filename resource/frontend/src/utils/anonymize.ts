@@ -19,7 +19,8 @@
 // Display-only by design: API calls, hrefs and DSS-bound exports carry real
 // values, and CSV table exports inherit the aliases because they scrape the
 // rendered DOM. The alias dictionary persists to localStorage so the same real
-// entity keeps the same alias across pages, reloads and screenshots. Known
+// entity keeps the same alias across pages, reloads and screenshots, and is
+// discarded when the mode is switched off so real names don't linger. Known
 // residual leaks (accepted): text typed into inputs/textareas (e.g. the raw-log
 // analysis textarea), raw file downloads, and free-text strings naming entities
 // the app never loaded as data.
@@ -384,6 +385,7 @@ export function isAnonEnabled(): boolean {
 export function toggleAnonMode(): void {
   try {
     globalThis.localStorage?.setItem(MODE_KEY, enabled ? '0' : '1');
+    if (enabled) globalThis.localStorage?.removeItem(DICT_KEY);
   } catch {
     return;
   }

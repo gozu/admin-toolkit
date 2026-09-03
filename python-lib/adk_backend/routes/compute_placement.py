@@ -28,6 +28,8 @@ from flask import Blueprint, g, jsonify, request
 
 from adk_backend.caching import (
     _CACHE,
+    _CACHE_INFLIGHT,
+    _CACHE_INFLIGHT_ERRORS,
     _CACHE_LOCK,
     _bump_session_epoch,
     _cache_get,
@@ -47,6 +49,14 @@ from adk_backend.utils import _cex_item_raw, _parallel_workers, _sse_response, a
 
 bp = Blueprint('compute_placement', __name__)
 _LOGGER = logging.getLogger(__name__)
+
+# Fan-out guard: every scan already runs up to 8 DSS API threads, so cap the
+# scans in flight per backend regardless of how many callers ask at once.
+_MAX_CONCURRENT_SCANS = 2
+_SCAN_SEMAPHORE = threading.BoundedSemaphore(_MAX_CONCURRENT_SCANS)
+# Per-filter cache entries are API-only (the UI never filters); bound them so
+# arbitrary projectKeys permutations cannot grow the cache without limit.
+_MAX_FILTERED_SCANS = 8
 
 _CODE_RECIPE_TYPES = {'python', 'r'}
 _SPARK_RECIPE_TYPES = {'pyspark', 'spark_scala', 'spark_sql_query', 'sparkr'}
@@ -459,6 +469,16 @@ def _scan(
     timeout_ms: Optional[int] = None,
     progress_cb: Optional[Callable[[Dict[str, Any]], None]] = None,
 ) -> Dict[str, Any]:
+    with _SCAN_SEMAPHORE:
+        return _scan_unbounded(client, project_keys_filter, timeout_ms, progress_cb)
+
+
+def _scan_unbounded(
+    client: Any,
+    project_keys_filter: Optional[Set[str]],
+    timeout_ms: Optional[int],
+    progress_cb: Optional[Callable[[Dict[str, Any]], None]],
+) -> Dict[str, Any]:
     started = time.time()
     deadline = started + float(timeout_ms) / 1000.0 if timeout_ms else None
     ctx, configs, clusters, warnings = _instance_context(client)
@@ -533,6 +553,20 @@ def _cached_scan(cache_key: str, ttl: int) -> Optional[Dict[str, Any]]:
         cached = _CACHE.get(_cache_key(cache_key))
         value = cached.get('value') if cached and now - cached.get('ts', 0) < ttl else None
     return value if isinstance(value, dict) else None
+
+
+def _store_scan(cache_key: str, result: Dict[str, Any]) -> None:
+    with _CACHE_LOCK:
+        _CACHE[_cache_key(cache_key)] = {'ts': time.time(), 'value': result}
+    _prune_filtered_scans()
+
+
+def _prune_filtered_scans() -> None:
+    prefix = _cache_key('compute_placement:')
+    with _CACHE_LOCK:
+        filtered = sorted((k for k in _CACHE if str(k).startswith(prefix)), key=lambda k: _CACHE[k].get('ts', 0))
+        for stale in filtered[:max(0, len(filtered) - _MAX_FILTERED_SCANS)]:
+            _CACHE.pop(stale, None)
 
 
 def _timeout_ms() -> int:
@@ -667,6 +701,8 @@ def api_compute_placement():
         _BACKEND_SETTINGS.get('cache_ttl_projects', 600),
         lambda: _scan(client, project_keys_filter=project_filter, timeout_ms=_timeout_ms()),
     )
+    if project_filter:
+        _prune_filtered_scans()
     return jsonify(data)
 
 
@@ -688,21 +724,48 @@ def api_compute_placement_stream():
             yield sse('done', cached)
             return
 
+        # Single-flight per host/filter, sharing the GET route's in-flight
+        # registry: a concurrent stream (or GET) caller joins the running scan
+        # instead of fanning out another one.
+        scoped_key = _cache_key(cache_key)
+        with _CACHE_LOCK:
+            inflight = _CACHE_INFLIGHT.get(scoped_key)
+            is_loader = inflight is None
+            if is_loader:
+                inflight = _CACHE_INFLIGHT[scoped_key] = threading.Event()
+        if not is_loader:
+            while not inflight.wait(timeout=5.0):
+                yield ': keepalive\n\n'
+            joined = _cached_scan(cache_key, ttl)
+            if joined is not None:
+                yield sse('done', joined)
+            else:
+                with _CACHE_LOCK:
+                    err = _CACHE_INFLIGHT_ERRORS.get(scoped_key)
+                yield sse('error', {'error': str(err)[:500] if err else 'scan failed'})
+            return
+
         events_q: "queue.Queue[Dict[str, Any]]" = queue.Queue()
 
         def worker() -> None:
             previous = getattr(_THREAD_LOCAL, 'host_id', None)
             _THREAD_LOCAL.host_id = request_host_id
+            failure: Optional[BaseException] = None
             try:
                 result = _scan(request_client, project_keys_filter=project_filter,
                                timeout_ms=_timeout_ms(), progress_cb=lambda p: events_q.put(dict(p)))
-                with _CACHE_LOCK:
-                    _CACHE[_cache_key(cache_key)] = {'ts': time.time(), 'value': result}
+                _store_scan(cache_key, result)
                 events_q.put({'event': 'done', 'payload': result})
             except Exception as exc:
+                failure = exc
                 _LOGGER.exception("[compute-placement] scan failed")
                 events_q.put({'event': 'error', 'error': str(exc)[:500]})
             finally:
+                with _CACHE_LOCK:
+                    if failure is not None:
+                        _CACHE_INFLIGHT_ERRORS[scoped_key] = failure
+                    _CACHE_INFLIGHT.pop(scoped_key, None)
+                inflight.set()
                 if previous is None:
                     try:
                         delattr(_THREAD_LOCAL, 'host_id')
@@ -743,12 +806,14 @@ def api_compute_placement_migrate():
 
     client = g.client
     ttl = int(_BACKEND_SETTINGS.get('cache_ttl_projects', 600))
-    scan = _cached_scan('compute_placement', ttl)
+    # Row ids are '<projectKey>|<type>|<id>|<surface>': reuse a full scan when
+    # one is cached, else the matching filtered one, else scan just those projects.
+    project_filter = {rid.split('|', 1)[0] for rid in row_ids}
+    scan = _cached_scan('compute_placement', ttl) or _cached_scan(_cache_key_for(project_filter), ttl)
     scan_cached = scan is not None
     if scan is None:
-        scan = _scan(client, timeout_ms=_timeout_ms())
-        with _CACHE_LOCK:
-            _CACHE[_cache_key('compute_placement')] = {'ts': time.time(), 'value': scan}
+        scan = _scan(client, project_keys_filter=project_filter, timeout_ms=_timeout_ms())
+        _store_scan(_cache_key_for(project_filter), scan)
 
     config_types = scan.get('configTypes') or {}
     if target_config not in config_types:

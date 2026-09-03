@@ -307,6 +307,7 @@ export function ConnectionsInsightsTable() {
           <ScanIncompleteNotice
             failedProjectCount={parsedData.connectionUsageFailedProjectCount}
             scannedProjectCount={parsedData.connectionUsageScannedProjectCount}
+            scanErrors={parsedData.connectionUsageScanErrors}
           />
         </div>
       )}

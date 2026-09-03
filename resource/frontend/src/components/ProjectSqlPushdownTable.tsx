@@ -222,6 +222,7 @@ export function ProjectSqlPushdownTable() {
         <ScanIncompleteNotice
           failedProjectCount={scan.failedProjectCount}
           scannedProjectCount={scan.scannedProjectCount}
+          scanErrors={scan.scanErrors}
           className="mx-4 my-3"
         />
       )}

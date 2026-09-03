@@ -585,6 +585,7 @@ export function ContainerExecs() {
         <ScanIncompleteNotice
           failedProjectCount={data?.failedProjectCount}
           scannedProjectCount={data?.scannedProjectCount}
+          scanErrors={data?.scanErrors}
           className="mt-2"
         />
       </div>

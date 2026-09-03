@@ -515,6 +515,7 @@ export function LlmAuditTable() {
             <ScanIncompleteNotice
               failedProjectCount={audit?.failedProjectCount}
               scannedProjectCount={audit?.scannedProjectCount}
+              scanErrors={audit?.scanErrors}
             />
           </div>
         )}

@@ -537,7 +537,7 @@ export function ComputePlacement() {
           Where every compute-using object runs: on the DSS host or in a container execution config (and on which cluster).
           Select local objects to migrate them or to email their owners.
         </p>
-        <ScanIncompleteNotice failedProjectCount={data?.failedProjectCount} scannedProjectCount={data?.scannedProjectCount} className="mt-2" />
+        <ScanIncompleteNotice failedProjectCount={data?.failedProjectCount} scannedProjectCount={data?.scannedProjectCount} scanErrors={data?.scanErrors} className="mt-2" />
         {data?.timedOut && (
           <div className="mt-2 text-xs text-[var(--neon-yellow)]">Scan hit the timeout — results cover the projects scanned so far.</div>
         )}

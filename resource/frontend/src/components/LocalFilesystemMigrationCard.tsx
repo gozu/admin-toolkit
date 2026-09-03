@@ -52,8 +52,17 @@ type LocalFilesystemOwnerGroup = {
 export function LocalFilesystemMigrationCard() {
   const { state } = useDiag();
   const { parsedData } = state;
-  const { scanning, scanned, total, error, failedProjectCount, scannedProjectCount, scan, abort } =
-    useConnectionUsageScan();
+  const {
+    scanning,
+    scanned,
+    total,
+    error,
+    scanErrors,
+    failedProjectCount,
+    scannedProjectCount,
+    scan,
+    abort,
+  } = useConnectionUsageScan();
 
   const usages = useMemo(
     () => parsedData.connectionLocalFilesystemUsages || [],
@@ -97,6 +106,7 @@ export function LocalFilesystemMigrationCard() {
       <ScanIncompleteNotice
         failedProjectCount={failedProjectCount}
         scannedProjectCount={scannedProjectCount}
+        scanErrors={scanErrors}
       />
 
       {/* Progress */}

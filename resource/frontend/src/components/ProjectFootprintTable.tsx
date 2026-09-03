@@ -385,6 +385,7 @@ export function ProjectFootprintTable() {
           <ScanIncompleteNotice
             failedProjectCount={footprintSummary?.failedProjectCount}
             scannedProjectCount={footprintSummary?.scannedProjectCount}
+            scanErrors={footprintSummary?.scanErrors}
           />
         </div>
       )}

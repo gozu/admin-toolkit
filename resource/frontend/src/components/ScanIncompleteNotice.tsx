@@ -47,7 +47,7 @@ function FailedProjectList({
         Projects that failed to scan{' '}
         {truncated ? `(${projects.length} of ${failedProjectCount})` : `(${projects.length})`}
       </div>
-      <ul className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
+      <ul className="max-h-80 overflow-y-auto space-y-1.5 pr-1">
         {projects.map((project) => (
           <li key={project.projectKey} className="leading-snug">
             <div className="text-xs font-mono text-[var(--text-secondary)] break-all">

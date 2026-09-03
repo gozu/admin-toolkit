@@ -1,7 +1,7 @@
 {
   "name": "diag-parser",
   "private": true,
-  "version": "0.4.828",
+  "version": "0.4.829",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -195,6 +195,7 @@ export interface ParsedData {
   codeEnvsComparisonLoading?: Lifecycle;
   codeEnvsBrokenLoading?: Lifecycle;
   containerExecsLoading?: Lifecycle;
+  computePlacementLoading?: Lifecycle;
   imageCleanerLoading?: Lifecycle;
   csTemplateReplacementLoading?: Lifecycle;
   llmAuditLoading?: Lifecycle;
@@ -316,6 +317,7 @@ export type PageId =
   | 'code-envs-comparison'
   | 'code-envs-broken'
   | 'container-execs'
+  | 'compute-placement'
   | 'cs-template-replacement'
   | 'connections-inventory'
   | 'connections-insights'

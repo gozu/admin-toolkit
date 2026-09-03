@@ -18,6 +18,7 @@ import { useDelayedPageWarmup } from './hooks/useDelayedPageWarmup';
 // Side-effect imports register module scan stores into scanStoreRegistry at app startup
 // so useScanStoreLoadingMirror can subscribe before any page renders.
 import './state/containerExecsStore';
+import './state/computePlacementStore';
 import './state/codeEnvBrokenStore';
 import './state/codeEnvComparisonStore';
 import './state/csTemplateStore';

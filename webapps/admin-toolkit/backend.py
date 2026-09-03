@@ -176,6 +176,7 @@ from adk_backend.routes.code_env_broken import bp as code_env_broken_bp
 from adk_backend.routes.code_env_replace import bp as code_env_replace_bp
 from adk_backend.routes.code_envs import bp as code_envs_bp
 from adk_backend.routes.connections import bp as connections_bp
+from adk_backend.routes.compute_placement import bp as compute_placement_bp
 from adk_backend.routes.container_execs import bp as container_execs_bp
 from adk_backend.routes.cru import bp as cru_bp
 from adk_backend.routes.cs_template import bp as cs_template_bp
@@ -216,6 +217,7 @@ app.register_blueprint(code_env_broken_bp)
 app.register_blueprint(code_env_replace_bp)
 app.register_blueprint(code_envs_bp)
 app.register_blueprint(connections_bp)
+app.register_blueprint(compute_placement_bp)
 app.register_blueprint(container_execs_bp)
 app.register_blueprint(cru_bp)
 app.register_blueprint(cs_template_bp)

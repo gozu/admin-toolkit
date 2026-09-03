@@ -747,6 +747,21 @@ def _build_objects_html(usage_details: list, group_by_project: bool = False) -> 
 
 
 def _default_email_template(campaign: str) -> Dict[str, str]:
+    if campaign == 'compute_local':
+        return {
+            'subject': '[DSS Health] Workloads running on the DSS host instead of containers',
+            'body': (
+                "Hi {{owner}},\n\n"
+                "DSS health checks found recipes, webapps, ML tasks or notebooks in your projects that run "
+                "on the DSS server itself (local compute) rather than on a containerized execution config.\n"
+                "Local workloads compete for the server's CPU and memory and can slow down every user. "
+                "Please switch them to a containerized execution config (project Settings → Container "
+                "execution, or the object's Advanced tab).\n\n"
+                "Impacted projects:\n{{project_list}}\n\n"
+                "Objects still on local compute:\n{{objects_list}}\n\n"
+                "Thanks."
+            ),
+        }
     if campaign == 'code_env':
         return {
             'subject': '[DSS Health] Code environment ownership mismatch in your projects',
@@ -933,7 +948,7 @@ def api_tools_email_preview():
         'disabled_user', 'deprecated_code_env', 'default_code_env',
         'overshared_project', 'scenario_frequency', 'empty_project',
         'large_flow', 'orphan_notebooks', 'scenario_failing',
-        'inactive_project', 'unused_code_env',
+        'inactive_project', 'unused_code_env', 'compute_local',
     }
     campaign = str(payload.get('campaign') or 'project').strip().lower()
     if campaign not in _valid_campaigns:
@@ -961,7 +976,7 @@ def api_tools_email_preview():
             if isinstance(usage, dict)
         ]
         usage_details = _dedupe_usage_entries(usage_details)
-        if campaign == 'project':
+        if campaign in ('project', 'compute_local'):
             object_lines = _usage_lines_grouped_by_project(usage_details)
         else:
             object_lines = _usage_lines_grouped_by_code_env(usage_details)
@@ -1087,7 +1102,7 @@ def api_tools_email_preview():
             'project_env_list': (_PROJECT_ENV_MARKER, _build_project_env_html(projects_data, _pel_grouped)),
             'project_list': (_PROJECT_LIST_MARKER, _build_items_html(project_keys, links=project_links)),
             'code_env_list': (_CODE_ENV_LIST_MARKER, _build_items_html(code_env_names, accent='#00897b')),
-            'objects_list': (_OBJECTS_LIST_MARKER, _build_objects_html(usage_details, group_by_project=(campaign == 'project'))),
+            'objects_list': (_OBJECTS_LIST_MARKER, _build_objects_html(usage_details, group_by_project=(campaign in ('project', 'compute_local')))),
             'code_studio_list': (_CODE_STUDIO_LIST_MARKER, _build_code_studio_html(projects_data)),
             'scenario_list': (_SCENARIO_LIST_MARKER, _build_scenario_html(projects_data)),
             'inactive_project_list': (_INACTIVE_LIST_MARKER, _build_inactive_projects_html(projects_data)),

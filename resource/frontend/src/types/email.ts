@@ -20,7 +20,8 @@ export type CampaignId =
   | 'orphan_notebooks'
   | 'scenario_failing'
   | 'inactive_project'
-  | 'unused_code_env';
+  | 'unused_code_env'
+  | 'compute_local';
 
 export interface OutreachRecipient {
   recipientKey: string;

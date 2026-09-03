@@ -770,6 +770,24 @@ def _cex_replace_bundle_remap(client: Any, row: Dict[str, Any], target_config: s
     settings.save()
 
 
+def _cex_browser_ctx(req: Any) -> Dict[str, Any]:
+    """Forwardable browser session (origin + cookies + XSRF token) for the
+    private ML-task save endpoint. Shared with the Compute Placement migrate
+    route, which reuses `_cex_apply_replace_row`."""
+    xsrf_cookie = next(
+        (name for name in req.cookies.keys() if name.startswith('dss_xsrf_token_')),
+        '',
+    )
+    return {
+        'origin': req.headers.get('Origin') or '',
+        'referer': req.headers.get('Referer') or '',
+        'cookie_header': req.headers.get('Cookie') or '',
+        'cookie_names': sorted(req.cookies.keys()),
+        'xsrf': req.cookies.get(xsrf_cookie, '') if xsrf_cookie else '',
+        'xsrf_source': xsrf_cookie,
+    }
+
+
 def _cex_apply_replace_row(
     client: Any,
     row: Dict[str, Any],
@@ -898,18 +916,7 @@ def api_container_execs_replace():
 
     target_is_inherit = target_config == '__INHERIT__'
     client = g.client
-    _dss_xsrf_cookie = next(
-        (name for name in request.cookies.keys() if name.startswith('dss_xsrf_token_')),
-        '',
-    )
-    browser_ctx = {
-        'origin': request.headers.get('Origin') or '',
-        'referer': request.headers.get('Referer') or '',
-        'cookie_header': request.headers.get('Cookie') or '',
-        'cookie_names': sorted(request.cookies.keys()),
-        'xsrf': request.cookies.get(_dss_xsrf_cookie, '') if _dss_xsrf_cookie else '',
-        'xsrf_source': _dss_xsrf_cookie,
-    }
+    browser_ctx = _cex_browser_ctx(request)
     cheap_config_names = set(_cex_execution_config_names(client))
     if not target_is_inherit and cheap_config_names and target_config not in cheap_config_names:
         return jsonify({

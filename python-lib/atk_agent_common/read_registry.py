@@ -37,6 +37,15 @@ ENDPOINTS = (
         'dormant + disabled seat groups, yearly account flow (the Users → '
         'Churn & Seats page).'),
     _endpoint(
+        'compute-placement', '/api/compute-placement',
+        'Full compute inventory: every project default, Python/R recipe, '
+        'DSS-engine visual recipe, webapp backend, ML task, notebook and Spark '
+        'recipe resolved to local-host vs container config + cluster, with '
+        'owners (the Compute Placement page). rows[].placement = local | '
+        'container | spark; summary.localCount / migratableCount. '
+        'projectKeys=A,B narrows the scan.',
+        params=('projectKeys',), heavy=True),
+    _endpoint(
         'cost-cru-detail', '/api/cru',
         'Full Cost/CRU detail: totals, per-project/user/connection/model '
         'breakdowns, daily series, idle resources (the Projects → Cost page). '
@@ -151,6 +160,7 @@ TOOLKIT_PAGES = {
     'code-envs-comparison': 'Package diff between two code envs',
     'code-envs-broken': 'Code envs whose last build attempt failed, from the build logs',
     'container-execs': 'Container exec configs with requests/limits',
+    'compute-placement': 'Local vs containerized placement of every compute object; mass local→container migration; owner outreach',
     'image-cleaner': 'Docker registry images: sprawl + delete candidates',
     'cs-template-replacement': 'CS template replacement across projects',
     'llm-audit': 'LLM model audit: usage, tokens, cost estimates',

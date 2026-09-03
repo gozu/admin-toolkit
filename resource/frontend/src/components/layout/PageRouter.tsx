@@ -71,6 +71,9 @@ const ImageCleanerLazy = lazy(() =>
 const ContainerExecsLazy = lazy(() =>
   import('../ContainerExecs').then((m) => ({ default: m.ContainerExecs })),
 );
+const ComputePlacementLazy = lazy(() =>
+  import('../ComputePlacement').then((m) => ({ default: m.ComputePlacement })),
+);
 const CSTemplateReplacementLazy = lazy(() =>
   import('../CSTemplateReplacement').then((m) => ({ default: m.CSTemplateReplacement })),
 );
@@ -169,6 +172,8 @@ function renderPage(activePage: PageId, adoptionVisible: boolean): React.ReactNo
       return <ImageCleanerLazy />;
     case 'container-execs':
       return <ContainerExecsLazy />;
+    case 'compute-placement':
+      return <ComputePlacementLazy />;
     case 'cs-template-replacement':
       return <CSTemplateReplacementLazy />;
     case 'plugins-installed':

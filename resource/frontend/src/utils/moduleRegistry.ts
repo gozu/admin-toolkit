@@ -126,6 +126,9 @@ export const MODULES: readonly ModuleDefinition[] = [
 
   // AI COMPUTE
   { id: 'container-execs', label: 'Container Execs', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['container', 'execution', 'kubernetes', 'k8s', 'compute', 'gpu', 'project', 'recipe', 'webapp'], streamEndpoint: '/api/container-execs/stream', tool: true, availability: 'container-exec', lifecycle: { fields: ['containerExecsLoading'] } },
+  // On-demand full inventory (one settings fetch per recipe/webapp/ML task): noLoadGlyph keeps
+  // it out of the boot ritual; it loads on first visit like App Instances.
+  { id: 'compute-placement', label: 'Compute Placement', navLabel: 'Placement', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['compute', 'placement', 'local', 'container', 'containerized', 'kubernetes', 'k8s', 'cluster', 'migrate', 'migration', 'recipe', 'webapp', 'notebook', 'ml task', 'spark', 'owner', 'email'], streamEndpoint: '/api/compute-placement/stream', tool: true, availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['computePlacementLoading'] } },
   { id: 'image-cleaner', label: 'Docker Images', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['ecr', 'acr', 'gar', 'docker', 'image', 'container', 'cleanup', 'aws', 'azure', 'gcp', 'registry'], tool: true, availability: 'container-registry', lifecycle: { fields: ['imageCleanerLoading'] } },
   { id: 'cs-template-replacement', label: 'Replace CS Template', navLabel: 'CS Templates', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['code', 'studio', 'template', 'replace', 'migrate', 'cs'], tool: true, availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['csTemplateReplacementLoading'] } },
   { id: 'llm-audit', label: 'Model Audit', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['llm', 'model', 'audit', 'pricing'], availability: 'llm', lifecycle: { fields: ['llmAuditLoading'] } },
@@ -162,7 +165,7 @@ export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'USERS', items: ['users', 'adoption', 'user-churn'] },   // 'adoption' restored from ['users']
   { title: 'PLUGINS', items: ['plugins-installed', 'plugins'] },
   { title: 'CODE ENVS', items: ['code-envs', 'code-envs-cleaner', 'code-envs-comparison', 'code-envs-broken'] },
-  { title: 'AI COMPUTE', items: ['container-execs', 'image-cleaner', 'cs-template-replacement', 'llm-audit', 'k8s-insights'] },
+  { title: 'AI COMPUTE', items: ['container-execs', 'compute-placement', 'image-cleaner', 'cs-template-replacement', 'llm-audit', 'k8s-insights'] },
   { title: 'MISC', items: ['settings', 'logs', 'sanity-check', 'db-health', 'report', 'feedback'] },
 ] as const;
 

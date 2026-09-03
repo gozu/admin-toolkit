@@ -7,6 +7,7 @@ export * from './codeEnvs';
 export * from './comparison';
 export * from './connections';
 export * from './containerExecs';
+export * from './computePlacement';
 export * from './core';
 export * from './email';
 export * from './health';

@@ -207,6 +207,14 @@ const icons: Record<string, ReactNode> = {
       <line x1="12" y1="22.08" x2="12" y2="12" />
     </svg>
   ),
+  'compute-placement': (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="5" width="7" height="6" rx="1" />
+      <rect x="14" y="5" width="7" height="6" rx="1" />
+      <rect x="8.5" y="15" width="7" height="6" rx="1" />
+      <path d="M6.5 11v2.5h11V11M12 13.5V15" />
+    </svg>
+  ),
   'container-execs': (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="4" width="18" height="14" rx="2" />

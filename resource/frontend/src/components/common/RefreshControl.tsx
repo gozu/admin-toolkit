@@ -33,10 +33,18 @@ export function RefreshControl({
         type="button"
         onClick={onRefresh}
         disabled={busy || disabled}
+        aria-busy={busy}
         title={title}
-        className="rounded px-2 py-1 text-[var(--text-secondary)] hover:bg-[var(--bg-glass-hover)] hover:text-[var(--text-primary)] disabled:opacity-50"
+        className="refresh-control inline-flex items-center gap-1.5 rounded px-2 py-1 text-[var(--text-secondary)] hover:bg-[var(--bg-glass-hover)] hover:text-[var(--text-primary)] disabled:opacity-50"
       >
-        {busy ? 'Refreshing…' : label}
+        <svg aria-hidden="true" className="refresh-control-icon h-3.5 w-3.5 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M13 6a5.2 5.2 0 1 0 .1 3.6M13 2.5V6H9.5" />
+        </svg>
+        <span className="inline-grid text-left">
+          {/* Both labels size the same grid cell so adjacent controls stay put. */}
+          <span className="col-start-1 row-start-1" style={{ visibility: busy ? 'hidden' : 'visible' }} aria-hidden={busy}>{label}</span>
+          <span className="col-start-1 row-start-1" style={{ visibility: busy ? 'visible' : 'hidden' }} aria-hidden={!busy}>Refreshing…</span>
+        </span>
       </button>
     </span>
   );

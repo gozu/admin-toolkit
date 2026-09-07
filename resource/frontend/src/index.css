@@ -3,6 +3,37 @@
 
 @import "tailwindcss";
 
+/* Small, local feedback for repeated filtering and refresh actions. */
+.adk-select__dropdown-indicator {
+  transition: transform 180ms var(--ease-out);
+}
+.adk-select__control--menu-is-open .adk-select__dropdown-indicator {
+  transform: rotate(180deg);
+}
+.refresh-control[aria-busy='true'] {
+  color: var(--warning);
+  opacity: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .filter-option-check path { animation: filter-check-draw 180ms ease-out both; }
+  .adk-select__multi-value { animation: filter-chip-settle 220ms var(--ease-out) both; }
+  .refresh-control[aria-busy='true'] .refresh-control-icon {
+    animation: spin 900ms linear infinite;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .adk-select__dropdown-indicator { transition: none; }
+}
+@keyframes filter-check-draw {
+  from { stroke-dasharray: 1; stroke-dashoffset: 1; }
+  to { stroke-dasharray: 1; stroke-dashoffset: 0; }
+}
+@keyframes filter-chip-settle {
+  from { opacity: 0; transform: translateY(3px) scale(0.92); }
+  65% { opacity: 1; transform: translateY(0) scale(1.025); }
+  to { opacity: 1; transform: none; }
+}
+
 /* Söhne Mono — commercial mono for numbers/tags/notes. Drop the woff2 into
    resource/frontend/public/fonts/ and uncomment `src` to activate. Until then
    the --font-mono stack falls through to JetBrains Mono (visible behaviour

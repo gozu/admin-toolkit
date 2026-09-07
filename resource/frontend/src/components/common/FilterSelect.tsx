@@ -1,7 +1,21 @@
 /* eslint-disable react-refresh/only-export-components -- shared filter component + theme constant live together by design */
-import Select, { type MultiValue, type Props as SelectProps } from 'react-select';
+import Select, { components, type MultiValue, type OptionProps, type Props as SelectProps } from 'react-select';
 
 export type SelectOption = { value: string; label: string };
+
+function FilterOption(props: OptionProps<SelectOption, true>) {
+  return (
+    <components.Option {...props}>
+      <span className="flex items-center gap-2">
+        <svg aria-hidden="true" className="filter-option-check h-3.5 w-3.5 shrink-0" viewBox="0 0 16 16" fill="none">
+          <rect x="1.5" y="1.5" width="13" height="13" rx="3" stroke="currentColor" opacity={props.isSelected ? 0.6 : 0.25} />
+          {props.isSelected && <path d="m4.5 8 2.3 2.3 4.7-4.7" pathLength="1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />}
+        </svg>
+        <span className="min-w-0">{props.children}</span>
+      </span>
+    </components.Option>
+  );
+}
 
 // react-select theming to match the admin-toolkit dark surface — unstyled + Tailwind classNames.
 export const filterSelectClassNames: SelectProps<SelectOption, true>['classNames'] = {
@@ -56,6 +70,7 @@ export function FilterField({
     <label className="flex flex-col gap-1">
       <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">{label}</span>
       <Select
+        components={{ Option: FilterOption }}
         isMulti
         unstyled
         // Stable class hook for the menu entrance animation (.adk-select__menu).

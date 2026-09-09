@@ -3,7 +3,7 @@
 # secure-push.sh — Dual-LLM pre-push security gate.
 #
 # Reviews the diff about to be pushed with TWO independent reviewers
-# (Claude Opus + OpenAI Codex, both at highest reasoning), looking for
+# (Claude Opus + OpenAI Codex, both at high reasoning), looking for
 # prompt-injection / hidden-instruction payloads, malicious/backdoored code,
 # leaked secrets, and general security vulnerabilities.
 #
@@ -20,8 +20,11 @@
 #   ./scripts/secure-push.sh --hook ... # invoked by the git pre-push hook
 #
 # Env overrides:
-#   SECURE_PUSH_CLAUDE_MODEL     (default: opus)
-#   SECURE_PUSH_CODEX_REASONING  (default: xhigh; falls back to high)
+#   SECURE_PUSH_CLAUDE_MODEL     (default: opus = latest Opus alias)
+#   SECURE_PUSH_CLAUDE_EFFORT    (default: high)
+#   SECURE_PUSH_CODEX_MODEL      (default: gpt-6-astra; pinned, not inherited
+#                                 from ~/.codex/config.toml)
+#   SECURE_PUSH_CODEX_REASONING  (default: high; xhigh falls back to high)
 #   SECURE_PUSH_TIMEOUT          (per-reviewer seconds, default: 900)
 #   SECURE_PUSH_MAX_PAYLOAD_BYTES(total payload cap, default: 950000; < Codex 1MB)
 #
@@ -31,7 +34,9 @@ set -uo pipefail
 # Config
 # ---------------------------------------------------------------------------
 CLAUDE_MODEL="${SECURE_PUSH_CLAUDE_MODEL:-opus}"
-CODEX_REASONING="${SECURE_PUSH_CODEX_REASONING:-xhigh}"
+CLAUDE_EFFORT="${SECURE_PUSH_CLAUDE_EFFORT:-high}"
+CODEX_MODEL="${SECURE_PUSH_CODEX_MODEL:-gpt-6-astra}"
+CODEX_REASONING="${SECURE_PUSH_CODEX_REASONING:-high}"
 REVIEW_TIMEOUT="${SECURE_PUSH_TIMEOUT:-900}"
 # Kept below Codex's hard input limit (1,048,576 chars). A diff larger than this
 # trips truncation, which fails closed (split the push or raise consciously).
@@ -335,7 +340,7 @@ run_claude() {
   # Run from the isolated cwd with ALL file/exec/network tools denied, so the
   # untrusted payload cannot drive Claude into reading local secrets.
   ( cd "$ISO" && timeout "$REVIEW_TIMEOUT" claude -p "$INSTRUCTION" \
-      --model "$CLAUDE_MODEL" --output-format json --permission-mode plan \
+      --model "$CLAUDE_MODEL" --effort "$CLAUDE_EFFORT" --output-format json --permission-mode plan \
       --disallowedTools "Read Edit Write MultiEdit Bash Glob Grep WebFetch WebSearch NotebookEdit Task" \
       --append-system-prompt "Your entire response MUST be exactly one JSON object and nothing else: no preamble, no explanation, no markdown code fences. Do not use any tools; analyze only the text provided." \
       < "$WORK/payload.txt" > "$WORK/claude.raw.json" 2> "$WORK/claude.err" ) || rc=$?
@@ -360,7 +365,7 @@ run_codex() {
   # (empty) workspace — OS-level defense-in-depth over the model's own refusal.
   timeout "$REVIEW_TIMEOUT" codex exec "$INSTRUCTION" \
       -C "$ISO" --skip-git-repo-check --ephemeral \
-      -s read-only -c 'sandbox_permissions=[]' -c model_reasoning_effort="$effort" \
+      -m "$CODEX_MODEL" -s read-only -c 'sandbox_permissions=[]' -c model_reasoning_effort="$effort" \
       --output-schema "$SCHEMA" -o "$WORK/codex.json" \
       < "$WORK/payload.txt" > "$WORK/codex.out" 2> "$WORK/codex.err" || rc=$?
   # Fall back from xhigh -> high if the model rejected the reasoning level.
@@ -368,7 +373,7 @@ run_codex() {
     rc=0
     timeout "$REVIEW_TIMEOUT" codex exec "$INSTRUCTION" \
         -C "$ISO" --skip-git-repo-check --ephemeral \
-        -s read-only -c 'sandbox_permissions=[]' -c model_reasoning_effort="high" \
+        -m "$CODEX_MODEL" -s read-only -c 'sandbox_permissions=[]' -c model_reasoning_effort="high" \
         --output-schema "$SCHEMA" -o "$WORK/codex.json" \
         < "$WORK/payload.txt" > "$WORK/codex.out" 2>> "$WORK/codex.err" || rc=$?
   fi
@@ -380,7 +385,7 @@ run_codex() {
   fi
 }
 
-echo "secure-push: reviewing $(wc -l < "$WORK/files.txt" | tr -d ' ') changed file(s) with Claude ($CLAUDE_MODEL) + Codex (reasoning=$CODEX_REASONING)…" >&2
+echo "secure-push: reviewing $(wc -l < "$WORK/files.txt" | tr -d ' ') changed file(s) with Claude ($CLAUDE_MODEL, effort=$CLAUDE_EFFORT) + Codex ($CODEX_MODEL, reasoning=$CODEX_REASONING)…" >&2
 run_claude & cl_pid=$!
 run_codex  & cx_pid=$!
 wait "$cl_pid"

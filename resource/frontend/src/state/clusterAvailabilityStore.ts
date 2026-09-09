@@ -1,5 +1,6 @@
+import { subscribeSessionEpoch } from './sessionCache';
 import { fetchJson } from '../utils/api';
-import { createSyncStore } from './createSyncStore';
+import { createSyncStore, sessionWriter } from './createSyncStore';
 
 // Cheap K8s presence signal for module availability gating (API mode only —
 // zip mode gates on parsedData.clusters instead). Loaded once per session via
@@ -21,19 +22,22 @@ let _inflight: Promise<void> | null = null;
 export function loadClusterCount(): Promise<void> {
   if (clusterAvailabilityStore.get().loaded) return Promise.resolve();
   if (_inflight) return _inflight;
+  const write = sessionWriter(clusterAvailabilityStore);
   _inflight = (async () => {
     try {
       const data = await fetchJson<{ count: number | null }>('/api/k8s-insights/cluster-count');
-      clusterAvailabilityStore.patch({
+      write.patch({
         count: typeof data.count === 'number' ? data.count : null,
         loaded: true,
       });
     } catch {
       // Unknown — availability gating treats null as "keep visible".
-      clusterAvailabilityStore.patch({ count: null, loaded: true });
+      write.patch({ count: null, loaded: true });
     } finally {
-      _inflight = null;
+      if (write.current()) _inflight = null;
     }
   })();
   return _inflight;
 }
+
+subscribeSessionEpoch(() => { _inflight = null; });

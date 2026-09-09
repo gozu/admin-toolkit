@@ -19,10 +19,11 @@ ScanTimeout carrying live progress — the backend coalesces in-flight scans, so
 """
 
 import time
+from urllib.parse import urlsplit
 
 import requests
 
-from .errors import (BackendError, MacroProjectMissing, RedLocked,
+from .errors import (BackendAuthenticationError, BackendError, MacroProjectMissing, RedLocked,
                      RemoteKeysLocked, ScanTimeout, UnknownHost, UnreachableHost)
 
 _HOSTS_CACHE_TTL_S = 60
@@ -38,19 +39,73 @@ class ToolkitClient:
                 remediation='Set "Backend base URL" in the Admin Toolkit Agents plugin '
                             'settings (or install the Admin Toolkit webapp so it can be discovered).')
         self.session = requests.Session()
+        self.session.verify = settings.get('verify_tls', True)
+        self._authenticate_backend()
         # Fresh connection per call. Agent turns idle 10-60s between tool calls
         # and the backend restarts on every plugin deploy, so pooled keep-alive
         # sockets go stale and the next call dies with an instant ConnectionError
         # (→ host-unreachable). A new connection costs ~ms against multi-second
         # backend queries — a trade we always want here.
         self.session.headers['Connection'] = 'close'
-        self.session.verify = settings.get('verify_tls', True)
         self.timeout = settings.get('http_timeout_s', 30)
         self.heavy_timeout = settings.get('heavy_timeout_s', 900)
         self._hosts_cache = None
         self._hosts_cache_ts = 0.0
         self._red_unlocked = False
         self._keys_unlocked = False
+
+    def _authenticate_backend(self):
+        """Use DSS's backend client for its run-as ticket and reachable URL.
+
+        Keep our own session: unlock cookies and connection settings must not
+        mutate the DSS API client's shared session. Non-DSS URLs still support
+        standalone test/CLI backends without the in-DSS Python package.
+        """
+        target = urlsplit(self.base_url)
+        prefix, marker, tail = target.path.rpartition('/web-apps-backends/')
+        parts = tail.split('/')
+        if not marker or len(parts) != 2 or not all(parts):
+            return
+        try:
+            import dataiku
+        except ImportError:
+            return
+        try:
+            client = dataiku.api_client()
+            backend = client.get_project(parts[0]).get_webapp(parts[1]).get_backend_client()
+            # A copied plugin setting must never silently select a same-named
+            # webapp on another instance or send this instance's ticket there.
+            def location(url):
+                parsed = urlsplit(url)
+                return (parsed.scheme, parsed.hostname,
+                        parsed.port or (443 if parsed.scheme == 'https' else 80),
+                        parsed.path.rstrip('/'))
+
+            configured_location = location('%s://%s%s' % (target.scheme, target.netloc, prefix))
+            sdk_base = backend.base_url.rstrip('/')
+            sdk_origin = sdk_base.rpartition('/web-apps-backends/')[0]
+            trusted = {location(client.host), location(sdk_origin)}
+            if configured_location not in trusted:
+                external = client.get_general_settings().get_raw().get('studioExternalUrl')
+                if external:
+                    trusted.add(location(external))
+            if configured_location not in trusted:
+                raise BackendAuthenticationError(
+                    'The configured toolkit backend does not match this DSS instance.',
+                    remediation='Set Backend base URL to this instance\'s toolkit webapp; '
+                                'use host ids to select remote instances.')
+            self.base_url = sdk_base
+            self.session.auth = backend.session.auth
+            self.session.headers.update(backend.session.headers)
+            self.session.cert = backend.session.cert
+            if self.settings.get('verify_tls', True):
+                self.session.verify = backend.session.verify
+        except BackendAuthenticationError:
+            raise
+        except Exception as exc:
+            # SDK errors can contain credentials/URLs; expose only the type.
+            raise BackendAuthenticationError(
+                'Could not initialize DSS-authenticated toolkit access (%s).' % type(exc).__name__) from None
 
     # ── hosts ────────────────────────────────────────────────────────────────
     def list_hosts(self, force=False):
@@ -142,6 +197,7 @@ class ToolkitClient:
             try:
                 return self.session.request(
                     method, url, params=params, json=json, stream=stream,
+                    allow_redirects=False,
                     headers=self._headers(host, extra_headers), timeout=timeout or self.timeout)
             # ConnectTimeout subclasses BOTH Timeout and ConnectionError — this
             # clause MUST stay first so a connect timeout is never sleep-retried.
@@ -188,6 +244,8 @@ class ToolkitClient:
                         progress=self._fetch_progress(progress_path, eff_host))
                 raise UnreachableHost('Timed out after %ss calling %s.' % (timeout, path))
 
+            if 300 <= resp.status_code < 400:
+                raise BackendAuthenticationError('Toolkit endpoint %s redirected the request.' % path)
             if resp.status_code < 400:
                 return self._parse_json(resp, path)
 
@@ -205,6 +263,8 @@ class ToolkitClient:
                                retried_red=retried_red, retried_keys=retried_keys)
 
     def _raise_for_status(self, resp, path, host):
+        if 300 <= resp.status_code < 400:
+            raise BackendAuthenticationError('Toolkit endpoint %s redirected the request.' % path)
         if resp.status_code >= 400:
             code, body = self._error_body(resp)
             self._raise_mapped(resp.status_code, code, body, path, host, red=False,
@@ -212,6 +272,10 @@ class ToolkitClient:
 
     def _raise_mapped(self, status, code, body, path, host, red, retried_red, retried_keys):
         message = (body or {}).get('message') or (body or {}).get('detail') or ''
+        if status == 401:
+            raise BackendAuthenticationError(
+                'HTTP 401 calling toolkit endpoint %s. Authentication was rejected; '
+                'this response does not establish that the target instance API key expired.' % path)
         if status == 403:
             raise RedLocked('Advanced Actions stayed locked after unlocking (%s). The configured '
                             'password may have been rotated.' % (message or 'HTTP 403'))
@@ -228,7 +292,7 @@ class ToolkitClient:
     def _error_body(self, resp):
         try:
             body = resp.json()
-            return (body.get('error') if isinstance(body, dict) else None), body
+            return (body.get('error'), body) if isinstance(body, dict) else (None, None)
         except ValueError:
             return None, None
 

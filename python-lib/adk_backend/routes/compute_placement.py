@@ -26,6 +26,8 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from flask import Blueprint, g, jsonify, request
 
+from adk_backend.utils import background_scan, _is_background_scan
+
 from adk_backend.caching import (
     _CACHE,
     _CACHE_INFLIGHT,
@@ -692,6 +694,7 @@ def _apply_op(client: Any, operation: Dict[str, Any], target_config: str, browse
 # ── routes ───────────────────────────────────────────────────────────────────
 
 @bp.route('/api/compute-placement')
+@background_scan
 def api_compute_placement():
     client = g.client
     project_filter = _project_filter_from_arg(request.args.get('projectKeys', ''))
@@ -747,7 +750,9 @@ def api_compute_placement_stream():
 
         events_q: "queue.Queue[Dict[str, Any]]" = queue.Queue()
 
+        background = _is_background_scan()
         def worker() -> None:
+            _THREAD_LOCAL.background_scan = background
             previous = getattr(_THREAD_LOCAL, 'host_id', None)
             _THREAD_LOCAL.host_id = request_host_id
             failure: Optional[BaseException] = None

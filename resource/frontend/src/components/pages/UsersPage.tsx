@@ -5,6 +5,11 @@ import { ProgressIndicator } from '../common/ProgressIndicator';
 import { UsersTable } from '../users/UsersTable';
 import { buildUserMatrixContext } from '../../utils/userMatrix';
 import { resolveLifecycleById } from '../../utils/pageLifecycle';
+import {
+  matchesUserLicense,
+  USER_LICENSE_FILTERS,
+  type UserLicenseFilter,
+} from '../../utils/userLicenses';
 
 export function UsersPage() {
   const { state, setFocusedUserFilter } = useDiag();
@@ -15,6 +20,7 @@ export function UsersPage() {
   const [search, setSearch] = useState(focusedUserFilter?.login ?? '');
   const [onlyWithIssues, setOnlyWithIssues] = useState(false);
   const [hideZeroColumns, setHideZeroColumns] = useState(false);
+  const [licenseFilter, setLicenseFilter] = useState<UserLicenseFilter>('all');
 
   // Reflect a prefilter that arrives *after* mount by adjusting state during
   // render (React's supported pattern) rather than via a setState-in-effect.
@@ -33,13 +39,20 @@ export function UsersPage() {
     if (focusedUserFilter) setFocusedUserFilter(null);
   }, [focusedUserFilter, setFocusedUserFilter]);
 
-  const users = parsedData.users || [];
+  const users = useMemo(() => parsedData.users || [], [parsedData.users]);
+  const licenseOptions = useMemo(
+    () =>
+      USER_LICENSE_FILTERS.map((option) => ({
+        ...option,
+        count: users.filter((user) => matchesUserLicense(user.userProfile, option.value)).length,
+      })),
+    [users],
+  );
   // Composite lifecycle: this page joins user × projectFootprint × codeEnvs ×
   // llmAudit. The inline progress and the sidebar glyph must read the same
   // aggregate so they can never disagree.
   const pageLifecycle = resolveLifecycleById('users', parsedData);
-  const isLoading =
-    pageLifecycle.phase === 'running' || pageLifecycle.phase === 'queued';
+  const isLoading = pageLifecycle.phase === 'running' || pageLifecycle.phase === 'queued';
 
   const ctx = useMemo(
     () =>
@@ -72,6 +85,19 @@ export function UsersPage() {
               placeholder="Filter login, name or email…"
               className="flex-1 min-w-[200px] max-w-[360px] px-3 py-1.5 text-sm rounded-md bg-[var(--bg-glass)] border border-[var(--border-default)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--neon-cyan)]"
             />
+            <select
+              aria-label="License type"
+              value={licenseFilter}
+              onChange={(e) => setLicenseFilter(e.target.value as UserLicenseFilter)}
+              title="Assigned license profiles, including disabled users. Designer / builder includes Data Analyst and Data Designer; full access includes Full Designer, Designer and Data Scientist."
+              className="w-[280px] px-3 py-1.5 text-sm rounded-md bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--neon-cyan)]"
+            >
+              {licenseOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label} ({option.count})
+                </option>
+              ))}
+            </select>
             <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)] cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -80,9 +106,7 @@ export function UsersPage() {
                 className="cursor-pointer"
               />
               Only users with issues
-              <span className="text-[var(--text-muted)] text-xs">
-                ({ctx.flaggedUsers.size})
-              </span>
+              <span className="text-[var(--text-muted)] text-xs">({ctx.flaggedUsers.size})</span>
             </label>
             <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)] cursor-pointer select-none">
               <input
@@ -98,10 +122,8 @@ export function UsersPage() {
             </span>
           </div>
 
-          {isLoading && (
-            <div className="mt-3">
-              <ProgressIndicator lifecycle={pageLifecycle} compact />
-            </div>
+          {(isLoading || pageLifecycle.phase === 'done') && (
+            <ProgressIndicator lifecycle={pageLifecycle} compact hideWhenDone className="mt-3" />
           )}
         </div>
 
@@ -111,6 +133,7 @@ export function UsersPage() {
           search={search}
           onlyWithIssues={onlyWithIssues}
           hideZeroColumns={hideZeroColumns}
+          licenseFilter={licenseFilter}
         />
       </div>
     </div>

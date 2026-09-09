@@ -1,5 +1,6 @@
+import { subscribeSessionEpoch } from './sessionCache';
 import { fetchJson } from '../utils/api';
-import { createSyncStore } from './createSyncStore';
+import { createSyncStore, sessionWriter } from './createSyncStore';
 import type { K8sClusterHealthResult } from '../types';
 
 interface K8sClusterHealthState {
@@ -18,19 +19,20 @@ async function load(force = false): Promise<void> {
   const cur = store.get();
   if (!force && (cur.data || cur.loading)) return;
   if (inflight) return inflight;
+  const write = sessionWriter(store);
   store.patch({ loading: true, error: null });
   inflight = (async () => {
     try {
       const result = await fetchJson<K8sClusterHealthResult>('/api/k8s-insights/clusters/health');
-      store.set({ data: result, loading: false, error: null });
+      write.set({ data: result, loading: false, error: null });
     } catch (err) {
-      store.set({
+      write.set({
         data: null,
         loading: false,
         error: err instanceof Error ? err.message : String(err),
       });
     } finally {
-      inflight = null;
+      if (write.current()) inflight = null;
     }
   })();
   return inflight;
@@ -41,3 +43,5 @@ export const k8sClusterHealthStore = {
   load,
   refresh: () => load(true),
 };
+
+subscribeSessionEpoch(() => { inflight = null; });

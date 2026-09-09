@@ -54,7 +54,7 @@ function firstLine(text: string): string {
 }
 
 export function CodeEnvsBrokenPage() {
-  const { data, loading, error, scanStarted, scanPhase, scanMessage, finishedAt } =
+  const { data, loading, error, scanPhase, scanMessage, finishedAt } =
     codeEnvBrokenScan.use();
   const advice = codeEnvAdviceStore.use();
   const { llms, loading: llmsLoading, loaded: llmsLoaded } = reportLlmsStore.use();
@@ -64,9 +64,6 @@ export function CodeEnvsBrokenPage() {
   const [adviceRow, setAdviceRow] = useState<BrokenEnvRow | null>(null);
   const [showIndeterminate, setShowIndeterminate] = useState(false);
 
-  useEffect(() => {
-    if (!scanStarted) void codeEnvBrokenScan.load();
-  }, [scanStarted]);
 
   useEffect(() => {
     void reportLlmsStore.load();
@@ -295,11 +292,8 @@ export function CodeEnvsBrokenPage() {
           </div>
         </div>
 
-        {loading && (
-          <div>
-            <ProgressIndicator lifecycle={lifecycle} />
-            <div className="mt-1 font-mono text-xs text-[var(--text-muted)]">{scanMessage}</div>
-          </div>
+        {(loading || lifecycle.phase === 'done') && (
+          <ProgressIndicator lifecycle={lifecycle} message={loading ? scanMessage : undefined} hideWhenDone />
         )}
 
         {complete && data && (

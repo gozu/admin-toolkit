@@ -2,6 +2,7 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Roboto:wght@400..700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&display=swap');
 
 @import "tailwindcss";
+@import "./fx/interactionMotion.css";
 
 /* Small, local feedback for repeated filtering and refresh actions. */
 .adk-select__dropdown-indicator {

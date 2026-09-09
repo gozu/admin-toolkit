@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { scenariosScan } from '../../state/scenariosStore';
 import { ProgressIndicator } from '../common/ProgressIndicator';
 import { dssUrls } from '../../utils/codeEnvUsageLinks';
@@ -92,7 +92,7 @@ function fmtDuration(ms: number | null): string {
 }
 
 export function ScenariosPage() {
-  const { data, loading, error, scanStarted, scanPhase, scanMessage, startedAt, finishedAt } =
+  const { data, loading, error, scanPhase, scanMessage, startedAt, finishedAt } =
     scenariosScan.use();
 
   // Preserve the diag-parser page's initial "Active" view: an explicit selected
@@ -102,9 +102,6 @@ export function ScenariosPage() {
   );
   const [range, setRange] = useState<RangeKey>('month');
 
-  useEffect(() => {
-    if (!scanStarted) void scenariosScan.load();
-  }, [scanStarted]);
 
   const lifecycle = scenariosScan.lifecycle();
   const complete = scanPhase === 'complete' && !!data;
@@ -221,11 +218,8 @@ export function ScenariosPage() {
           </div>
         </div>
 
-        {loading && (
-          <div>
-            <ProgressIndicator lifecycle={lifecycle} />
-            <div className="mt-1 font-mono text-xs text-[var(--text-muted)]">{scanMessage}</div>
-          </div>
+        {(loading || lifecycle.phase === 'done') && (
+          <ProgressIndicator lifecycle={lifecycle} message={loading ? scanMessage : undefined} hideWhenDone />
         )}
 
         {data && allScenarios.length > 0 && (

@@ -12,7 +12,7 @@ streaming anything.
 What stays identical to the kernel path (parity by construction):
   • tools, actuator protocol, gates, tuning overrides, prompts — all assembled
     by atk_agent_common/generalist.py and executed through the same
-    ToolkitClient HTTP surface (self-calls onto this very backend), so every
+    ToolkitClient interface (native dispatches through this Flask app), so every
     server-side safety layer (action gates, master kill-switch, HMAC confirm
     tokens, audit rows, secret redaction) applies untouched;
   • the LLM comes from the same resolution chain (Agent Tuning override >
@@ -43,7 +43,6 @@ import time
 from dataikuapi.dss.llm_tracing import new_trace
 
 from atk_agent_common import agent_runtime, config as atk_config, generalist, native_loop
-from atk_agent_common.adapter import build_client
 from atk_agent_common.errors import ToolkitError
 from db_adapter import _get_plugin_config
 
@@ -54,7 +53,7 @@ VIRTUAL_AGENT_NAME = 'ATK Admin Agent'
 AGENTS_PROJECT_KEY = 'ADMINTOOLKIT'
 
 # ── setup-bundle cache ───────────────────────────────────────────────────────
-# Per-turn assembly costs a handful of self-HTTP/DSS reads (plugin config,
+# Per-turn assembly costs a handful of toolkit/DSS reads (plugin config,
 # action gates, tuning prompts, agent instance). Within a short window none of
 # those can change unobserved — gates are re-enforced server-side at plan AND
 # execute, tuning prompts carry their own 60s cache — so follow-up turns reuse
@@ -66,6 +65,15 @@ _BUNDLE_TTL_S = 20.0
 _BUNDLE_MAX = 16
 _bundle_lock = threading.Lock()
 _bundle_cache = {}  # agent_id -> (monotonic deadline, bundle dict)
+
+
+def build_client(plugin_config):
+    from flask import current_app
+    from adk_backend.native_toolkit_client import NativeToolkitClient
+    # Native tools always use this webapp; no discovery or external URL is
+    # needed. Remote tool host ids still go through its normal host registry.
+    settings = atk_config.resolve(dict(plugin_config, backend_url='https://toolkit.internal'))
+    return NativeToolkitClient(settings, current_app._get_current_object())
 
 
 def clear_bundle_cache():

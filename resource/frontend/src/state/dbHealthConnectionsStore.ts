@@ -1,4 +1,5 @@
-import { createSyncStore } from './createSyncStore';
+import { getSessionEpoch, subscribeSessionEpoch } from './sessionCache';
+import { createSyncStore, sessionWriter } from './createSyncStore';
 import { fetchJson } from '../utils/api';
 
 export interface PgConnection {
@@ -110,35 +111,39 @@ function patchDetail(connection: string, patch: Partial<DetailSlot>): void {
 }
 
 async function fetchConnectionsOnce(): Promise<void> {
-  store.patch({ loading: true, error: null });
+  const write = sessionWriter(store);
+  write.patch({ loading: true, error: null });
   try {
     const data = await fetchJson<{ connections: PgConnection[]; configuredConnection?: string }>(
       '/api/tools/db-health/connections',
     );
-    store.patch({
+    write.patch({
       connections: data.connections || [],
       configuredConnection: data.configuredConnection ?? null,
       loaded: true,
     });
   } catch (err) {
-    store.patch({
+    write.patch({
       error: err instanceof Error ? err.message : String(err),
       loaded: true,
     });
   } finally {
-    store.patch({ loading: false });
+    write.patch({ loading: false });
   }
 }
 
 async function fetchDetailsOnce(connection: string): Promise<void> {
+  const write = sessionWriter(store);
+  const patch = (value: Partial<DetailSlot>) => { if (write.current()) patchDetail(connection, value); };
   const q = encodeURIComponent(connection);
-  patchDetail(connection, {
+  patch({
     loading: true,
     error: null,
     warnings: [],
   });
   try {
     const overview = await fetchJson<DbOverview>(`/api/tools/db-health/overview?connection=${q}`);
+    if (!write.current()) return;
     const [tablesResponse, perProject] = await Promise.all([
       fetchJson<{ tables: TableInfo[]; warnings?: string[] }>(
         `/api/tools/db-health/tables?connection=${q}`,
@@ -151,7 +156,7 @@ async function fetchDetailsOnce(connection: string): Promise<void> {
       ...(tablesResponse.warnings || []),
       ...(perProject.warnings || []),
     ];
-    patchDetail(connection, {
+    patch({
       overview,
       tables,
       perProject,
@@ -159,12 +164,12 @@ async function fetchDetailsOnce(connection: string): Promise<void> {
       loaded: true,
     });
   } catch (err) {
-    patchDetail(connection, {
+    patch({
       error: err instanceof Error ? err.message : String(err),
       loaded: true,
     });
   } finally {
-    patchDetail(connection, { loading: false });
+    patch({ loading: false });
   }
 }
 
@@ -177,8 +182,9 @@ export const dbHealthConnectionsStore = {
   load(): Promise<void> {
     if (connectionsInflight) return connectionsInflight;
     if (store.get().loaded) return Promise.resolve();
+    const epoch = getSessionEpoch();
     connectionsInflight = fetchConnectionsOnce().finally(() => {
-      connectionsInflight = null;
+      if (epoch === getSessionEpoch()) connectionsInflight = null;
     });
     return connectionsInflight;
   },
@@ -188,16 +194,21 @@ export const dbHealthConnectionsStore = {
     if (existing) return existing;
     const slot = store.get().detailsByConnection[connection];
     if (slot?.loaded && !opts.force) return Promise.resolve();
+    const epoch = getSessionEpoch();
     const promise = fetchDetailsOnce(connection).finally(() => {
-      detailInflightByConnection.delete(connection);
+      if (epoch === getSessionEpoch()) detailInflightByConnection.delete(connection);
     });
     detailInflightByConnection.set(connection, promise);
     return promise;
   },
   async loadDefaultConfiguredDetails(): Promise<void> {
+    const epoch = getSessionEpoch();
     await this.load();
+    if (epoch !== getSessionEpoch()) return;
     const { configuredConnection } = store.get();
     if (!configuredConnection) return;
     await this.loadDetails(configuredConnection);
   },
 };
+
+subscribeSessionEpoch(() => { connectionsInflight = null; detailInflightByConnection.clear(); });

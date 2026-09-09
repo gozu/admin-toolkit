@@ -363,7 +363,8 @@ function ReplacementResult({ result }: { result: ContainerExecReplaceResult }) {
 }
 
 export function ContainerExecs() {
-  const { data, loading, progressPct, scanPhase, scanMessage, error, scanStarted } = containerExecsScan.use();
+  const { data, loading, error, scanStarted } = containerExecsScan.use();
+  const lifecycle = containerExecsScan.lifecycle();
   const [sourceConfigRaw, setSourceConfig] = useState('');
   const [targetConfigRaw, setTargetConfig] = useState('');
   const [dryRun, setDryRun] = useState(true);
@@ -596,15 +597,8 @@ export function ContainerExecs() {
         </div>
       )}
 
-      {loading && (
-        <div className="rounded-lg px-4 py-3">
-          <ProgressIndicator
-            active
-            pct={progressPct}
-            message={scanMessage}
-            phase={scanPhase}
-          />
-        </div>
+      {(loading || lifecycle.phase === 'done') && (
+        <ProgressIndicator lifecycle={lifecycle} hideWhenDone className="rounded-lg px-4 py-3" />
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { codeEnvComparisonScan } from '../state/codeEnvComparisonStore';
 import { useTableSort } from '../hooks/useTableSort';
 import { Spinner } from './common/Spinner';
@@ -38,7 +38,7 @@ const SECTION_META: Record<
 };
 
 export function CodeEnvCompareTable() {
-  const { data, loading, error, scanStarted } = codeEnvComparisonScan.use();
+  const { data, loading, error } = codeEnvComparisonScan.use();
   const [expanded, setExpanded] = useState<Record<SectionKey, boolean>>({
     green: true,
     purple: true,
@@ -46,9 +46,6 @@ export function CodeEnvCompareTable() {
     yellow: true,
   });
 
-  useEffect(() => {
-    if (!scanStarted) void codeEnvComparisonScan.load();
-  }, [scanStarted]);
 
   const toggle = (key: SectionKey) => setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
 

@@ -14,6 +14,8 @@ from typing import Any, Dict
 
 from flask import Blueprint, g, jsonify, request
 
+from adk_backend.utils import background_scan
+
 from adk_backend.caching import _CACHE, _CACHE_LOCK, _cache_get, _cache_key
 from adk_backend.context import _THREAD_LOCAL
 from adk_backend.macros import _cru_audit_macro
@@ -34,6 +36,7 @@ def _max_files_arg() -> int:
 
 
 @bp.route('/api/cru')
+@background_scan
 def api_cru():
     client = g.client
     max_files = _max_files_arg()

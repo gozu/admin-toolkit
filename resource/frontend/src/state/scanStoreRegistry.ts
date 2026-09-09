@@ -4,6 +4,7 @@ import type { Lifecycle } from '../types';
 // writes the result to `parsedData[field]` — no branching by kind.
 export interface RegisteredScanStore {
   field: string;
+  load?: (force?: boolean, priority?: number) => Promise<void>;
   subscribe: (listener: () => void) => () => void;
   lifecycle: () => Lifecycle;
   // Optional compact snapshot of the store's ScanState (phase/progress/error/

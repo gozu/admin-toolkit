@@ -3,6 +3,8 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import type { PageId } from '../../types';
 import { Sidebar } from './Sidebar';
 import { Breadcrumb } from './Breadcrumb';
+import { OverallScanIndicator } from '../common/OverallScanIndicator';
+import { SwitchThumb } from '../common/MechanicalControls';
 import { useTheme } from '../../hooks/useTheme';
 import dkulogo from '../../assets/dkulogo.png';
 import { exportAllTablesToZip } from '../../utils/exportTables';
@@ -289,6 +291,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
         className="app-topbar relative flex items-center justify-between px-5 py-1 border-b border-[var(--border-default)] bg-[var(--bg-surface)]">
         <div className="flex items-center gap-3 min-w-0">
           <Breadcrumb />
+          <OverallScanIndicator />
 
           {/* Advanced Actions — switch (Beta). Locked → opens the unlock modal;
               unlocked → toggles visibility of the red/agentic surfaces. */}
@@ -314,13 +317,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
                   : 'bg-[var(--bg-hover)] border-[var(--border-default)]'
               }`}
             >
-              <span
-                className={`absolute top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full transition-all ${
-                  authed && showRed
-                    ? 'left-[13px] bg-white'
-                    : 'left-[2px] bg-[var(--text-tertiary)]'
-                }`}
-              />
+              <span className={authed && showRed ? 'text-white' : 'text-[var(--text-tertiary)]'}><SwitchThumb checked={authed && showRed} /></span>
             </span>
             {!authed && (
               <svg

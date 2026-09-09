@@ -2,9 +2,12 @@
 
 import os
 import time
+import threading
+from contextlib import contextmanager
+from functools import wraps
 from typing import Any, Dict, Optional, Tuple
 
-from flask import Response, stream_with_context
+from flask import Response, stream_with_context, has_request_context, request
 
 from adk_backend.context import _THREAD_LOCAL
 from adk_backend.settings import _BACKEND_SETTINGS
@@ -86,22 +89,67 @@ def _coerce_progress_params(since_raw: Any, rows_since_raw: Any) -> Tuple[int, i
     return since, rows_since
 
 
+_BACKGROUND_SLOTS = {}
+_BACKGROUND_LOCK = threading.Lock()
+
+
+def _is_background_scan() -> bool:
+    return (has_request_context() and request.headers.get('X-Scan-Priority') == 'background') or bool(
+        getattr(_THREAD_LOCAL, 'background_scan', False))
+
+
+@contextmanager
+def _background_budget():
+    """One heavy background scan per host/process, including concurrent tabs.
+
+    Foreground requests keep their existing limits. Entries disappear when the
+    last holder/waiter leaves; a failed scan always returns its slot.
+    """
+    if not _is_background_scan():
+        yield
+        return
+    from adk_backend.caching import _cache_host_id, CacheLoaderTimeout
+    host = _cache_host_id()
+    with _BACKGROUND_LOCK:
+        slot = _BACKGROUND_SLOTS.setdefault(host, [threading.BoundedSemaphore(1), 0])
+        slot[1] += 1
+    acquired = slot[0].acquire(timeout=120)
+    try:
+        if not acquired:
+            raise CacheLoaderTimeout('background scan budget', 120)
+        yield
+    finally:
+        if acquired:
+            slot[0].release()
+        with _BACKGROUND_LOCK:
+            slot[1] -= 1
+            if not slot[1]:
+                _BACKGROUND_SLOTS.pop(host, None)
+
+
+def background_scan(view):
+    @wraps(view)
+    def run(*args, **kwargs):
+        with _background_budget():
+            return view(*args, **kwargs)
+    return run
+
+
 def _sse_response(generate) -> Response:
-    """Standard SSE Response wrapper (mimetype + no-cache/no-buffer headers)."""
-    return Response(stream_with_context(generate()),
-        mimetype='text/event-stream',
-        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
-    )
+    def bounded():
+        with _background_budget():
+            yield from generate()
+    return Response(stream_with_context(bounded()), mimetype='text/event-stream',
+        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 
 def _parallel_workers(default: int = 8) -> int:
-    raw = os.environ.get('DIAG_PARSER_MAX_WORKERS')
-    if raw:
-        try:
-            return max(1, min(_BACKEND_SETTINGS['parallel_workers_max'], int(raw)))
-        except Exception:
-            pass
-    return max(1, min(_BACKEND_SETTINGS['parallel_workers_max'], default))
+    try:
+        requested = int(os.environ.get('DIAG_PARSER_MAX_WORKERS', default))
+    except (TypeError, ValueError):
+        requested = default
+    limit = min(_BACKEND_SETTINGS['parallel_workers_max'], 2) if _is_background_scan() else _BACKEND_SETTINGS['parallel_workers_max']
+    return max(1, min(limit, requested))
 
 
 def _record_benchmark_operation(name: str, elapsed_ms: float, calls: int = 1) -> None:

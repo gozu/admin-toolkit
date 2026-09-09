@@ -31,7 +31,7 @@ export function deriveAnalysisLifecycle(
     case 'running':
       return { ...agg, message: agg.message || 'Analysis in progress' };
     case 'done':
-      return { ...agg, message: agg.message || 'Analysis complete' };
+      return { ...agg, message: 'Core analysis ready' };
     case 'error':
       return { ...agg, error: 'One or more modules failed' };
     case 'queued':

@@ -23,6 +23,8 @@ export interface ColumnDef<R> {
   render: (row: R) => ReactNode;
   /** Presence ⇒ the column is sortable; returns the comparable value. */
   sortValue?: (row: R) => number | string;
+  /** Semantic value for a fresh-data edge highlight. Mono sortable columns opt in automatically. */
+  arrivalValue?: (row: R) => number | string | undefined;
   /** Sort direction applied when this column first becomes the active sort. */
   defaultSortDir?: 'asc' | 'desc';
   /** Text alignment for header + cells. */

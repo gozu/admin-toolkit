@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, g, request
 
+from adk_backend.caching import _cache_get, _cache_peek, _cache_pop
 from adk_backend.clients import ThreadPoolExecutor, _local_toolkit_project
 from adk_backend.code_env_build import (
     _LOG_PREFERENCE,
@@ -78,21 +79,28 @@ def _ceb_inspect_env(client: Any, env_info: Dict[str, Any], size_by_env: Dict[st
         row['errorExcerpt'] = 'No recognised build log (found: %s)' % ', '.join(sorted(log_names))
         return row
 
+    def verdict():
+        block = isolate_last_build(str(env.get_log(log_name) or ''))
+        failure_class, failure_label = classify(block)
+        return {'signature': signature, 'failureClass': failure_class,
+                'failureLabel': failure_label, 'errorExcerpt': extract_error(block) if failure_class else ''}
+
+    signature = json.dumps(log_entries, sort_keys=True, default=str)
+    key = 'code_env_build:%s:%s' % (lang, name)
     try:
-        text = env.get_log(log_name)
+        # Cache compact verdicts, never complete logs; changed build metadata invalidates immediately.
+        cached = _cache_peek(key)
+        if cached and cached.get('signature') != signature:
+            _cache_pop(key)
+        result = _cache_get(key, 600, verdict) if row['lastBuildOn'] else verdict()
     except Exception as exc:
         row['status'] = 'LOG_UNAVAILABLE'
         row['errorExcerpt'] = '%s: %s' % (type(exc).__name__, str(exc)[:200])
         return row
-
     row['logName'] = log_name
-    block = isolate_last_build(str(text or ''))
-    failure_class, failure_label = classify(block)
-    if not failure_class:
+    if not result['failureClass']:
         return row
-
-    row.update(status='FAILED', failureClass=failure_class, failureLabel=failure_label,
-               errorExcerpt=extract_error(block))
+    row.update(status='FAILED', **{k: v for k, v in result.items() if k != 'signature'})
 
     try:
         usages = client._perform_json('GET', '/admin/code-envs/%s/%s/usages' % (lang, name))

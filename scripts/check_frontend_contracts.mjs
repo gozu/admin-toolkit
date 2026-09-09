@@ -157,7 +157,7 @@ for (const forbidden of ['Issues Detected', 'No Issues Detected', 'Customize hea
 const progressToneChecks = [
   ['loading', 'bg-[var(--text-tertiary)]'],
   ['active', 'bg-[var(--neon-yellow)]'],
-  ['ready', 'bg-white'],
+  ['ready', 'bg-[var(--neon-green)]'],
   ['error', 'bg-[var(--neon-red)]'],
 ];
 
@@ -544,16 +544,11 @@ if (!summaryPage.includes('resolveLifecycleFromFields(SCORE_LIFECYCLE_FIELDS')) 
   fail('SummaryPage.tsx must gate the score on resolveLifecycleFromFields(SCORE_LIFECYCLE_FIELDS, ...).');
 }
 
-// C3) Cost/CRU must have an init-time starter outside the Cost page, so the
-//     global aggregate can complete without a visit to the page (Class B fix).
-const costStarterFiles = walkSources('src').filter(
-  (f) => f !== 'src/components/pages/ProjectCostPage.tsx' && /projectCostScan\.load\s*\(/.test(read(f)),
-);
-if (costStarterFiles.length === 0) {
-  fail(
-    'projectCostScan.load() is referenced only in ProjectCostPage.tsx — Cost/CRU needs a deferred init ' +
-      'starter (e.g. useDelayedPageWarmup) so the global aggregate completes without visiting the Cost page.',
-  );
+// C3) Cost participates in the registered queue independently of page visits.
+if (!read('src/utils/moduleRegistry.ts').includes('projectCostLoading: { priority:') ||
+    !read('src/hooks/useDelayedPageWarmup.ts').includes('entry.load(false, policy.priority)') ||
+    !read('src/App.tsx').includes("import './state/projectCostScan'")) {
+  fail('Cost/CRU must register an automatic scan policy and a startup-loaded store.');
 }
 
 // ─────────────────────────────────────────────────────────────────────────

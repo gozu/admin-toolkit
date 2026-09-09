@@ -35,7 +35,6 @@ import {
   runProjects,
 } from './apiLoader/secondary';
 import {
-  autostartDeferredScans,
   computeUsersByProjects,
   emitTimingTable,
 } from './apiLoader/finalize';
@@ -210,15 +209,13 @@ export function useApiDataLoader(enabled: boolean, reloadKey = 0) {
         log(`Phase 3 low-priority endpoints done (${fmtMs(lowStart)})`);
         log(`Phase 3 all endpoints done (${fmtMs(phase3Start)})`);
 
-        // Action pages (db-health / cs-template / plugin-sync / report) are
-        // `noLoadGlyph`: no sidebar glyph, excluded from the global aggregate,
-        // and no startup markDone — their lifecycle field drives only in-page UI.
+        // Manual modules are excluded from core readiness by registry policy.
 
         computeUsersByProjects(ctx, tracker);
         emitTimingTable(ctx);
         log('Live data load completed');
 
-        autostartDeferredScans(ctx, () => void loadDirTreeRootRef.current?.());
+        void loadDirTreeRootRef.current?.();
 
         // Await the slow tails (code-env sizes + connection-health) AFTER
         // kicking off the scans above — those scans depend on neither tail, so

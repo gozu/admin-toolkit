@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { useTableSort } from '../../hooks/useTableSort';
 import { ProgressIndicator } from './ProgressIndicator';
+import { ArrivalCell } from './ArrivalCell';
 import type { ColumnAlign, ColumnDef } from '../../utils/dataGridTypes';
 import type { Lifecycle } from '../../types';
 
@@ -249,8 +250,9 @@ export function DataGrid<R, C = never>({
                     ? col.cellClassName(row)
                     : col.cellClassName;
                 return (
-                  <td
+                  <ArrivalCell
                     key={col.id}
+                    arrivalValue={col.arrivalValue ? col.arrivalValue(row) : col.mono ? col.sortValue?.(row) : undefined}
                     className={cx(
                       alignClass(col.align),
                       col.mono && 'font-mono tabular-nums',
@@ -261,7 +263,7 @@ export function DataGrid<R, C = never>({
                     style={col.sticky ? { left: col.sticky.left } : undefined}
                   >
                     {col.render(row)}
-                  </td>
+                  </ArrivalCell>
                 );
               })}
             </tr>
@@ -283,7 +285,7 @@ export function DataGrid<R, C = never>({
             getRowChildren && renderChild && expandedRowKeys?.has(key)
               ? getRowChildren(row)
               : undefined;
-          if (!children || children.length === 0 || !renderChild) return parentTr;
+          if (!children || children.length === 0 || !renderChild) return <Fragment key={key}>{parentTr}</Fragment>;
           return (
             <Fragment key={key}>
               {parentTr}
@@ -365,10 +367,8 @@ export function DataGrid<R, C = never>({
     );
   }
 
-  const loadingSection = isLoading && lc && (
-    <div className="border-b border-[var(--border-glass)] px-4 py-3">
-      <ProgressIndicator lifecycle={lc} compact={rows.length > 0} />
-    </div>
+  const loadingSection = lc && (isLoading || lc.phase === 'done') && (
+    <ProgressIndicator lifecycle={lc} compact={rows.length > 0} hideWhenDone className="border-b border-[var(--border-glass)] px-4 py-3" />
   );
 
   // No chrome: the parent supplies its own card/header (modals, plain cards).

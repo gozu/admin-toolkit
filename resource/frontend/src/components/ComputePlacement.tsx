@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useDiag } from '../context/DiagContext';
 import { Modal } from './Modal';
@@ -219,7 +219,7 @@ function ownerGroupToRecipient(group: OwnerGroup): OutreachRecipient {
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export function ComputePlacement() {
-  const { data, loading, progressPct, scanPhase, scanMessage, error, scanStarted } = computePlacementScan.use();
+  const { data, loading, progressPct, scanPhase, scanMessage, error } = computePlacementScan.use();
   const { state } = useDiag();
   const { authed: unlocked } = useRedState();
 
@@ -248,9 +248,6 @@ export function ComputePlacement() {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [skippedOwners, setSkippedOwners] = useState<string[]>([]);
 
-  useEffect(() => {
-    if (!scanStarted) void computePlacementScan.load();
-  }, [scanStarted]);
 
   const rows = useMemo(() => data?.rows || [], [data?.rows]);
   const configNames = data?.configNames || [];

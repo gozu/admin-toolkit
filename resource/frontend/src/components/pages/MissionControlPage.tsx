@@ -39,6 +39,7 @@ import {
   UsersTile,
 } from './missionControl/tiles';
 import './missionControl/viz.css';
+import { EstateDiscovery } from './missionControl/EstateDiscovery';
 
 // Mission Control — the entire Admin Toolkit on one zero-scroll wall.
 // 12 cols × 6 rows of named areas; every tile reads data the startup loaders
@@ -183,6 +184,7 @@ export function MissionControlPage() {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col p-3">
+      <EstateDiscovery data={parsedData} />
       {/* NOC backdrop: faint scanlines + vignette, pure CSS, hit-transparent. */}
       <div
         aria-hidden

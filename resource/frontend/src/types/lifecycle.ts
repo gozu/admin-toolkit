@@ -25,7 +25,7 @@ export interface LoadingProgressState {
  * resolvers.
  */
 export type Lifecycle =
-  | { phase: 'queued'; startedAt?: string }
+  | { phase: 'queued'; startedAt?: string; message?: string }
   | {
       phase: 'running';
       startedAt: string;

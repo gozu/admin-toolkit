@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useTableFilter } from '../hooks/useTableFilter';
 import { useCollapsible } from '../hooks/useCollapsible';
 import { RollingNumber } from './common/RollingNumber';
+import { MechanicalChevron } from './common/MechanicalControls';
 
 type CardVariant = 'default' | 'elevated' | 'inset' | 'critical' | 'warning' | 'compact' | 'hero';
 type CardSize = '1x1' | '2x1' | '2x2' | '3x1' | '4x1';
@@ -153,21 +154,7 @@ export function Card({
               )}
             </div>
             {collapsible && (
-              <motion.svg
-                animate={{ rotate: isOpen ? 0 : -90 }}
-                transition={{ duration: 0.2 }}
-                className="w-5 h-5 text-[var(--text-muted)]"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
-                />
-              </motion.svg>
+              <MechanicalChevron expanded={isOpen} className="w-5 h-5 text-[var(--text-muted)]" />
             )}
           </div>
         </div>

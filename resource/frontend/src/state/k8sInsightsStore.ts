@@ -1,3 +1,4 @@
+import { getActiveHostId } from './hostStore';
 import { createModuleScanStore } from './createModuleScanStore';
 import type { K8sInsightsScanResult } from '../types';
 
@@ -12,6 +13,7 @@ let probesSeen = 0;
 let pendingClusterId = '';
 
 export function setK8sScanClusterId(id: string): void {
+  if (pendingClusterId !== id) k8sInsightsScan.abort();
   pendingClusterId = id;
 }
 
@@ -84,3 +86,14 @@ export const k8sInsightsScan = createModuleScanStore<K8sInsightsScanResult, K8sE
     }
   },
 });
+
+const preferenceKey = () => `admin-toolkit:auto-k8s:${getActiveHostId()}`;
+export function getAutomaticK8sCluster(): string {
+  try { return localStorage.getItem(preferenceKey()) || ''; } catch { return ''; }
+}
+export function setAutomaticK8sCluster(clusterId: string): void {
+  try {
+    if (clusterId) localStorage.setItem(preferenceKey(), clusterId);
+    else localStorage.removeItem(preferenceKey());
+  } catch { /* A blocked browser preference store leaves auditing on demand. */ }
+}

@@ -238,13 +238,10 @@ function userK8sGBh(u: CruUserRow): number {
 
 export function ProjectCostPage() {
   const { state } = useDiag();
-  const { data, scanStarted, error } = projectCostScan.use();
+  const { data, error } = projectCostScan.use();
   const [lens, setLens] = useState<CostLens>('mem');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!scanStarted) void projectCostScan.load();
-  }, [scanStarted]);
 
   const lifecycle = resolveLifecycleById('project-cost', state.parsedData);
   const isLoading = lifecycle.phase === 'running' || lifecycle.phase === 'queued';
@@ -527,10 +524,8 @@ export function ProjectCostPage() {
               </span>
             )}
           </div>
-          {isLoading && (
-            <div className="border-b border-[var(--border-glass)] px-4 py-3">
-              <ProgressIndicator lifecycle={lifecycle} compact={!!data} />
-            </div>
+          {(isLoading || lifecycle.phase === 'done') && (
+            <ProgressIndicator lifecycle={lifecycle} compact={!!data} hideWhenDone className="border-b border-[var(--border-glass)] px-4 py-3" />
           )}
           {error && !data && (
             <div className="px-4 py-3 text-sm text-[var(--neon-red)]">{error}</div>

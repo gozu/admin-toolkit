@@ -3,6 +3,7 @@ import { fetchJson } from '../utils/api';
 import { useDiag } from '../context/DiagContext';
 import { ProgressIndicator } from './common/ProgressIndicator';
 import { k8sInsightsScan, setK8sScanClusterId } from '../state/k8sInsightsStore';
+import { getAutomaticK8sCluster, setAutomaticK8sCluster } from '../state/k8sInsightsStore';
 import { k8sClusterHealthStore } from '../state/k8sClusterHealthStore';
 import { DataGrid } from './common/DataGrid';
 import { RefreshControl } from './common/RefreshControl';
@@ -160,7 +161,8 @@ export function K8sInsights() {
   const { addDebugLog } = useDiag();
   const [clusters, setClusters] = useState<K8sInsightsClustersResult | null>(null);
   const [clusterError, setClusterError] = useState<string | null>(null);
-  const [selectedCluster, setSelectedCluster] = useState<string>('');
+  const [automaticCluster, setAutomaticCluster] = useState(getAutomaticK8sCluster);
+  const [selectedCluster, setSelectedCluster] = useState<string>(() => data?.cluster?.id || getAutomaticK8sCluster());
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null);
   const [floorMode, setFloorMode] = useState<FloorMode>('rightsized');
 
@@ -338,6 +340,15 @@ export function K8sInsights() {
             onChange={setSelectedCluster}
             disabled={loading}
           />
+          <label className="flex items-center gap-1 text-[10px] text-[var(--text-secondary)]" title="Audit this cluster in the background when this host is opened">
+            <input type="checkbox" checked={!!selectedCluster && automaticCluster === selectedCluster} disabled={!selectedCluster}
+              onChange={(event) => {
+                const cluster = event.target.checked ? selectedCluster : '';
+                setAutomaticK8sCluster(cluster);
+                setAutomaticCluster(cluster);
+              }} />
+            Auto audit this cluster
+          </label>
           <div className="ml-auto flex items-center gap-2">
             {loading ? (
               <button
@@ -383,11 +394,8 @@ export function K8sInsights() {
         </div>
       )}
 
-      {loading && (
-        <div className="glass-card p-3">
-          <ProgressIndicator lifecycle={lifecycle} />
-          <div className="text-xs text-[var(--text-muted)] mt-1 font-mono">{scanMessage}</div>
-        </div>
+      {(loading || lifecycle.phase === 'done') && (
+        <ProgressIndicator lifecycle={lifecycle} message={loading ? scanMessage : undefined} hideWhenDone className="glass-card p-3" />
       )}
 
       {!loading && !data && !error && (

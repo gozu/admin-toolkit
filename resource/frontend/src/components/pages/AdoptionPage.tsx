@@ -918,22 +918,13 @@ function PulseCard({ pulse, nowMs }: { pulse: AdoptionPulseData; nowMs: number }
 
 export function AdoptionPage() {
   const { state } = useDiag();
-  const { data, scanStarted, error } = adoptionScan.use();
+  const { data, error } = adoptionScan.use();
   const invState = adoptionInventoryScan.use();
   const evState = adoptionEventsScan.use();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [showAllProjects, setShowAllProjects] = useState(false);
   const [trendMode, setTrendMode] = useState<TrendMode>('cumulative');
 
-  useEffect(() => {
-    if (!scanStarted) void adoptionScan.load();
-  }, [scanStarted]);
-  useEffect(() => {
-    if (!invState.scanStarted) void adoptionInventoryScan.load();
-  }, [invState.scanStarted]);
-  useEffect(() => {
-    if (!evState.scanStarted) void adoptionEventsScan.load();
-  }, [evState.scanStarted]);
 
   const toggleSelect = (key: string) => setSelectedKey((cur) => (cur === key ? null : key));
 
@@ -1502,10 +1493,8 @@ export function AdoptionPage() {
               as of {fmtDate(nowMs)} · git + config history
             </span>
           </div>
-          {isLoading && (
-            <div className="border-b border-[var(--border-glass)] px-4 py-3">
-              <ProgressIndicator lifecycle={lifecycle} compact={!!data} />
-            </div>
+          {(isLoading || lifecycle.phase === 'done') && (
+            <ProgressIndicator lifecycle={lifecycle} compact={!!data} hideWhenDone className="border-b border-[var(--border-glass)] px-4 py-3" />
           )}
           {error && !data && (
             <div className="px-4 py-3 text-sm text-[var(--neon-red)]">{error}</div>

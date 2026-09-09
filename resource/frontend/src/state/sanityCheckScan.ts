@@ -1,3 +1,4 @@
+import { subscribeSessionEpoch } from './sessionCache';
 import type { SanityCheckMessage } from '../types';
 import { fetchRaw } from '../utils/api';
 
@@ -30,8 +31,9 @@ export function runSanityCheck(
     };
   })();
   inflight = promise;
-  promise.finally(() => {
-    if (inflight === promise) inflight = null;
-  });
+  const clear = () => { if (inflight === promise) inflight = null; };
+  void promise.then(clear, clear);
   return promise;
 }
+
+subscribeSessionEpoch(() => { inflight = null; });

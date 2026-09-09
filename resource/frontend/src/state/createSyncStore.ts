@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { subscribeSessionEpoch } from './sessionCache';
+import { getSessionEpoch, subscribeSessionEpoch } from './sessionCache';
 
 export interface SyncStore<T> {
   get: () => T;
@@ -40,5 +40,15 @@ export function createSyncStore<T>(
     },
     subscribe,
     use: () => useSyncExternalStore(subscribe, () => state, () => state),
+  };
+}
+
+// Capture before awaiting: late responses cannot publish into another host/session.
+export function sessionWriter<T>(store: SyncStore<T>) {
+  const epoch = getSessionEpoch();
+  return {
+    current: () => epoch === getSessionEpoch(),
+    patch: (patch: Partial<T>) => { if (epoch === getSessionEpoch()) store.patch(patch); },
+    set: (value: T) => { if (epoch === getSessionEpoch()) store.set(value); },
   };
 }

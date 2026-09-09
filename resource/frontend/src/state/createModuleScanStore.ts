@@ -2,7 +2,10 @@ import { fetchJson, fetchRaw } from '../utils/api';
 import { parseSseStream } from '../utils/sseStream';
 import { createSyncStore, type SyncStore } from './createSyncStore';
 import { registerScanStore } from './scanStoreRegistry';
-import type { Lifecycle, ParsedData } from '../types';
+import { getSessionEpoch, subscribeSessionEpoch } from './sessionCache';
+import { scanScheduler } from './scanScheduler';
+import { SCAN_POLICIES, type LifecycleFieldName } from '../utils/moduleRegistry';
+import type { Lifecycle } from '../types';
 
 export interface ScanState<TData> {
   data: TData | null;
@@ -23,15 +26,16 @@ export interface ScanState<TData> {
 export interface ModuleScanStore<TData> {
   store: SyncStore<ScanState<TData>>;
   use: () => ScanState<TData>;
-  load: (force?: boolean) => Promise<void>;
+  load: (force?: boolean, priority?: number) => Promise<void>;
   lifecycle: () => Lifecycle;
   abort: () => void;
 }
 
 export interface CreateModuleScanStoreOptions<TData, TEvent> {
-  loadingField: keyof ParsedData & `${string}Loading`;
+  loadingField: LifecycleFieldName;
   streamEndpoint?: string | (() => string);
   fallbackEndpoint?: string;
+  timeoutMs?: number;
   parseEvent?: (event: string, payload: unknown) => TEvent | null;
   reduce?: (state: ScanState<TData>, ev: TEvent) => Partial<ScanState<TData>>;
 }
@@ -67,7 +71,6 @@ export function createModuleScanStore<TData, TEvent>(
     total: null,
   };
   const store = createSyncStore<ScanState<TData>>(initial, { sessionScoped: true });
-  let inflight: Promise<void> | null = null;
   let currentController: AbortController | null = null;
 
   if (!opts.streamEndpoint && !opts.fallbackEndpoint) {
@@ -81,10 +84,20 @@ export function createModuleScanStore<TData, TEvent>(
     return opts.streamEndpoint;
   }
 
-  async function runScan(): Promise<void> {
+  subscribeSessionEpoch(() => { currentController?.abort(); currentController = null; });
+
+  async function runScan(signal: AbortSignal, priority: number, endpoint?: string): Promise<void> {
+    const epoch = getSessionEpoch();
+    const patch = (value: Partial<ScanState<TData>>) => {
+      if (epoch === getSessionEpoch()) store.patch(value);
+    };
     const controller = new AbortController();
+    signal.addEventListener('abort', () => controller.abort(), { once: true });
+    const init = { signal: controller.signal, headers: { 'X-Scan-Priority': priority ? 'background' : 'foreground' } };
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, opts.timeoutMs ?? 600_000);
     currentController = controller;
-    store.patch({
+    patch({
       loading: true,
       error: null,
       scanStarted: true,
@@ -94,17 +107,16 @@ export function createModuleScanStore<TData, TEvent>(
       finishedAt: null,
     });
     try {
-      const endpoint = resolveStreamEndpoint();
       if (!endpoint) {
-        const data = await fetchJson<TData>(opts.fallbackEndpoint!);
-        store.patch({ data, progressPct: 100, scanPhase: 'complete' });
+        const data = await fetchJson<TData>(opts.fallbackEndpoint!, init);
+        patch({ data, progressPct: 100, scanPhase: 'complete' });
         return;
       }
-      const response = await fetchRaw(endpoint, { signal: controller.signal });
+      const response = await fetchRaw(endpoint, init);
       if (!response.ok || !response.body) {
         if (opts.fallbackEndpoint) {
-          const data = await fetchJson<TData>(opts.fallbackEndpoint);
-          store.patch({ data, progressPct: 100, scanPhase: 'cached' });
+          const data = await fetchJson<TData>(opts.fallbackEndpoint, init);
+          patch({ data, progressPct: 100, scanPhase: 'cached' });
           return;
         }
         throw new Error(`Stream failed: ${response.status} ${response.statusText}`);
@@ -115,43 +127,47 @@ export function createModuleScanStore<TData, TEvent>(
         );
       }
       for await (const { event, payload } of parseSseStream(response.body)) {
+        if (controller.signal.aborted || epoch !== getSessionEpoch()) break;
         const ev = opts.parseEvent(event, payload);
         if (!ev) continue;
-        const patch = opts.reduce(store.get(), ev);
-        store.patch(patch);
+        patch(opts.reduce(store.get(), ev));
       }
     } catch (err) {
-      const aborted = controller.signal.aborted
-        || (err instanceof DOMException && err.name === 'AbortError');
-      store.patch({
-        error: aborted ? null : (err instanceof Error ? err.message : String(err)),
+      const aborted = !timedOut && (controller.signal.aborted
+        || (err instanceof DOMException && err.name === 'AbortError'));
+      patch({
+        error: timedOut ? 'Scan timed out. Retry when the host is responsive.' : aborted ? null : (err instanceof Error ? err.message : String(err)),
         scanPhase: aborted ? 'aborted' : store.get().scanPhase,
         scanMessage: aborted ? 'Scan aborted.' : store.get().scanMessage,
       });
     } finally {
+      clearTimeout(timer);
       if (currentController === controller) currentController = null;
-      store.patch({ loading: false, finishedAt: new Date().toISOString() });
+      patch({ loading: false, finishedAt: new Date().toISOString() });
     }
   }
 
   function abort(): void {
-    if (currentController) currentController.abort();
+    scanScheduler.cancel(opts.loadingField);
+    currentController?.abort();
   }
 
-  function load(force = false): Promise<void> {
-    if (inflight) return inflight;
+  function load(force = false, priority = 0): Promise<void> {
     const s = store.get();
-    if (s.scanStarted && s.data && !force) return Promise.resolve();
-    inflight = runScan().finally(() => {
-      inflight = null;
-    });
-    return inflight;
+    if (s.scanPhase === 'aborted' && !force) return Promise.resolve();
+    const policy = SCAN_POLICIES[opts.loadingField];
+    const fresh = s.finishedAt && Date.now() - Date.parse(s.finishedAt) < (policy?.ttlMs ?? Infinity);
+    if (s.data && !s.error && s.scanPhase !== 'aborted' && fresh && !force) return Promise.resolve();
+    const endpoint = resolveStreamEndpoint();
+    return scanScheduler.enqueue(opts.loadingField, priority, policy?.cheap ?? false,
+      (signal, effectivePriority) => runScan(signal, effectivePriority, endpoint));
   }
 
   function lifecycle(): Lifecycle {
     const s = store.get();
     if (!s.scanStarted) return { phase: 'queued' };
     const startedAt = s.startedAt || new Date(0).toISOString();
+    if (s.scanPhase === 'aborted') return { phase: 'running', startedAt, updatedAt: s.finishedAt || startedAt, progressPct: s.progressPct, subPhase: 'aborted', message: 'Paused — use Refresh to retry' };
     if (s.loading) {
       return {
         phase: 'running',
@@ -184,6 +200,7 @@ export function createModuleScanStore<TData, TEvent>(
   registerScanStore({
     field: opts.loadingField,
     subscribe: store.subscribe,
+    load,
     lifecycle,
     rawData: () => store.get().data,
     snapshot: () => {

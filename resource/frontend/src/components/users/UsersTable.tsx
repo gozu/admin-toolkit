@@ -7,6 +7,12 @@ import type { User } from '../../types';
 import { USER_COLUMNS, type UserColumnId, type UserMatrixCtx } from '../../utils/userMatrix';
 import type { DaughterSpec } from '../../utils/userDaughterSpecs';
 import { DaughterTableModal } from './DaughterTableModal';
+import {
+  classifyUserLicense,
+  matchesUserLicense,
+  USER_LICENSE_LABELS,
+  type UserLicenseFilter,
+} from '../../utils/userLicenses';
 
 interface UsersTableProps {
   users: User[];
@@ -14,6 +20,7 @@ interface UsersTableProps {
   search: string;
   onlyWithIssues: boolean;
   hideZeroColumns: boolean;
+  licenseFilter: UserLicenseFilter;
 }
 
 type UserRow = { user: User; values: Partial<Record<UserColumnId, number>> };
@@ -24,6 +31,7 @@ export function UsersTable({
   search,
   onlyWithIssues,
   hideZeroColumns,
+  licenseFilter,
 }: UsersTableProps) {
   const drilldownModal = useModal();
   const { open: openDrilldown } = drilldownModal;
@@ -32,6 +40,9 @@ export function UsersTable({
   const filteredUsers = useMemo(() => {
     const needle = search.trim().toLowerCase();
     let pool = users;
+    if (licenseFilter !== 'all') {
+      pool = pool.filter((u) => matchesUserLicense(u.userProfile, licenseFilter));
+    }
     if (needle) {
       pool = pool.filter(
         (u) =>
@@ -44,7 +55,7 @@ export function UsersTable({
       pool = pool.filter((u) => ctx.flaggedUsers.has(u.login));
     }
     return pool;
-  }, [users, search, onlyWithIssues, ctx.flaggedUsers]);
+  }, [users, search, onlyWithIssues, licenseFilter, ctx.flaggedUsers]);
 
   const userRows = useMemo<UserRow[]>(
     () =>
@@ -85,6 +96,21 @@ export function UsersTable({
           );
         },
         sortValue: ({ user }) => user.login,
+      },
+      {
+        id: 'licenseProfile',
+        label: 'License profile',
+        defaultSortDir: 'asc',
+        headerTooltip:
+          'Assigned DSS license profile. Counts include disabled users; licensing does not determine group or project permissions.',
+        headerTooltipMarker: true,
+        cellClassName: 'whitespace-nowrap text-[var(--text-secondary)]',
+        render: ({ user }) => (
+          <span title={USER_LICENSE_LABELS[classifyUserLicense(user.userProfile)]}>
+            {user.userProfile?.trim() || 'Unknown'}
+          </span>
+        ),
+        sortValue: ({ user }) => user.userProfile || '',
       },
       {
         id: 'displayName',

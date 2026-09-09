@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { DataGrid } from './common/DataGrid';
+import { MechanicalChevron } from './common/MechanicalControls';
 import { LiveRefreshToggle } from './common/LiveRefreshToggle';
 import {
   getProcessMetrics,
@@ -117,12 +118,7 @@ export function ProcessUsageTable({ variant }: { variant: 'memory' | 'cpu' | 're
               className="flex items-center gap-1.5 text-left text-[var(--text-primary)] hover:text-[var(--neon-cyan)]"
               aria-expanded={isOpen}
             >
-              <span
-                aria-hidden
-                className={`inline-block text-[10px] text-[var(--text-muted)] transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}
-              >
-                ▶
-              </span>
+              <MechanicalChevron expanded={isOpen} className="text-[var(--text-muted)]" />
               {displayUser(r.user)}
             </button>
           );

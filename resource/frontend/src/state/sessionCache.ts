@@ -42,15 +42,13 @@ export async function fetchWithSessionCache<T>(key: string, fetcher: () => Promi
   if (inflight) {
     return inflight as Promise<T>;
   }
-  const promise = (async () => {
-    try {
-      const value = await fetcher();
-      _cache.set(key, { epoch: _epoch, value });
-      return value;
-    } finally {
-      _inflight.delete(key);
-    }
-  })();
+  const epoch = _epoch;
+  const promise = Promise.resolve().then(fetcher).then((value) => {
+    if (_epoch === epoch && _inflight.get(key) === promise) _cache.set(key, { epoch, value });
+    return value;
+  }).finally(() => {
+    if (_inflight.get(key) === promise) _inflight.delete(key);
+  });
   _inflight.set(key, promise);
   return promise;
 }

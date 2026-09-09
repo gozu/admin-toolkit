@@ -1,4 +1,5 @@
 import type { Lifecycle, LoadingProgressState } from '../../types';
+import { useCompletionBeat } from '../../hooks/useCompletionBeat';
 
 type ProgressTone = 'loading' | 'active' | 'ready' | 'error';
 
@@ -15,6 +16,9 @@ interface ProgressIndicatorProps {
   message?: string;
   phase?: string;
   compact?: boolean;
+  /** Keep the completion beat before removing an inline loading surface. */
+  hideWhenDone?: boolean;
+  className?: string;
 }
 
 function clampPct(value: number | undefined): number {
@@ -88,7 +92,7 @@ function lifecyclePct(lc: Lifecycle): number {
 function lifecycleMessage(lc: Lifecycle, fallback: string): string {
   switch (lc.phase) {
     case 'queued':
-      return fallback || 'Queued';
+      return lc.message || fallback || 'Queued';
     case 'running':
       return lc.message || fallback || 'Loading…';
     case 'done':
@@ -121,9 +125,9 @@ function toneClasses(tone: ProgressTone): { track: string; fill: string; text: s
   }
   if (tone === 'ready') {
     return {
-      track: 'bg-white/10',
-      fill: 'bg-white',
-      text: 'text-[var(--text-primary)]',
+      track: 'bg-[var(--neon-green)]/10',
+      fill: 'bg-[var(--neon-green)]',
+      text: 'text-[var(--neon-green)]',
     };
   }
   if (tone === 'active') {
@@ -148,6 +152,8 @@ export function ProgressIndicator({
   message,
   phase,
   compact = false,
+  hideWhenDone = false,
+  className = '',
 }: ProgressIndicatorProps) {
   // Prefer an explicit Lifecycle. Fall back to a coerced LoadingProgressState
   // for legacy callers. Spot overrides (active/pct/message/phase) still let
@@ -180,39 +186,44 @@ export function ProgressIndicator({
   const tone = toneOf(lc);
   const colors = toneClasses(tone);
   const progressPct = lifecyclePct(lc);
-  // Binary spinner: a running state with no real percentage renders as an
-  // indeterminate full-width pulse rather than a static 0% bar. (No progress
-  // interpolation exists anymore — running == "working", nothing more.)
-  const indeterminate = tone === 'active' && progressPct <= 0;
-  const displayMessage = message || lifecycleMessage(lc, 'Loading…');
-  // Active messages get an animated CSS ellipsis; strip any literal trailing
+  // Before the first measured percentage, keep the track empty. A traveling
+  // segment would jump backwards when a small real percentage arrives.
+  const indeterminate = tone === 'active' && progressPct <= 0 && !(lc.phase === 'running' && lc.subPhase === 'aborted');
+  const displayMessage = message || lifecycleMessage(lc, '');
+  // Active messages get a steady ellipsis; strip any literal trailing
   // one so we never render "Loading……".
   const messageText =
     tone === 'active' ? displayMessage.replace(/(?:\.{3}|…)\s*$/, '') : displayMessage;
   const displayPhase = phase || lifecyclePhase(lc);
+  const finishing = useCompletionBeat(lc);
+  if (hideWhenDone && tone === 'ready' && !finishing) return null;
 
   return (
-    <div className={compact ? 'space-y-1' : 'space-y-2'}>
+    <div className={`progress-landing ${compact ? 'space-y-1' : 'space-y-2'} ${className}`} data-state={tone} data-finishing={finishing || undefined}>
       <div className={`flex items-center justify-between gap-3 text-xs ${colors.text}`}>
         <span className="min-w-0 truncate">
           {messageText}
-          {tone === 'active' && <span className="loading-ellipsis" aria-hidden />}
+          {tone === 'active' && <span aria-hidden>…</span>}
         </span>
-        {!indeterminate && (
-          <span className="font-mono text-[var(--text-primary)]">{Math.round(progressPct)}%</span>
-        )}
+        <span className="progress-readout flex h-5 shrink-0 items-center gap-1.5 font-mono">
+          <svg aria-hidden className={`progress-check ${tone === 'ready' ? '' : 'invisible'}`} width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path pathLength="1" d="m3 8 3 3 7-7" />
+          </svg>
+          <span className="w-8 text-right">{indeterminate ? '—' : `${Math.round(progressPct)}%`}</span>
+        </span>
       </div>
-      <div className={`${compact ? 'h-1.5' : 'h-2'} overflow-hidden rounded-full ${colors.track}`}>
+      <div role="progressbar" aria-label={messageText} aria-valuemin={0} aria-valuemax={100} aria-valuenow={indeterminate ? undefined : progressPct} className={`progress-track relative ${compact ? 'h-2' : 'h-3'} overflow-hidden rounded-full ${colors.track}`}>
         <div
           className={
             indeterminate
-              ? `h-full w-full rounded-full ${colors.fill} animate-pulse motion-reduce:animate-none`
-              : `h-full rounded-full ${colors.fill} transition-[width] duration-300 ease-out motion-reduce:transition-none${
-                  tone === 'active' ? ' progress-sheen' : ''
-                }`
+              ? `progress-fill h-full rounded-full ${colors.fill}`
+              : `progress-fill h-full rounded-full ${colors.fill} transition-[width] duration-300 ease-out motion-reduce:transition-none`
           }
-          style={indeterminate ? undefined : { width: `${progressPct}%` }}
-        />
+          style={{ width: `${progressPct}%` }}
+        >
+          {tone === 'active' && !indeterminate && <span aria-hidden className="progress-tip" />}
+        </div>
+        <span aria-hidden className="progress-finish-sweep" />
       </div>
       {!compact && displayPhase && (
         <div className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">

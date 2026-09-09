@@ -1,3 +1,4 @@
+import { subscribeSessionEpoch } from './sessionCache';
 import { createSyncStore } from './createSyncStore';
 
 export interface ConnectionUsageScanError {
@@ -39,3 +40,5 @@ export function getConnectionUsageScanController(): AbortController | null {
 export function setConnectionUsageScanController(controller: AbortController | null): void {
   abortController = controller;
 }
+
+subscribeSessionEpoch(() => { abortController?.abort(); abortController = null; });

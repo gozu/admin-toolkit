@@ -44,6 +44,7 @@ export interface ModuleDefinition {
   // excluded from the global "Analysis complete" aggregate: their lifecycle
   // field exists only to drive in-page UI, never a startup ritual.
   noLoadGlyph?: true;
+  analysis?: 'background' | 'manual';
   streamEndpoint?: string;
   experimental?: boolean;
   deprecated?: boolean;
@@ -72,7 +73,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   { id: 'filesystem', label: 'Filesystem', section: 'Overview', navSection: 'OVERVIEW', keywords: ['disk', 'storage', 'mount', 'partition'], availability: 'always', lifecycle: { fields: ['filesystemLoading'] } },
   // Live page (SSE stream / poll chain, always ready): noLoadGlyph keeps the
   // sidebar row glyph-free and out of the global "Analysis complete" aggregate.
-  { id: 'resources', label: 'Resources', section: 'Overview', navSection: 'OVERVIEW', keywords: ['ram', 'swap', 'memory', 'cpu', 'usage', 'pid', 'process', 'load', 'live', 'resources'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['memoryLoading', 'cpuLoading'] } },
+  { id: 'resources', label: 'Resources', section: 'Overview', navSection: 'OVERVIEW', keywords: ['ram', 'swap', 'memory', 'cpu', 'usage', 'pid', 'process', 'load', 'live', 'resources'], availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['memoryLoading', 'cpuLoading'] } },
 
   // CONNECTIONS
   { id: 'connections-inventory', label: 'Inventory', section: 'Connections', navSection: 'CONNECTIONS', keywords: ['database', 'connector', 'type', 'inventory'], availability: 'always', lifecycle: { fields: ['connectionsInventoryLoading'] } },
@@ -88,12 +89,8 @@ export const MODULES: readonly ModuleDefinition[] = [
   // PROJECTS
   { id: 'project-cleaner', label: 'Project Cleaner', navLabel: 'Cleaner', section: 'Projects', navSection: 'PROJECTS', keywords: ['clean', 'delete', 'inactive', 'project'], tool: true, availability: 'always', lifecycle: { fields: ['projectCleanerLoading'] } },
   { id: 'projects', label: 'Projects', navLabel: 'Insights', section: 'Projects', navSection: 'PROJECTS', keywords: ['project', 'footprint', 'permissions'], availability: 'always', lifecycle: { fields: ['projectFootprintLoading'] } },
-  // On-demand sweep (one settings fetch per App_ recipe): noLoadGlyph keeps
-  // appInstancesLoading out of the global "Analysis complete" aggregate.
-  { id: 'app-instances', label: 'App Instances', navLabel: 'App Instances', section: 'Projects', navSection: 'PROJECTS', keywords: ['app', 'application', 'instance', 'template', 'app-as-recipe', 'keepinstance', 'keep', 'orphan', 'temporary', 'run', 'leftover', 'sprawl'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['appInstancesLoading'] } },
-  // On-demand sweep (one settings fetch per scenario): noLoadGlyph keeps
-  // scenariosLoading out of the global "Analysis complete" aggregate.
-  { id: 'scenarios', label: 'Scenarios', section: 'Projects', navSection: 'PROJECTS', keywords: ['scenario', 'schedule', 'trigger', 'temporal', 'cron', 'automation', 'timeline', 'clustering', 'load', 'peak', 'next run'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['scenariosLoading'] } },
+  { id: 'app-instances', label: 'App Instances', navLabel: 'App Instances', section: 'Projects', navSection: 'PROJECTS', keywords: ['app', 'application', 'instance', 'template', 'app-as-recipe', 'keepinstance', 'keep', 'orphan', 'temporary', 'run', 'leftover', 'sprawl'], availability: 'always', analysis: 'background', lifecycle: { fields: ['appInstancesLoading'] } },
+  { id: 'scenarios', label: 'Scenarios', section: 'Projects', navSection: 'PROJECTS', keywords: ['scenario', 'schedule', 'trigger', 'temporal', 'cron', 'automation', 'timeline', 'clustering', 'load', 'peak', 'next run'], availability: 'always', analysis: 'background', lifecycle: { fields: ['scenariosLoading'] } },
   { id: 'project-compute', label: 'Compute', section: 'Projects', navSection: 'PROJECTS', keywords: ['compute', 'project', 'usage', 'workload'], availability: 'always', lifecycle: { fields: ['projectComputeLoading'] } },
   { id: 'project-cost', label: 'Cost / CRU', navLabel: 'Cost', section: 'Projects', navSection: 'PROJECTS', keywords: ['cost', 'cru', 'compute', 'resource', 'usage', 'memory', 'cpu', 'llm', 'audit'], streamEndpoint: '/api/cru/stream', availability: 'always', lifecycle: { fields: ['projectCostLoading'] } },
 
@@ -104,50 +101,41 @@ export const MODULES: readonly ModuleDefinition[] = [
     'codeEnvsLoading',
     'llmAuditLoading',
   ] } },
-  // On-demand deep dive (loads on mount, like k8s-insights): noLoadGlyph keeps
-  // adoptionLoading out of SHARED_LOADING_FIELDS so the global "Analysis
-  // complete" aggregate never waits on a page the user may not visit.
-  { id: 'adoption', label: 'Activity', section: 'Users', navSection: 'USERS', keywords: ['adoption', 'activity', 'engagement', 'usage', 'logins', 'active', 'trend', 'cohort', 'retention', 'builders', 'people', 'commits', 'growth'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['adoptionLoading', 'adoptionInventoryLoading', 'adoptionEventsLoading'] } },
-  // On-demand deep dive (loads on mount, like adoption): noLoadGlyph keeps
-  // userChurnLoading out of the global "Analysis complete" aggregate.
-  { id: 'user-churn', label: 'Churn & Seats', navLabel: 'Churn', section: 'Users', navSection: 'USERS', keywords: ['churn', 'license', 'seat', 'reassign', 'reassignment', 'disabled', 'dormant', 'reclaim', 'turnover', 'offboard', 'lifecycle', 'lifespan'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['userChurnLoading'] } },
+  { id: 'adoption', label: 'Activity', section: 'Users', navSection: 'USERS', keywords: ['adoption', 'activity', 'engagement', 'usage', 'logins', 'active', 'trend', 'cohort', 'retention', 'builders', 'people', 'commits', 'growth'], availability: 'always', analysis: 'background', lifecycle: { fields: ['adoptionLoading', 'adoptionInventoryLoading', 'adoptionEventsLoading'] } },
+  { id: 'user-churn', label: 'Churn & Seats', navLabel: 'Churn', section: 'Users', navSection: 'USERS', keywords: ['churn', 'license', 'seat', 'reassign', 'reassignment', 'disabled', 'dormant', 'reclaim', 'turnover', 'offboard', 'lifecycle', 'lifespan'], availability: 'always', analysis: 'background', lifecycle: { fields: ['userChurnLoading'] } },
 
   // PLUGINS
   { id: 'plugins-installed', label: 'Installed', section: 'Plugins', navSection: 'PLUGINS', keywords: ['plugin', 'installed', 'list', 'version', 'projects', 'usage'], availability: 'always', lifecycle: { fields: ['pluginsLoading'] } },
-  { id: 'plugins', label: 'Plugin Sync', section: 'Plugins', navSection: 'PLUGINS', keywords: ['plugin', 'sync', 'compare', 'version'], tool: true, availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['pluginSyncLoading'] } },
+  { id: 'plugins', label: 'Plugin Sync', section: 'Plugins', navSection: 'PLUGINS', keywords: ['plugin', 'sync', 'compare', 'version'], tool: true, availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['pluginSyncLoading'] } },
 
   // CODE ENVS
   { id: 'code-envs', label: 'Cleaner', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['python', 'environment', 'package', 'clean', 'delete', 'unused', 'replace', 'migration'], tool: true, availability: 'always', lifecycle: { fields: ['codeEnvsLoading', 'codeEnvSizesLoading', 'codeEnvCleanerLoading', 'codeEnvReplacementLoading'] } },
   { id: 'code-envs-cleaner', label: 'Insights', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['python', 'environment', 'package', 'clean', 'unused', 'review', 'read-only'], availability: 'always', lifecycle: { fields: ['codeEnvsLoading', 'codeEnvSizesLoading'] } },
   { id: 'code-envs-comparison', label: 'Comparison', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['compare', 'duplicate', 'version', 'mismatch'], availability: 'always', lifecycle: { fields: ['codeEnvsComparisonLoading'] } },
-  // On-demand build-log scan (one log read per env): noLoadGlyph keeps
-  // codeEnvsBrokenLoading out of the global "Analysis complete" aggregate.
-  { id: 'code-envs-broken', label: 'Broken', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['broken', 'failed', 'build', 'rebuild', 'upgrade', 'error', 'log', 'remediation', 'llm'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['codeEnvsBrokenLoading'] } },
+  { id: 'code-envs-broken', label: 'Broken', section: 'Code Envs', navSection: 'CODE ENVS', keywords: ['broken', 'failed', 'build', 'rebuild', 'upgrade', 'error', 'log', 'remediation', 'llm'], availability: 'always', analysis: 'background', lifecycle: { fields: ['codeEnvsBrokenLoading'] } },
 
   // AI COMPUTE
   { id: 'container-execs', label: 'Container Execs', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['container', 'execution', 'kubernetes', 'k8s', 'compute', 'gpu', 'project', 'recipe', 'webapp'], streamEndpoint: '/api/container-execs/stream', tool: true, availability: 'container-exec', lifecycle: { fields: ['containerExecsLoading'] } },
-  // On-demand full inventory (one settings fetch per recipe/webapp/ML task): noLoadGlyph keeps
-  // it out of the boot ritual; it loads on first visit like App Instances.
-  { id: 'compute-placement', label: 'Compute Placement', navLabel: 'Placement', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['compute', 'placement', 'local', 'container', 'containerized', 'kubernetes', 'k8s', 'cluster', 'migrate', 'migration', 'recipe', 'webapp', 'notebook', 'ml task', 'spark', 'owner', 'email'], streamEndpoint: '/api/compute-placement/stream', tool: true, availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['computePlacementLoading'] } },
+  { id: 'compute-placement', label: 'Compute Placement', navLabel: 'Placement', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['compute', 'placement', 'local', 'container', 'containerized', 'kubernetes', 'k8s', 'cluster', 'migrate', 'migration', 'recipe', 'webapp', 'notebook', 'ml task', 'spark', 'owner', 'email'], streamEndpoint: '/api/compute-placement/stream', tool: true, availability: 'always', analysis: 'background', lifecycle: { fields: ['computePlacementLoading'] } },
   { id: 'image-cleaner', label: 'Docker Images', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['ecr', 'acr', 'gar', 'docker', 'image', 'container', 'cleanup', 'aws', 'azure', 'gcp', 'registry'], tool: true, availability: 'container-registry', lifecycle: { fields: ['imageCleanerLoading'] } },
-  { id: 'cs-template-replacement', label: 'Replace CS Template', navLabel: 'CS Templates', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['code', 'studio', 'template', 'replace', 'migrate', 'cs'], tool: true, availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['csTemplateReplacementLoading'] } },
+  { id: 'cs-template-replacement', label: 'Replace CS Template', navLabel: 'CS Templates', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['code', 'studio', 'template', 'replace', 'migrate', 'cs'], tool: true, availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['csTemplateReplacementLoading'] } },
   { id: 'llm-audit', label: 'Model Audit', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['llm', 'model', 'audit', 'pricing'], availability: 'llm', lifecycle: { fields: ['llmAuditLoading'] } },
-  { id: 'k8s-insights', label: 'K8s Insights', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['kubernetes', 'k8s', 'eks', 'cluster', 'gpu', 'cost', 'bin pack', 'autoscaler', 'nodes', 'pods', 'daemonset', 'findings', 'rules'], streamEndpoint: '/api/k8s-insights/stream', availability: 'clusters', noLoadGlyph: true, lifecycle: { fields: ['k8sInsightsLoading'] } },
+  { id: 'k8s-insights', label: 'K8s Insights', section: 'AI Compute', navSection: 'AI COMPUTE', keywords: ['kubernetes', 'k8s', 'eks', 'cluster', 'gpu', 'cost', 'bin pack', 'autoscaler', 'nodes', 'pods', 'daemonset', 'findings', 'rules'], streamEndpoint: '/api/k8s-insights/stream', availability: 'clusters', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['k8sInsightsLoading'] } },
 
   // AGENTS — conversational ops surface over the agents plugin (LLM Mesh
   // proxy). Loads per conversation, never through the startup ritual.
-  { id: 'agents', label: 'Agents', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'chat', 'ops', 'actuator', 'triage', 'plan', 'approve', 'autonomous', 'ai'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
-  { id: 'agent-tuning', label: 'Agent Tuning', navLabel: 'Tuning', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'tuning', 'prompt', 'system', 'rubric', 'version', 'customize', 'override'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
-  { id: 'agent-settings', label: 'Agent Permissions', navLabel: 'Permissions', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'permissions', 'settings', 'actions', 'gates', 'enable', 'disable', 'allow', 'read', 'write', 'execute', 'catalog'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
-  { id: 'agent-explainer', label: 'How Agents Work', navLabel: 'How it works', commandLabel: 'Agents: How it works', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'explainer', 'how', 'works', 'safety', 'guardrails', 'plan', 'confirm', 'token', 'audit', 'sandbox', 'autonomy', 'tour'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['agentsLoading'] } },
+  { id: 'agents', label: 'Agents', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'chat', 'ops', 'actuator', 'triage', 'plan', 'approve', 'autonomous', 'ai'], availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['agentsLoading'] } },
+  { id: 'agent-tuning', label: 'Agent Tuning', navLabel: 'Tuning', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'tuning', 'prompt', 'system', 'rubric', 'version', 'customize', 'override'], availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['agentsLoading'] } },
+  { id: 'agent-settings', label: 'Agent Permissions', navLabel: 'Permissions', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'permissions', 'settings', 'actions', 'gates', 'enable', 'disable', 'allow', 'read', 'write', 'execute', 'catalog'], availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['agentsLoading'] } },
+  { id: 'agent-explainer', label: 'How Agents Work', navLabel: 'How it works', commandLabel: 'Agents: How it works', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'explainer', 'how', 'works', 'safety', 'guardrails', 'plan', 'confirm', 'token', 'audit', 'sandbox', 'autonomy', 'tour'], availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['agentsLoading'] } },
 
   // MISC
   { id: 'settings', label: 'Settings', section: 'Misc', navSection: 'MISC', keywords: ['settings', 'mail', 'channel', 'email', 'config', 'preferences'], availability: 'always', lifecycle: { fields: ['settingsLoading'] } },
   { id: 'logs', label: 'Errors', section: 'Misc', navSection: 'MISC', keywords: ['log', 'error', 'exception', 'stack'], badge: 'logs', availability: 'always', lifecycle: { fields: ['logsLoading'] } },
   { id: 'sanity-check', label: 'Sanity Check', section: 'Misc', navSection: 'MISC', keywords: ['sanity', 'check', 'diagnostics', 'api'], availability: 'always', lifecycle: { fields: ['sanityCheckLoading'] } },
-  { id: 'db-health', label: 'DB Health', section: 'Misc', navSection: 'MISC', keywords: ['postgres', 'database', 'vacuum', 'tables', 'runtimedb', 'bloat'], tool: true, availability: 'runtime-db', noLoadGlyph: true, lifecycle: { fields: ['dbHealthLoading'] } },
-  { id: 'report', label: 'Report', section: 'Misc', navSection: 'MISC', keywords: ['report', 'export', 'download'], tool: true, availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['reportLoading'] } },
-  { id: 'feedback', label: 'Feedback', section: 'Misc', navSection: 'MISC', keywords: ['feedback', 'bug', 'idea', 'report', 'suggestion'], availability: 'always', noLoadGlyph: true, lifecycle: { fields: ['feedbackLoading'] } },
+  { id: 'db-health', label: 'DB Health', section: 'Misc', navSection: 'MISC', keywords: ['postgres', 'database', 'vacuum', 'tables', 'runtimedb', 'bloat'], tool: true, availability: 'runtime-db', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['dbHealthLoading'] } },
+  { id: 'report', label: 'Report', section: 'Misc', navSection: 'MISC', keywords: ['report', 'export', 'download'], tool: true, availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['reportLoading'] } },
+  { id: 'feedback', label: 'Feedback', section: 'Misc', navSection: 'MISC', keywords: ['feedback', 'bug', 'idea', 'report', 'suggestion'], availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['feedbackLoading'] } },
 ] as const;
 
 export const MODULE_BY_ID: Readonly<Record<PageId, ModuleDefinition>> = Object.freeze(
@@ -191,10 +179,8 @@ export const SHARED_LOADING_FIELDS: readonly LifecycleFieldName[] = (() => {
   const seen = new Set<LifecycleFieldName>();
   const out: LifecycleFieldName[] = [];
   for (const mod of MODULES) {
-    // Action pages opt out of the global aggregate — their lifecycle field
-    // never passes through a startup ritual, so it would block the aggregate
-    // at `queued` forever.
-    if (mod.noLoadGlyph) continue;
+    // Readiness is independent of sidebar presentation and background work.
+    if (mod.analysis) continue;
     for (const field of mod.lifecycle.fields) {
       if (!seen.has(field)) {
         seen.add(field);
@@ -208,3 +194,37 @@ export const SHARED_LOADING_FIELDS: readonly LifecycleFieldName[] = (() => {
 export function getModuleLabel(pageId: PageId): string {
   return MODULE_BY_ID[pageId]?.label || pageId;
 }
+
+// Lower numbers run first; page visits promote queued work to priority zero.
+// Dependencies must settle (including failure) before automatic work starts.
+export interface ScanPolicy {
+  priority: number;
+  cheap?: boolean;
+  ttlMs?: number;
+  after?: readonly LifecycleFieldName[];
+}
+export const SCAN_POLICIES: Partial<Record<LifecycleFieldName, ScanPolicy>> = {
+  reportLoading: { priority: 10, cheap: true },
+  imageCleanerLoading: { priority: 1, cheap: true },
+  csTemplateReplacementLoading: { priority: 10, cheap: true },
+  codeEnvCleanerLoading: { priority: 1 },
+  containerExecsLoading: { priority: 2 },
+  codeEnvsComparisonLoading: { priority: 3, after: ['codeEnvsLoading'] },
+  projectComputeLoading: { priority: 4 },
+  projectCostLoading: { priority: 5 },
+  adoptionLoading: { priority: 10, cheap: true, ttlMs: 600_000, after: ['projectFootprintLoading', 'usersLoading'] },
+  adoptionEventsLoading: { priority: 10, ttlMs: 60_000 },
+  userChurnLoading: { priority: 10, cheap: true, ttlMs: 600_000, after: ['usersLoading'] },
+  scenariosLoading: { priority: 20, ttlMs: 600_000 },
+  codeEnvsBrokenLoading: { priority: 20, ttlMs: 600_000, after: ['codeEnvsLoading'] },
+  appInstancesLoading: { priority: 30, ttlMs: 600_000 },
+  adoptionInventoryLoading: { priority: 30, ttlMs: 600_000 },
+  computePlacementLoading: { priority: 40, ttlMs: 600_000 },
+};
+export const BACKGROUND_LOADING_FIELDS = [...new Set(MODULES
+  .filter((mod) => mod.analysis === 'background').flatMap((mod) => mod.lifecycle.fields))];
+
+// Full-session completion includes automatic work beyond core readiness.
+export const FULL_SCAN_LOADING_FIELDS: readonly LifecycleFieldName[] = [...new Set<LifecycleFieldName>([
+  ...SHARED_LOADING_FIELDS, ...Object.keys(SCAN_POLICIES) as LifecycleFieldName[], 'projectCleanerLoading', 'dbHealthLoading', 'sanityCheckLoading',
+])];

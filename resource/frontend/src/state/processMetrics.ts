@@ -1,5 +1,5 @@
 import { fetchJson } from '../utils/api';
-import { createSyncStore } from './createSyncStore';
+import { createSyncStore, sessionWriter } from './createSyncStore';
 import { registerScanStore } from './scanStoreRegistry';
 import type { Lifecycle, ProcessMetric } from '../types';
 
@@ -82,6 +82,7 @@ export function subscribeProcessMetrics(listener: () => void): () => void {
 }
 
 async function runLoad(fresh = false) {
+  const write = sessionWriter(store);
   _controller?.abort();
   const controller = new AbortController();
   _controller = controller;
@@ -109,7 +110,7 @@ async function runLoad(fresh = false) {
     );
     if (!data.ok) throw new Error(data.error || 'Process metrics unavailable');
     const processes = data.processes || [];
-    store.patch({
+    write.patch({
       status: 'done',
       processes,
       totalProcesses: data.totalProcesses ?? processes.length,
@@ -119,7 +120,7 @@ async function runLoad(fresh = false) {
     });
   } catch (err) {
     if ((err as Error).name === 'AbortError') return;
-    store.patch({
+    write.patch({
       status: 'error',
       error: err instanceof Error ? err.message : String(err),
       finishedAt: new Date().toISOString(),

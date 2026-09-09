@@ -19,7 +19,8 @@ export function resolveLifecycleFromFields(
 }
 
 export function resolveLifecycle(module: ModuleDefinition, d: ParsedData): Lifecycle {
-  return resolveLifecycleFromFields(module.lifecycle.fields, d);
+  const lc = resolveLifecycleFromFields(module.lifecycle.fields, d);
+  return lc.phase === 'queued' && module.analysis === 'manual' ? { ...lc, message: 'Not requested' } : lc;
 }
 
 export function resolveLifecycleById(pageId: PageId, d: ParsedData): Lifecycle {

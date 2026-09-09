@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { appInstancesScan, setKeepInstance } from '../../state/appInstancesStore';
 import { useRedState } from '../../state/redUnlockStore';
 import { DataGrid } from '../common/DataGrid';
@@ -37,16 +37,13 @@ function fmtRelative(ms: number | null, nowMs: number): string {
 }
 
 export function AppInstancesPage() {
-  const { data, loading, error, scanStarted, scanPhase, scanMessage, finishedAt } =
+  const { data, loading, error, scanPhase, scanMessage, finishedAt } =
     appInstancesScan.use();
   const { authed } = useRedState();
   const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(new Set());
   const [busyRecipe, setBusyRecipe] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!scanStarted) void appInstancesScan.load();
-  }, [scanStarted]);
 
   const lifecycle = appInstancesScan.lifecycle();
   const complete = scanPhase === 'complete' && !!data;
@@ -315,11 +312,8 @@ export function AppInstancesPage() {
           </div>
         </div>
 
-        {loading && (
-          <div>
-            <ProgressIndicator lifecycle={lifecycle} />
-            <div className="mt-1 font-mono text-xs text-[var(--text-muted)]">{scanMessage}</div>
-          </div>
+        {(loading || lifecycle.phase === 'done') && (
+          <ProgressIndicator lifecycle={lifecycle} message={loading ? scanMessage : undefined} hideWhenDone />
         )}
 
         {data && (

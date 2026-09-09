@@ -4,94 +4,7 @@ import { useDiag } from '../../context/DiagContext';
 import type { Lifecycle, PageId } from '../../types';
 import { resolveLifecycleById } from '../../utils/pageLifecycle';
 
-interface SectionInfo {
-  label: string;
-  firstPage: PageId;
-}
-
-const PAGE_SECTION_MAP: Record<PageId, SectionInfo> = {
-  'mission-control': { label: 'Overview', firstPage: 'summary' },
-  summary: { label: 'Overview', firstPage: 'summary' },
-  filesystem: { label: 'Overview', firstPage: 'summary' },
-  resources: { label: 'Overview', firstPage: 'summary' },
-  'connections-inventory': { label: 'Connections', firstPage: 'connections-inventory' },
-  'connections-insights': { label: 'Connections', firstPage: 'connections-inventory' },
-  'connections-health': { label: 'Connections', firstPage: 'connections-inventory' },
-  'connections-fs-migration': { label: 'Connections', firstPage: 'connections-inventory' },
-  projects: { label: 'Projects', firstPage: 'projects' },
-  'project-cleaner': { label: 'Projects', firstPage: 'projects' },
-  'app-instances': { label: 'Projects', firstPage: 'projects' },
-  scenarios: { label: 'Projects', firstPage: 'projects' },
-  'project-compute': { label: 'Projects', firstPage: 'projects' },
-  'project-cost': { label: 'Projects', firstPage: 'projects' },
-  users: { label: 'Users', firstPage: 'users' },
-  adoption: { label: 'Users', firstPage: 'users' },
-  'user-churn': { label: 'Users', firstPage: 'users' },
-  'plugins-installed': { label: 'Plugins', firstPage: 'plugins-installed' },
-  plugins: { label: 'Plugins', firstPage: 'plugins-installed' },
-  'code-envs': { label: 'Code Envs', firstPage: 'code-envs' },
-  'code-envs-cleaner': { label: 'Code Envs', firstPage: 'code-envs' },
-  'code-envs-comparison': { label: 'Code Envs', firstPage: 'code-envs' },
-  'code-envs-broken': { label: 'Code Envs', firstPage: 'code-envs' },
-  'container-execs': { label: 'AI Compute', firstPage: 'container-execs' },
-  'compute-placement': { label: 'AI Compute', firstPage: 'container-execs' },
-  'image-cleaner': { label: 'AI Compute', firstPage: 'container-execs' },
-  'cs-template-replacement': { label: 'AI Compute', firstPage: 'container-execs' },
-  'llm-audit': { label: 'AI Compute', firstPage: 'container-execs' },
-  'k8s-insights': { label: 'AI Compute', firstPage: 'container-execs' },
-  agents: { label: 'Agents', firstPage: 'agents' },
-  'agent-tuning': { label: 'Agents', firstPage: 'agents' },
-  'agent-settings': { label: 'Agents', firstPage: 'agents' },
-  'agent-explainer': { label: 'Agents', firstPage: 'agents' },
-  settings: { label: 'Misc', firstPage: 'settings' },
-  logs: { label: 'Misc', firstPage: 'settings' },
-  'sanity-check': { label: 'Misc', firstPage: 'settings' },
-  'db-health': { label: 'Misc', firstPage: 'settings' },
-  report: { label: 'Misc', firstPage: 'settings' },
-  feedback: { label: 'Misc', firstPage: 'settings' },
-};
-
-const PAGE_LABELS: Record<PageId, string> = {
-  'mission-control': 'Mission Control',
-  summary: 'Summary',
-  filesystem: 'Filesystem',
-  resources: 'Resources',
-  projects: 'Projects',
-  users: 'Users',
-  adoption: 'Activity',
-  'user-churn': 'Churn & Seats',
-  'code-envs': 'Cleaner',
-  'code-envs-cleaner': 'Insights',
-  'code-envs-comparison': 'Comparison',
-  'code-envs-broken': 'Broken',
-  'connections-inventory': 'Inventory',
-  'connections-insights': 'Insights',
-  'connections-health': 'Health',
-  'connections-fs-migration': 'FS Migration',
-  logs: 'Errors',
-  'sanity-check': 'Sanity Check',
-  'container-execs': 'Container Execs',
-  'compute-placement': 'Compute Placement',
-  'project-cleaner': 'Project Cleaner',
-  'app-instances': 'App Instances',
-  scenarios: 'Scenarios',
-  'project-compute': 'Compute',
-  'project-cost': 'Cost / CRU',
-  'plugins-installed': 'Installed',
-  plugins: 'Plugin Sync',
-  report: 'Report',
-  'db-health': 'DB Health',
-  'image-cleaner': 'Docker Images',
-  'cs-template-replacement': 'Replace CS Template',
-  'llm-audit': 'Model Audit',
-  'k8s-insights': 'K8s Insights',
-  settings: 'Settings',
-  feedback: 'Feedback',
-  agents: 'Agents',
-  'agent-tuning': 'Agent Tuning',
-  'agent-settings': 'Agent Permissions',
-  'agent-explainer': 'How Agents Work',
-};
+import { MODULE_BY_ID, MODULE_NAV_SECTIONS } from '../../utils/moduleRegistry';
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -126,8 +39,9 @@ export function Breadcrumb() {
     return () => window.clearTimeout(id);
   }, [showTick]);
 
-  const section = PAGE_SECTION_MAP[activePage];
-  const pageLabel = PAGE_LABELS[activePage];
+  const mod = MODULE_BY_ID[activePage];
+  const section = { label: mod.section, firstPage: MODULE_NAV_SECTIONS.find((s) => s.title === mod.navSection)!.items[0] };
+  const pageLabel = mod.label;
 
   if (!section) return null;
 

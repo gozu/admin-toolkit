@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { userChurnScan } from '../../state/userChurnScan';
 import { useDiag } from '../../context/DiagContext';
@@ -151,13 +151,10 @@ function AccountCell({ account }: { account: ChurnAccount }) {
 
 export function UserChurnPage() {
   const { state } = useDiag();
-  const { data, scanStarted, error } = userChurnScan.use();
+  const { data, error } = userChurnScan.use();
   const [flowMode, setFlowMode] = useState<ChurnFlowMode>('flow');
   const [dormantDays, setDormantDays] = useState<DormantDays>(180);
 
-  useEffect(() => {
-    if (!scanStarted) void userChurnScan.load();
-  }, [scanStarted]);
 
   const lifecycle = resolveLifecycleFromFields(['userChurnLoading'], state.parsedData);
   const isLoading = lifecycle.phase === 'running' || lifecycle.phase === 'queued';
@@ -394,10 +391,8 @@ export function UserChurnPage() {
               as of {fmtDate(nowMs)} · user + activity snapshot
             </span>
           </div>
-          {isLoading && (
-            <div className="border-b border-[var(--border-glass)] px-4 py-3">
-              <ProgressIndicator lifecycle={lifecycle} compact={!!data} />
-            </div>
+          {(isLoading || lifecycle.phase === 'done') && (
+            <ProgressIndicator lifecycle={lifecycle} compact={!!data} hideWhenDone className="border-b border-[var(--border-glass)] px-4 py-3" />
           )}
           {error && !data && (
             <div className="px-4 py-3 text-sm text-[var(--neon-red)]">{error}</div>

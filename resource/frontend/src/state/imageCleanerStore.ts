@@ -1,5 +1,6 @@
+import { getSessionEpoch, subscribeSessionEpoch } from './sessionCache';
 import { createModuleScanStore } from './createModuleScanStore';
-import { createSyncStore } from './createSyncStore';
+import { createSyncStore, sessionWriter } from './createSyncStore';
 import { fetchRaw } from '../utils/api';
 
 export type Provider = 'ecr' | 'acr' | 'gar';
@@ -67,11 +68,12 @@ async function fetchWithHint<T>(url: string): Promise<T> {
 }
 
 export function loadReleaseDate(provider: Provider): Promise<void> {
+  const write = sessionWriter(releaseDateStore);
   const slot = releaseDateStore.get().byProvider[provider];
   if (slot?.info) return Promise.resolve();
   const existing = inflightByProvider.get(provider);
   if (existing) return existing;
-  releaseDateStore.patch({
+  write.patch({
     byProvider: {
       ...releaseDateStore.get().byProvider,
       [provider]: { info: null, loading: true, error: null },
@@ -82,7 +84,7 @@ export function loadReleaseDate(provider: Provider): Promise<void> {
       const info = await fetchWithHint<ReleaseInfo>(
         `/api/tools/image-cleaner/release-date?provider=${provider}`,
       );
-      releaseDateStore.patch({
+      write.patch({
         byProvider: {
           ...releaseDateStore.get().byProvider,
           [provider]: { info, loading: false, error: null },
@@ -90,7 +92,7 @@ export function loadReleaseDate(provider: Provider): Promise<void> {
       });
     } catch (err) {
       const e = err as Error & { hint?: string };
-      releaseDateStore.patch({
+      write.patch({
         byProvider: {
           ...releaseDateStore.get().byProvider,
           [provider]: {
@@ -101,7 +103,7 @@ export function loadReleaseDate(provider: Provider): Promise<void> {
         },
       });
     } finally {
-      inflightByProvider.delete(provider);
+      if (write.current()) inflightByProvider.delete(provider);
     }
   })();
   inflightByProvider.set(provider, p);
@@ -109,7 +111,9 @@ export function loadReleaseDate(provider: Provider): Promise<void> {
 }
 
 export async function loadDefaultImageCleanerBootstrap(): Promise<void> {
+  const epoch = getSessionEpoch();
   await imageCleanerDetectScan.load();
+  if (epoch !== getSessionEpoch()) return;
   const provider = imageCleanerDetectScan.store.get().data?.provider;
   if (provider) {
     await loadReleaseDate(provider);
@@ -120,3 +124,5 @@ export const imageCleanerReleaseDates = {
   use: releaseDateStore.use,
   get: releaseDateStore.get,
 };
+
+subscribeSessionEpoch(() => inflightByProvider.clear());

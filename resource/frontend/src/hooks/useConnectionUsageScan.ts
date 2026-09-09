@@ -1,3 +1,4 @@
+import { getSessionEpoch } from '../state/sessionCache';
 import { useCallback } from 'react';
 import { useDiag } from '../context/DiagContext';
 import { fetchRaw } from '../utils/api';
@@ -22,6 +23,7 @@ export function useConnectionUsageScan() {
   const scan = useCallback(async () => {
     if (connectionUsageScanStore.get().scanning) return;
 
+    const epoch = getSessionEpoch();
     const controller = new AbortController();
     setConnectionUsageScanController(controller);
 
@@ -72,6 +74,7 @@ export function useConnectionUsageScan() {
       }
 
       for await (const { event, payload } of parseSseStream(response.body)) {
+        if (epoch !== getSessionEpoch() || controller.signal.aborted) break;
         const data = payload as Record<string, unknown>;
         if (event === 'error') {
           throw new Error(String(data.error || 'Scan error'));
@@ -125,6 +128,7 @@ export function useConnectionUsageScan() {
         }
       }
     } catch (err) {
+      if (epoch !== getSessionEpoch()) return;
       if ((err as Error).name === 'AbortError') {
         setParsedData({ connectionUsageLoading: { phase: 'queued' } });
         return;
@@ -141,8 +145,10 @@ export function useConnectionUsageScan() {
         },
       });
     } finally {
-      connectionUsageScanStore.patch({ scanning: false });
-      setConnectionUsageScanController(null);
+      if (getConnectionUsageScanController() === controller) {
+        connectionUsageScanStore.patch({ scanning: false });
+        setConnectionUsageScanController(null);
+      }
     }
   }, [setParsedData]);
 

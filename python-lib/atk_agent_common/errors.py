@@ -39,6 +39,14 @@ class BackendError(ToolkitError):
     code = 'backend-error'
 
 
+class BackendAuthenticationError(ToolkitError):
+    code = 'backend-authentication-failed'
+    remediation = ('Check the agent-to-webapp DSS authentication, configured Backend base URL, '
+                   'and agent run-as access to that webapp. Do not infer an expired instance '
+                   'API key or recommend restarting DSS from this error alone. '
+                   'Instance health remains unknown until a tool succeeds.')
+
+
 class UnreachableHost(ToolkitError):
     code = 'host-unreachable'
     remediation = ('The target DSS host did not respond. Check the host id with the '

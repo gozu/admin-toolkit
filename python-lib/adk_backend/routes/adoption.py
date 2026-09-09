@@ -19,6 +19,8 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, g, jsonify
 
+from adk_backend.utils import background_scan
+
 from adk_backend.caching import _cache_get
 from adk_backend.clients import _adoption_git_aggregate, _sdk_fetch
 from adk_backend.macros import _adoption_events_macro, _adoption_inventory_macro
@@ -234,6 +236,7 @@ def api_adoption():
 
 
 @bp.route('/api/adoption/inventory')
+@background_scan
 def api_adoption_inventory():
     """Config-tree object inventory (macro): full history of surviving objects.
 
@@ -253,6 +256,7 @@ def api_adoption_inventory():
 
 
 @bp.route('/api/adoption/events')
+@background_scan
 def api_adoption_events():
     """Recent-activity pulse (macro, mode=recent): a cheap reverse tail-scan of
     the newest audit files, covering the last ~72h or however far the rotated

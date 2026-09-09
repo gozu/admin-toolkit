@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.4.837] - 2026-09-09
+
+### Fixed
+
+- Native agents now dispatch tool calls through the running Flask app, preserving route gates and host isolation without re-entering DSS's webapp login gate. Separate agent kernels use the DSS backend client for HTTP authentication. HTTP 401 errors report failed authentication without asserting that an instance API key expired.
+
+### Added
+
+- Users now has a license type filter and sortable license profile column, recognizing current and legacy designer/builder and consumer/read-only profiles. Full feature access can be filtered separately; technical/admin/governance and unknown profiles are kept distinct, and disabled assignments remain visible.
+
+### Changed
+
+- Consolidated scan startup into a bounded priority queue. Read-only diagnostic pages now prepare in the background, page visits promote queued work, and stale results remain visible during refresh. Core readiness and background progress are separate; host resets discard obsolete responses.
+- Shared project/plugin filters draw selected checkmarks, settle new selection chips, and rotate their menu chevrons. Shared refresh controls now turn an activity icon while working and reserve label width to prevent layout shifts. Both respect reduced motion.
+
+## [0.4.836] - 2026-09-08
+
+### Added
+- Added a persistent header scan spinner that waits for all scheduled scans, enrichment tails, filesystem work, and background discovery; its dropdown lists outstanding work and failures.
+
+## [0.4.834] - 2026-09-08
+
+### Changed
+- Progress bars now finish green, with an inset track, a softly tinted leading edge, smooth undivided fill, and a compact status readout. Running bars stay steady; the track stays empty until measured progress arrives, avoiding a startup sweep that snaps backwards at the first real percentage. The completion sweep lands into a brief green glow and drawn check; shared progress documentation and contract checks follow the new success color.
+- Mission Control now has an expandable estate discovery map with streamed object blocks, a discovery-frontier scanner, known-dependency illumination, attention markers, search, and object links. Shared progress indicators finish with a sweep and drawn check; switches, segmented controls, and expansion chevrons settle mechanically; changed numeric table cells receive a brief edge highlight. A local synthetic-data workshop supports interactive review.
+
+### Fixed
+- Estate discovery includes project inventory delivered by live footprint scans, preserving recorded links and attention markers.
+
 ## [0.4.817] - 2026-08-24
 
 ### Fixed

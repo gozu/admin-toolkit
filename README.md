@@ -6,8 +6,8 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.817-blue)
-![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-plugin-2AB1AC)
+![Version](https://img.shields.io/badge/version-0.4.837-blue)
+![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-13%2B-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4.1-38BDF8?logo=tailwindcss&logoColor=white)
@@ -33,11 +33,11 @@ It scores what it finds, explains *why* something is unhealthy, and — behind a
 
 ## Feature tour
 
-The toolkit is organized into 9 sidebar sections covering 38 pages. Pages marked **tool** are advanced-action surfaces and are hidden behind the [Advanced Actions unlock](#advanced-actions-red-unlock).
+The toolkit is organized into 9 sidebar sections covering 39 pages. Pages marked **tool** are advanced-action surfaces and are hidden behind the [Advanced Actions unlock](#advanced-actions-red-unlock).
 
 ### Overview
 
-Instance vitals at a glance. **Mission Control** is the dense operations wall for watching the whole instance. **Summary** shows the composite health score, per-category breakdown, detected issues with expandable detail, and instance facts (DSS version, Python, cores, RAM, OS). **Filesystem** charts every mount point and drills into the DSS data directory with an interactive treemap and directory tree. **Resources** combines live memory, CPU, and process usage with configuration-based workload headroom analysis.
+Instance vitals at a glance. **Mission Control** is the dense operations wall for watching the whole instance. Its expandable **Estate map** reveals discovered projects, code environments, and connections; inspecting an object illuminates its recorded dependencies, and pinning it exposes a direct DSS link. **Summary** shows the composite health score, per-category breakdown, detected issues with expandable detail, and instance facts (DSS version, Python, cores, RAM, OS). **Filesystem** charts every mount point and drills into the DSS data directory with an interactive treemap and directory tree. **Resources** combines live memory, CPU, and process usage with configuration-based workload headroom analysis.
 
 <div align="center"><img src="docs/screenshots/filesystem.png" alt="Filesystem usage — mount points, treemap and directory tree of the DSS data dir" width="850" /></div>
 
@@ -64,6 +64,8 @@ The **ATK Admin Agent** is one generalist across fleet health triage, scoping, i
 ### Users
 
 Ownership and accountability: who owns which projects, code envs, and LLM assets, joined with login activity. **Activity** covers adoption, engagement, cohorts, retention, builders, and technology trends. **Churn** estimates dormant accounts, account lifecycle, seat reuse, and reclaim candidates — the set of pages to open before offboarding someone.
+
+**Users → License type** filters designer/builder licenses, with a full-access option for Full Designer, Designer, and Data Scientist. Consumer/read-only detection recognizes Reader, Explorer, Consumer, AI Consumer, AI Access User, and read-only aliases across license generations. The sortable **License profile** column preserves the source name; technical/admin/governance and unknown profiles are separate categories. Counts include disabled accounts and describe assigned profiles, not active seat usage or security permissions. Profile definitions follow the [Dataiku user profile reference](https://doc.dataiku.com/dss/latest/security/user-profiles.html); custom or missing profiles require review.
 
 ### Plugins
 
@@ -119,6 +121,7 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 | Code Envs | Comparison | Find duplicate/mergeable envs |
 | Code Envs | Broken | Failed-build inventory, log evidence and optional LLM remediation analysis |
 | AI Compute | Container Execs 🔴 | Live K8s workload inventory (SSE stream) |
+| AI Compute | Placement 🔴 | Effective compute placement and migration planning across project objects |
 | AI Compute | Docker Images 🔴 | Prune stale images from ECR/ACR/GAR |
 | AI Compute | CS Templates 🔴 | Replace code studio templates |
 | AI Compute | Model Audit | LLM connection/model inventory with pricing |
@@ -155,7 +158,7 @@ flowchart LR
         SPA["React 19 SPA<br/>Vite + Tailwind + Chart.js"]
     end
     subgraph Webapp["DSS plugin webapp"]
-        API["Flask backend<br/>39 route groups, SSE streaming,<br/>caching + prewarm"]
+        API["Flask backend<br/>40 route groups, SSE streaming,<br/>caching + prewarm"]
     end
     subgraph DSS["Dataiku DSS (local or remote)"]
         PYAPI["DSS Python API<br/>(reads + gated writes)"]
@@ -174,7 +177,7 @@ Pure DSS API operations talk to the instance directly. Anything host-bound (file
 
 ### Requirements
 
-- A Dataiku DSS instance and **global admin** rights (to install the plugin and use the toolkit meaningfully).
+- **Dataiku DSS 13 or later** (the toolkit is developed and tested against DSS 13+; earlier releases such as DSS 12 may work but are not supported) and **global admin** rights (to install the plugin and use the toolkit meaningfully).
 - Python 3.10–3.13 available for the plugin code env. All Python dependencies (Flask, boto3, azure-identity, google-cloud-artifact-registry, psycopg2, …) are declared in the plugin's code-env spec and installed automatically when DSS builds it.
 - For remote-host scanning, a **personal API key belonging to an admin user** on each remote DSS instance you want to scan — created from that user's **profile → API keys → New API key**. A global API key from **Settings → Security → Global API keys** will **not** work: it has no associated DSS user, so the remote rejects it with an error.
 - Network access from the DSS instance to GitHub if you install from git. If that is not possible, install from a plugin ZIP instead.
@@ -338,7 +341,7 @@ In addition, Under Settings, you can create python notebooks with the same algor
 ```
 plugin.json                  # plugin manifest (params, version, secrets)
 webapps/admin-toolkit/       # Flask webapp entrypoint
-python-lib/                  # backend: adk_backend/ (39 route groups) + shared libs
+python-lib/                  # backend: adk_backend/ (40 route groups) + shared libs
 python-runnables/            # 16 host-bound macros (host/resource/process metrics, adoption, K8s, images, DB, CS, CRU, triage, and cleanup/governance actions)
 python-lib/atk_agent_common/ # agents layer shared lib (tools impl, actuator, triage, audit)
 python-agents/               # 1 generalist plugin agent (ATK Admin Agent)
@@ -367,3 +370,13 @@ Every module plugs into shared navigation, lifecycle, and availability contracts
 Built by **Alex Kaos** · © 2026 — All rights reserved. Not an official Dataiku product.
 
 </div>
+
+### Background diagnostics
+
+Live sessions queue Activity, Churn, Scenarios, broken code environments, App Instances,
+and Compute Placement automatically after the initial data load. Core diagnostics run
+first; opening a page promotes its pending scan. One expensive background scan and up to two
+cheap reads run together, with a reserved slot for foreground requests. Cached results stay visible during stale refreshes; only
+visible pages refresh periodically. The header separates core readiness from background
+progress. Cleanup scans, plugin comparisons and AI calls remain explicit actions.
+K8s Insights can remember an optional automatic audit cluster for each host.

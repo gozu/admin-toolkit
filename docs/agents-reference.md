@@ -122,8 +122,8 @@ overrides for drills):
 - **`native`** (default) — the generalist loop runs **in-process in the webapp
   backend** (`adk_backend/agent_native.py` + `atk_agent_common/native_loop.py`).
   No Dataiku agent kernel is involved: the LLM streams straight from the Mesh
-  (`DKUChatModel`), tools execute through the same ToolkitClient HTTP surface
-  (self-calls onto the backend), and the dku-trace is synthesized with the
+  (`DKUChatModel`), tools use the ToolkitClient interface with in-process Flask
+  dispatch (including all route hooks and gates), and the dku-trace is synthesized with the
   official `dataikuapi.dss.llm_tracing.SpanBuilder` (same span layout, same
   ring buffer + Trace Explorer handoff). Wins over the kernel: instant start
   (no kernel spin-up), no post-deploy kernel recycles, **parallel tool
@@ -160,7 +160,7 @@ Native-runtime extras (0.4.767):
   `usage_metadata` stays **None** on DKU chunks, verified live on 14.7).
 - **Setup-bundle cache** — the per-turn assembly (plugin config, gates,
   tuning, agent instance, toolset, prompt) is cached ~20s per agent id, so
-  follow-up turns reach the first token without the 4-6 self-HTTP/DSS reads.
+  follow-up turns reach the first token without the 4-6 toolkit/DSS reads.
   Saving Agents & Outreach settings clears it (`clear_bundle_cache`), so knob
   changes still apply on the very next turn.
 - **Interaction-logs parity** — after each native turn a daemon thread appends
@@ -1158,7 +1158,7 @@ Snapshot failures become a digest warning, never a sweep failure.
 
 | Param | Meaning |
 |---|---|
-| `backend_url` | Admin Toolkit webapp backend base. Empty = auto-discover on the local DSS (project sweep for an admin-toolkit webapp → `<studioExternalUrl>/web-apps-backends/<project>/<webappId>`). |
+| `backend_url` | Admin Toolkit webapp backend base on this DSS instance. Empty = auto-discover locally (project sweep → `<studioExternalUrl>/web-apps-backends/<project>/<webappId>`). Inside DSS, agent tools use the authenticated SDK backend client and its reachable URL; the configured instance must match. Select remote hosts through tool host ids. |
 | `master_password` | The one master password: unlocks red endpoints headlessly AND opens encrypted (`adkfk1$`) remote-host API keys. Empty = actuator permanently locked (plans still work, no token minted). Legacy `red_actions_password` / `host_keys_password` values are honored until migrated. |
 | `host_allowlist` | CSV of allowed host ids. Empty = all. |
 | `default_llm_id` | Mesh LLM for agents when the instance doesn't set one. Full precedence: Agent Tuning `llm_override` > per-agent `llm_id` > this default. |
@@ -1166,6 +1166,21 @@ Snapshot failures become a digest warning, never a sweep failure.
 | `verify_tls` / `http_timeout_s` / `heavy_timeout_s` | Client knobs (default true / 30 / 900). Managed from webapp Settings → Agents & Outreach. |
 | `triage_connection` | Postgres connection for triage rows + the audit trail (same as the toolkit's Agents Audit setting). |
 | `triage_score_threshold` / `triage_mail_channel` / `triage_recipient` | Daily sweep knobs. |
+
+Native agents dispatch to this running webapp on a bounded worker pool, with
+separate request contexts, component-owned unlock cookies, and existing timeout
+handling. They do not copy browser credentials or require disabling DSS's
+**Require authentication** setting. Native SSE tool responses are buffered on
+the route worker because these tools consume only the final event. The configured
+`backend_url` applies to HTTP clients in separate kernels and jobs, not native
+dispatch. Those HTTP clients still depend on DSS accepting their credentials;
+using the SDK alone is not proof of access on every webapp configuration.
+
+Agent HTTP 401 failures are reported as `backend-authentication-failed`: check the
+agent-to-webapp authentication and run-as access before diagnosing target-host
+credentials. A 401 alone does not establish an expired instance API key. The
+browser's `anon` screenshot mode only rewrites displayed names; it does not alter
+tool request credentials or host ids.
 
 Every setting has an `ATK_AGENTS_<UPPERCASE>` env override (`config.py`), so the
 whole stack tests as pure Python against a live backend without DSS.

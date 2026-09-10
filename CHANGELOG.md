@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.838] - 2026-09-10
+
+### Changed
+
+- Renamed Agents → Tuning to Prompts and removed How it works from the Agents sidebar. The explainer remains available from the Agents page.
+
 ## [0.4.837] - 2026-09-09
 
 ### Fixed

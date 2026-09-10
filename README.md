@@ -6,7 +6,7 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.837-blue)
+![Version](https://img.shields.io/badge/version-0.4.838-blue)
 ![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-13%2B-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -45,7 +45,7 @@ Instance vitals at a glance. **Mission Control** is the dense operations wall fo
 
 ### Agents
 
-The **ATK Admin Agent** is one generalist across fleet health triage, scoping, investigation, and guarded administration. It combines read-only sensors with a plan → approve → execute protocol: every mutation is checked below the model by the master kill-switch, capability gates, an exact-target HMAC confirmation token, the backend's Advanced Actions gate, and executor policy. **Tuning** versions prompt/model overrides, **Permissions** controls read/write/execute and autonomous access per capability, and **How it works** explains the safety model in-product. Agent turns can use DSS ≥ 14.5 **Agent Interaction Logging** and a one-click Trace Explorer handoff. Conversations can optionally persist in built-in SQLite or Remote SQL, scoped per user and fleet host; all agent tools and the generalist ship inside this plugin.
+The **ATK Admin Agent** is one generalist across fleet health triage, scoping, investigation, and guarded administration. It combines read-only sensors with a plan → approve → execute protocol: every mutation is checked below the model by the master kill-switch, capability gates, an exact-target HMAC confirmation token, the backend's Advanced Actions gate, and executor policy. **Prompts** versions prompt/model overrides, **Permissions** controls read/write/execute and autonomous access per capability, and the **How it works** link on the Agents page explains the safety model. Agent turns can use DSS ≥ 14.5 **Agent Interaction Logging** and a one-click Trace Explorer handoff. Conversations can optionally persist in built-in SQLite or Remote SQL, scoped per user and fleet host; all agent tools and the generalist ship inside this plugin.
 
 ### Connections
 
@@ -95,9 +95,9 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 |---|---|---|
 | Overview | Mission Control | Dense operations wall for fleet-wide health |
 | Agents | Agents | Chat with the generalist admin agent; investigate, plan → approve → execute |
-| Agents | Tuning | Versioned prompt overrides + model override for the agents |
+| Agents | Prompts | Versioned prompt overrides + model override for the agents |
 | Agents | Permissions | Per-action agent read/write/execute permissions and safety gates |
-| Agents | How it works | Interactive tour of agent plans, approvals, tokens, permissions, audit and autonomy |
+| Agents | How it works | Interactive tour of agent plans, approvals, tokens, permissions, audit and autonomy; opened from the Agents page |
 | Overview | Summary | Composite health score, issues, instance facts |
 | Overview | Filesystem | Mount usage, data-dir treemap + directory tree |
 | Overview | Resources | Live system/process memory and CPU, workload headroom |

@@ -347,7 +347,7 @@ const GENERIC_STOP = new Set([
   'fs migration', 'project cleaner', 'app instances', 'scenarios', 'compute',
   'cost / cru', 'activity', 'churn & seats', 'installed', 'plugin sync',
   'cleaner', 'comparison', 'broken', 'container execs', 'docker images',
-  'replace cs template', 'model audit', 'k8s insights', 'agent tuning',
+  'replace cs template', 'model audit', 'k8s insights', 'agent tuning', 'agent prompts', 'prompts',
   'agent permissions', 'how agents work', 'settings', 'errors',
   'sanity check', 'db health', 'report', 'feedback',
   // generic vocabulary

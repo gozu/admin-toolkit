@@ -8,7 +8,7 @@ import { Spinner } from '../common/Spinner';
 import type { LlmOption } from '../../types';
 
 /**
- * Agent Tuning — customize the agent's prompts and model, versioned in a
+ * Agent Prompts — customize the agent's prompts and model, versioned in a
  * Dataiku dataset (one column per prompt type plus an llm_override setting
  * column, one row per save; the newest row is the active version, an empty
  * cell means "built-in default"). Follows the prompt-registry playbook:
@@ -226,7 +226,7 @@ function ModelOverrideCard({
       <p className="text-[11px] text-[var(--text-muted)]">
         {customized ? (
           <>
-            Agents will use <code className="text-[10px]">{draft}</code> (Agent Tuning override).
+            Agents will use <code className="text-[10px]">{draft}</code> (Agent Prompts override).
           </>
         ) : (
           <>
@@ -276,7 +276,7 @@ export function AgentTuningPage() {
     fetchJson<TuningState>('/api/agents/tuning')
       .then((data) => {
         if (data.available) applyState(data);
-        else setLoadError(data.reason || 'Agent tuning is unavailable on this host.');
+        else setLoadError(data.reason || 'Agent prompts are unavailable on this host.');
       })
       .catch((err) => setLoadError(String(err)));
   }, [applyState]);
@@ -337,7 +337,7 @@ export function AgentTuningPage() {
       <div className="w-full flex-1 py-6">
         <div className={COLUMN}>
           <div className="glass-card p-6 max-w-lg space-y-2">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)]">Agent tuning unavailable</h3>
+            <h3 className="text-sm font-semibold text-[var(--text-primary)]">Agent prompts unavailable</h3>
             <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{loadError}</p>
           </div>
         </div>
@@ -360,7 +360,7 @@ export function AgentTuningPage() {
       <div className={`${COLUMN} space-y-3`}>
         {/* Header + guidance */}
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Agent Tuning</h2>
+          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Agent Prompts</h2>
           <InfoDot eduId="agent.unified" />
           <span className="text-xs text-[var(--text-tertiary)]">
             prompts + model · versioned in dataset{' '}

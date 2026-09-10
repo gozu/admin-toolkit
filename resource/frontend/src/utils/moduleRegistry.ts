@@ -125,7 +125,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   // AGENTS — conversational ops surface over the agents plugin (LLM Mesh
   // proxy). Loads per conversation, never through the startup ritual.
   { id: 'agents', label: 'Agents', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'chat', 'ops', 'actuator', 'triage', 'plan', 'approve', 'autonomous', 'ai'], availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['agentsLoading'] } },
-  { id: 'agent-tuning', label: 'Agent Tuning', navLabel: 'Tuning', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'tuning', 'prompt', 'system', 'rubric', 'version', 'customize', 'override'], availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['agentsLoading'] } },
+  { id: 'agent-tuning', label: 'Agent Prompts', navLabel: 'Prompts', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'tuning', 'prompt', 'system', 'rubric', 'version', 'customize', 'override'], availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['agentsLoading'] } },
   { id: 'agent-settings', label: 'Agent Permissions', navLabel: 'Permissions', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'permissions', 'settings', 'actions', 'gates', 'enable', 'disable', 'allow', 'read', 'write', 'execute', 'catalog'], availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['agentsLoading'] } },
   { id: 'agent-explainer', label: 'How Agents Work', navLabel: 'How it works', commandLabel: 'Agents: How it works', section: 'Agents', navSection: 'AGENTS', keywords: ['agent', 'explainer', 'how', 'works', 'safety', 'guardrails', 'plan', 'confirm', 'token', 'audit', 'sandbox', 'autonomy', 'tour'], availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['agentsLoading'] } },
 
@@ -147,7 +147,7 @@ export const MODULE_BY_ID: Readonly<Record<PageId, ModuleDefinition>> = Object.f
 
 export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'OVERVIEW', items: ['mission-control', 'summary', 'filesystem', 'resources'] },
-  { title: 'AGENTS', items: ['agents', 'agent-tuning', 'agent-settings', 'agent-explainer'], experimental: true },
+  { title: 'AGENTS', items: ['agents', 'agent-tuning', 'agent-settings'], experimental: true },
   { title: 'CONNECTIONS', items: ['connections-inventory', 'connections-insights', 'connections-health', 'connections-fs-migration'] },
   { title: 'PROJECTS', items: ['project-cleaner', 'projects', 'app-instances', 'scenarios', 'project-compute', 'project-cost'] },
   { title: 'USERS', items: ['users', 'adoption', 'user-churn'] },   // 'adoption' restored from ['users']

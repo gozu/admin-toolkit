@@ -374,7 +374,7 @@ export const CLOSING = [
     page: 'agent-tuning',
     title: 'Shape the voice',
     body: 'Versioned system prompts with runtime overrides — tune how the agent thinks and reports.',
-    cta: 'Agent Tuning →',
+    cta: 'Agent Prompts →',
   },
   {
     page: 'agents',

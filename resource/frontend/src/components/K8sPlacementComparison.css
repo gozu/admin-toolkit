@@ -173,6 +173,23 @@
   color: var(--neon-orange, #bf8736);
   font-size: 11px;
 }
+.kp-retained {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.kp-retained summary {
+  color: var(--neon-orange, #bf8736);
+  cursor: pointer;
+}
+.kp-retained p {
+  margin-top: 6px;
+}
+.kp-retained strong {
+  font-family: var(--font-mono, monospace);
+  font-weight: 400;
+}
 .kp-row-footer {
   margin-top: 5px;
   font-size: 10px;
@@ -212,7 +229,8 @@
   white-space: nowrap;
 }
 .k8s-placement button:focus-visible,
-.kp-pod-list summary:focus-visible {
+.kp-pod-list summary:focus-visible,
+.kp-retained summary:focus-visible {
   outline: 2px solid var(--text-primary);
   outline-offset: 2px;
 }

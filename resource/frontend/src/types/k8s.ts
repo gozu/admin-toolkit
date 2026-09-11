@@ -275,6 +275,7 @@ export interface K8sPlacementPod {
   name: string;
   ns: string;
   sourceNode: string;
+  statusReason?: string;
   isSystem: boolean;
   perNodeService: boolean;
   realCpuMilli: number | null;
@@ -290,6 +291,8 @@ export interface K8sPlacementNode {
   cpuCapacityMilli: number;
   memoryCapacityMib: number;
   pods: K8sPlacementPod[];
+  /** Current server kept at full rent, with all its pods, because sizing is unknown. */
+  retainedForPods?: string[];
   sizeChecks?: {
     instanceType: string;
     blockers: (

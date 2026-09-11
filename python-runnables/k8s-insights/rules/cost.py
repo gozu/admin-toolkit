@@ -499,13 +499,32 @@ class Rule21ClusterFloorProjection(Rule):
         usage = _build_usage_index(probes)
         active_pods = [p for p in pods if pod_phase(p) in ('Running', 'Pending')]
         pod_by_key = {f'{pod_namespace(p)}/{pod_name(p)}': p for p in active_pods}
+        # Missing measurements are not zero demand (for example, a BestEffort
+        # Code Studio between crash-loop restarts). Keep its entire current
+        # server, including all colocated pods and rent, outside consolidation.
+        # Unknown demand without an observed server still blocks the estimate.
+        unknown_sizing = {
+            key for key, p in pod_by_key.items()
+            if key not in usage and not any(pod_total_requests(p)[:2])
+        }
+        observed_node_names = {node_name(n) for n in nodes}
+        retained_node_names = {
+            pod_node(pod_by_key[key]) for key in unknown_sizing
+            if pod_node(pod_by_key[key]) in observed_node_names
+        }
+        unresolved_unknown = {
+            key for key in unknown_sizing
+            if pod_node(pod_by_key[key]) not in retained_node_names
+        }
         packable_by_node: Dict[str, int] = {}
         for p in active_pods:
             if pod_owner_kind(p) != 'DaemonSet' and pod_node(p):
                 packable_by_node[pod_node(p)] = packable_by_node.get(pod_node(p), 0) + 1
         # System deployments are movable workloads too; only per-node services
         # are replicated as overhead on each proposed server.
-        idle_node_names = {node_name(n) for n in nodes if not packable_by_node.get(node_name(n))}
+        idle_node_names = {node_name(n) for n in nodes
+                           if not packable_by_node.get(node_name(n))
+                           and node_name(n) not in retained_node_names}
 
         def overhead_for(node):
             out = []
@@ -530,6 +549,8 @@ class Rule21ClusterFloorProjection(Rule):
             if not instance:
                 continue
             full_count_by_instance[instance] = full_count_by_instance.get(instance, 0) + 1
+            if node_name(n) in retained_node_names:
+                continue
             if node_name(n) in idle_node_names and any(packable_by_node.values()):
                 continue
             group_key = node_name(n)
@@ -605,8 +626,8 @@ class Rule21ClusterFloorProjection(Rule):
         # -- "requests" sizing (Karpenter-style): declared requests are hard
         # constraints. Zero-request pods (DSS exec configs / API deployments
         # often set none) still occupy a node: pack them by live usage when
-        # metrics exist, else at zero size — either way they keep the floor
-        # at >= 1 node instead of letting it reach 0 and claim ~100% savings.
+        # metrics exist. Unsized pods retain their current server; without a
+        # known current server they keep the projection incomplete.
         req_pods: List[PodReq] = []
         usage_packed = 0
         unsized_packed = 0
@@ -647,9 +668,17 @@ class Rule21ClusterFloorProjection(Rule):
         total_nodes = sum(full_count_by_instance.values())
 
         def _project(mode: str, pod_reqs: List[PodReq]) -> Dict[str, Any]:
-            result = compute_floor(pod_reqs, node_groups, price_by_type)
+            movable = [p for p in pod_reqs
+                       if pod_node(pod_by_key[p.name]) not in retained_node_names
+                       and p.name not in unresolved_unknown]
+            result = compute_floor(movable, node_groups, price_by_type)
             floor_hourly = 0.0
             by_instance: Dict[str, int] = {}
+            for n in nodes:
+                if node_name(n) in retained_node_names:
+                    inst = node_instance_type(n)
+                    by_instance[inst] = by_instance.get(inst, 0) + 1
+                    floor_hourly += price_by_type.get(inst) or 0.0
             for grp, count in result.by_group.items():
                 if count <= 0:
                     continue
@@ -668,31 +697,48 @@ class Rule21ClusterFloorProjection(Rule):
             idle_monthly = min(savings_monthly, round(sum(round((price_by_type.get(node_instance_type(n)) or 0.0) * 730, 2) for n in nodes if node_name(n) in idle_node_names), 2))
             group_by_name = {g.name: g for g in node_groups}
             sized_by_name = {p.name: p for p in pod_reqs}
-            unknown_sizing = set()
+
+            def projected_pod(sized):
+                source = pod_by_key[sized.name]
+                real = usage.get(sized.name)
+                statuses = (source.get('status') or {}).get('containerStatuses') or []
+                waiting_reasons = [((s.get('state') or {}).get('waiting') or {}).get('reason')
+                                   for s in statuses]
+                return {
+                    'key': sized.name, 'name': pod_name(source), 'ns': pod_namespace(source),
+                    'sourceNode': pod_node(source),
+                    'isSystem': is_kube_system_ns(pod_namespace(source)) or pod_owner_kind(source) == 'DaemonSet',
+                    'perNodeService': pod_owner_kind(source) == 'DaemonSet',
+                    'statusReason': next((r for r in waiting_reasons if r), pod_phase(source)),
+                    'realCpuMilli': real[0] if real is not None else None,
+                    'realMemMib': real[1] if real is not None else None,
+                    'reservedCpuMilli': sized.cpu_milli, 'reservedMemMib': sized.mem_mib,
+                }
+
             projected_nodes = []
+            for n in nodes:
+                if node_name(n) not in retained_node_names:
+                    continue
+                cpu, mem, _ = node_allocatable(n)
+                assigned = [p for p in pod_reqs if pod_node(pod_by_key[p.name]) == node_name(n)]
+                assigned += overhead_for(n)
+                projected_nodes.append({
+                    'id': node_name(n), 'instanceType': node_instance_type(n),
+                    'hourly': price_by_type.get(node_instance_type(n)),
+                    'cpuCapacityMilli': cpu, 'memoryCapacityMib': mem,
+                    'pods': [projected_pod(p) for p in assigned],
+                    'retainedForPods': sorted(key for key in unknown_sizing
+                                              if pod_node(pod_by_key[key]) == node_name(n)),
+                    'sizeChecks': [],
+                })
             for index, placement in enumerate(result.placements):
                 group = group_by_name[placement.group]
                 assigned = [sized_by_name[key] for key in placement.pods] + group.overhead_pods
-                projected_pods = []
-                for sized in assigned:
-                    source = pod_by_key[sized.name]
-                    real = usage.get(sized.name)
-                    if real is None and sized.cpu_milli <= 0 and sized.mem_mib <= 0:
-                        unknown_sizing.add(sized.name)
-                    projected_pods.append({
-                        'key': sized.name, 'name': pod_name(source), 'ns': pod_namespace(source),
-                        'sourceNode': pod_node(source),
-                        'isSystem': is_kube_system_ns(pod_namespace(source)) or pod_owner_kind(source) == 'DaemonSet',
-                        'perNodeService': pod_owner_kind(source) == 'DaemonSet',
-                        'realCpuMilli': real[0] if real is not None else None,
-                        'realMemMib': real[1] if real is not None else None,
-                        'reservedCpuMilli': sized.cpu_milli, 'reservedMemMib': sized.mem_mib,
-                    })
                 projected_nodes.append({
                     'id': f'proposed-{index + 1}', 'instanceType': group.instance_type,
                     'hourly': price_by_type.get(group.instance_type),
                     'cpuCapacityMilli': group.cpu_alloc_milli, 'memoryCapacityMib': group.mem_alloc_mib,
-                    'pods': projected_pods,
+                    'pods': [projected_pod(p) for p in assigned],
                     'sizeChecks': placement_size_checks(
                         [sized_by_name[key] for key in placement.pods],
                         [candidate for candidate in node_groups
@@ -701,17 +747,22 @@ class Rule21ClusterFloorProjection(Rule):
                     ),
                 })
             missing_prices = [node_name(n) for n in nodes if node_instance_type(n) not in price_by_type]
-            placement_complete = not result.unplaceable and not unknown_sizing and not missing_prices
+            placement_complete = not result.unplaceable and not unresolved_unknown and not missing_prices
             title = f'Server consolidation: {total_nodes} → {floor_nodes} nodes'
             basis = 'observed usage +33%' if mode == 'rightsized' else 'current requests or observed usage, whichever is higher'
             summary = (
                 f'{total_nodes} current nodes (${current_monthly:.2f}/mo); '
                 f'{floor_nodes} proposed nodes (${floor_monthly:.2f}/mo). '
                 f'Placement uses {basis}; system deployments and per-node services are included. '
-                'Pod bars use measured consumption, without the placement margin. '
+                'Pod bars use the selected sizing on both sides. '
                 'Node selectors, taints, CPU, memory and GPU capacity are checked; '
                 'affinity, storage topology, disruption budgets and peak demand require review.'
             )
+            if retained_node_names:
+                summary += (
+                    f' {len(retained_node_names)} current servers are kept unchanged because pod sizing is unavailable; '
+                    'all their pods and full rental costs remain in the proposal. Savings come only from other servers.'
+                )
             if not placement_complete:
                 summary = 'Projection incomplete: some pods could not be sized or placed, or node pricing is missing. No savings estimate is available.'
             return {

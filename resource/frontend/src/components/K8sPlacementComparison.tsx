@@ -81,6 +81,9 @@ export function currentPlacementNodes(
       name: p.name,
       ns: p.ns,
       sourceNode: n.name,
+      statusReason:
+        planned.get(`${p.ns}/${p.name}`)?.statusReason ??
+        (p.crashLoopBackOff ? 'CrashLoopBackOff' : p.phase),
       isSystem: p.isSystem || p.isDaemonSet === true,
       perNodeService: p.isDaemonSet === true,
       realCpuMilli: p.realCpuMilli,
@@ -108,6 +111,7 @@ export function K8sPlacementComparison({
   projection?: K8sPlacementProjection;
   pricingOk: boolean;
 }) {
+  const basis = sizingMode === 'rightsized' ? 'used' : 'reserved';
   const [metric, setMetric] = useState<Metric>('memory');
   const [selected, setSelected] = useState<string | null>(null);
   const after = projection?.placementNodes;
@@ -133,7 +137,10 @@ export function K8sPlacementComparison({
     return { max, pod, plannedPod, destinations };
   }, [before, after, metric, selected]);
   const unplaced = projection?.unplaceablePods ?? [];
-  const unsized = projection?.unknownSizingPods ?? [];
+  const unsized = useMemo(() => {
+    const retained = new Set(after?.flatMap((n) => n.retainedForPods ?? []));
+    return (projection?.unknownSizingPods ?? []).filter((key) => !retained.has(key));
+  }, [after, projection?.unknownSizingPods]);
   return (
     <div className="k8s-placement" aria-label="Pod placement comparison">
       <div className="kp-toolbar">
@@ -184,6 +191,7 @@ export function K8sPlacementComparison({
                   metric={metric}
                   max={model.max}
                   pricingOk={pricingOk}
+                  basis={basis}
                   selected={selected}
                   onSelect={(key) => setSelected((old) => (old === key ? null : key))}
                 />
@@ -197,7 +205,7 @@ export function K8sPlacementComparison({
           Incomplete projection:{' '}
           {unplaced.length > 0 && `${unplaced.length} pods could not be placed. `}
           {unsized.length > 0 &&
-            `${unsized.length} pods have neither measured usage nor resource requests.`}
+            `${unsized.length} ${unsized.length === 1 ? 'pod has' : 'pods have'} neither measured usage nor resource requests. Savings are unavailable for this projection.`}
         </div>
       )}
       <div className="kp-selection" aria-live="polite">
@@ -205,9 +213,15 @@ export function K8sPlacementComparison({
           <>
             <strong>{model.pod.key}</strong>
             <span>
-              {resource(usage(model.pod, metric), metric)} used →{' '}
-              {resource(model.plannedPod ? reservation(model.plannedPod, metric) : null, metric)}{' '}
-              reserved
+              {resource(
+                model.plannedPod
+                  ? reservation(model.plannedPod, metric)
+                  : reservation(model.pod, metric),
+                metric,
+              )}{' '}
+              {basis}
+              {sizingMode === 'rightsized' ? ' (+33% sizing)' : ''} ·{' '}
+              {resource(usage(model.pod, metric), metric)} measured
             </span>
             <span>
               {model.pod.sourceNode} → {model.destinations.join(', ') || 'not assigned'}
@@ -216,8 +230,7 @@ export function K8sPlacementComparison({
           </>
         ) : (
           <span>
-            Both sides use the selected reservations on one capacity scale · monthly node rental at
-            730h
+            Both sides use the selected sizing on one capacity scale · monthly node rental at 730h
           </span>
         )}
       </div>
@@ -230,6 +243,7 @@ function ServerRow({
   metric,
   max,
   pricingOk,
+  basis,
   selected,
   onSelect,
 }: {
@@ -237,6 +251,7 @@ function ServerRow({
   metric: Metric;
   max: number;
   pricingOk: boolean;
+  basis: 'used' | 'reserved';
   selected: string | null;
   onSelect: (key: string) => void;
 }) {
@@ -251,7 +266,6 @@ function ServerRow({
   const missingPods = Math.max(0, (node.podCount ?? node.pods.length) - node.pods.length);
   const unknown = segments.filter((s) => s.value == null).length + missingPods;
   const total = offset;
-  const basis = 'reserved';
   const over = cap > 0 && total > cap;
   return (
     <article className="kp-server" data-node={node.id}>
@@ -317,8 +331,37 @@ function ServerRow({
             ))}
           </div>
         </details>
-        {over && <span className="kp-warning">Reservations exceed capacity</span>}
+        {over && (
+          <span className="kp-warning">
+            {basis === 'used' ? 'Usage sizing' : 'Reservations'} exceed capacity
+          </span>
+        )}
       </div>
+      {!!node.retainedForPods?.length && (
+        <details className="kp-retained">
+          <summary>Kept at current size · missing pod sizing</summary>
+          <div>
+            <p>
+              All pods stay on this server. Its full rent is included; savings come from other
+              servers.
+            </p>
+            {node.retainedForPods.map((key) => {
+              const pod = node.pods.find((p) => p.key === key);
+              return (
+                <p key={key}>
+                  <strong>{key}</strong>
+                  {pod?.statusReason ? ` · ${pod.statusReason}` : ''} · no CPU or memory requests
+                  and no usage sample.
+                </p>
+              );
+            })}
+            <p>
+              Restore usage metrics or configure resource requests, then scan again to reassess this
+              server.
+            </p>
+          </div>
+        </details>
+      )}
     </article>
   );
 }

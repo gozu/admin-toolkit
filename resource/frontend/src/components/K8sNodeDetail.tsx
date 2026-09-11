@@ -4,6 +4,8 @@ import 'highlight.js/styles/monokai-sublime.css';
 import type { K8sNodeBreakdown, K8sNodeCondition, K8sNodeTaint, K8sPodOnNode } from '../types';
 import { pctTone, phaseTone, ratioTone, TONE_BAR, TONE_BG, TONE_TEXT } from '../utils/k8sTone';
 import { Modal } from './Modal';
+import { DataGrid } from './common/DataGrid';
+import type { ColumnDef } from '../utils/dataGridTypes';
 import { fetchText } from '../utils/api';
 import { dssUrls } from '../utils/codeEnvUsageLinks';
 
@@ -210,88 +212,98 @@ function GpuSummary({ node, pods }: { node: K8sNodeBreakdown; pods: K8sPodOnNode
 
 function PodsTable({ pods, clusterId }: { pods: K8sPodOnNode[]; clusterId: string }) {
   const [selected, setSelected] = useState<K8sPodOnNode | null>(null);
-  const openDescribe = (p: K8sPodOnNode) => setSelected(p);
   const sorted = useMemo(
-    () => [...pods].sort((a, b) => Number(a.isSystem) - Number(b.isSystem) || a.ns.localeCompare(b.ns) || a.name.localeCompare(b.name)),
+    () =>
+      [...pods].sort(
+        (a, b) =>
+          Number(Boolean(a.isSystem || a.isDaemonSet)) -
+            Number(Boolean(b.isSystem || b.isDaemonSet)) ||
+          a.ns.localeCompare(b.ns) ||
+          a.name.localeCompare(b.name),
+      ),
     [pods],
   );
-  return (
-    <div className="border border-white/5 rounded overflow-hidden">
-      <div className="grid grid-cols-[auto_minmax(0,2fr)_auto_auto_auto] gap-2 px-2 py-1 text-[10px] uppercase text-[var(--text-muted)] bg-white/[0.02]">
-        <div>Phase</div>
-        <div>ns / name</div>
-        <div>Restarts</div>
-        <div>CPU req → real</div>
-        <div>Mem req → real</div>
-      </div>
-      <div className="divide-y divide-white/5">
-        {sorted.map((p) => {
-          const phaseT = phaseTone(p.phase);
-          const cpuT = ratioTone(p.realCpuMilli, p.requestedCpuMilli);
-          const memT = ratioTone(p.realMemMib, p.requestedMemMib);
-          const dangerRing = p.oomKilled || p.crashLoopBackOff ? 'ring-1 ring-red-500/40' : '';
-          const objUrl = dssObjectUrl(p);
+  const columns = useMemo<ColumnDef<K8sPodOnNode>[]>(
+    () => [
+      {
+        id: 'phase',
+        label: 'Phase',
+        width: '6rem',
+        render: (p) => {
+          const tone = phaseTone(p.phase);
           return (
-            <div
-              key={`${p.ns}/${p.name}`}
-              className={`grid grid-cols-[auto_minmax(0,2fr)_auto_auto_auto] gap-2 px-2 py-1 text-xs font-mono items-center ${dangerRing}`}
+            <span
+              className={`uppercase text-[10px] ${tone ? TONE_TEXT[tone] : 'text-[var(--text-muted)]'}`}
             >
-              <span className={`uppercase text-[10px] ${phaseT ? TONE_TEXT[phaseT] : 'text-[var(--text-muted)]'}`}>
-                {p.phase || '—'}
-              </span>
-              <span className="min-w-0 flex flex-col">
-                <span className="truncate">
-                  <span className={p.isSystem ? 'text-[var(--text-muted)]' : 'text-[var(--text-primary)]'} title={`${p.ns}/${p.name}`}>
-                    {p.ns}/
-                    <button
-                      type="button"
-                      onClick={() => openDescribe(p)}
-                      className="text-[var(--text-primary)] hover:text-[var(--neon-cyan)] hover:underline focus:outline-none focus:underline"
-                      title="kubectl describe pod"
-                    >
-                      {p.name}
-                    </button>
-                  </span>
-                  {(p.oomKilled || p.crashLoopBackOff) && (
-                    <span className="ml-2 text-red-300 text-[10px] uppercase">
-                      {p.oomKilled ? 'OOM' : ''}
-                      {p.oomKilled && p.crashLoopBackOff ? ' · ' : ''}
-                      {p.crashLoopBackOff ? 'CrashLoop' : ''}
-                    </span>
-                  )}
-                </span>
-                {(objUrl || p.dssSubmitter) && (
-                  <span className="truncate text-[10px] text-[var(--text-muted)]">
-                    {objUrl ? (
-                      <a
-                        href={objUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[var(--neon-cyan)] hover:underline"
-                        title={`Open ${p.dssObjectType} in DSS`}
-                      >
-                        open {p.dssObjectType} in DSS ↗
-                      </a>
-                    ) : null}
-                    {p.dssSubmitter ? (
-                      <span className={objUrl ? 'ml-2' : ''}>by {p.dssSubmitter}</span>
-                    ) : null}
-                  </span>
-                )}
-              </span>
-              <span className={p.restartCount > 0 ? TONE_TEXT.red : 'text-[var(--text-muted)]'}>
-                {p.restartCount}
-              </span>
-              <span className={cpuT ? TONE_TEXT[cpuT] : 'text-[var(--text-muted)]'}>
-                {p.requestedCpuMilli}m → {p.realCpuMilli != null ? `${p.realCpuMilli}m` : '—'}
-              </span>
-              <span className={memT ? TONE_TEXT[memT] : 'text-[var(--text-muted)]'}>
-                {p.requestedMemMib}MiB → {p.realMemMib != null ? `${p.realMemMib}MiB` : '—'}
-              </span>
-            </div>
+              {p.phase || '—'}
+            </span>
           );
-        })}
-      </div>
+        },
+      },
+      {
+        id: 'name',
+        label: 'ns / name',
+        render: (p) => <PodIdentity pod={p} onClick={() => setSelected(p)} />,
+        cellClassName: 'max-w-0 min-w-[12rem]',
+      },
+      {
+        id: 'restarts',
+        label: 'Restarts',
+        width: '5rem',
+        align: 'right',
+        mono: true,
+        render: (p) => p.restartCount,
+        cellClassName: (p) => (p.restartCount > 0 ? TONE_TEXT.red : 'text-[var(--text-muted)]'),
+      },
+      {
+        id: 'cpu',
+        label: 'CPU req → real',
+        width: '10rem',
+        align: 'right',
+        mono: true,
+        render: (p) => (
+          <span className="whitespace-nowrap">
+            {p.requestedCpuMilli}m → {p.realCpuMilli != null ? `${p.realCpuMilli}m` : '—'}
+          </span>
+        ),
+        cellClassName: (p) => {
+          const tone = ratioTone(p.realCpuMilli, p.requestedCpuMilli);
+          return tone ? TONE_TEXT[tone] : 'text-[var(--text-muted)]';
+        },
+      },
+      {
+        id: 'memory',
+        label: 'Mem req → real',
+        width: '13rem',
+        align: 'right',
+        mono: true,
+        render: (p) => (
+          <span className="whitespace-nowrap">
+            {p.requestedMemMib}MiB → {p.realMemMib != null ? `${p.realMemMib}MiB` : '—'}
+          </span>
+        ),
+        cellClassName: (p) => {
+          const tone = ratioTone(p.realMemMib, p.requestedMemMib);
+          return tone ? TONE_TEXT[tone] : 'text-[var(--text-muted)]';
+        },
+      },
+    ],
+    [],
+  );
+  return (
+    <div
+      aria-label="Pods on this node"
+      role="region"
+      className="border border-white/5 rounded overflow-hidden [&_td]:py-1 [&_td]:text-xs [&_th]:text-[10px]"
+    >
+      <DataGrid
+        rows={sorted}
+        columns={columns}
+        rowKey={(p) => `${p.ns}/${p.name}`}
+        rowClassName={(p) =>
+          `${p.isSystem || p.isDaemonSet ? 'k8s-pod-system' : 'k8s-pod-user'} ${p.oomKilled || p.crashLoopBackOff ? 'ring-1 ring-red-500/40' : ''}`
+        }
+      />
       {selected && (
         <K8sPodDescribeModal
           key={`${selected.ns}/${selected.name}`}
@@ -304,6 +316,57 @@ function PodsTable({ pods, clusterId }: { pods: K8sPodOnNode[]; clusterId: strin
   );
 }
 
+function PodIdentity({ pod: p, onClick }: { pod: K8sPodOnNode; onClick: () => void }) {
+  const objUrl = dssObjectUrl(p);
+  const system = p.isSystem || p.isDaemonSet === true;
+  return (
+    <div className="font-mono">
+      <div className="truncate">
+        <span
+          className={system ? 'text-[var(--neon-purple)]' : 'text-[var(--neon-cyan)]'}
+          title={`${system ? 'System pod' : 'User pod'} · ${p.ns}/${p.name}`}
+        >
+          <span className="sr-only">{system ? 'System pod: ' : 'User pod: '}</span>
+          <i className="inline-block w-1.5 h-1.5 rounded-sm bg-current mr-2" aria-hidden="true" />
+          {p.ns}/
+          <button
+            type="button"
+            onClick={onClick}
+            className="text-inherit hover:underline focus:outline-none focus:underline"
+            title="kubectl describe pod"
+          >
+            {p.name}
+          </button>
+        </span>
+        {(p.oomKilled || p.crashLoopBackOff) && (
+          <span className="ml-2 text-red-300 text-[10px] uppercase">
+            {p.oomKilled ? 'OOM' : ''}
+            {p.oomKilled && p.crashLoopBackOff ? ' · ' : ''}
+            {p.crashLoopBackOff ? 'CrashLoop' : ''}
+          </span>
+        )}
+      </div>
+      {(objUrl || p.dssSubmitter) && (
+        <span className="block truncate text-[10px] text-[var(--text-muted)]">
+          {objUrl ? (
+            <a
+              href={objUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[var(--neon-cyan)] hover:underline"
+              title={`Open ${p.dssObjectType} in DSS`}
+            >
+              open {p.dssObjectType} in DSS ↗
+            </a>
+          ) : null}
+          {p.dssSubmitter ? (
+            <span className={objUrl ? 'ml-2' : ''}>by {p.dssSubmitter}</span>
+          ) : null}
+        </span>
+      )}
+    </div>
+  );
+}
 function dssObjectUrl(p: K8sPodOnNode): string | null {
   if (!p.dssProjectKey || !p.dssObjectId) return null;
   if (p.dssObjectType === 'notebook') return dssUrls.notebook(p.dssProjectKey, p.dssObjectId);

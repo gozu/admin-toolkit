@@ -574,7 +574,7 @@ function K8sOverviewCard({ data, findings, floorMode, onFloorModeChange }: {
           {(['rightsized', 'requests'] as const).map(mode => <button type="button" key={mode} aria-pressed={floorMode === mode} title={FLOOR_MODE_META[mode].blurb} onClick={() => onFloorModeChange(mode)}>{FLOOR_MODE_META[mode].label}</button>)}
         </div>}
       </div>
-      <K8sPlacementComparison nodes={data.nodeBreakdown ?? []} projection={projection} pricingOk={pricingOk} sizingLabel={FLOOR_MODE_META[floorMode].label} />
+      <K8sPlacementComparison nodes={data.nodeBreakdown ?? []} projection={projection} pricingOk={pricingOk} sizingLabel={FLOOR_MODE_META[floorMode].label} sizingMode={floorMode} />
     </section>
   );
 }

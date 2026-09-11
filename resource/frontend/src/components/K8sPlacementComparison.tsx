@@ -8,6 +8,7 @@ import type {
 import './K8sPlacementComparison.css';
 
 type Metric = 'memory' | 'cpu';
+type SizingMode = 'rightsized' | 'requests';
 type ChartNode = K8sPlacementNode & {
   podCount?: number;
 };
@@ -41,8 +42,10 @@ export function parseCapacity(value: string | null | undefined, metric: Metric):
 }
 const usage = (p: K8sPlacementPod, metric: Metric) =>
   metric === 'cpu' ? p.realCpuMilli : p.realMemMib;
-const reservation = (p: K8sPlacementPod, metric: Metric) =>
-  metric === 'cpu' ? p.reservedCpuMilli : p.reservedMemMib;
+const reservation = (p: K8sPlacementPod, metric: Metric) => {
+  const value = metric === 'cpu' ? p.reservedCpuMilli : p.reservedMemMib;
+  return value <= 0 && usage(p, metric) == null ? null : value;
+};
 const capacity = (n: ChartNode, metric: Metric) =>
   metric === 'cpu' ? n.cpuCapacityMilli : n.memoryCapacityMib;
 const resource = (value: number | null | undefined, metric: Metric) =>
@@ -56,7 +59,16 @@ export const monthlyRent = (hourly: number | null | undefined) =>
     ? 'Price unavailable'
     : `$${(hourly * 730).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/mo`;
 
-export function currentPlacementNodes(nodes: K8sNodeBreakdown[]): ChartNode[] {
+export function currentPlacementNodes(
+  nodes: K8sNodeBreakdown[],
+  mode: SizingMode,
+  placements: K8sPlacementNode[] = [],
+): ChartNode[] {
+  const planned = new Map(placements.flatMap((n) => n.pods).map((p) => [p.key, p]));
+  const size = (requested: number, measured: number | null, system: boolean) =>
+    mode === 'rightsized' && !system && measured != null
+      ? Math.ceil(measured / 0.75)
+      : Math.max(requested, measured ?? 0);
   return nodes.map((n) => ({
     id: n.name,
     instanceType: n.instanceType,
@@ -73,8 +85,12 @@ export function currentPlacementNodes(nodes: K8sNodeBreakdown[]): ChartNode[] {
       perNodeService: p.isDaemonSet === true,
       realCpuMilli: p.realCpuMilli,
       realMemMib: p.realMemMib,
-      reservedCpuMilli: p.requestedCpuMilli,
-      reservedMemMib: p.requestedMemMib,
+      reservedCpuMilli:
+        planned.get(`${p.ns}/${p.name}`)?.reservedCpuMilli ??
+        size(p.requestedCpuMilli, p.realCpuMilli, p.isSystem || p.isDaemonSet === true),
+      reservedMemMib:
+        planned.get(`${p.ns}/${p.name}`)?.reservedMemMib ??
+        size(p.requestedMemMib, p.realMemMib, p.isSystem || p.isDaemonSet === true),
     })),
   }));
 }
@@ -84,30 +100,29 @@ export function K8sPlacementComparison({
   projection,
   pricingOk,
   sizingLabel,
+  sizingMode,
 }: {
   nodes: K8sNodeBreakdown[];
   sizingLabel: string;
+  sizingMode: SizingMode;
   projection?: K8sPlacementProjection;
   pricingOk: boolean;
 }) {
   const [metric, setMetric] = useState<Metric>('memory');
   const [selected, setSelected] = useState<string | null>(null);
-  const before = useMemo(() => currentPlacementNodes(nodes), [nodes]);
   const after = projection?.placementNodes;
+  const before = useMemo(
+    () => currentPlacementNodes(nodes, sizingMode, after),
+    [nodes, sizingMode, after],
+  );
   const model = useMemo(() => {
     const all = [...before, ...(after ?? [])];
     const max = Math.max(
       1,
-      ...[
-        ...before.map((n) => ({ n, proposed: false })),
-        ...(after ?? []).map((n) => ({ n, proposed: true })),
-      ].map(({ n, proposed }) =>
+      ...all.map((n) =>
         Math.max(
           capacity(n, metric),
-          n.pods.reduce(
-            (v, p) => v + ((proposed ? reservation(p, metric) : usage(p, metric)) ?? 0),
-            0,
-          ),
+          n.pods.reduce((sum, p) => sum + (reservation(p, metric) ?? 0), 0),
         ),
       ),
     );
@@ -151,7 +166,7 @@ export function K8sPlacementComparison({
             <h4 className="kp-heading">
               <div>
                 {label}
-                <small>{label === 'Current' ? 'Measured pod usage' : sizingLabel}</small>
+                <small>{sizingLabel}</small>
               </div>
               <span>{rows == null ? '' : `${rows.length} nodes`}</span>
             </h4>
@@ -169,7 +184,6 @@ export function K8sPlacementComparison({
                   metric={metric}
                   max={model.max}
                   pricingOk={pricingOk}
-                  proposed={label === 'Proposed'}
                   selected={selected}
                   onSelect={(key) => setSelected((old) => (old === key ? null : key))}
                 />
@@ -201,7 +215,10 @@ export function K8sPlacementComparison({
             </span>
           </>
         ) : (
-          <span>Pod sizes share one capacity scale · monthly node rental at 730h</span>
+          <span>
+            Both sides use the selected reservations on one capacity scale · monthly node rental at
+            730h
+          </span>
         )}
       </div>
     </div>
@@ -213,7 +230,6 @@ function ServerRow({
   metric,
   max,
   pricingOk,
-  proposed,
   selected,
   onSelect,
 }: {
@@ -221,14 +237,13 @@ function ServerRow({
   metric: Metric;
   max: number;
   pricingOk: boolean;
-  proposed: boolean;
   selected: string | null;
   onSelect: (key: string) => void;
 }) {
   const cap = capacity(node, metric);
   let offset = 0;
   const segments = node.pods.map((p) => {
-    const value = proposed ? reservation(p, metric) : usage(p, metric);
+    const value = reservation(p, metric);
     const start = offset;
     offset += Math.max(0, value ?? 0);
     return { p, value, start };
@@ -236,7 +251,7 @@ function ServerRow({
   const missingPods = Math.max(0, (node.podCount ?? node.pods.length) - node.pods.length);
   const unknown = segments.filter((s) => s.value == null).length + missingPods;
   const total = offset;
-  const basis = proposed ? 'reserved' : 'used';
+  const basis = 'reserved';
   const over = cap > 0 && total > cap;
   return (
     <article className="kp-server" data-node={node.id}>
@@ -257,7 +272,7 @@ function ServerRow({
           <div
             className={`kp-track${unknown > 0 ? ' kp-track-unknown' : ''}`}
             style={{ width: `${(cap / max) * 100}%` }}
-            aria-label={`${node.id}: ${resource(total, metric)} ${basis}, ${resource(cap, metric)} capacity${unknown ? `; ${unknown} pods unmeasured` : ''}`}
+            aria-label={`${node.id}: ${resource(total, metric)} ${basis}, ${resource(cap, metric)} capacity${unknown ? `; ${unknown} pods unsized` : ''}`}
           >
             {segments
               .filter((s) => s.value != null && s.value > 0)
@@ -287,7 +302,7 @@ function ServerRow({
       <div className="kp-row-footer">
         <details className="kp-pod-list">
           <summary>
-            {node.podCount ?? node.pods.length} pods{unknown > 0 ? ` · ${unknown} unmeasured` : ''}
+            {node.podCount ?? node.pods.length} pods{unknown > 0 ? ` · ${unknown} unsized` : ''}
           </summary>
           <div>
             {missingPods > 0 && <p>{missingPods} pod records unavailable.</p>}
@@ -296,15 +311,13 @@ function ServerRow({
                 <i style={{ background: podColor(p.key, p.isSystem) }} />
                 <span>{p.key}</span>
                 <span>
-                  {resource(proposed ? reservation(p, metric) : usage(p, metric), metric)} {basis}
+                  {resource(reservation(p, metric), metric)} {basis}
                 </span>
               </button>
             ))}
           </div>
         </details>
-        {over && (
-          <span className="kp-warning">{proposed ? 'Reservations' : 'Usage'} exceed capacity</span>
-        )}
+        {over && <span className="kp-warning">Reservations exceed capacity</span>}
       </div>
     </article>
   );

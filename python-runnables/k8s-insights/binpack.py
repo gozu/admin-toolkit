@@ -145,6 +145,39 @@ def _tolerates(tols: List[dict], taint: dict) -> bool:
     return False
 
 
+def placement_size_checks(pods: List[PodReq], candidates: List[NodeGroup]) -> List[dict]:
+    """Explain a fixed placement against smaller shapes from the same pool.
+
+    Includes that pool's per-node services. This is a local replacement check,
+    not a proof that rearranging the whole fleet cannot reduce cost further.
+    """
+    checks = []
+    for group in sorted(candidates, key=lambda g: (-g.mem_alloc_mib, -g.cpu_alloc_milli, g.name)):
+        assigned = pods + group.overhead_pods
+        required_cpu = sum(p.cpu_milli for p in assigned)
+        required_mem = sum(p.mem_mib for p in assigned)
+        required_gpu = sum(p.gpu for p in assigned)
+        blockers = []
+        for resource, required, capacity in [
+            ('cpu', required_cpu, group.cpu_alloc_milli),
+            ('memory', required_mem, group.mem_alloc_mib),
+            ('gpu', required_gpu, group.gpu_alloc),
+        ]:
+            if required > capacity:
+                blockers.append({'kind': resource, 'required': required, 'capacity': capacity})
+        selectors = [p.name for p in assigned if any(
+            group.labels.get(k) != v for k, v in (p.node_selector or {}).items())]
+        taints = [p.name for p in assigned if any(
+            t.get('effect') in ('NoSchedule', 'NoExecute') and not _tolerates(p.tolerations or [], t)
+            for t in group.taints or [])]
+        if selectors:
+            blockers.append({'kind': 'selector', 'pods': selectors})
+        if taints:
+            blockers.append({'kind': 'taint', 'pods': taints})
+        checks.append({'instanceType': group.instance_type, 'blockers': blockers})
+    return checks
+
+
 def compute_floor(pods: List[PodReq], node_groups: List[NodeGroup], price_by_type: Dict[str, float] = None) -> FloorResult:
     """First-fit-decreasing pack of pods onto fresh nodes of each group.
 

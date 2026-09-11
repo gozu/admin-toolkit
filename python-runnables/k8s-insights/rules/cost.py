@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from finding import Finding  # type: ignore
 from binpack import (  # type: ignore
     PodReq, NodeGroup, compute_floor, downsize_factor, family_downsize_types,
-    parse_cpu_milli, parse_mem_mib,
+    parse_cpu_milli, parse_mem_mib, placement_size_checks,
 )
 from .base import (
     Rule, ProbeBundle, items, pod_namespace, pod_name, pod_node, pod_phase,
@@ -553,6 +553,7 @@ class Rule21ClusterFloorProjection(Rule):
         # overhead (capacity - allocatable), which under-credits small nodes
         # slightly — the conservative direction for a savings estimate.
         group_instance: Dict[str, str] = {g.name: g.instance_type for g in groups_by_node.values()}
+        source_group = {g.name: g.name for g in groups_by_node.values()}
         node_groups: List[NodeGroup] = list(groups_by_node.values())
         for group_key, obs in groups_by_node.items():
             instance = obs.instance_type
@@ -586,6 +587,7 @@ class Rule21ClusterFloorProjection(Rule):
                     overhead_pods=obs.overhead_pods,
                 ))
                 group_instance[name] = cand
+                source_group[name] = group_key
 
         packable = [p for p in active_pods if pod_owner_kind(p) != 'DaemonSet']
 
@@ -691,6 +693,12 @@ class Rule21ClusterFloorProjection(Rule):
                     'hourly': price_by_type.get(group.instance_type),
                     'cpuCapacityMilli': group.cpu_alloc_milli, 'memoryCapacityMib': group.mem_alloc_mib,
                     'pods': projected_pods,
+                    'sizeChecks': placement_size_checks(
+                        [sized_by_name[key] for key in placement.pods],
+                        [candidate for candidate in node_groups
+                         if source_group[candidate.name] == source_group[group.name]
+                         and candidate.instance_type in family_downsize_types(group.instance_type)],
+                    ),
                 })
             missing_prices = [node_name(n) for n in nodes if node_instance_type(n) not in price_by_type]
             placement_complete = not result.unplaceable and not unknown_sizing and not missing_prices

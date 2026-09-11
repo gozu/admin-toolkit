@@ -290,6 +290,13 @@ export interface K8sPlacementNode {
   cpuCapacityMilli: number;
   memoryCapacityMib: number;
   pods: K8sPlacementPod[];
+  sizeChecks?: {
+    instanceType: string;
+    blockers: (
+      | { kind: 'cpu' | 'memory' | 'gpu'; required: number; capacity: number }
+      | { kind: 'selector' | 'taint'; pods: string[] }
+    )[];
+  }[];
 }
 
 export interface K8sPlacementProjection {

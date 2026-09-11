@@ -8,7 +8,7 @@ Inputs are normalized into milli-cpu and MiB of memory. Pods that don't fit on
 any node group at all (oversized) are returned in `unplaceable`, so the rule
 can surface them honestly rather than under-reporting the floor.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 
@@ -90,12 +90,20 @@ class NodeGroup:
     gpu_alloc: int
     labels: Dict[str, str]
     taints: List[dict]
+    overhead_pods: List[PodReq] = field(default_factory=list)
+
+
+@dataclass
+class NodePlacement:
+    group: str
+    pods: List[str]
 
 
 @dataclass
 class FloorResult:
     by_group: Dict[str, int]  # node_group_name -> count
     unplaceable: List[str]
+    placements: List[NodePlacement] = field(default_factory=list)
 
 
 def _pod_fits_group(pod: PodReq, group: NodeGroup) -> bool:
@@ -153,11 +161,18 @@ def compute_floor(pods: List[PodReq], node_groups: List[NodeGroup], price_by_typ
         return FloorResult(by_group={}, unplaceable=[p.name for p in pods])
 
     prices = price_by_type or {}
-    sorted_groups = sorted(node_groups, key=lambda g: prices.get(g.instance_type, 1e9))
+    sorted_groups = sorted(node_groups, key=lambda g: (prices.get(g.instance_type, 1e9), g.name))
+
+    def available(g):
+        return (
+            g.cpu_alloc_milli - sum(p.cpu_milli for p in g.overhead_pods),
+            g.mem_alloc_mib - sum(p.mem_mib for p in g.overhead_pods),
+            g.gpu_alloc - sum(p.gpu for p in g.overhead_pods),
+        )
 
     sorted_pods = sorted(
         pods,
-        key=lambda p: (-p.gpu, -p.mem_mib, -p.cpu_milli),
+        key=lambda p: (-p.gpu, -p.mem_mib, -p.cpu_milli, p.name),
     )
 
     # Open nodes: list of dicts with remaining capacity + group ref
@@ -189,11 +204,16 @@ def compute_floor(pods: List[PodReq], node_groups: List[NodeGroup], price_by_typ
         for g in sorted_groups:
             if not _pod_fits_group(pod, g):
                 continue
+            if any(not _pod_fits_group(helper, g) for helper in g.overhead_pods):
+                continue
+            cpu, mem, gpu = available(g)
+            if pod.cpu_milli > cpu or pod.mem_mib > mem or pod.gpu > gpu:
+                continue
             open_nodes.append({
                 'group': g,
-                'cpu_left': g.cpu_alloc_milli - pod.cpu_milli,
-                'mem_left': g.mem_alloc_mib - pod.mem_mib,
-                'gpu_left': g.gpu_alloc - pod.gpu,
+                'cpu_left': cpu - pod.cpu_milli,
+                'mem_left': mem - pod.mem_mib,
+                'gpu_left': gpu - pod.gpu,
                 'pods': [pod.name],
             })
             counts[g.name] = counts.get(g.name, 0) + 1
@@ -202,7 +222,19 @@ def compute_floor(pods: List[PodReq], node_groups: List[NodeGroup], price_by_typ
         if not placed:
             unplaceable.append(pod.name)
 
-    return FloorResult(by_group=counts, unplaceable=unplaceable)
+    # A cluster containing only per-node services still needs a server for them.
+    if not pods and any(g.overhead_pods for g in sorted_groups):
+        for g in sorted_groups:
+            if g.overhead_pods and min(available(g)) >= 0 and all(_pod_fits_group(p, g) for p in g.overhead_pods):
+                open_nodes.append({'group': g, 'pods': []})
+                counts[g.name] += 1
+                break
+        if not open_nodes:
+            unplaceable.extend(sorted({p.name for g in sorted_groups for p in g.overhead_pods}))
+    return FloorResult(
+        by_group=counts, unplaceable=unplaceable,
+        placements=[NodePlacement(group=n['group'].name, pods=list(n['pods'])) for n in open_nodes],
+    )
 
 
 def parse_cpu_milli(value) -> int:

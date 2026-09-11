@@ -97,6 +97,7 @@ export interface K8sPodOnNode {
   realCpuMilli: number | null;
   realMemMib: number | null;
   isSystem: boolean;
+  isDaemonSet?: boolean;
   oomKilled?: boolean;
   crashLoopBackOff?: boolean;
   // GPU + DSS identity (forwarded by the backend; identity present only for
@@ -267,4 +268,36 @@ export interface K8sInsightsClustersResult {
   durationMs: number;
   totalDiscovered?: number;
   dssRegistryError?: string | null;
+}
+
+export interface K8sPlacementPod {
+  key: string;
+  name: string;
+  ns: string;
+  sourceNode: string;
+  isSystem: boolean;
+  perNodeService: boolean;
+  realCpuMilli: number | null;
+  realMemMib: number | null;
+  reservedCpuMilli: number;
+  reservedMemMib: number;
+}
+
+export interface K8sPlacementNode {
+  id: string;
+  instanceType: string;
+  hourly: number | null;
+  cpuCapacityMilli: number;
+  memoryCapacityMib: number;
+  pods: K8sPlacementPod[];
+}
+
+export interface K8sPlacementProjection {
+  placementNodes?: K8sPlacementNode[];
+  placementComplete?: boolean;
+  unplaceablePods?: string[];
+  unknownSizingPods?: string[];
+  unpricedNodes?: string[];
+  floorMonthly?: number | null;
+  savingsMonthly?: number | null;
 }

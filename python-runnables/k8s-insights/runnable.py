@@ -564,6 +564,7 @@ def _pods_by_node(
             'realCpuMilli': usage.get('cpuMilli'),
             'realMemMib': usage.get('memMib'),
             'isSystem': ns in ('kube-system', 'kube-public', 'kube-node-lease'),
+            'isDaemonSet': any(o.get('kind') == 'DaemonSet' for o in (meta.get('ownerReferences') or [])),
             'oomKilled': oom,
             'crashLoopBackOff': crash,
         }

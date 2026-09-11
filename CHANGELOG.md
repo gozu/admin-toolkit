@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.845] - 2026-09-11
+
+### Fixed
+
+- K8s chart labels now switch between Used in Usage +33% mode and Reserved in Reserved usage mode on both sides.
+- K8s node pod details share aligned columns for phase, name, restarts, CPU, and memory. Numeric headers and values align on the right; user pod names are blue and system pod names are purple, including per-node services.
+
 ## [0.4.844] - 2026-09-11
 
 ### Fixed

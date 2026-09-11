@@ -6,7 +6,7 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.844-blue)
+![Version](https://img.shields.io/badge/version-0.4.845-blue)
 ![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-13%2B-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -79,9 +79,11 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 
 ### AI Compute
 
-**Container Execs** *(tool)* streams the live container-execution inventory (K8s workloads per project, recipe, webapp). **Docker Images** *(tool)* prunes stale images from ECR/ACR/GAR registries. **CS Templates** *(tool)* migrates code studios between templates. **Model Audit** inventories every LLM connection and model with cost and replacement hints. **K8s Insights** audits your clusters live: a static current/proposed placement comparison shows measured CPU or memory for each pod, per-node rental prices, and reconciled cost totals. Both sides show the selected placement reservations, with matching pod sizes and colors in Usage +33% and Reserved usage modes. Proposed assignments include system services; incomplete sizing is flagged.
+**Container Execs** *(tool)* streams the live container-execution inventory (K8s workloads per project, recipe, webapp). **Docker Images** *(tool)* prunes stale images from ECR/ACR/GAR registries. **CS Templates** *(tool)* migrates code studios between templates. **Model Audit** inventories every LLM connection and model with cost and replacement hints. **K8s Insights** audits your clusters live: a static current/proposed placement comparison shows measured CPU or memory for each pod, per-node rental prices, and reconciled cost totals. Both sides show the selected placement reservations, with matching pod sizes and colors in Usage +33% and Reserved usage modes. Proposed assignments include system services; incomplete sizing is flagged. Node pod details align resource values under their headers and distinguish user and system pods by color. Chart labels follow the selected mode: Used for Usage +33%, Reserved for Reserved usage.
 
 <div align="center"><img src="docs/screenshots/k8s-insights.png" alt="K8s Insights — current and proposed pod placements using matching reservation sizes and colors, with per-node rental prices" width="850" /></div>
+
+<div align="center"><img src="docs/screenshots/k8s-pod-details.png" alt="K8s pod details — aligned restart, CPU and memory columns; blue user pods and purple system pods" width="850" /></div>
 
 <div align="center"><img src="docs/screenshots/llm-audit.png" alt="LLM Model Audit — 82 models with connections, cost and replacement hints" width="850" /></div>
 

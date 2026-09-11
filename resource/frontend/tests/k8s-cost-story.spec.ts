@@ -80,8 +80,8 @@ test('static comparison uses matching reservation widths and priced calculated d
   await expect(before.locator('[data-node="node-2"] .kp-price')).toHaveText('$30.37/mo');
   await expect(after.locator('[data-node="proposed-1"] .kp-price')).toHaveText('$77.26/mo');
   await expect(after.locator('[data-node="proposed-2"] .kp-price')).toHaveText('$309.05/mo');
-  const source = before.getByRole('button', { name: 'analytics/pod-1-1: 640 MiB reserved', exact: true });
-  const destination = after.getByRole('button', { name: 'analytics/pod-1-1: 640 MiB reserved', exact: true });
+  const source = before.getByRole('button', { name: 'analytics/pod-1-1: 640 MiB used', exact: true });
+  const destination = after.getByRole('button', { name: 'analytics/pod-1-1: 640 MiB used', exact: true });
   const sourceBox = await source.boundingBox();
   const destinationBox = await destination.boundingBox();
   expect(destinationBox!.width / sourceBox!.width).toBeCloseTo(1, 2);
@@ -93,8 +93,8 @@ test('static comparison uses matching reservation widths and priced calculated d
   await expect(costs.locator('.kp-selection')).toContainText('node-1 → proposed-1');
   expect(await destination.evaluate(el => getComputedStyle(el).animationName)).toBe('none');
   await costs.getByRole('button', { name: 'CPU', exact: true }).click();
-  await expect(after.getByRole('button', { name: 'analytics/pod-1-1: 14m reserved', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(before.getByRole('button', { name: 'analytics/pod-1-1: 14m reserved', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(after.getByRole('button', { name: 'analytics/pod-1-1: 14m used', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(before.getByRole('button', { name: 'analytics/pod-1-1: 14m used', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await costs.getByRole('button', { name: 'Reserved usage', exact: true }).click();
   await expect(after.locator('.kp-server')).toHaveCount(5);
   await expect(costs).toContainText('$0.00/mo');
@@ -160,7 +160,10 @@ test('mode changes reservation sizes while preserving pod colors and user identi
     expect(await after.locator('.kp-pod[data-pod-key^="analytics/"]').evaluateAll(els => els.map(el => el.getAttribute('data-pod-key')).sort())).toEqual(sourceKeys);
     await source.click();
     await expect(destination).toHaveAttribute('aria-pressed', 'true');
-    await expect(costs.locator('.kp-selection')).toContainText(`480 MiB used → ${value} MiB reserved`);
+    await expect(source).toHaveAttribute('aria-label', `${key}: ${value} MiB ${mode === 'Usage +33%' ? 'used' : 'reserved'}`);
+    await expect(destination).toHaveAttribute('aria-label', `${key}: ${value} MiB ${mode === 'Usage +33%' ? 'used' : 'reserved'}`);
+    await expect(costs.locator('.kp-selection')).toContainText(`${value} MiB ${mode === 'Usage +33%' ? 'used (+33% sizing)' : 'reserved'} · 480 MiB measured`);
+    if (mode === 'Usage +33%') expect((await costs.locator('.kp-server').allTextContents()).join(' ')).not.toContain('reserved');
     await source.click();
   }
 });
@@ -170,4 +173,33 @@ test('old audits show current nodes and request a new scan rather than inventing
   const costs = page.getByRole('region', { name: 'Server costs' });
   await expect(costs).toContainText('Run a new audit to calculate pod destinations.');
   await expect(costs.getByRole('region', { name: 'Proposed servers' }).locator('.kp-server')).toHaveCount(0);
+});
+
+test('pod detail columns align and user/system names have distinct colors', async ({ page }) => {
+  await openCosts(page);
+  await page.getByRole('button', { name: 'node-1', exact: true }).click();
+  const table = page.getByRole('table', { name: 'Pods on this node', exact: true });
+  await expect(table).toBeVisible();
+  await expect(table.locator('tbody tr')).toHaveCount(5);
+  await expect(table.locator('tbody tr[data-pod-kind="user"]')).toHaveCount(1);
+  await expect(table.locator('tbody tr[data-pod-kind="system"]')).toHaveCount(4);
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate(theme => document.documentElement.setAttribute('data-theme', theme), theme);
+    const dimensions = await table.evaluate(el => {
+      const headers = [...el.querySelectorAll('th')].map(h => h.getBoundingClientRect());
+      return [...el.querySelectorAll('tbody tr')].flatMap(row => [...row.querySelectorAll('td')].map((cell, i) => {
+        const rect = cell.getBoundingClientRect();
+        return { leftDelta: rect.left - headers[i].left, rightDelta: rect.right - headers[i].right, align: getComputedStyle(cell).textAlign, index: i };
+      }));
+    });
+    for (const cell of dimensions) {
+      expect(Math.abs(cell.leftDelta)).toBeLessThan(.5);
+      expect(Math.abs(cell.rightDelta)).toBeLessThan(.5);
+      if (cell.index >= 2) expect(cell.align).toBe('right');
+    }
+    const user = table.locator('tr[data-pod-kind="user"] button').first();
+    const system = table.locator('tr[data-pod-kind="system"] button').first();
+    expect(await user.evaluate(el => getComputedStyle(el).color)).not.toBe(await system.evaluate(el => getComputedStyle(el).color));
+    await table.screenshot({ path: `/tmp/atk-pod-detail-${theme}.png` });
+  }
 });

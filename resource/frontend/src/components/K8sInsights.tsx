@@ -61,14 +61,14 @@ type FloorMode = 'rightsized' | 'requests';
 
 const FLOOR_MODE_META: Record<FloorMode, { label: string; blurb: string }> = {
   rightsized: {
-    label: 'Right-sized',
+    label: 'Adjust resource settings',
     blurb:
-      'Kubecost-style: pods sized at observed usage +33% headroom — assumes you trim over-sized requests in containerized execution configs.',
+      'Estimate uses current CPU and memory usage plus 33% extra capacity. Requires changing resource settings before moving work onto fewer servers.',
   },
   requests: {
-    label: 'As requested',
+    label: 'Keep resource settings',
     blurb:
-      'Karpenter-style: declared pod requests are hard constraints — savings achievable without touching any workload config.',
+      'Estimate keeps the CPU and memory reserved for each workload. Move work onto fewer servers without changing those settings.',
   },
 };
 
@@ -538,9 +538,9 @@ function K8sClusterPicker({
 
 function K8sSavingsRow({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex justify-between">
-      <span className="text-[var(--text-muted)]">{label}</span>
-      <span>{formatUsd(value)}/mo</span>
+    <div className="flex items-baseline justify-between gap-6 py-1.5">
+      <span className="text-[var(--text-secondary)]">{label}</span>
+      <span className="font-mono tabular-nums shrink-0">{formatUsd(value)}<span className="text-xs text-[var(--text-muted)]">/mo</span></span>
     </div>
   );
 }
@@ -559,16 +559,15 @@ function K8sOverviewCard({
   const cost = data.costSnapshot || { currentHourly: null, currentMonthly: null, nodes: [] };
   const pricingOk = data.pricingStatus?.ok !== false;
   const floorFinding = findings.find((f) => f.rule === 'cluster-floor-projection');
-  // The backend floor rule now splits its savings into workload consolidation vs
-  // idle/empty-node reclaim and emits both as evidence; the frontend just reads them.
   const ev = (floorFinding?.evidence ?? {}) as {
     consolidationSavingsMonthly?: number;
     idleNodeSavingsMonthly?: number;
+    podsWithoutRequestsOrUsage?: number;
+    unplaceablePods?: unknown[];
   };
-  const consolidation = ev.consolidationSavingsMonthly ?? floorFinding?.costImpactPerMonth ?? 0;
   const idleNodes = ev.idleNodeSavingsMonthly ?? 0;
-  // Idle GPU pods hold a GPU node the bin-pack floor must keep (the pod requests a
-  // GPU), so their recoverable savings are additive. De-dup per node.
+  const consolidation = ev.consolidationSavingsMonthly ?? Math.max(0, (floorFinding?.costImpactPerMonth ?? 0) - idleNodes);
+  // Preserve the audit's per-server de-duplication of unused GPU savings.
   const gpuWasteByNode = new Map<string, number>();
   for (const f of findings) {
     if (f.rule !== 'gpu-pod-not-using-gpu' || (f.costImpactPerMonth ?? 0) <= 0) continue;
@@ -577,94 +576,80 @@ function K8sOverviewCard({
   }
   const gpuWaste = [...gpuWasteByNode.values()].reduce((a, b) => a + b, 0);
   const total = consolidation + idleNodes + gpuWaste;
-  const savingsMonthly = total > 0 ? total : null;
-  const savingsPct =
-    savingsMonthly != null && cost.currentMonthly
-      ? Math.round((savingsMonthly / cost.currentMonthly) * 100)
-      : null;
+  const current = pricingOk ? cost.currentMonthly : null;
+  const hasEstimate = pricingOk && (floorFinding != null || total > 0);
+  // Do not manufacture a zero bill from an incomplete or inconsistent estimate.
+  const after = hasEstimate && current != null && total <= current ? current - total : null;
+  const savingsPct = hasEstimate && current ? Math.round(total / current * 100) : null;
 
   return (
-    <div className="glass-card p-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div>
-          <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider">Monthly cost</div>
-          <div className="text-2xl font-mono">
-            {cost.currentMonthly != null ? `${formatUsd(cost.currentMonthly)}/mo` : '—'}
-          </div>
-          <div className="text-xs text-[var(--text-muted)] font-mono">
-            {cost.currentHourly != null ? `${formatUsd(cost.currentHourly)} / hr` : ''}
-          </div>
-        </div>
-        <div>
-          <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider">Nodes</div>
-          <div className="text-2xl font-mono">{data.cluster.nodeCount ?? '—'}</div>
-        </div>
-        <div>
-          <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider">Pods</div>
-          <div className="text-2xl font-mono">{data.cluster.podCount ?? '—'}</div>
-        </div>
-        {pricingOk && (
-          <div>
-            <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider">
-              Potential savings
-            </div>
-            <div className="text-2xl font-mono text-green-300">
-              {savingsMonthly != null ? `${formatUsd(savingsMonthly)}/mo` : '—'}
-            </div>
-            <div className="text-xs text-[var(--text-muted)] font-mono">
-              {savingsPct != null ? `~${savingsPct}% of spend` : ''}
-            </div>
-          </div>
-        )}
+    <section className="glass-card p-4" aria-label="Server costs">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+        <h4 className="font-semibold">Where your money goes</h4>
+        <span className="text-xs text-[var(--text-muted)]">
+          {data.cluster.nodeCount ?? '—'} servers · {data.cluster.podCount ?? '—'} workloads
+        </span>
       </div>
-      {pricingOk && ((savingsMonthly != null && savingsMonthly > 0) || (floorFinding != null && onFloorModeChange != null)) && (
-        <div className="mt-4 pt-3 border-t border-white/10">
-          <div className="flex items-center justify-between gap-3 mb-1">
-            <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider">
-              Potential savings
+      <p className="text-sm text-[var(--text-secondary)]">
+        You pay for rented servers while they are on, even when they have little to do.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 my-5" aria-live="polite" aria-atomic="true">
+        {[
+          { label: 'Current cost', value: current, note: 'Servers running today', saving: false },
+          { label: 'After changes', value: after, note: 'Estimated cost of servers you keep', saving: false },
+          { label: 'You could save', value: hasEstimate ? total : null, note: savingsPct != null ? `${savingsPct}% less per month` : 'No savings estimate available', saving: true },
+        ].map(({ label, value, note, saving }) => (
+          <div key={label}>
+            <div className="text-xs text-[var(--text-muted)]">{label}</div>
+            <div className={`text-3xl font-mono tabular-nums tracking-tight mt-1 ${saving && hasEstimate ? 'text-[color-mix(in_srgb,var(--success)_75%,var(--text-primary))]' : ''}`}>
+              {formatUsd(value)}<span className="text-sm text-[var(--text-muted)] tracking-normal">/mo</span>
             </div>
+            <div className="text-xs text-[var(--text-muted)] mt-1">{note}</div>
+          </div>
+        ))}
+      </div>
+      {after != null && current != null && current > 0 && (
+        <div className="flex h-2 overflow-hidden rounded-full mb-4 bg-white/10" aria-hidden="true">
+          <div className="bg-[var(--text-muted)]" style={{ width: `${after / current * 100}%` }} />
+          <div className="bg-[var(--success)]" style={{ width: `${total / current * 100}%` }} />
+        </div>
+      )}
+      {hasEstimate && (
+        <div className="border-t border-[var(--border-default)] pt-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h5 className="text-sm font-medium">How to spend less</h5>
             {onFloorModeChange && (
-              <div
-                className="inline-flex rounded border border-white/10 overflow-hidden text-[11px] font-mono"
-                role="group"
-                aria-label="Savings estimate mode"
-              >
+              <div className="inline-flex rounded-md border border-[var(--border-default)] p-0.5 text-xs" role="group" aria-label="Savings estimate mode">
                 {(['rightsized', 'requests'] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    onClick={() => onFloorModeChange(m)}
-                    className={`px-2 py-0.5 transition-colors ${
-                      floorMode === m
-                        ? 'bg-white/15 text-[var(--text-primary)]'
-                        : 'bg-white/[0.03] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/10'
-                    }`}
-                  >
+                  <button key={m} type="button" aria-pressed={floorMode === m} onClick={() => onFloorModeChange(m)}
+                    className={`px-2.5 py-1 rounded transition-colors ${floorMode === m ? 'bg-[var(--bg-glass-hover)] text-[var(--text-primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-glass-hover)]'}`}>
                     {FLOOR_MODE_META[m].label}
                   </button>
                 ))}
               </div>
             )}
           </div>
-          {onFloorModeChange && (
-            <div className="text-[11px] text-[var(--text-muted)] mb-2 max-w-xl">
-              {FLOOR_MODE_META[floorMode].blurb}
-            </div>
-          )}
-          <div className="space-y-1 max-w-xs font-mono text-sm">
-            {consolidation > 0 && (
-              <K8sSavingsRow label="Consolidate nodes (bin-pack)" value={consolidation} />
-            )}
-            {idleNodes > 0 && <K8sSavingsRow label="Reclaim idle / empty nodes" value={idleNodes} />}
-            {gpuWaste > 0 && <K8sSavingsRow label="Free GPU from idle pods" value={gpuWaste} />}
-            <div className="flex justify-between border-t border-white/10 pt-1 mt-1 text-green-300">
-              <span>Total</span>
-              <span>{formatUsd(savingsMonthly ?? 0)}/mo</span>
-            </div>
+          <div className="mt-2 text-sm max-w-2xl" style={{ minHeight: gpuWaste > 0 ? 96 : 64 }}>
+            {consolidation > 0 && <K8sSavingsRow label="Fit the work onto fewer servers" value={consolidation} />}
+            {idleNodes > 0 && <K8sSavingsRow label="Turn off servers with no active work" value={idleNodes} />}
+            {gpuWaste > 0 && <K8sSavingsRow label="Release unused graphics processors (GPUs)" value={gpuWaste} />}
+            {total === 0 && <p className="text-[var(--text-muted)] py-1.5">No savings found with these resource settings.</p>}
           </div>
+          <p className="text-xs text-[var(--text-muted)] mt-2">Savings start when unneeded servers are removed or replaced with cheaper ones.</p>
+          <details className="mt-3 text-xs text-[var(--text-muted)]">
+            <summary className="cursor-pointer w-fit hover:text-[var(--text-primary)]">How this is estimated</summary>
+            <div className="mt-2 max-w-2xl space-y-2 leading-relaxed">
+              <p>{onFloorModeChange ? FLOOR_MODE_META[floorMode].blurb : 'Estimate uses the workload and server data in this scan. See the finding for calculation details.'}</p>
+              <p>This is a planning estimate from the scan, not a guaranteed bill. Review peak demand and availability needs before removing servers. No changes have been made.</p>
+              <p>Monthly amounts assume 730 hours at the server prices used by the scan. Storage, networking and other cloud charges are not included.</p>
+            </div>
+          </details>
+          {((ev.podsWithoutRequestsOrUsage ?? 0) > 0 || (ev.unplaceablePods?.length ?? 0) > 0) && (
+            <p className="mt-2 text-xs text-yellow-300">Some workloads could not be fully sized or placed. Savings may be overstated; review the technical details in the finding.</p>
+          )}
         </div>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -753,57 +738,72 @@ function K8sFindingRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const isFloor = finding.rule === 'cluster-floor-projection';
   return (
     <div className="px-4 py-3 hover:bg-white/5 transition">
       <button
         type="button"
         onClick={onToggle}
+        aria-expanded={expanded}
         className="w-full text-left flex items-start gap-3"
       >
         <div className="pt-0.5">{severityChip(finding.severity)}</div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-medium text-[var(--text-primary)]">{finding.title}</span>
+            <span className="font-medium text-[var(--text-primary)]">{isFloor ? 'Run the same work on fewer servers' : finding.title}</span>
             {finding.costImpactPerMonth != null &&
               finding.costImpactPerMonth > 0 &&
               !FLOOR_SUBSUMED_RULES.has(finding.rule) && (
                 <span className="text-xs font-mono text-green-300">
-                  ~{formatUsd(finding.costImpactPerMonth)}/mo
+                  {isFloor ? 'Potential saving ' : '~'}{formatUsd(finding.costImpactPerMonth)}/mo
                 </span>
               )}
           </div>
           <div className="text-xs text-[var(--text-muted)] font-mono mt-0.5">
-            {finding.rule}{' '}
-            <span className="opacity-60">· {finding.category}</span>
+            {isFloor ? 'Server cost estimate · included in the savings above' : <>{finding.rule} <span className="opacity-60">· {finding.category}</span></>}
           </div>
         </div>
         <span className="text-xs text-[var(--text-muted)] font-mono">{expanded ? '▾' : '▸'}</span>
       </button>
       {expanded && (
         <div className="mt-3 pl-8 space-y-3">
-          <p className="text-sm text-[var(--text-secondary)] whitespace-pre-wrap">{finding.summary}</p>
-          {finding.remediation.length > 0 && (
-            <div>
-              <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider mb-1">
-                Remediation
-              </div>
-              <ol className="space-y-2">
-                {finding.remediation.map((r, idx) => (
-                  <li key={idx}>
-                    <K8sRemediationStep step={r} />
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
-          {finding.evidence && Object.keys(finding.evidence).length > 0 && (
-            <div>
-              <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider mb-1">
-                Evidence
-              </div>
-              <K8sFindingEvidence evidence={finding.evidence as Record<string, unknown>} />
-            </div>
-          )}
+          {isFloor && <p className="text-sm text-[var(--text-secondary)] max-w-2xl">Your workloads may fit on fewer rented servers. Review their CPU and memory needs, move the work, then remove the servers you no longer need. The remaining monthly cost pays for the servers you keep.</p>}
+          {isFloor ? (
+            <details>
+              <summary className="cursor-pointer text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]">Technical details and action steps</summary>
+              <K8sFindingDetails finding={finding} />
+            </details>
+          ) : <K8sFindingDetails finding={finding} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function K8sFindingDetails({ finding }: { finding: K8sFinding }) {
+  return (
+    <div className="space-y-3 mt-2">
+      <p className="text-sm text-[var(--text-secondary)] whitespace-pre-wrap">{finding.summary}</p>
+      {finding.remediation.length > 0 && (
+        <div>
+          <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider mb-1">
+            Remediation
+          </div>
+          <ol className="space-y-2">
+            {finding.remediation.map((r, idx) => (
+              <li key={idx}>
+                <K8sRemediationStep step={r} />
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {finding.evidence && Object.keys(finding.evidence).length > 0 && (
+        <div>
+          <div className="text-xs uppercase text-[var(--text-muted)] tracking-wider mb-1">
+            Evidence
+          </div>
+          <K8sFindingEvidence evidence={finding.evidence as Record<string, unknown>} />
         </div>
       )}
     </div>

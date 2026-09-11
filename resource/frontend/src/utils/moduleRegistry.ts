@@ -154,7 +154,7 @@ export const MODULE_NAV_SECTIONS: readonly ModuleNavSection[] = [
   { title: 'PLUGINS', items: ['plugins-installed', 'plugins'] },
   { title: 'CODE ENVS', items: ['code-envs', 'code-envs-cleaner', 'code-envs-comparison', 'code-envs-broken'] },
   { title: 'AI COMPUTE', items: ['container-execs', 'compute-placement', 'image-cleaner', 'cs-template-replacement', 'llm-audit', 'k8s-insights'] },
-  { title: 'MISC', items: ['settings', 'logs', 'sanity-check', 'db-health', 'report', 'feedback'] },
+  { title: 'MISC', items: ['settings', 'logs', 'sanity-check', 'db-health', 'report'] },
 ] as const;
 
 export const EXPERIMENTAL_PAGES: ReadonlySet<PageId> = new Set(

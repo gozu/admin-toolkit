@@ -1029,7 +1029,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
                     }
               }
             >
-              <span className={`flex-1 text-left whitespace-nowrap${isTool ? ' premium-shine-text' : ''}`}>
+              <span className={`flex-1 text-left whitespace-nowrap${isTool ? ' action-nav-label' : ''}`}>
                 {label}
                 {pageId === 'sanity-check' && <ExternalLinkIcon />}
               </span>

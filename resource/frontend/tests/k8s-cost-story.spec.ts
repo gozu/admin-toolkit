@@ -67,7 +67,7 @@ async function openCosts(page: Page, variant: 'normal' | 'unpriced' | 'incomplet
   await expect(page.getByRole('region', { name: 'Server costs' })).toBeVisible();
 }
 
-test('static comparison uses measured pod widths and priced calculated destinations', async ({ page }) => {
+test('static comparison uses matching reservation widths and priced calculated destinations', async ({ page }) => {
   await openCosts(page);
   const costs = page.getByRole('region', { name: 'Server costs' });
   const before = costs.getByRole('region', { name: 'Current servers' });
@@ -80,20 +80,21 @@ test('static comparison uses measured pod widths and priced calculated destinati
   await expect(before.locator('[data-node="node-2"] .kp-price')).toHaveText('$30.37/mo');
   await expect(after.locator('[data-node="proposed-1"] .kp-price')).toHaveText('$77.26/mo');
   await expect(after.locator('[data-node="proposed-2"] .kp-price')).toHaveText('$309.05/mo');
-  const source = before.getByRole('button', { name: 'analytics/pod-1-1: 480 MiB used', exact: true });
+  const source = before.getByRole('button', { name: 'analytics/pod-1-1: 640 MiB reserved', exact: true });
   const destination = after.getByRole('button', { name: 'analytics/pod-1-1: 640 MiB reserved', exact: true });
   const sourceBox = await source.boundingBox();
   const destinationBox = await destination.boundingBox();
-  expect(destinationBox!.width / sourceBox!.width).toBeCloseTo(640 / 480, 2);
+  expect(destinationBox!.width / sourceBox!.width).toBeCloseTo(1, 2);
   expect(await source.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(await destination.evaluate(el => getComputedStyle(el).backgroundColor));
   const track = await before.locator('[data-node="node-1"] .kp-track').boundingBox();
-  expect(sourceBox!.width / track!.width).toBeCloseTo(480 / 29903, 3);
+  expect(sourceBox!.width / track!.width).toBeCloseTo(640 / 29903, 3);
   await source.click();
   await expect(destination).toHaveAttribute('aria-pressed', 'true');
   await expect(costs.locator('.kp-selection')).toContainText('node-1 → proposed-1');
   expect(await destination.evaluate(el => getComputedStyle(el).animationName)).toBe('none');
   await costs.getByRole('button', { name: 'CPU', exact: true }).click();
   await expect(after.getByRole('button', { name: 'analytics/pod-1-1: 14m reserved', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(before.getByRole('button', { name: 'analytics/pod-1-1: 14m reserved', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await costs.getByRole('button', { name: 'Reserved usage', exact: true }).click();
   await expect(after.locator('.kp-server')).toHaveCount(5);
   await expect(costs).toContainText('$0.00/mo');
@@ -120,12 +121,12 @@ test('unpriced results never show fabricated rents', async ({ page }) => {
   await expect(costs.locator('.kp-price').first()).toHaveText('Price unavailable');
 });
 
-test('unknown usage is flagged and is never drawn as a zero-sized measured pod', async ({ page }) => {
+test('unknown sizing is flagged and is never drawn as known zero', async ({ page }) => {
   await openCosts(page, 'incomplete');
   const costs = page.getByRole('region', { name: 'Server costs' });
   await expect(costs).toContainText('Incomplete projection');
   await expect(costs).not.toContainText('$725.74/mo');
-  await expect(costs.locator('[data-node="node-1"]')).toContainText('1 unmeasured');
+  await expect(costs.locator('[data-node="node-1"]')).toContainText('1 unsized');
   await expect(costs.locator('.kp-pod[aria-label^="analytics/pod-1-1:"]')).toHaveCount(0);
   await costs.locator('[data-node="node-1"] summary').click();
   await expect(costs.locator('[data-node="node-1"] .kp-pod-list')).toContainText('unknown');
@@ -148,8 +149,14 @@ test('mode changes reservation sizes while preserving pod colors and user identi
     const track = destination.locator('..');
     const cap = mode === 'Reserved usage' ? 29903 : 7376;
     expect((await destination.boundingBox())!.width / (await track.boundingBox())!.width).toBeCloseTo(value / cap, 3);
-    expect((await source.boundingBox())!.width / (await source.locator('..').boundingBox())!.width).toBeCloseTo(480 / 29903, 3);
+    expect((await source.boundingBox())!.width / (await source.locator('..').boundingBox())!.width).toBeCloseTo(value / 29903, 3);
     expect(await destination.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(sourceColor);
+    await expect.poll(() => costs.evaluate((el, podKey) => {
+      const blocks = el.querySelectorAll(`[data-pod-key="${podKey}"]`);
+      return blocks[1].getBoundingClientRect().width / blocks[0].getBoundingClientRect().width;
+    }, key)).toBeCloseTo(1, 2);
+    await expect(before.locator('.kp-heading small')).toHaveText(mode);
+    await expect(after.locator('.kp-heading small')).toHaveText(mode);
     expect(await after.locator('.kp-pod[data-pod-key^="analytics/"]').evaluateAll(els => els.map(el => el.getAttribute('data-pod-key')).sort())).toEqual(sourceKeys);
     await source.click();
     await expect(destination).toHaveAttribute('aria-pressed', 'true');

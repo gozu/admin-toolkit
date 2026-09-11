@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.844] - 2026-09-11
+
+### Fixed
+
+- Both sides of the K8s placement comparison now use the selected reservation sizing. Switching between Usage +33% and Reserved usage updates current and proposed pods together, preserving matching sizes and colors.
+
 ## [0.4.843] - 2026-09-11
 
 ### Changed

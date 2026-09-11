@@ -17,7 +17,7 @@ async function openCosts(page: Page, variant: 'normal' | 'unpriced' | 'incomplet
       isSystem: j >= users[i], isDaemonSet: j >= users[i], phase: 'Running', ready: true, restartCount: 0,
       realCpuMilli: variant === 'incomplete' && i === 0 && j === 0 ? null : 10,
       realMemMib: variant === 'incomplete' && i === 0 && j === 0 ? null : Math.floor(memory[i] / counts[i]) + (j === 0 ? memory[i] % counts[i] : 0),
-      requestedCpuMilli: 100, requestedMemMib: 2048,
+      requestedCpuMilli: 100, requestedMemMib: i === 0 ? j === 0 ? 20000 : 2048 : Math.floor(capacities[i] / counts[i] / 2),
     })),
   }));
   const all = nodeBreakdown.flatMap(n => n.pods.map(p => ({
@@ -26,8 +26,8 @@ async function openCosts(page: Page, variant: 'normal' | 'unpriced' | 'incomplet
   })));
   const work = all.filter(p => !p.isSystem);
   const placementNodes = [
-    { id: 'proposed-1', instanceType: 'm8i.large', hourly: .10584, cpuCapacityMilli: 1930, memoryCapacityMib: 7376, pods: [...work.slice(0, 3), ...all.filter(p => p.sourceNode === 'node-1' && p.isSystem)] },
-    { id: 'proposed-2', instanceType: 'm8i.2xlarge', hourly: .42336, cpuCapacityMilli: 7910, memoryCapacityMib: 29903, pods: [...work.slice(3), ...all.filter(p => p.sourceNode === 'node-3' && p.isSystem)] },
+    { id: 'proposed-1', instanceType: 'm8i.large', hourly: .10584, cpuCapacityMilli: 1930, memoryCapacityMib: 7376, pods: [...work.slice(0, 3), ...all.filter(p => p.sourceNode === 'node-1' && p.isSystem)], sizeChecks: [] },
+    { id: 'proposed-2', instanceType: 'm8i.2xlarge', hourly: .42336, cpuCapacityMilli: 7910, memoryCapacityMib: 29903, pods: [...work.slice(3), ...all.filter(p => p.sourceNode === 'node-3' && p.isSystem)], sizeChecks: [{ instanceType: 'm8i.xlarge', blockers: [{ kind: 'memory', required: [...work.slice(3), ...all.filter(p => p.sourceNode === 'node-3' && p.isSystem)].reduce((sum, p) => sum + p.reservedMemMib, 0), capacity: 14052 }] }] },
   ];
   const projection = {
     savingsMonthly: 725.74, floorMonthly: 386.31,
@@ -36,7 +36,8 @@ async function openCosts(page: Page, variant: 'normal' | 'unpriced' | 'incomplet
   };
   const requested = { ...projection, savingsMonthly: 0, floorMonthly: 1112.05, placementNodes: nodeBreakdown.map((n, i) => ({
     id: `requested-${i + 1}`, instanceType: n.instanceType, hourly: n.hourly,
-    cpuCapacityMilli: parseInt(n.allocatableCpu), memoryCapacityMib: capacities[i], pods: all.filter(p => p.sourceNode === n.name),
+    cpuCapacityMilli: parseInt(n.allocatableCpu), memoryCapacityMib: capacities[i], pods: all.filter(p => p.sourceNode === n.name).map(p => ({ ...p, reservedCpuMilli: Math.max(p.requestedCpuMilli, p.realCpuMilli ?? 0), reservedMemMib: Math.max(p.requestedMemMib, p.realMemMib ?? 0) })),
+    sizeChecks: i === 0 ? [{ instanceType: 'm8i.xlarge', blockers: [{ kind: 'memory', required: 28192, capacity: 13616 }] }] : [],
   })) };
   const finding = {
     id: 'floor', rule: 'cluster-floor-projection', severity: 'high', category: 'cost',
@@ -124,9 +125,39 @@ test('unknown usage is flagged and is never drawn as a zero-sized measured pod',
   await expect(costs).toContainText('Incomplete projection');
   await expect(costs).not.toContainText('$725.74/mo');
   await expect(costs.locator('[data-node="node-1"]')).toContainText('1 unmeasured');
+  await expect(costs.locator('[data-node="node-1"] .kp-resource-totals')).toContainText('Available unknown');
   await expect(costs.locator('.kp-pod[aria-label^="analytics/pod-1-1:"]')).toHaveCount(0);
   await costs.locator('[data-node="node-1"] summary').click();
   await expect(costs.locator('[data-node="node-1"] .kp-pod-list')).toContainText('unknown');
+});
+
+test('reservations explain an almost empty large server without inflating measured blocks', async ({ page }) => {
+  await openCosts(page);
+  const costs = page.getByRole('region', { name: 'Server costs' });
+  await costs.getByRole('button', { name: 'Current requests', exact: true }).click();
+  const server = costs.locator('[data-node="requested-1"]');
+  await expect(server.locator('.kp-resource-totals')).toHaveText('Used 2392 MiBReserved 28192 MiBAvailable 1711 MiB');
+  const track = (await server.locator('.kp-track').boundingBox())!;
+  const outline = (await server.locator('.kp-reservation-outline').boundingBox())!;
+  expect(outline.width / track.width).toBeCloseTo(28192 / 29903, 3);
+  const pod = server.locator('.kp-pod').first();
+  expect((await pod.boundingBox())!.width / track.width).toBeCloseTo(480 / 29903, 3);
+  await expect(server.locator('.kp-size-reason summary')).toHaveText('Memory reservations exceed m8i.xlarge capacity.');
+  await server.locator('.kp-size-reason summary').click();
+  await expect(server.locator('.kp-size-reason')).toContainText('28192 MiB reserved; 13616 MiB capacity.');
+  await server.locator('.kp-pod-list summary').click();
+  await expect(server.locator('.kp-pod-list')).toContainText('480 MiB used · 20000 MiB reserved');
+  await costs.getByRole('button', { name: 'CPU', exact: true }).click();
+  await expect(server.locator('.kp-resource-totals')).toHaveText('Used 50mReserved 500mAvailable 7410m');
+  // Memory still explains server size when viewing CPU consumption.
+  await expect(server.locator('.kp-size-reason summary')).toContainText('Memory reservations exceed');
+  await costs.getByRole('button', { name: 'Memory', exact: true }).click();
+  await server.locator('.kp-pod-list summary').click();
+  await server.locator('.kp-size-reason summary').click();
+  await costs.screenshot({ path: '/tmp/atk-reservations-requests.png' });
+  await costs.getByRole('button', { name: 'Usage +33%', exact: true }).click();
+  await expect(costs.locator('[data-node="proposed-1"]')).toContainText('No smaller size evaluated in this pool.');
+  await expect(costs).not.toContainText('Unused capacity');
 });
 
 test('old audits show current nodes and request a new scan rather than inventing destinations', async ({ page }) => {

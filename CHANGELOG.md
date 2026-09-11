@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.842] - 2026-09-11
+
+### Changed
+
+- K8s placement charts distinguish measured usage, resource reservations, and available capacity. Each proposed node explains which resource or placement rule blocks smaller evaluated sizes, with expandable amounts and per-pod reservations; incomplete sizing evidence stays explicit.
+
 ## [0.4.841] - 2026-09-11
 
 ### Changed

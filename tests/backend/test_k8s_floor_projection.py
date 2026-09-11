@@ -306,3 +306,57 @@ def test_oversized_per_node_services_do_not_produce_a_zero_cost_cluster():
     assert ev['placementComplete'] is False
     assert ev['unplaceablePods'] == ['kube-system/helper']
     assert ev['floorMonthly'] is None
+
+
+def test_size_reason_exposes_memory_reservation_hidden_by_low_usage():
+    nodes = [make_node('a', 'm8i.2xlarge', '7900m', '30000Mi', capacity=('8', '32768Mi'))]
+    pods = [make_pod('work', 'notebook', 'a', cpu='100m', mem='20000Mi')]
+    usage = [{'namespace': 'work', 'pod': 'notebook', 'cpuMilli': 10, 'memMib': 1000}]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods, usage))[0].evidence
+    node = ev['projections']['requests']['placementNodes'][0]
+    assert node['instanceType'] == 'm8i.2xlarge'
+    assert node['pods'][0]['realMemMib'] == 1000
+    assert node['sizeChecks'] == [{
+        'instanceType': 'm8i.xlarge',
+        'blockers': [{'kind': 'memory', 'required': 20000, 'capacity': 13616}],
+    }]
+    assert ev['projections']['rightsized']['placementNodes'][0]['sizeChecks'] == []
+
+
+def test_size_reason_reports_cpu_even_with_little_memory_use_and_includes_services():
+    nodes = [make_node('a', 'm8i.2xlarge', '7900m', '30000Mi', capacity=('8', '32768Mi'))]
+    pods = [make_pod('work', 'notebook', 'a', cpu='3800m', mem='100Mi'),
+            make_pod('kube-system', 'helper', 'a', cpu='200m', mem='100Mi', owner='DaemonSet')]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods))[0].evidence
+    assert ev['placementNodes'][0]['sizeChecks'][0]['blockers'] == [
+        {'kind': 'cpu', 'required': 4000, 'capacity': 3900},
+    ]
+
+
+def test_size_reason_identifies_pod_with_instance_type_restriction():
+    nodes = [make_node('a', 'm8i.2xlarge', '7900m', '30000Mi', capacity=('8', '32768Mi'))]
+    pods = [make_pod('work', 'pinned', 'a', cpu='100m', mem='100Mi',
+                     selector={'node.kubernetes.io/instance-type': 'm8i.2xlarge'})]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods))[0].evidence
+    assert ev['placementNodes'][0]['sizeChecks'][0]['blockers'] == [
+        {'kind': 'selector', 'pods': ['work/pinned']},
+    ]
+
+
+def test_size_reason_does_not_compare_to_different_pool_or_unpriced_shapes():
+    nodes = [make_node('a', 'm8i.2xlarge', '7900m', '30000Mi', labels={'pool': 'a'}, capacity=('8', '32768Mi')),
+             make_node('b', 'm8i.xlarge', '3900m', '14000Mi', labels={'pool': 'b'}, capacity=('4', '16384Mi'))]
+    pods = [make_pod('work', n, n, cpu='100m', mem='20000Mi' if n == 'a' else '100Mi', selector={'pool': n}) for n in ['a', 'b']]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods))[0].evidence
+    checks = ev['placementNodes'][0]['sizeChecks']
+    assert len(checks) == 1
+    assert checks[0]['blockers'] == [{'kind': 'memory', 'required': 20000, 'capacity': 13616}]
+
+
+def test_size_checks_honestly_report_fit_and_scheduling_restrictions():
+    from binpack import NodeGroup, PodReq, placement_size_checks
+    pod = PodReq('work/job', 'work', 100, 100)
+    small = NodeGroup('small', 'm8i.large', 2000, 6000, 0, {}, [])
+    assert placement_size_checks([pod], [small]) == [{'instanceType': 'm8i.large', 'blockers': []}]
+    small.taints = [{'key': 'dedicated', 'value': 'system', 'effect': 'NoSchedule'}]
+    assert placement_size_checks([pod], [small])[0]['blockers'] == [{'kind': 'taint', 'pods': ['work/job']}]

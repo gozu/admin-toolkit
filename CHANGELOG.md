@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.839] - 2026-09-11
+
+### Changed
+
+- K8s Insights explains server spending as current cost, estimated cost after changes, and potential savings, with plain-language actions and expandable technical evidence.
+- Removed the duplicate Feedback entry from Misc; Feedback remains in the header and command palette.
+
 ## [0.4.838] - 2026-09-10
 
 ### Changed

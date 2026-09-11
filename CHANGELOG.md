@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.841] - 2026-09-11
+
+### Changed
+
+- Replaced the K8s cost explainer with a static current/proposed pod placement comparison. Blocks use measured CPU or memory on a shared scale, each node shows its rental price, and cost totals appear once above the comparison. Removed animations, introductory copy, and duplicate cost breakdowns.
+- Cluster savings now carry calculated pod assignments and node capacities, include system deployments and per-node service footprints, retain distinct node placement constraints, and reconcile monthly totals with per-node prices. Unknown sizing, missing prices, and unplaceable pods no longer produce a savings claim.
+
 ## [0.4.839] - 2026-09-11
 
 ### Changed

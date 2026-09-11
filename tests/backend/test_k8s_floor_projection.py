@@ -121,15 +121,17 @@ def test_zero_request_pods_packed_by_usage_floor_stays_at_one_node():
     assert findings[0].cost_impact_per_month == ev['savingsMonthly']
 
 
-def test_zero_request_pods_without_usage_still_hold_a_node():
+def test_unknown_demand_has_assignments_but_no_savings_claim():
     nodes, pods = _three_node_cluster()
-    findings = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods))
-    assert len(findings) == 1
-    ev = findings[0].evidence
-    # Zero-size pods still pin the pool to >= 1 node (downsized, not dropped).
-    assert ev['floorMonthly'] == round(0.21 * 730, 2)
+    finding = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods))[0]
+    ev = finding.evidence
+    assert len(ev['placementNodes']) >= 1
     assert ev['podsWithoutRequestsOrUsage'] == 2
-    assert ev['savingsMonthly'] < ev['currentMonthly']
+    assert ev['placementComplete'] is False
+    assert ev['floorMonthly'] is None
+    assert ev['savingsMonthly'] is None
+    assert finding.cost_impact_per_month is None
+    assert set(ev['unknownSizingPods']) == {'default/dku-mad-fraud', 'saslanov-api/dku-mad-prediction'}
 
 
 def test_genuine_consolidation_still_reported():
@@ -209,5 +211,98 @@ def test_node_selector_pools_block_merging_but_rightsizing_unlocks_downsizes():
     # Default (headline) numbers are the right-sized ones.
     assert findings[0].cost_impact_per_month == rs['savingsMonthly']
     assert findings[0].title == rs['title']
-    assert 'Kubecost-style' in rs['summary']
-    assert 'Karpenter-style' in req['summary']
+    assert 'observed usage +33%' in rs['summary']
+    assert 'current requests or observed usage' in req['summary']
+
+
+def test_assignments_conserve_workloads_measurements_and_rent():
+    nodes, pods = _three_node_cluster()
+    usage = [
+        {'namespace': p['metadata']['namespace'], 'pod': p['metadata']['name'], 'cpuMilli': 10 + i, 'memMib': 100 + i}
+        for i, p in enumerate(pods) if p['status']['phase'] == 'Running'
+    ]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods, usage))[0].evidence
+    for projection in ev['projections'].values():
+        assert projection['placementComplete'] is True
+        placed = [p for n in projection['placementNodes'] for p in n['pods'] if not p['perNodeService']]
+        assert sorted(p['key'] for p in placed) == ['default/dku-mad-fraud', 'kube-system/coredns-1', 'saslanov-api/dku-mad-prediction']
+        measured = {f"{r['namespace']}/{r['pod']}": r for r in usage}
+        for n in projection['placementNodes']:
+            assert sum(p['reservedCpuMilli'] for p in n['pods']) <= n['cpuCapacityMilli']
+            assert sum(p['reservedMemMib'] for p in n['pods']) <= n['memoryCapacityMib']
+            for p in n['pods']:
+                assert p['realCpuMilli'] == measured[p['key']]['cpuMilli']
+                assert p['realMemMib'] == measured[p['key']]['memMib']
+                assert p['sourceNode'] == 'node-c'
+        assert projection['floorMonthly'] == round(sum(n['hourly'] for n in projection['placementNodes']) * 730, 2)
+        assert projection['savingsMonthly'] == round(ev['currentMonthly'] - projection['floorMonthly'], 2)
+
+
+def test_per_node_services_consume_capacity_in_every_proposed_node():
+    nodes = [make_node('a', 'custom.xlarge', '4000m', '10000Mi'), make_node('b', 'custom.xlarge', '4000m', '10000Mi')]
+    pods = [make_pod('work', f'job-{n}', n, cpu='100m', mem='5000Mi') for n in ['a', 'b']]
+    pods += [make_pod('kube-system', f'helper-{n}', n, cpu='100m', mem='1000Mi', owner='DaemonSet') for n in ['a', 'b']]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods, prices={'custom.xlarge': 1}))[0].evidence
+    projection = ev['projections']['requests']
+    assert len(projection['placementNodes']) == 2
+    assert projection['savingsMonthly'] == 0
+    for n in projection['placementNodes']:
+        assert sum(p['perNodeService'] for p in n['pods']) == 1
+        assert sum(p['reservedMemMib'] for p in n['pods']) == 6000
+
+
+def test_same_instance_type_different_selectors_keep_separate_assignments():
+    nodes = [make_node(n, 'custom.xlarge', '4000m', '10000Mi', labels={'pool': n}) for n in ['a', 'b']]
+    pods = [make_pod('work', f'job-{n}', n, cpu='100m', mem='1000Mi', selector={'pool': n}) for n in ['a', 'b']]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods, prices={'custom.xlarge': 1}))[0].evidence
+    assert ev['unplaceablePods'] == []
+    assert len(ev['placementNodes']) == 2
+    assert all(len(n['pods']) == 1 for n in ev['placementNodes'])
+
+
+def test_actual_usage_cannot_be_packed_below_its_measured_size():
+    nodes = [make_node(n, 'custom.xlarge', '4000m', '1000Mi') for n in ['a', 'b']]
+    pods = [make_pod('work', n, n, cpu='1m', mem='1Mi') for n in ['a', 'b']]
+    usage = [{'namespace': 'work', 'pod': n, 'cpuMilli': 20, 'memMib': 600} for n in ['a', 'b']]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods, usage, prices={'custom.xlarge': 1}))[0].evidence
+    assert len(ev['projections']['requests']['placementNodes']) == 2
+    assert ev['projections']['requests']['savingsMonthly'] == 0
+
+
+def test_unplaceable_pods_never_turn_into_savings():
+    nodes = [make_node('a', 'custom.xlarge', '4000m', '1000Mi')]
+    pods = [make_pod('work', 'too-big', 'a', cpu='1m', mem='2000Mi')]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods, prices={'custom.xlarge': 1}))[0].evidence
+    assert ev['unplaceablePods'] == ['work/too-big']
+    assert ev['placementComplete'] is False
+    assert ev['savingsMonthly'] is None
+    assert ev['floorMonthly'] is None
+
+
+def test_system_deployment_is_not_discarded_as_an_idle_server():
+    nodes = [make_node('a', 'custom.xlarge', '4000m', '1000Mi')]
+    pods = [make_pod('kube-system', 'dns', 'a', cpu='100m', mem='100Mi')]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods, prices={'custom.xlarge': 1}))[0].evidence
+    assert ev['idleNodeCount'] == 0
+    assert ev['placementNodes'][0]['pods'][0]['key'] == 'kube-system/dns'
+    assert ev['placementNodes'][0]['pods'][0]['isSystem'] is True
+
+
+def test_monthly_totals_equal_the_displayed_node_rents():
+    nodes = [make_node('a', 'custom.large', '2000m', '1000Mi', labels={'pool': 'a'}),
+             make_node('b', 'custom.2xlarge', '8000m', '4000Mi', labels={'pool': 'b'})]
+    pods = [make_pod('work', n, n, cpu='100m', mem='2000Mi' if n == 'b' else '100Mi', selector={'pool': n}) for n in ['a', 'b']]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods, prices={'custom.large': .10584, 'custom.2xlarge': .42336}))[0].evidence
+    assert ev['floorMonthly'] == 386.31
+    assert ev['currentMonthly'] == 386.31
+    assert ev['floorMonthly'] == round(sum(round(n['hourly'] * 730, 2) for n in ev['placementNodes']), 2)
+    assert ev['savingsMonthly'] == 0
+
+
+def test_oversized_per_node_services_do_not_produce_a_zero_cost_cluster():
+    nodes = [make_node('a', 'custom.large', '2000m', '1000Mi')]
+    pods = [make_pod('kube-system', 'helper', 'a', cpu='100m', mem='2000Mi', owner='DaemonSet')]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods, prices={'custom.large': 1}))[0].evidence
+    assert ev['placementComplete'] is False
+    assert ev['unplaceablePods'] == ['kube-system/helper']
+    assert ev['floorMonthly'] is None

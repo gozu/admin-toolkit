@@ -71,3 +71,67 @@ def test_project_scoped_page_slices():
                                        name_filter='PROJ', top_n=10, page=2)
     assert first['jobs'] == rows[:20]
     assert second['jobs'] == rows[20:40] and second['page'] == 2
+
+
+def test_app_instances_domain_shapes_the_summary():
+    payload = {
+        'apps': [{'appId': 'PROJECT_TPL', 'instanceCount': 2}],
+        'instances': [
+            {'projectKey': 'RUN_A', 'creatorFullId': 'P.r', 'owner': 'bob'},
+            {'projectKey': 'RUN_B', 'creatorFullId': 'GONE.r', 'owner': 'bob'},
+        ],
+        'appRecipes': [{'fullId': 'P.r', 'appId': 'PROJECT_TPL',
+                        'keepInstance': True}],
+        'attribution': {'available': True},
+        'orphanDeterminable': True,
+        'orphanKeys': ['RUN_B'],
+        'attachedKeys': ['RUN_A'],
+        'failedProjects': [],
+    }
+
+    class _FakeClient:
+        def get(self, path, host=None, params=None, **kw):
+            assert path == '/api/app-instances/summary'
+            assert kw.get('heavy') is True
+            return payload
+
+    out = tools_impl.config_inspect(_FakeClient(), domain='app-instances')
+    assert out['orphanKeys'] == ['RUN_B']
+    assert out['orphanDeterminable'] is True
+    assert out['keepInstanceOn'] == [{'fullId': 'P.r', 'appId': 'PROJECT_TPL'}]
+    assert out['instanceCount'] == 2
+    # name_filter narrows to one instance without touching the verdict lists
+    filtered = tools_impl.config_inspect(_FakeClient(), domain='app-instances',
+                                         name_filter='RUN_B')
+    assert [i['projectKey'] for i in filtered['instances']] == ['RUN_B']
+    assert filtered['orphanKeys'] == ['RUN_B']
+
+
+def test_code_envs_name_filter_matches_exact_project_key():
+    """The project-codenv-* remediation drill: name_filter=<projectKey> must
+    return exactly the envs that project uses (reverse lookup via each env
+    row's projectKeys)."""
+    envs = [
+        {'name': 'env_alpha', 'version': '3.10', 'projectKeys': ['PROJ_X'],
+         'usageCount': 3},
+        {'name': 'env_beta', 'version': '3.11', 'projectKeys': ['PROJ_X', 'PROJ_Y'],
+         'usageCount': 5},
+        {'name': 'env_other', 'version': '3.11', 'projectKeys': ['PROJ_Z'],
+         'usageCount': 1},
+    ]
+
+    class _FakeClient:
+        def get(self, path, host=None, params=None, **kw):
+            if path == '/api/code-envs':
+                return {'codeEnvs': envs, 'totalEnvCount': 3}
+            if path == '/api/settings/threshold-defaults':
+                return {}
+            return {}
+
+    out = tools_impl.config_inspect(_FakeClient(), domain='code-envs',
+                                    name_filter='PROJ_X')
+    assert {e['name'] for e in out['matching']} == {'env_alpha', 'env_beta'}
+    # substring-of-a-key alone must NOT match (exact key only)
+    partial = tools_impl.config_inspect(_FakeClient(), domain='code-envs',
+                                        name_filter='PROJ')
+    assert 'matching' not in partial or not partial['matching']

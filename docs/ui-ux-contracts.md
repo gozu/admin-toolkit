@@ -6,7 +6,7 @@ Admin Toolkit should feel polished, fast, and dense. The preferred interaction m
 
 - Grey: queued, loading, unavailable.
 - Yellow: active, partial, waiting, stalled.
-- White: ready, current, completed-neutral.
+- Green: successful completion. White remains a neutral ready/current status outside progress bars.
 - Red: failure.
 
 New asynchronous module work must use `ProgressIndicator` (in `components/common/`). The component derives its tone from the lifecycle state — there is **no `tone` prop**. Pass a `loading: LoadingProgressState | null` (or `active`/`pct`/`message`/`phase` overrides). Errors are expressed by setting `error` on the loading state, not by manually picking a color. The frontend contract checker will fail the build if a `tone` prop reappears or if any tone-token color class drifts.
@@ -25,7 +25,7 @@ Sidebar nav rows do **not** encode load state via label color or opacity. Every 
 
 "Active fetch" is the `active` flag of the module's lifecycle fields (`lifecycle.fields`), falling back to `parsedData.analysisLoading.active`. Transition detection uses a `useRef` of previous availability per page; the check glyph is suppressed on first paint and on remount so navigating back to a cached page does not flash a spurious `✓`.
 
-This sidebar scheme is **scoped to the sidebar**. The `ProgressIndicator` grey/yellow/white/red tone contract above is unchanged everywhere else (progress bars, scan dots, lifecycle indicators).
+This sidebar scheme is **scoped to the sidebar**. `ProgressIndicator` uses grey/yellow/green/red for queued/running/done/error respectively.
 
 ## Module Contract
 
@@ -62,6 +62,16 @@ Module-scoped singleton stores must be built on `state/createSyncStore.ts` (or, 
 
 Keep dimensions stable, memoize derived rows, avoid expensive render-time work, and animate with opacity/transform where possible. A short preparation delay is acceptable when it prevents visible stutter during interaction.
 
+### Interaction motion
+
+Motion explains what changed and gives completed work a satisfying finish. `ProgressIndicator` plays a 760ms sweep, settle, and check draw only after observing a running → done transition for the same run. Cached completed results and errors do not replay it. Inline scan surfaces pass `hideWhenDone` and remain mounted through the terminal lifecycle so the finish can land before the indicator disappears. This delay is presentation only; it never delays data availability or changes lifecycle timestamps, percentages, or colors.
+
+`MechanicalControls` owns the switch-thumb spring, segmented selection seat, and crisp expansion chevron. Reduced-motion users get immediate state changes. `DataGrid` compares semantic cell values (mono sortable columns by default, or `arrivalValue`) and briefly highlights the edge of changed visible cells. Initial mount, sorting, and expansion are not fresh data; highlights are throttled and disabled for reduced motion and hidden tabs.
+
+Mission Control's expandable estate map reads existing inventories and recorded usage edges without starting scans. Each group has a fixed grid with at most 96 objects per page, searchable names, keyboard arrow navigation, and a pinned inspector with canonical DSS object links. The moving marker denotes the discovery frontier, not an inferred backend execution target or a synthetic percentage. Attention markers reflect recorded findings; dependency illumination shows known direct links and does not imply a complete dependency graph. Closing the panel unmounts its animation work.
+
+The local visual workshop is `tests/fixtures/interaction-preview.html` under the frontend Vite dev server. It uses synthetic data to replay discovery, successful completion, failure, table updates, and both themes without contacting DSS. It is not included in the production entry point.
+
 ## Container Execs Navigation Contract
 
 Container Execs scan ownership lives in `state/containerExecsStore.ts` (built on the scan-store factory) — not in the routed page component. Navigating away and back must reattach to the current in-flight or completed scan, not start over. Only explicit Rescan, post-replacement refresh, or backend cache refresh may start a new scan. UI selection state (source, target, dry-run, expanded rows) is per-page `useState` and resets on navigation by design.
@@ -92,3 +102,23 @@ The toolkit scans either the DSS it is installed on (`'local'`) or any remote DS
 - **Operations that need filesystem/shell access on the target host** must NOT call `subprocess.run`, read `/proc`, or touch `<DIP_HOME>` directly from the webapp. Instead, add a `python-runnables/<name>/` macro and invoke it via `_resolve_macro_project(g.client).get_macro(...).run(params, wait=True)`. The macro runs as the `dataiku` service account on whichever host the active client points at, and that's the only code path that works for both local and remote.
 - **The `ADMINTOOLKIT` project key is the canonical macro-invocation home**. On first macro use against a remote that doesn't have it, the backend responds with `409 {error: 'macro-project-missing', projectKey: 'ADMINTOOLKIT', defaultName: 'Admin Toolkit'}`. The frontend `HostSelector` listens for this event and opens a confirm-create modal that calls `POST /api/hosts/macro-project`.
 - **SSE generators that touch `g.client` must run inside a request context.** Every `return Response(generate(), …)` is wrapped with `stream_with_context(generate())`. Adding a new SSE endpoint? Wrap it.
+
+### Scan scheduling
+
+`moduleRegistry.ts` owns `SCAN_POLICIES` (priority, cheap-read lane, TTL and dependencies)
+and each module's `analysis` scope. `noLoadGlyph` controls presentation only. Core
+readiness excludes both background and manual modules. The warmup hook enqueues
+registered automatic scans after the main loader; visiting a page promotes an existing
+job without duplicating it. The queue holds one background scan and two cheap reads, plus a foreground slot, with
+backend per-host/process limits for background scan requests. No automatic retry loop
+runs on hidden pages. Session reset aborts queued/running requests and rejects late
+writes. Parameterized K8s audits remain target-driven unless an admin selects an
+automatic cluster for that host. Manual actions are never scheduled by scan policies.
+
+Scan-store diagnostic snapshots continue to export lifecycle and compact data shape;
+full payloads remain available to the anonymization collector. Scheduling state is not
+an estate change in the diagnostic comparison engine. No trends table schema changes.
+
+### Overall scan completion
+
+The header spinner remains active through queued module scans, 100% running states, enrichment tails, filesystem scans, and bootstrap work. It stops only after the loader and all scheduled work settle. Terminal failures display an incomplete status, never a success check. Unrequested manual scans do not block completion.

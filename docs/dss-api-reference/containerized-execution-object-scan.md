@@ -228,3 +228,40 @@ Replacement is intentionally narrow. Inherited rows are not emitted by the API
 or UI; changing inherited behavior should be done by replacing the instance-level
 default container execution config. Informational non-carrier counters are kept
 only to make verified gaps visible, but they are not replacement candidates.
+
+## Compute Placement (AI Compute → Placement)
+
+The complement of Container Execs: the **full** inventory, inherited rows
+included, resolved to an effective placement. Backend
+`python-lib/adk_backend/routes/compute_placement.py`; page
+`resource/frontend/src/components/ComputePlacement.tsx`.
+
+- `GET /api/compute-placement` (cached JSON twin, `projectKeys=A,B` filter) and
+  `GET /api/compute-placement/stream` (SSE `init`/`progress`/`done`; one worker
+  thread fans projects out over a bounded pool).
+- One row per project-default surface (`settings.container`,
+  `settings.containerForVisualRecipesWorkloads`,
+  `settings.virtualWebAppBackendSettings.infra.containerSelection`) and per
+  Python/R recipe, DSS-engine visual recipe, webapp backend, ML task, Jupyter
+  notebook and Spark recipe.
+- `placement` = `local` | `container` | `spark`; `resolvedFrom` = `object` |
+  `project` | `instance` | `kernel` | `engine`. Resolution: object selection →
+  project default for the workload family → `defaultExecutionConfig`; `NONE`
+  anywhere pins local, and a missing instance default resolves INHERIT to local.
+- `clusterId` is the project's `settings.k8sCluster` (EXPLICIT_CLUSTER) or the
+  instance `defaultK8sClusterId`, reported only for KUBERNETES-type configs and
+  Spark rows.
+- Notebook placement is a kernelspec-name heuristic (`containerized` token);
+  notebooks and Spark recipes are informational and never migratable.
+- Owners: `versionTag`/`creationTag.lastModifiedBy.login`, falling back to the
+  project owner; emails resolved through `list_users()` for the
+  `compute_local` outreach campaign (`/api/tools/email/preview` + `/send`).
+- `POST /api/compute-placement/migrate` (`@advanced`): `rowIds`,
+  `targetConfig`, optional `clusterId` (Kubernetes configs only; existence-
+  guarded against `list_clusters()`), `strategy` = `objects` (pin each row
+  explicitly) | `project-defaults` (set the family default, reset explicit
+  `NONE` objects to INHERIT), `dryRun`. Writes reuse the Container Execs
+  replace helpers (`_cex_apply_replace_row`); the ML-task save still needs the
+  forwarded browser session. Applying clears both the `compute_placement*`
+  and `container_execs*` caches.
+

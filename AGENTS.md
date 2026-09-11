@@ -8,7 +8,7 @@ Build a polished, fast, dense admin experience. Interactions should feel smooth 
 
 - Use the module registry for page ids, nav sections, command-palette metadata, experimental flags, and availability policies.
 - Use the shared progress indicator for async module work.
-- Progress colors: grey for queued/loading/unavailable, yellow for active/partial/waiting/stalled, white for ready/current/completed-neutral, red for failure.
+- Progress colors: grey for queued/loading/unavailable, yellow for active/partial/waiting/stalled, green for successful completion, red for failure. White remains available for neutral ready/current status outside progress bars.
 - Keep rendering cheap: memoize derived rows, keep list/table dimensions stable, avoid expensive work during render, and prefer GPU-friendly transforms/opacity for animation.
 
 ## Data Contracts

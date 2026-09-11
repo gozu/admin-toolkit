@@ -311,3 +311,35 @@ def test_macro_refuses_a_dip_home_without_a_config_tree(tmp_path):
     result = _build_inventory(str(tmp_path))
     assert result['ok'] is False
     assert 'config/projects' in result['error']
+
+
+# ---- orphan verdicts (shared by the SSE done event and the agent summary) ----
+
+def test_orphan_verdicts_split_known_from_deleted_creators():
+    instances = [
+        {'projectKey': 'RUN_A', 'creatorFullId': 'PROJ.run_it'},
+        {'projectKey': 'RUN_B', 'creatorFullId': 'GONE.deleted_recipe'},
+        {'projectKey': 'RUN_C', 'creatorFullId': None},  # homepage instance
+    ]
+    recipes = [{'fullId': 'PROJ.run_it'}]
+    determinable, orphans, attached = ai._orphan_verdicts(
+        instances, recipes, {'available': True}, [])
+    assert determinable is True
+    assert orphans == ['RUN_B']
+    assert attached == ['RUN_A']
+
+
+def test_orphan_verdicts_are_unknown_not_zero_without_attribution():
+    instances = [{'projectKey': 'RUN_B', 'creatorFullId': 'GONE.recipe'}]
+    determinable, orphans, attached = ai._orphan_verdicts(
+        instances, [], {'available': False}, [])
+    assert determinable is False and orphans == [] and attached == []
+
+
+def test_orphan_verdicts_refuse_on_partial_recipe_sweep():
+    """A failed project scan could hide the creator recipe — a false orphan."""
+    instances = [{'projectKey': 'RUN_B', 'creatorFullId': 'UNSCANNED.recipe'}]
+    determinable, orphans, _ = ai._orphan_verdicts(
+        instances, [], {'available': True},
+        [{'projectKey': 'UNSCANNED', 'error': 'boom'}])
+    assert determinable is False and orphans == []

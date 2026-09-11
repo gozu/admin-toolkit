@@ -17,12 +17,12 @@ async function openCosts(page: Page, variant: 'normal' | 'unpriced' | 'incomplet
       isSystem: j >= users[i], isDaemonSet: j >= users[i], phase: 'Running', ready: true, restartCount: 0,
       realCpuMilli: variant === 'incomplete' && i === 0 && j === 0 ? null : 10,
       realMemMib: variant === 'incomplete' && i === 0 && j === 0 ? null : Math.floor(memory[i] / counts[i]) + (j === 0 ? memory[i] % counts[i] : 0),
-      requestedCpuMilli: 100, requestedMemMib: i === 0 ? j === 0 ? 20000 : 2048 : Math.floor(capacities[i] / counts[i] / 2),
+      requestedCpuMilli: 100, requestedMemMib: i === 0 ? j === 0 ? (variant === 'incomplete' ? 0 : 20000) : 100 : Math.floor(capacities[i] / counts[i] / 2),
     })),
   }));
   const all = nodeBreakdown.flatMap(n => n.pods.map(p => ({
     ...p, key: `${p.ns}/${p.name}`, sourceNode: n.name, perNodeService: p.isDaemonSet,
-    reservedCpuMilli: 100, reservedMemMib: Math.ceil((p.realMemMib ?? 0) / .75),
+    reservedCpuMilli: p.isSystem ? 100 : Math.ceil((p.realCpuMilli ?? 0) / .75), reservedMemMib: p.isSystem ? Math.max(p.requestedMemMib, p.realMemMib ?? 0) : Math.ceil((p.realMemMib ?? 0) / .75),
   })));
   const work = all.filter(p => !p.isSystem);
   const placementNodes = [
@@ -80,11 +80,12 @@ test('static comparison uses measured pod widths and priced calculated destinati
   await expect(before.locator('[data-node="node-2"] .kp-price')).toHaveText('$30.37/mo');
   await expect(after.locator('[data-node="proposed-1"] .kp-price')).toHaveText('$77.26/mo');
   await expect(after.locator('[data-node="proposed-2"] .kp-price')).toHaveText('$309.05/mo');
-  const source = before.getByRole('button', { name: 'analytics/pod-1-1: 480 MiB', exact: true });
-  const destination = after.getByRole('button', { name: 'analytics/pod-1-1: 480 MiB', exact: true });
+  const source = before.getByRole('button', { name: 'analytics/pod-1-1: 480 MiB used', exact: true });
+  const destination = after.getByRole('button', { name: 'analytics/pod-1-1: 640 MiB reserved', exact: true });
   const sourceBox = await source.boundingBox();
   const destinationBox = await destination.boundingBox();
-  expect(sourceBox!.width).toBeCloseTo(destinationBox!.width, 1);
+  expect(destinationBox!.width / sourceBox!.width).toBeCloseTo(640 / 480, 2);
+  expect(await source.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(await destination.evaluate(el => getComputedStyle(el).backgroundColor));
   const track = await before.locator('[data-node="node-1"] .kp-track').boundingBox();
   expect(sourceBox!.width / track!.width).toBeCloseTo(480 / 29903, 3);
   await source.click();
@@ -92,8 +93,8 @@ test('static comparison uses measured pod widths and priced calculated destinati
   await expect(costs.locator('.kp-selection')).toContainText('node-1 → proposed-1');
   expect(await destination.evaluate(el => getComputedStyle(el).animationName)).toBe('none');
   await costs.getByRole('button', { name: 'CPU', exact: true }).click();
-  await expect(after.getByRole('button', { name: 'analytics/pod-1-1: 10m', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await costs.getByRole('button', { name: 'Current requests', exact: true }).click();
+  await expect(after.getByRole('button', { name: 'analytics/pod-1-1: 14m reserved', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await costs.getByRole('button', { name: 'Reserved usage', exact: true }).click();
   await expect(after.locator('.kp-server')).toHaveCount(5);
   await expect(costs).toContainText('$0.00/mo');
   await costs.getByRole('button', { name: 'Usage +33%', exact: true }).click();
@@ -125,39 +126,36 @@ test('unknown usage is flagged and is never drawn as a zero-sized measured pod',
   await expect(costs).toContainText('Incomplete projection');
   await expect(costs).not.toContainText('$725.74/mo');
   await expect(costs.locator('[data-node="node-1"]')).toContainText('1 unmeasured');
-  await expect(costs.locator('[data-node="node-1"] .kp-resource-totals')).toContainText('Available unknown');
   await expect(costs.locator('.kp-pod[aria-label^="analytics/pod-1-1:"]')).toHaveCount(0);
   await costs.locator('[data-node="node-1"] summary').click();
   await expect(costs.locator('[data-node="node-1"] .kp-pod-list')).toContainText('unknown');
 });
 
-test('reservations explain an almost empty large server without inflating measured blocks', async ({ page }) => {
+test('mode changes reservation sizes while preserving pod colors and user identities', async ({ page }) => {
   await openCosts(page);
   const costs = page.getByRole('region', { name: 'Server costs' });
-  await costs.getByRole('button', { name: 'Current requests', exact: true }).click();
-  const server = costs.locator('[data-node="requested-1"]');
-  await expect(server.locator('.kp-resource-totals')).toHaveText('Used 2392 MiBReserved 28192 MiBAvailable 1711 MiB');
-  const track = (await server.locator('.kp-track').boundingBox())!;
-  const outline = (await server.locator('.kp-reservation-outline').boundingBox())!;
-  expect(outline.width / track.width).toBeCloseTo(28192 / 29903, 3);
-  const pod = server.locator('.kp-pod').first();
-  expect((await pod.boundingBox())!.width / track.width).toBeCloseTo(480 / 29903, 3);
-  await expect(server.locator('.kp-size-reason summary')).toHaveText('Memory reservations exceed m8i.xlarge capacity.');
-  await server.locator('.kp-size-reason summary').click();
-  await expect(server.locator('.kp-size-reason')).toContainText('28192 MiB reserved; 13616 MiB capacity.');
-  await server.locator('.kp-pod-list summary').click();
-  await expect(server.locator('.kp-pod-list')).toContainText('480 MiB used · 20000 MiB reserved');
-  await costs.getByRole('button', { name: 'CPU', exact: true }).click();
-  await expect(server.locator('.kp-resource-totals')).toHaveText('Used 50mReserved 500mAvailable 7410m');
-  // Memory still explains server size when viewing CPU consumption.
-  await expect(server.locator('.kp-size-reason summary')).toContainText('Memory reservations exceed');
-  await costs.getByRole('button', { name: 'Memory', exact: true }).click();
-  await server.locator('.kp-pod-list summary').click();
-  await server.locator('.kp-size-reason summary').click();
-  await costs.screenshot({ path: '/tmp/atk-reservations-requests.png' });
-  await costs.getByRole('button', { name: 'Usage +33%', exact: true }).click();
-  await expect(costs.locator('[data-node="proposed-1"]')).toContainText('No smaller size evaluated in this pool.');
-  await expect(costs).not.toContainText('Unused capacity');
+  const before = costs.getByRole('region', { name: 'Current servers' });
+  const after = costs.getByRole('region', { name: 'Proposed servers' });
+  const key = 'analytics/pod-1-1';
+  const source = before.locator(`[data-pod-key="${key}"]`);
+  const sourceColor = await source.evaluate(el => getComputedStyle(el).backgroundColor);
+  const sourceKeys = await before.locator('.kp-pod[data-pod-key^="analytics/"]').evaluateAll(els => els.map(el => el.getAttribute('data-pod-key')).sort());
+  await expect(costs.locator('.kp-legend > span')).toHaveText(['User pods', 'System pods']);
+  await expect(costs.locator('.kp-reservation-outline, .kp-resource-totals, .kp-size-reason, .kp-unattributed')).toHaveCount(0);
+  for (const [mode, value] of [['Reserved usage', 20000], ['Usage +33%', 640]] as const) {
+    await costs.getByRole('button', { name: mode, exact: true }).click();
+    const destination = after.locator(`[data-pod-key="${key}"]`);
+    const track = destination.locator('..');
+    const cap = mode === 'Reserved usage' ? 29903 : 7376;
+    expect((await destination.boundingBox())!.width / (await track.boundingBox())!.width).toBeCloseTo(value / cap, 3);
+    expect((await source.boundingBox())!.width / (await source.locator('..').boundingBox())!.width).toBeCloseTo(480 / 29903, 3);
+    expect(await destination.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(sourceColor);
+    expect(await after.locator('.kp-pod[data-pod-key^="analytics/"]').evaluateAll(els => els.map(el => el.getAttribute('data-pod-key')).sort())).toEqual(sourceKeys);
+    await source.click();
+    await expect(destination).toHaveAttribute('aria-pressed', 'true');
+    await expect(costs.locator('.kp-selection')).toContainText(`480 MiB used → ${value} MiB reserved`);
+    await source.click();
+  }
 });
 
 test('old audits show current nodes and request a new scan rather than inventing destinations', async ({ page }) => {

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.843] - 2026-09-11
+
+### Changed
+
+- Simplified K8s placement charts to measured pod usage on the left and selected placement reservations on the right, using matching colors. Removed reservation outlines, extra capacity figures, sizing explanations, and the extra legend entries. User workloads remain one-for-one across the comparison; per-node system services follow the proposed fleet.
+
 ## [0.4.842] - 2026-09-11
 
 ### Changed

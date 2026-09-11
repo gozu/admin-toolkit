@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
-async function openCosts(page: Page, variant: 'normal' | 'unpriced' | 'incomplete' | 'legacy' = 'normal') {
+async function openCosts(page: Page, variant: 'normal' | 'unpriced' | 'incomplete' | 'legacy' | 'retained' = 'normal') {
+  const missingUsage = variant === 'incomplete' || variant === 'retained';
   const types = ['m8i.2xlarge', 't3.medium', 'm8i.2xlarge', 'm8i.xlarge', 'm8i.2xlarge'];
   const prices = [.42336, .0416, .42336, .21168, .42336];
   const counts = [5, 5, 11, 13, 6];
@@ -15,9 +16,9 @@ async function openCosts(page: Page, variant: 'normal' | 'unpriced' | 'incomplet
     labels: {}, pods: Array.from({ length: counts[i] }, (_, j) => ({
       name: `pod-${i + 1}-${j + 1}`, ns: j < users[i] ? 'analytics' : 'kube-system',
       isSystem: j >= users[i], isDaemonSet: j >= users[i], phase: 'Running', ready: true, restartCount: 0,
-      realCpuMilli: variant === 'incomplete' && i === 0 && j === 0 ? null : 10,
-      realMemMib: variant === 'incomplete' && i === 0 && j === 0 ? null : Math.floor(memory[i] / counts[i]) + (j === 0 ? memory[i] % counts[i] : 0),
-      requestedCpuMilli: 100, requestedMemMib: i === 0 ? j === 0 ? (variant === 'incomplete' ? 0 : 20000) : 100 : Math.floor(capacities[i] / counts[i] / 2),
+      realCpuMilli: missingUsage && i === 0 && j === 0 ? null : 10,
+      realMemMib: missingUsage && i === 0 && j === 0 ? null : Math.floor(memory[i] / counts[i]) + (j === 0 ? memory[i] % counts[i] : 0),
+      requestedCpuMilli: missingUsage && i === 0 && j === 0 ? 0 : 100, requestedMemMib: i === 0 ? j === 0 ? (missingUsage ? 0 : 20000) : 100 : Math.floor(capacities[i] / counts[i] / 2),
     })),
   }));
   const all = nodeBreakdown.flatMap(n => n.pods.map(p => ({
@@ -25,20 +26,31 @@ async function openCosts(page: Page, variant: 'normal' | 'unpriced' | 'incomplet
     reservedCpuMilli: p.isSystem ? 100 : Math.ceil((p.realCpuMilli ?? 0) / .75), reservedMemMib: p.isSystem ? Math.max(p.requestedMemMib, p.realMemMib ?? 0) : Math.ceil((p.realMemMib ?? 0) / .75),
   })));
   const work = all.filter(p => !p.isSystem);
-  const placementNodes = [
+  const retainedNode = {
+    id: 'node-1', instanceType: types[0], hourly: prices[0], cpuCapacityMilli: 7910, memoryCapacityMib: capacities[0],
+    pods: all.filter(p => p.sourceNode === 'node-1').map(p => ({ ...p, statusReason: p.realMemMib == null ? 'CrashLoopBackOff' : 'Running' })),
+    retainedForPods: ['analytics/pod-1-1'], sizeChecks: [],
+  };
+  const placementNodes = variant === 'retained' ? [retainedNode, {
+    id: 'proposed-1', instanceType: types[2], hourly: prices[2], cpuCapacityMilli: 7910, memoryCapacityMib: capacities[2],
+    pods: [...work.filter(p => p.sourceNode !== 'node-1'), ...all.filter(p => p.sourceNode === 'node-3' && p.isSystem)], sizeChecks: [],
+  }] : [
     { id: 'proposed-1', instanceType: 'm8i.large', hourly: .10584, cpuCapacityMilli: 1930, memoryCapacityMib: 7376, pods: [...work.slice(0, 3), ...all.filter(p => p.sourceNode === 'node-1' && p.isSystem)], sizeChecks: [] },
     { id: 'proposed-2', instanceType: 'm8i.2xlarge', hourly: .42336, cpuCapacityMilli: 7910, memoryCapacityMib: 29903, pods: [...work.slice(3), ...all.filter(p => p.sourceNode === 'node-3' && p.isSystem)], sizeChecks: [{ instanceType: 'm8i.xlarge', blockers: [{ kind: 'memory', required: [...work.slice(3), ...all.filter(p => p.sourceNode === 'node-3' && p.isSystem)].reduce((sum, p) => sum + p.reservedMemMib, 0), capacity: 14052 }] }] },
   ];
   const projection = {
-    savingsMonthly: 725.74, floorMonthly: 386.31,
+    savingsMonthly: variant === 'retained' ? 493.95 : 725.74, floorMonthly: variant === 'retained' ? 618.10 : 386.31,
     placementNodes, placementComplete: variant !== 'incomplete',
-    unknownSizingPods: variant === 'incomplete' ? ['analytics/pod-1-1'] : [], unplaceablePods: [],
+    unknownSizingPods: missingUsage ? ['analytics/pod-1-1'] : [], unplaceablePods: [],
   };
   const requested = { ...projection, savingsMonthly: 0, floorMonthly: 1112.05, placementNodes: nodeBreakdown.map((n, i) => ({
     id: `requested-${i + 1}`, instanceType: n.instanceType, hourly: n.hourly,
     cpuCapacityMilli: parseInt(n.allocatableCpu), memoryCapacityMib: capacities[i], pods: all.filter(p => p.sourceNode === n.name).map(p => ({ ...p, reservedCpuMilli: Math.max(p.requestedCpuMilli, p.realCpuMilli ?? 0), reservedMemMib: Math.max(p.requestedMemMib, p.realMemMib ?? 0) })),
     sizeChecks: i === 0 ? [{ instanceType: 'm8i.xlarge', blockers: [{ kind: 'memory', required: 28192, capacity: 13616 }] }] : [],
-  })) };
+  })).map(n => variant === 'retained' && n.id === 'requested-1' ? {
+    ...n, id: 'node-1', retainedForPods: ['analytics/pod-1-1'],
+    pods: n.pods.map(p => ({ ...p, statusReason: p.realMemMib == null ? 'CrashLoopBackOff' : 'Running' })),
+  } : n) };
   const finding = {
     id: 'floor', rule: 'cluster-floor-projection', severity: 'high', category: 'cost',
     title: 'Server consolidation', summary: 'Placement details', costImpactPerMonth: projection.savingsMonthly,
@@ -132,6 +144,33 @@ test('unknown sizing is flagged and is never drawn as known zero', async ({ page
   await expect(costs.locator('[data-node="node-1"] .kp-pod-list')).toContainText('unknown');
 });
 
+test('a crash-looping pod retains its server and rent without hiding other savings', async ({ page }) => {
+  await openCosts(page, 'retained');
+  const costs = page.getByRole('region', { name: 'Server costs' });
+  const after = costs.getByRole('region', { name: 'Proposed servers' });
+  const retained = after.locator('[data-node="node-1"]');
+  await expect(costs).toContainText('$618.10/mo');
+  await expect(costs).toContainText('$493.95/mo');
+  await expect(costs).not.toContainText('Incomplete projection');
+  await expect(retained.locator('.kp-price')).toHaveText('$309.05/mo');
+  await expect(retained).toContainText('1 unsized');
+  await expect(retained.locator('[data-pod-key="analytics/pod-1-1"]')).toHaveCount(0);
+  await retained.getByText('Kept at current size · missing pod sizing', { exact: true }).click();
+  await expect(retained.locator('.kp-retained')).toContainText('analytics/pod-1-1 · CrashLoopBackOff');
+  await expect(retained.locator('.kp-retained')).toContainText('Its full rent is included');
+  await costs.screenshot({ path: '/tmp/atk-retained-server-dark.png' });
+  await costs.getByRole('button', { name: 'Reserved usage', exact: true }).click();
+  await expect(costs).toContainText('$0.00/mo');
+  await expect(retained.locator('.kp-price')).toHaveText('$309.05/mo');
+  await expect(retained).toContainText('Kept at current size');
+  await expect(costs).not.toContainText('Incomplete projection');
+  await costs.getByRole('button', { name: 'Usage +33%', exact: true }).click();
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+  await costs.screenshot({ path: '/tmp/atk-retained-server-light.png' });
+  await page.setViewportSize({ width: 760, height: 1000 });
+  expect(await costs.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(false);
+});
+
 test('mode changes reservation sizes while preserving pod colors and user identities', async ({ page }) => {
   await openCosts(page);
   const costs = page.getByRole('region', { name: 'Server costs' });
@@ -178,11 +217,11 @@ test('old audits show current nodes and request a new scan rather than inventing
 test('pod detail columns align and user/system names have distinct colors', async ({ page }) => {
   await openCosts(page);
   await page.getByRole('button', { name: 'node-1', exact: true }).click();
-  const table = page.getByRole('table', { name: 'Pods on this node', exact: true });
+  const table = page.getByRole('region', { name: 'Pods on this node', exact: true }).locator('table');
   await expect(table).toBeVisible();
   await expect(table.locator('tbody tr')).toHaveCount(5);
-  await expect(table.locator('tbody tr[data-pod-kind="user"]')).toHaveCount(1);
-  await expect(table.locator('tbody tr[data-pod-kind="system"]')).toHaveCount(4);
+  await expect(table.locator('tbody tr.k8s-pod-user')).toHaveCount(1);
+  await expect(table.locator('tbody tr.k8s-pod-system')).toHaveCount(4);
   for (const theme of ['dark', 'light']) {
     await page.evaluate(theme => document.documentElement.setAttribute('data-theme', theme), theme);
     const dimensions = await table.evaluate(el => {
@@ -197,8 +236,8 @@ test('pod detail columns align and user/system names have distinct colors', asyn
       expect(Math.abs(cell.rightDelta)).toBeLessThan(.5);
       if (cell.index >= 2) expect(cell.align).toBe('right');
     }
-    const user = table.locator('tr[data-pod-kind="user"] button').first();
-    const system = table.locator('tr[data-pod-kind="system"] button').first();
+    const user = table.locator('tr.k8s-pod-user button').first();
+    const system = table.locator('tr.k8s-pod-system button').first();
     expect(await user.evaluate(el => getComputedStyle(el).color)).not.toBe(await system.evaluate(el => getComputedStyle(el).color));
     await table.screenshot({ path: `/tmp/atk-pod-detail-${theme}.png` });
   }

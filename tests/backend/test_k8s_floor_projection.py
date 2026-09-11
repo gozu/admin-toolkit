@@ -121,17 +121,103 @@ def test_zero_request_pods_packed_by_usage_floor_stays_at_one_node():
     assert findings[0].cost_impact_per_month == ev['savingsMonthly']
 
 
-def test_unknown_demand_has_assignments_but_no_savings_claim():
+def test_unknown_demand_keeps_its_server_and_all_colocated_pods_at_full_rent():
     nodes, pods = _three_node_cluster()
     finding = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods))[0]
     ev = finding.evidence
-    assert len(ev['placementNodes']) >= 1
+    assert len(ev['placementNodes']) == 1
     assert ev['podsWithoutRequestsOrUsage'] == 2
+    assert ev['placementComplete'] is True
+    assert ev['floorMonthly'] == round(PRICES['m8i.2xlarge'] * 730, 2)
+    assert ev['savingsMonthly'] == round((PRICES['t3.medium'] + PRICES['m8i.xlarge']) * 730, 2)
+    assert finding.cost_impact_per_month == ev['savingsMonthly']
+    assert set(ev['unknownSizingPods']) == {'default/dku-mad-fraud', 'saslanov-api/dku-mad-prediction'}
+    for projection in ev['projections'].values():
+        retained = projection['placementNodes'][0]
+        assert retained['id'] == 'node-c'
+        assert retained['instanceType'] == 'm8i.2xlarge'
+        assert retained['retainedForPods'] == ev['unknownSizingPods']
+        assert {p['key'] for p in retained['pods']} == {
+            'default/dku-mad-fraud', 'saslanov-api/dku-mad-prediction',
+            'kube-system/coredns-1', 'kube-system/aws-node-1',
+        }
+
+
+def test_crashloop_keeps_its_server_while_healthy_servers_consolidate():
+    nodes = [make_node(n, 'm8i.2xlarge', '7900m', '30000Mi') for n in ['a', 'b', 'c']]
+    broken = make_pod('default', 'code-studio', 'a', owner='ReplicaSet')
+    broken['status']['containerStatuses'] = [{
+        'restartCount': 314, 'ready': False,
+        'state': {'waiting': {'reason': 'CrashLoopBackOff'}},
+    }]
+    pods = [broken, make_pod('work', 'neighbor', 'a', cpu='100m', mem='100Mi')]
+    pods += [make_pod('work', n, n, cpu='100m', mem='100Mi') for n in ['b', 'c']]
+    probes = bundle(nodes, pods)
+    ev = Rule21ClusterFloorProjection().evaluate(probes)[0].evidence
+    for projection in ev['projections'].values():
+        assert projection['placementComplete'] is True
+        assert len(projection['placementNodes']) == 2
+        retained, consolidated = projection['placementNodes']
+        assert retained['id'] == 'a'
+        assert retained['instanceType'] == 'm8i.2xlarge'
+        assert {p['key'] for p in retained['pods']} == {'default/code-studio', 'work/neighbor'}
+        assert retained['pods'][0]['statusReason'] == 'CrashLoopBackOff'
+        assert retained['pods'][0]['realMemMib'] is None
+        assert {p['key'] for p in consolidated['pods']} == {'work/b', 'work/c'}
+        assert consolidated['instanceType'] == 'm8i.xlarge'
+        assert projection['floorMonthly'] == round(sum(round(n['hourly'] * 730, 2) for n in projection['placementNodes']), 2)
+        assert projection['savingsMonthly'] == round(ev['currentMonthly'] - projection['floorMonthly'], 2)
+    # Repeating the audit with the same crash state never blanks the estimate.
+    assert Rule21ClusterFloorProjection().evaluate(probes)[0].evidence == ev
+    # Once metrics arrive, the server can participate in consolidation again.
+    probes['probe_top_pods'] = {'ok': True, 'data': [
+        {'namespace': 'default', 'pod': 'code-studio', 'cpuMilli': 100, 'memMib': 100},
+    ]}
+    recovered = Rule21ClusterFloorProjection().evaluate(probes)[0].evidence
+    assert recovered['unknownSizingPods'] == []
+    assert all(not n.get('retainedForPods') for n in recovered['placementNodes'])
+    assert recovered['savingsMonthly'] > ev['savingsMonthly']
+
+
+def test_unknown_unscheduled_pod_still_blocks_savings():
+    nodes = [make_node('a', 'm8i.xlarge', '3900m', '14000Mi')]
+    pods = [make_pod('default', 'pending', '', phase='Pending')]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods))[0].evidence
     assert ev['placementComplete'] is False
     assert ev['floorMonthly'] is None
     assert ev['savingsMonthly'] is None
-    assert finding.cost_impact_per_month is None
-    assert set(ev['unknownSizingPods']) == {'default/dku-mad-fraud', 'saslanov-api/dku-mad-prediction'}
+    assert ev['unknownSizingPods'] == ['default/pending']
+
+
+def test_unknown_per_node_service_keeps_its_server_and_cannot_be_cloned():
+    nodes = [make_node(n, 'm8i.xlarge', '3900m', '14000Mi') for n in ['a', 'b']]
+    pods = [make_pod('kube-system', 'helper', 'a', owner='DaemonSet'),
+            make_pod('work', 'job', 'b', cpu='100m', mem='100Mi')]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods))[0].evidence
+    assert ev['placementComplete'] is True
+    assert ev['idleNodeCount'] == 0
+    assert ev['savingsMonthly'] == 0
+    assert ev['placementNodes'][0]['id'] == 'a'
+    assert ev['placementNodes'][0]['retainedForPods'] == ['kube-system/helper']
+    assert len([p for n in ev['placementNodes'] for p in n['pods'] if p['key'] == 'kube-system/helper']) == 1
+
+
+def test_retained_server_with_missing_price_still_blocks_estimate():
+    nodes = [make_node('a', 'unknown.large', '2000m', '8000Mi')]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, [make_pod('work', 'unknown', 'a')]))[0].evidence
+    assert ev['placementComplete'] is False
+    assert ev['floorMonthly'] is None
+    assert ev['unpricedNodes'] == ['a']
+
+
+def test_all_servers_unsized_reports_full_rent_and_zero_savings():
+    nodes = [make_node(n, 'm8i.xlarge', '3900m', '14000Mi') for n in ['a', 'b']]
+    pods = [make_pod('work', n, n) for n in ['a', 'b']]
+    ev = Rule21ClusterFloorProjection().evaluate(bundle(nodes, pods))[0].evidence
+    assert ev['placementComplete'] is True
+    assert ev['floorMonthly'] == ev['currentMonthly']
+    assert ev['savingsMonthly'] == 0
+    assert [n['id'] for n in ev['placementNodes']] == ['a', 'b']
 
 
 def test_genuine_consolidation_still_reported():

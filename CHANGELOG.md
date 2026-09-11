@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- K8s savings remain available when an unsized pod (such as a crashing Code Studio with no requests or metrics) has a known server. The proposal retains that entire server, its pods, and its full rent while consolidating other servers. Expand the retained-server note to see the pod and status. Unknown demand without an observed server, missing prices, and unplaceable workloads still block estimates.
 - K8s chart labels now switch between Used in Usage +33% mode and Reserved in Reserved usage mode on both sides.
 - K8s node pod details share aligned columns for phase, name, restarts, CPU, and memory. Numeric headers and values align on the right; user pod names are blue and system pod names are purple, including per-node services.
 

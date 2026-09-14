@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.848] - 2026-09-14
+
 ### Fixed
 
 - Inactive Project Cleaner explains its edit-based inactivity calculation and no longer claims to exclude active scenarios or deployed bundles. Compute resource cards explain their calculations on hover.

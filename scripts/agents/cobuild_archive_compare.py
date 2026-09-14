@@ -61,6 +61,7 @@ def fixtures(run):
                     'acceptedPythonInterpreters': ['PYTHON311'], 'forceConda': False,
                     'installCorePackages': False, 'installJupyterSupport': False}))
                 z.writestr('code-env/python/spec/requirements.txt', '')
+                z.writestr('resource/comparison.bin', bytes(range(256)))
             archive.seek(0)
             c.install_plugin_from_archive(archive)
         tk.post('/api/cache/clear')
@@ -93,7 +94,17 @@ def fixtures(run):
                       'status_value': result.get('status')})
             raise AssertionError('Plugin still installed')
         archive_exists(result['result']['backupFile'], 'plugin.json')
-        return {'unused_plugin_deleted': True, 'readable_backup': True}
+        with folder.get_file(result['result']['backupFile']) as stream:
+            content = stream.content
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            assert archive.read('resource/comparison.bin') == bytes(range(256))
+        # Prove this backup is accepted by DSS, then remove the restored fixture.
+        c.install_plugin_from_archive(io.BytesIO(content))
+        assert installed()
+        c.get_plugin(plugin_id).delete()
+        assert not installed()
+        return {'unused_plugin_deleted': True, 'readable_backup': True,
+                'backup_reinstalled_and_removed': True, 'binary_payload_preserved': True}
 
     try:
         with run.gates(['project-export', 'project-delete', 'plugin-code-env-rebuild', 'plugin-uninstall']):

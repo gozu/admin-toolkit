@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.856] - 2026-09-14
+
+### Changed
+
+- Updated the welcome-page analytics disclosure to the requested wording and simplified the Settings opt-out guidance.
+
 ## [0.4.855] - 2026-09-14
 
 ### Changed

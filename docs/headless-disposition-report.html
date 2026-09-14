@@ -1,0 +1,309 @@
+<title>Headless or Cobuild or Neither</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F5F7F4;--surface:#FFFFFF;--ink:#1B2321;--muted:#5B6763;--line:#D6DDD8;--soft:#EDF1EE;
+  --accent:#1E6E69;
+  --hl:#1E6E69;--hl-bg:#E1F0EE;
+  --cb:#A3611A;--cb-bg:#F7EBDA;
+  --ne:#9A3D34;--ne-bg:#F6E3E0;
+  --pa:#4C6B8A;--pa-bg:#E3EBF3;
+  --code-bg:#EEF2EF;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141917;--surface:#1B2220;--ink:#E3E8E4;--muted:#98A49E;--line:#2B3531;--soft:#212A26;
+    --accent:#5EC0B5;
+    --hl:#5EC0B5;--hl-bg:#1A302D;
+    --cb:#E0A257;--cb-bg:#332715;
+    --ne:#E5877A;--ne-bg:#361F1C;
+    --pa:#8FB0D0;--pa-bg:#1D2833;
+    --code-bg:#222B27;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141917;--surface:#1B2220;--ink:#E3E8E4;--muted:#98A49E;--line:#2B3531;--soft:#212A26;
+  --accent:#5EC0B5;
+  --hl:#5EC0B5;--hl-bg:#1A302D;
+  --cb:#E0A257;--cb-bg:#332715;
+  --ne:#E5877A;--ne-bg:#361F1C;
+  --pa:#8FB0D0;--pa-bg:#1D2833;
+  --code-bg:#222B27;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:15.5px;line-height:1.55;margin:0;padding-block:40px 80px;padding-inline:clamp(16px,4vw,48px)}
+main{max-width:1080px;margin:0 auto}
+h1,h2,h3{font-family:"IBM Plex Serif",Georgia,serif;font-weight:600;text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:clamp(28px,4vw,40px);letter-spacing:-.01em}
+h2{font-size:24px;margin-top:56px;padding-top:20px;border-top:1px solid var(--line)}
+h3{font-size:18px;margin-top:28px}
+p{max-width:70ch;margin:12px 0}
+ul,ol{max-width:72ch;padding-left:22px;margin:10px 0}
+li{margin:5px 0}
+li::marker{color:var(--muted)}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:10px}
+.lede{font-size:18px;max-width:64ch;color:var(--ink);margin-top:14px}
+.meta{color:var(--muted);font-size:13.5px;margin-top:6px}
+code,.id{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em;background:var(--code-bg);padding:1px 5px;border-radius:3px}
+.answer{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);padding:18px 22px;margin-top:28px;max-width:none}
+.answer p{max-width:none}
+.answer ul{max-width:none}
+.badge{display:inline-block;font-family:"IBM Plex Sans";font-size:12px;font-weight:600;letter-spacing:.03em;padding:2px 8px;border-radius:3px;white-space:nowrap;line-height:1.5}
+.b-hl{background:var(--hl-bg);color:var(--hl)}
+.b-cb{background:var(--cb-bg);color:var(--cb)}
+.b-ne{background:var(--ne-bg);color:var(--ne)}
+.b-pa{background:var(--pa-bg);color:var(--pa)}
+.legend{display:flex;flex-wrap:wrap;gap:10px 18px;margin:18px 0 6px;font-size:14px;color:var(--muted);align-items:center}
+.legend .badge{margin-right:4px}
+.tally{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:22px 0}
+.tile{background:var(--surface);border:1px solid var(--line);padding:14px 16px}
+.tile .n{font-family:"IBM Plex Serif";font-size:30px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.tile .l{font-size:13px;color:var(--muted);margin-top:6px}
+.tile.hl .n{color:var(--hl)}.tile.cb .n{color:var(--cb)}.tile.ne .n{color:var(--ne)}.tile.pa .n{color:var(--pa)}
+.tbl{overflow-x:auto;margin:16px 0;border:1px solid var(--line);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;text-align:left;color:var(--muted);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--soft);position:sticky;top:0}
+td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.k{white-space:nowrap;font-weight:500}
+td.why{color:var(--muted)}
+td .id{font-size:12.5px}
+.three{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin:20px 0}
+.opt{background:var(--surface);border:1px solid var(--line);padding:16px 18px}
+.opt h3{margin-top:0;font-size:17px;display:flex;align-items:center;gap:10px}
+.opt dl{margin:12px 0 0;display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:13.5px}
+.opt dt{color:var(--muted);white-space:nowrap}
+.opt dd{margin:0}
+.fam{margin-top:34px}
+.fam summary{cursor:pointer;font-family:"IBM Plex Serif";font-size:18px;font-weight:600;padding:10px 0;list-style:none;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.fam summary::-webkit-details-marker{display:none}
+.fam summary::before{content:"▸";font-family:"IBM Plex Sans";color:var(--muted);font-size:14px}
+.fam[open] summary::before{content:"▾"}
+.fam summary .cnt{font-family:"IBM Plex Sans";font-size:13px;font-weight:500;color:var(--muted)}
+.fam summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.note{font-size:13.5px;color:var(--muted);max-width:72ch}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.callout{background:var(--soft);border:1px solid var(--line);padding:14px 18px;max-width:72ch;font-size:14.5px}
+.reasons li strong{font-weight:600}
+@media (max-width:520px){h2{font-size:21px}.tile .n{font-size:24px}}
+</style>
+<main>
+<div class="eyebrow">Admin Toolkit · agent tools and skills</div>
+<h1>Headless or Cobuild or Neither</h1>
+<p class="lede">For every tool, read, action and skill the Admin Toolkit agents carry today: can Dataiku Headless do it, can Cobuild do it as a fallback, or must it stay in the Toolkit, and why.</p>
+<p class="meta">Checked 14 September 2026 against Headless 0.6.0 (commit <span class="id">9d7f6cc</span>, 128 tools), Toolkit 0.4.830 source, and live runs on TAMGLOBAL as the non-admin user <span class="id">kaosdex</span> in project <span class="id">KAOSHEADLESS</span>.</p>
+
+<div class="answer">
+<p><strong>The short answer.</strong> Headless covers the plain DSS inventory work the Toolkit agents do: projects, connections, code envs, plugins, users, LLM connections, scenarios, webapps, jobs and datasets, plus fourteen of the fifty-three admin actions. Cobuild adds in-project building and deletion with its own confirmation flow. Everything that makes the Toolkit an admin product falls outside both: host filesystem and logs, Kubernetes and PostgreSQL health, cost and adoption analytics from audit logs, cluster and connection writes, fleet routing, and the plan-confirm-execute safety layer.</p>
+<ul>
+<li><strong>Headless can take over</strong> 10 of 19 config domains, 14 of 53 actions, and the read-only halves of 2 curated reads.</li>
+<li><strong>Cobuild is a real fallback</strong> for 5 actions that change project assets, and for narrative synthesis if the Toolkit hands it evidence.</li>
+<li><strong>Neither can do</strong> all 11 sensors as designed, 19 of 21 curated reads, 8 config domains and 34 actions. The reasons group into five buckets, listed below.</li>
+<li><strong>One thing prior write-ups missed:</strong> Cobuild is a public REST API in the Dataiku client since 14.7.2. The Toolkit backend can talk to it directly, without the Headless MCP wrapper.</li>
+</ul>
+</div>
+
+<h2>The three options, in plain words</h2>
+<p>These are three different places code runs, with three different identities. That is what decides most of the dispositions below, more than any tool list.</p>
+<div class="three">
+<div class="opt"><h3><span class="badge b-hl">Headless</span> preferred</h3>
+<p>An MCP server that runs on the operator's laptop inside Codex or Claude Code. It wraps the Dataiku public API with 128 tools and ships two skills plus 55 reference guides.</p>
+<dl><dt>Runs</dt><dd>Locally, next to the harness</dd><dt>Identity</dt><dd>The operator's own API key. Four tool groups refuse non-admins: users, groups, licensing, general settings.</dd><dt>Reaches</dt><dd>One configured DSS instance at a time. Public API only. No host filesystem, shell or logs.</dd><dt>Reasoning</dt><dd>The harness model. Not a Dataiku AI credit.</dd></dl></div>
+<div class="opt"><h3><span class="badge b-cb">Cobuild</span> fallback</h3>
+<p>Dataiku's server-side building agent, scoped to one project. Headless drives it with six tools, but the same conversation API is in the public client.</p>
+<dl><dt>Runs</dt><dd>Inside DSS, on the instance</dd><dt>Identity</dt><dd>The calling user. Project permissions apply.</dd><dt>Reaches</dt><dd>Project assets: flows, recipes, models, dashboards, agents, scenarios, wikis. Not instance administration.</dd><dt>Reasoning</dt><dd>Metered Dataiku AI Services usage. Needs DSS 14.7 or newer.</dd></dl></div>
+<div class="opt"><h3><span class="badge b-ne">Neither</span> stays in Toolkit</h3>
+<p>The Toolkit's plugin backend, running in DSS with an admin key, with macros for anything that touches the host.</p>
+<dl><dt>Runs</dt><dd>Inside DSS, plus macros on the host</dd><dt>Identity</dt><dd>Admin key, or the managed-host key for remote instances</dd><dt>Reaches</dt><dd>Admin API, <span class="id">DIP_HOME</span>, backend.log, kubectl, the runtime PostgreSQL, container registries, a whole fleet</dd><dt>Reasoning</dt><dd>LLM Mesh today. Could become Cobuild for synthesis.</dd></dl></div>
+</div>
+
+<h2>Disposition at a glance</h2>
+<div class="legend"><span class="badge b-hl">Headless</span> does it fully <span class="badge b-pa">Partial</span> Headless supplies the raw read, Toolkit keeps the analysis <span class="badge b-cb">Cobuild</span> fallback path <span class="badge b-ne">Neither</span> stays in Toolkit</div>
+<div class="tally">
+<div class="tile hl"><div class="n">24</div><div class="l">Headless takes over<br>10 domains, 14 actions</div></div>
+<div class="tile pa"><div class="n">5</div><div class="l">Partial<br>2 sensors, 1 domain, 2 reads</div></div>
+<div class="tile cb"><div class="n">5</div><div class="l">Cobuild fallback<br>5 actions</div></div>
+<div class="tile ne"><div class="n">70</div><div class="l">Neither<br>9 sensors, 8 domains, 19 reads, 34 actions</div></div>
+</div>
+<p class="note">Counts are of the 104 concrete entry points: 11 sensors, 19 config domains, 21 curated reads and 53 actions. Prompts and skills are instruction text and are handled separately below, because text alone does not give any surface a tool it lacks.</p>
+
+<h2>Why "neither", in five buckets</h2>
+<p>Every "neither" row below cites one of these. If a bucket goes away upstream, its rows flip.</p>
+<ol class="reasons">
+<li><strong>Host access.</strong> Reads or writes the DSS host itself: <span class="id">DIP_HOME</span> tree, backend.log, tmp and export folders, Docker, process table. Headless is public-API only; Cobuild is project-only.</li>
+<li><strong>Admin API not wrapped.</strong> The public API has it, Headless has no tool for it: clusters, API keys, connection writes, global variables, general settings writes, notebook kernels, webapp backends, continuous activities, scenario abort, project delete/export/owner, messaging.</li>
+<li><strong>Derived analytics.</strong> Needs audit logs or a cross-instance scan plus Toolkit rules: health score and sanity, CRU cost, adoption and churn, LLM audit, app-instance attribution, compute placement.</li>
+<li><strong>Infrastructure beyond DSS.</strong> kubectl against attached clusters, the runtime PostgreSQL, container registries.</li>
+<li><strong>Toolkit-internal.</strong> Only meaningful inside the Toolkit: capability manifest, action audit timeline, settings snapshot, version, agent-authored Python, Toolkit scenario writer.</li>
+</ol>
+
+<details class="fam" open><summary>Sensors <span class="cnt">11 · 0 Headless · 2 partial · 9 neither</span></summary>
+<div class="tbl"><table>
+<tr><th>Toolkit sensor</th><th>Verdict</th><th>Headless equivalent</th><th>Why not more</th></tr>
+<tr><td class="k">list_hosts</td><td><span class="badge b-pa">Partial</span></td><td><span class="id">list_instances</span>, <span class="id">switch_instance</span></td><td class="why">Headless holds local connection profiles and one active instance. It has no per-call host routing, no reachability probe, no fleet registry. Fine for one host at a time.</td></tr>
+<tr><td class="k">config_inspect</td><td><span class="badge b-pa">Partial</span></td><td>Per-domain, see next table</td><td class="why">10 of 19 domains map cleanly. The other 9 need admin APIs Headless does not wrap, macros, or audit data.</td></tr>
+<tr><td class="k">instance_health</td><td><span class="badge b-ne">Neither</span></td><td>None</td><td class="why">Bucket 3. Sanity messages, Java stats and the 0-100 score are Toolkit rules over host and admin endpoints.</td></tr>
+<tr><td class="k">compute_cost</td><td><span class="badge b-ne">Neither</span></td><td>None</td><td class="why">Bucket 3. CRU records come from audit-log collections.</td></tr>
+<tr><td class="k">log_errors</td><td><span class="badge b-ne">Neither</span></td><td><span class="id">get_job_log</span> only</td><td class="why">Bucket 1. Headless reads job and scenario logs, not backend.log.</td></tr>
+<tr><td class="k">log_tail</td><td><span class="badge b-ne">Neither</span></td><td>None</td><td class="why">Bucket 1.</td></tr>
+<tr><td class="k">storage_footprint</td><td><span class="badge b-ne">Neither</span></td><td>None</td><td class="why">Bucket 1. Sizes come from a filesystem walk.</td></tr>
+<tr><td class="k">k8s_health</td><td><span class="badge b-ne">Neither</span></td><td>None</td><td class="why">Bucket 4. Headless has no cluster tools at all.</td></tr>
+<tr><td class="k">db_health</td><td><span class="badge b-ne">Neither</span></td><td>None</td><td class="why">Bucket 4.</td></tr>
+<tr><td class="k">toolkit_get</td><td><span class="badge b-ne">Neither</span></td><td>Per-endpoint, see reads table</td><td class="why">19 of 21 endpoints are Toolkit analyses.</td></tr>
+<tr><td class="k">list_capabilities</td><td><span class="badge b-ne">Neither</span></td><td>None</td><td class="why">Bucket 5. Describes Toolkit gates and pages.</td></tr>
+</table></div>
+</details>
+
+<details class="fam" open><summary>Config domains <span class="cnt">19 · 10 Headless · 1 partial · 8 neither</span></summary>
+<div class="tbl"><table>
+<tr><th>Domain</th><th>Verdict</th><th>Headless tools</th><th>Notes</th></tr>
+<tr><td class="k">projects</td><td><span class="badge b-hl">Headless</span></td><td><span class="id">list_projects</span> <span class="id">get_project_metadata</span> <span class="id">get_project_settings</span></td><td class="why">Live-verified for a non-admin.</td></tr>
+<tr><td class="k">connections</td><td><span class="badge b-hl">Headless</span></td><td><span class="id">list_connections</span> <span class="id">get_connection_info</span> <span class="id">test_connection</span></td><td class="why">Includes the health probe. Keys are redacted upstream since 0.4.0.</td></tr>
+<tr><td class="k">connections-usage</td><td><span class="badge b-pa">Partial</span></td><td><span class="id">list_datasets</span> per project</td><td class="why">Dataset rows expose the connection, but the cross-project matrix, owner emails and active-trigger flag are Toolkit work.</td></tr>
+<tr><td class="k">code-envs</td><td><span class="badge b-hl">Headless</span></td><td><span class="id">list_code_envs</span> with package filter</td><td class="why">Inventory yes. Size, deprecated-Python and unused analysis stay in Toolkit.</td></tr>
+<tr><td class="k">plugins</td><td><span class="badge b-hl">Headless</span></td><td><span class="id">list_plugins</span> <span class="id">list_plugin_usages</span></td><td class="why">Usage counts are upstream now.</td></tr>
+<tr><td class="k">llms</td><td><span class="badge b-hl">Headless</span></td><td><span class="id">list_llms</span> <span class="id">get_llm_info</span></td><td class="why"></td></tr>
+<tr><td class="k">clusters</td><td><span class="badge b-ne">Neither</span></td><td>None</td><td class="why">Bucket 2.</td></tr>
+<tr><td class="k">users</td><td><span class="badge b-hl">Headless</span></td><td><span class="id">list_users</span></td><td class="why">Admin-gated upstream. Non-admin key gets an explicit refusal.</td></tr>
+<tr><td class="k">api-keys</td><td><span class="badge b-ne">Neither</span></td><td>None</td><td class="why">Bucket 2.</td></tr>
+<tr><td class="k">scenarios</td><td><span class="badge b-hl">Headless</span></td><td><span class="id">list_scenarios</span> <span class="id">get_scenario_settings</span> <span class="id">get_scenario_run_history</span></td><td class="why">Richer than the Toolkit domain: run history is included.</td></tr>
+<tr><td class="k">webapps</td><td><span class="badge b-hl">Headless</span></td><td><span class="id">list_webapps</span> <span class="id">get_webapp_state</span></td><td class="why">Read only. Backend control stays in Toolkit.</td></tr>
+<tr><td class="k">notebooks</td><td><span class="badge b-ne">Neither</span></td><td>None</td><td class="why">Bucket 2.</td></tr>
+<tr><td class="k">jobs</td><td><span class="badge b-hl">Headless</span></td><td><span class="id">list_jobs</span> <span class="id">get_job_status</span> <span class="id">wait_for_job</span></td><td class="why">Wait and future tracking are a gain over the Toolkit domain.</td></tr>
+<tr><td class="k">datasets</td><td><span class="badge b-hl">Headless</span></td><td><span class="id">list_datasets</span> <span class="id">get_flow_graph</span> <span class="id">get_flow_object_metadata</span></td><td class="why">Flow lineage is a gain.</td></tr>
+<tr><td class="k">continuous-activities</td><td><span class="badge b-ne">Neither</span></td><td>None</td><td class="why">Bucket 2.</td></tr>
+<tr><td class="k">app-instances</td><td><span class="badge b-ne">Neither</span></td><td>None</td><td class="why">Bucket 3. Public API strips the creator id; the Toolkit macro reads it from disk.</td></tr>
+<tr><td class="k">adoption</td><td><span class="badge b-ne">Neither</span></td><td>None</td><td class="why">Bucket 3.</td></tr>
+<tr><td class="k">settings</td><td><span class="badge b-ne">Neither</span></td><td><span class="id">list_container_exec_configs</span> <span class="id">list_spark_configs</span> only</td><td class="why">Bucket 2. Headless exposes two settings lists, not the redacted general-settings read.</td></tr>
+<tr><td class="k">cost-detail</td><td><span class="badge b-ne">Neither</span></td><td>None</td><td class="why">Bucket 3.</td></tr>
+</table></div>
+</details>
+
+<details class="fam"><summary>Curated reads <span class="cnt">21 · 0 Headless · 2 partial · 19 neither</span></summary>
+<div class="tbl"><table>
+<tr><th>Read endpoint</th><th>Verdict</th><th>Why</th></tr>
+<tr><td class="k">connections-audit</td><td><span class="badge b-pa">Partial</span></td><td class="why"><span class="id">get_connection_info</span> gives the raw params. The fast-write, HDFS and filesystem-root findings are Toolkit rules.</td></tr>
+<tr><td class="k">container-execs</td><td><span class="badge b-pa">Partial</span></td><td class="why"><span class="id">list_container_exec_configs</span> lists them. Per-project usage and registry links are a Toolkit scan.</td></tr>
+<tr><td class="k">errors, dir-tree, docker-usage, resources-snapshot, resources-processes</td><td><span class="badge b-ne">Neither</span></td><td class="why">Bucket 1.</td></tr>
+<tr><td class="k">users-churn, compute-placement, cost-cru-detail, llm-audit, cs-templates, cs-template-projects</td><td><span class="badge b-ne">Neither</span></td><td class="why">Bucket 3. Compute placement could be rebuilt from Headless project and recipe settings, but it is a heavy every-project scan the Toolkit already caches.</td></tr>
+<tr><td class="k">k8s-insights, db-health-connections, db-health-overview, db-health-tables, db-health-per-project</td><td><span class="badge b-ne">Neither</span></td><td class="why">Bucket 4.</td></tr>
+<tr><td class="k">audit-timeline, settings-snapshot, version</td><td><span class="badge b-ne">Neither</span></td><td class="why">Bucket 5.</td></tr>
+</table></div>
+</details>
+
+<details class="fam" open><summary>Admin actions <span class="cnt">53 · 14 Headless · 5 Cobuild · 34 neither</span></summary>
+<p class="note">Toolkit risk colour is shown so the reader can see that Headless covers mostly amber actions and nothing red except user-disable. Headless direct writes have no dry run and no confirm token. Cobuild has a confirmation step for deletions only.</p>
+<div class="tbl"><table>
+<tr><th>Action</th><th>Risk</th><th>Verdict</th><th>Route</th></tr>
+<tr><td class="k">connection-test</td><td>green</td><td><span class="badge b-hl">Headless</span></td><td class="why"><span class="id">test_connection</span></td></tr>
+<tr><td class="k">code-env-update</td><td>amber</td><td><span class="badge b-hl">Headless</span></td><td class="why"><span class="id">update_code_env</span></td></tr>
+<tr><td class="k">code-env-delete</td><td>red</td><td><span class="badge b-hl">Headless</span></td><td class="why"><span class="id">delete_code_env</span>. No usage check before delete upstream; the Toolkit planner does one.</td></tr>
+<tr><td class="k">plugin-update</td><td>amber</td><td><span class="badge b-hl">Headless</span></td><td class="why"><span class="id">update_plugin source=store</span></td></tr>
+<tr><td class="k">plugin-deploy</td><td>amber</td><td><span class="badge b-hl">Headless</span></td><td class="why"><span class="id">update_plugin source=local_path</span>, upload supported since 0.6.0</td></tr>
+<tr><td class="k">plugin-code-env-rebuild</td><td>amber</td><td><span class="badge b-hl">Headless</span></td><td class="why"><span class="id">update_plugin rebuild_code_env=true</span></td></tr>
+<tr><td class="k">plugin-uninstall</td><td>red</td><td><span class="badge b-hl">Headless</span></td><td class="why"><span class="id">delete_plugin</span>. No zip backup upstream.</td></tr>
+<tr><td class="k">user-update, user-enable, user-disable</td><td>amber / red</td><td><span class="badge b-hl">Headless</span></td><td class="why"><span class="id">update_user</span> takes email, profile, groups, enabled. Admin key required. The Toolkit's self-lockout refusal does not exist upstream.</td></tr>
+<tr><td class="k">project-variables-set</td><td>amber</td><td><span class="badge b-hl">Headless</span></td><td class="why"><span class="id">set_project_variables</span></td></tr>
+<tr><td class="k">project-set-cluster</td><td>amber</td><td><span class="badge b-hl">Headless</span></td><td class="why"><span class="id">update_project_settings</span> with a container-execution patch. Cluster existence guard is Toolkit-only.</td></tr>
+<tr><td class="k">scenario-run</td><td>amber</td><td><span class="badge b-hl">Headless</span></td><td class="why"><span class="id">run_scenario</span></td></tr>
+<tr><td class="k">job-kill</td><td>amber</td><td><span class="badge b-hl">Headless</span></td><td class="why"><span class="id">abort_job</span></td></tr>
+<tr><td class="k">dataset-delete</td><td>red</td><td><span class="badge b-cb">Cobuild</span></td><td class="why">Cobuild proposes deletion, returns impacts, waits for <span class="id">answer_cobuild_confirmation</span>. Drop-data semantics not verified.</td></tr>
+<tr><td class="k">scenario-enable, scenario-disable</td><td>amber</td><td><span class="badge b-cb">Cobuild</span></td><td class="why">Scenario settings are Cobuild-editable. Not live-tested.</td></tr>
+<tr><td class="k">toolkit-scenario-write</td><td>amber</td><td><span class="badge b-cb">Cobuild</span></td><td class="why">Cobuild builds scenarios. The Toolkit's opinionated step set would become prompt text.</td></tr>
+<tr><td class="k">notebook-clear-outputs</td><td>amber</td><td><span class="badge b-cb">Cobuild</span></td><td class="why">Cobuild edits notebooks. Not live-tested.</td></tr>
+<tr><td class="k">tmp-cleanup, exports-cleanup, job-logs-cleanup, log-cleanup, docker-prune</td><td>amber</td><td><span class="badge b-ne">Neither</span></td><td class="why">Bucket 1.</td></tr>
+<tr><td class="k">connection-update, connection-delete, connection-index</td><td>amber / red</td><td><span class="badge b-ne">Neither</span></td><td class="why">Bucket 2. Headless connections are read-only.</td></tr>
+<tr><td class="k">cluster-start, cluster-stop, cluster-detach, cluster-pods-cleanup, k8s-apply-fix, k8s-exec-config-tune</td><td>mixed</td><td><span class="badge b-ne">Neither</span></td><td class="why">Buckets 2 and 4.</td></tr>
+<tr><td class="k">project-delete, project-export, project-change-owner, project-clear-webapp-runs</td><td>mixed</td><td><span class="badge b-ne">Neither</span></td><td class="why">Bucket 2. Headless has no project delete, export or ownership tool. Cobuild deletes objects inside a project, not the project.</td></tr>
+<tr><td class="k">scenario-kill, continuous-activity-stop, webapp-backend-stop, webapp-backend-restart, notebook-kernels-shutdown</td><td>amber</td><td><span class="badge b-ne">Neither</span></td><td class="why">Bucket 2. <span class="id">abort_job</span> does not abort scenario runs.</td></tr>
+<tr><td class="k">variables-set, settings-set, api-key-delete, notification-send</td><td>amber / red</td><td><span class="badge b-ne">Neither</span></td><td class="why">Bucket 2.</td></tr>
+<tr><td class="k">code-env-consolidate, image-delete, dataset-clear</td><td>amber / red</td><td><span class="badge b-ne">Neither</span></td><td class="why">Consolidate is a Toolkit workflow over many envs; image-delete is bucket 4; clear-data has no upstream tool.</td></tr>
+<tr><td class="k">db-vacuum, db-analyze, db-reindex</td><td>amber</td><td><span class="badge b-ne">Neither</span></td><td class="why">Bucket 4.</td></tr>
+<tr><td class="k">python-run</td><td>red</td><td><span class="badge b-ne">Neither</span></td><td class="why">Bucket 5. Headless explicitly forbids falling back to raw Python.</td></tr>
+</table></div>
+</details>
+
+<h2>What overlaps, and what to do about it</h2>
+<p>The overlap is the ten inventory domains and fourteen actions above. Two ways to remove the duplication, and they are not equal:</p>
+<ul>
+<li><strong>Give the Toolkit agent Headless tools.</strong> Headless is a laptop-side MCP server. The Toolkit agent runs inside DSS, so the only way to reuse the code is to import its tool functions into the plugin backend and call them with the admin client. Works for reads. For writes it would strip out the plan step, confirm token, backups and audit that the Toolkit adds.</li>
+<li><strong>Give Headless the Toolkit's knowledge.</strong> Port the playbooks as reference guides so an operator in Codex gets the same judgment for the domains Headless already covers. This is the cheaper move and the one that reaches operators who never install the Toolkit.</li>
+</ul>
+<p>Recommendation: do the second for the ten covered domains and the green and amber actions. Keep the Toolkit executors for every red action even where Headless has a raw tool, because the upstream tools have no dry run, no backup and no self-lockout guard.</p>
+
+<h2>In Headless, not in the Toolkit agents, and worth adopting</h2>
+<p>The Toolkit agent sees the instance from the top down. Headless sees inside projects. These upstream reads would answer scoping questions the agent currently cannot, and they are all public-API reads the plugin backend can call today.</p>
+<div class="tbl"><table>
+<tr><th>Headless capability</th><th>What it would give the Toolkit agent</th></tr>
+<tr><td class="k">get_flow_graph, get_flow_object_metadata, list_flow_zones</td><td>Real lineage for "is this dataset used" before dataset-clear and dataset-delete. Today the Toolkit domain only has name refs.</td></tr>
+<tr><td class="k">get_dataset_profile, get_dataset_metrics, get_dataset_sample</td><td>Size and shape evidence for storage and cost questions without a filesystem walk.</td></tr>
+<tr><td class="k">list_code_envs package filter</td><td>"Which envs carry package X at version Y" for CVE and deprecation sweeps.</td></tr>
+<tr><td class="k">list_plugin_usages</td><td>Direct replacement for the Toolkit's plugin usage scan.</td></tr>
+<tr><td class="k">get_scenario_run_history, wait_for_job, get_future_status</td><td>Verify that a scenario-run or plugin-update action actually finished, instead of reporting "submitted".</td></tr>
+<tr><td class="k">Data quality rules and status</td><td>A new health signal per project, absent from the Toolkit score.</td></tr>
+<tr><td class="k">Agents, agent tools, agent reviews, knowledge banks, RAG LLMs</td><td>GenAI estate inventory for the LLM audit page, which today only sees connections and audit-log usage.</td></tr>
+<tr><td class="k">list_shared_objects, data collections</td><td>Cross-project exposure checks before project-delete and connection-delete.</td></tr>
+<tr><td class="k">Project libraries read and validate</td><td>Find hard-coded connection names and paths before a connection rename.</td></tr>
+</table></div>
+
+<h2>Toolkit skills worth porting to Headless</h2>
+<div class="two">
+<div>
+<h3>Port as reference guides</h3>
+<ul>
+<li><strong>Action safety pattern.</strong> Plan, show the target shape, drift-check the current value, then execute. Headless admin writes have none of this. It ports as guide text plus a request for a dry-run flag upstream.</li>
+<li><strong>Remediation map and severity playbook.</strong> Which finding points to which action, and what counts as critical. Domain knowledge, not code.</li>
+<li><strong>Code-env hygiene.</strong> Deprecated Python detection, unused-env rules, consolidation order. Headless has the inventory, not the judgment.</li>
+<li><strong>Plugin drift.</strong> Comparing versions across instances is a two-profile workflow Headless can already do with <span class="id">switch_instance</span>.</li>
+<li><strong>Connection audit rules.</strong> Fast-write, details readability, filesystem root findings, computed from <span class="id">get_connection_info</span>.</li>
+<li><strong>Scoping prompts for projects and envs.</strong> The catalog entries for project landscape, dominant projects, env estate and env drift run on domains Headless covers.</li>
+</ul>
+</div>
+<div>
+<h3>Not useful to Headless</h3>
+<ul>
+<li><strong>Repository maintenance skill.</strong> Release and docs upkeep for this codebase.</li>
+<li><strong>Frontend contracts, stores, module registry.</strong> React internals.</li>
+<li><strong>Fleet prompts.</strong> Sweep, compare, quiet, outage. Headless has no fleet concept.</li>
+<li><strong>Host, Kubernetes, database and Docker prompts.</strong> Buckets 1 and 4. The guide would describe tools that do not exist.</li>
+<li><strong>Cost and adoption prompts.</strong> Bucket 3. Audit-log analytics.</li>
+<li><strong>Safety drills.</strong> They test the confirm-token machinery, which Headless does not have.</li>
+<li><strong>System prompts and rubrics as-is.</strong> They reference Toolkit sensor names and gates. Only the domain knowledge inside them ports.</li>
+</ul>
+</div>
+</div>
+
+<h2>What else this report surfaces</h2>
+<p>Beyond overlap, these are the dimensions that decide whether a capability can move. Each one changed at least one verdict above.</p>
+<div class="tbl"><table>
+<tr><th>Dimension</th><th>Headless</th><th>Cobuild</th><th>Toolkit</th></tr>
+<tr><td class="k">Who runs it</td><td>Operator's laptop</td><td>DSS server, in a project</td><td>DSS server, plus host macros</td></tr>
+<tr><td class="k">Whose key</td><td>Operator's personal key. Non-admin means no users, groups, licensing or settings. Verified: <span class="id">kaosdex</span> refused on licensing.</td><td>Calling user, project permissions</td><td>Admin key</td></tr>
+<tr><td class="k">Scope</td><td>One instance at a time</td><td>One project per conversation</td><td>Fleet, routed per request</td></tr>
+<tr><td class="k">Who pays for reasoning</td><td>The harness subscription</td><td>Dataiku AI Services usage, per user, then AI Credits</td><td>LLM Mesh connection cost</td></tr>
+<tr><td class="k">Safety model</td><td>Read-before-write rule in the skill. Direct writes have no dry run.</td><td>Confirmation for deletions only. <span class="id">allow_edit_project</span> flag.</td><td>Plan, confirm token, drift check, backups, gates, kill switch, audit</td></tr>
+<tr><td class="k">DSS version</td><td>Client pinned to 14.7.2; reads work on 14.x and 15.x</td><td>Conversation API needs 14.7 or newer</td><td>Any supported DSS</td></tr>
+<tr><td class="k">Durability</td><td>Conversations live in the MCP process, lost on restart</td><td>Retained in DSS, no cancel API</td><td>Persisted chat and action history</td></tr>
+<tr><td class="k">Can it call the other's tools</td><td>No. Cobuild cannot invoke Toolkit tools or macros. Verified live.</td><td>No</td><td>Yes, could call Cobuild via the public client</td></tr>
+<tr><td class="k">Customer readiness</td><td>Apache 2.0, guide marked internal</td><td>Licensed feature, credits</td><td>Internal plugin</td></tr>
+</table></div>
+
+<h2>What was verified, and how</h2>
+<ul>
+<li><strong>Headless tool inventory</strong> read from source at commit <span class="id">9d7f6cc</span>, cloned fresh today. The 128-tool split of 93 read, 21 write, 6 Cobuild, 4 execute, 3 profile, 1 test is upstream's own count in <span class="id">docs/capabilities.md</span>.</li>
+<li><strong>Admin gating</strong> confirmed by grep: <span class="id">require_admin()</span> is called only in users, groups, licensing and general settings.</li>
+<li><strong>Toolkit catalogs</strong> imported from <span class="id">tools_impl</span>, <span class="id">domain_registry</span>, <span class="id">read_registry</span> and <span class="id">actions</span>: 11 sensors, 19 domains, 21 reads, 53 actions, 39 pages.</li>
+<li><strong>Live on TAMGLOBAL as kaosdex</strong> (DSS 14.7.3, evidence file <span class="id">docs/headless-integration-evidence.json</span>): seven reads succeeded, licensing refused with "you are not admin", a Cobuild conversation created an agent tool and a native agent, and Cobuild reported it cannot invoke plugin tools, macros, or read users or host state.</li>
+<li><strong>Cobuild public API</strong> confirmed in dataiku-api-client 14.7.2: <span class="id">DSSProject.new_cobuild_conversation</span>, <span class="id">send_message</span>, <span class="id">answer_confirmation</span>, <span class="id">answer_question</span>.</li>
+<li><strong>Not verified:</strong> the four Cobuild-fallback actions marked "not live-tested", and any Cobuild usage debit. Earlier attempts on akaos were credit-blocked.</li>
+</ul>
+
+<h2>Recommended sequence</h2>
+<ol>
+<li>Port the six guide-worthy playbooks to Headless reference format and open them upstream. No Toolkit code changes, immediate reach.</li>
+<li>Adopt the flow-graph, dataset-profile, plugin-usage and job-wait reads into the Toolkit agent as new sensors, calling the public API through the existing admin client.</li>
+<li>Pilot Cobuild as the synthesis step for the scheduled triage sweep, calling it through the public client from the plugin backend. Measure a usage delta on a customer-scoped identity before claiming anything about credits.</li>
+<li>Ask upstream for four things that would flip rows here: a dry-run flag on admin writes, cluster and connection write tools, scenario abort, and a way for Cobuild to call registered plugin tools.</li>
+</ol>
+<p class="meta">Companion files: <span class="id">docs/headless-disposition-report.md</span> (this report as text), <span class="id">docs/headless-capability-matrix.csv</span> (390-row detail), <span class="id">docs/headless-integration-assessment.md</span> (long-form investigation).</p>
+</main>

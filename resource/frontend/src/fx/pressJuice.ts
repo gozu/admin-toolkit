@@ -1,7 +1,8 @@
-// Game-feel button presses: every button squashes on pointerdown and springs
+// Game-feel button presses: action buttons squash on pointerdown and spring
 // back with a slight overshoot on release. WAAPI on the standalone `scale`
 // property, so it never fights Tailwind transitions or framer-motion
-// transforms, and it covers every current and future button for free.
+// transforms. Disclosure buttons stay stationary so edge clicks remain inside
+// their hitboxes throughout the press.
 
 import { prefersReducedMotion } from './fxBus';
 
@@ -27,6 +28,7 @@ export function initPressJuice(): () => void {
     if (!t || typeof t.closest !== 'function') return;
     const el = t.closest('button, [role="button"]') as HTMLElement | null;
     if (!el || el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true') return;
+    if (el.hasAttribute('aria-expanded')) return;
     release();
     pressed = el;
     el.animate({ scale: ['1', '0.96'] }, { duration: 110, easing: PRESS_EASE, fill: 'forwards' });

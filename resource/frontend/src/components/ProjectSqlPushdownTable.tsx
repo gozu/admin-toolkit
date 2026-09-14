@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Card } from './Card';
+import { DisclosureChevron } from './common/DisclosureChevron';
 import { ScanIncompleteNotice } from './ScanIncompleteNotice';
 import { dssUrls, getDssBaseUrl } from '../utils/codeEnvUsageLinks';
 import {
@@ -30,9 +31,7 @@ function OwnerRow({
         className="w-full grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-2 text-left hover:bg-[var(--bg-glass)] transition-colors"
         aria-expanded={open}
       >
-        <span className="text-[10px] text-[var(--text-muted)] font-mono w-3">
-          {open ? '▼' : '▶'}
-        </span>
+        <DisclosureChevron expanded={open} className="text-[var(--text-muted)]" />
         <span className="min-w-0">
           <span className="text-[var(--text-primary)] font-medium">
             {group.ownerDisplayName}
@@ -86,9 +85,7 @@ function ProjectRow({
         className="w-full grid grid-cols-[auto_1fr_auto] items-center gap-2 px-3 py-1.5 text-left hover:bg-[var(--bg-glass)] transition-colors"
         aria-expanded={open}
       >
-        <span className="text-[10px] text-[var(--text-muted)] font-mono w-3">
-          {open ? '▼' : '▶'}
-        </span>
+        <DisclosureChevron expanded={open} className="text-[var(--text-muted)]" />
         <span className="min-w-0 text-sm">
           {projectUrl ? (
             <a

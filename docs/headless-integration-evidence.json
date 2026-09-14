@@ -1,0 +1,523 @@
+{
+  "date": "2026-09-14",
+  "headless_commit": "9d7f6cc29a9406f347708c8811b5689ab257c6c8",
+  "headless_version": "0.6.0",
+  "mcp_tool_count": 128,
+  "upstream_unit_tests": {
+    "passed": 18,
+    "files": [
+      "tests/test_instance_pinning.py",
+      "tests/test_cobuild.py"
+    ]
+  },
+  "akaos": {
+    "dss_version": "15.0.1",
+    "identity": "admin",
+    "direct_reads": [
+      {
+        "tool": "get_current_instance",
+        "duration_seconds": 0.79,
+        "status": "completed"
+      },
+      {
+        "tool": "count_projects",
+        "duration_seconds": 0.75,
+        "status": "completed"
+      },
+      {
+        "tool": "list_projects",
+        "duration_seconds": 0.76,
+        "status": "completed"
+      },
+      {
+        "tool": "list_users",
+        "duration_seconds": 1.51,
+        "status": "completed"
+      },
+      {
+        "tool": "list_groups",
+        "duration_seconds": 1.49,
+        "status": "completed"
+      },
+      {
+        "tool": "list_code_envs",
+        "duration_seconds": 1.14,
+        "status": "completed"
+      },
+      {
+        "tool": "list_plugins",
+        "duration_seconds": 0.94,
+        "status": "completed"
+      },
+      {
+        "tool": "get_licensing_status",
+        "duration_seconds": 1.5,
+        "status": "completed"
+      },
+      {
+        "tool": "list_connections",
+        "duration_seconds": 11.11,
+        "status": "completed"
+      },
+      {
+        "tool": "list_container_exec_configs",
+        "duration_seconds": 1.49,
+        "status": "completed"
+      },
+      {
+        "tool": "get_project_settings",
+        "duration_seconds": 0.74,
+        "status": "completed"
+      },
+      {
+        "tool": "list_agents",
+        "duration_seconds": 0.75,
+        "status": "completed"
+      },
+      {
+        "tool": "list_agent_tools",
+        "duration_seconds": 0.76,
+        "status": "completed"
+      },
+      {
+        "tool": "list_scenarios",
+        "duration_seconds": 0.74,
+        "status": "completed"
+      },
+      {
+        "tool": "list_datasets",
+        "duration_seconds": 0.77,
+        "status": "completed"
+      },
+      {
+        "tool": "list_recipes",
+        "duration_seconds": 0.75,
+        "status": "completed"
+      },
+      {
+        "tool": "get_flow_graph",
+        "duration_seconds": 0.76,
+        "status": "completed"
+      }
+    ]
+  },
+  "tamglobal": {
+    "dss_version": "14.7.3",
+    "identity": "kaosdex",
+    "project": "KAOSHEADLESS",
+    "initial_access_checks": [
+      {
+        "tool": "get_current_instance",
+        "duration_seconds": 0.83,
+        "status": "completed"
+      },
+      {
+        "tool": "count_projects",
+        "duration_seconds": 0.75,
+        "status": "completed"
+      },
+      {
+        "tool": "list_projects",
+        "duration_seconds": 0.76,
+        "status": "completed"
+      },
+      {
+        "tool": "list_users",
+        "duration_seconds": 1.49,
+        "status": "completed"
+      },
+      {
+        "tool": "list_groups",
+        "duration_seconds": 1.49,
+        "status": "completed"
+      },
+      {
+        "tool": "list_code_envs",
+        "duration_seconds": 0.8,
+        "status": "completed"
+      },
+      {
+        "tool": "list_plugins",
+        "duration_seconds": 0.93,
+        "status": "completed"
+      },
+      {
+        "tool": "get_licensing_status",
+        "duration_seconds": 0.78,
+        "status": "error",
+        "error": "Error calling tool 'get_licensing_status': Dataiku administrator access could not be verified for this operation: com.dataiku.dip.exceptions.UnauthorizedException: Action forbidden, you are not admin"
+      }
+    ],
+    "cobuild_and_readback": [
+      {
+        "tool": "start_cobuild_conversation",
+        "args": {
+          "project_key": "KAOSHEADLESS"
+        },
+        "seconds": 0.82,
+        "value": {
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "instance_name": "tam-kaosdex",
+          "project_key": "KAOSHEADLESS",
+          "project_url": "https://tam-global.fe-aws.dkucloud-dev.com/projects/KAOSHEADLESS/flow/",
+          "created_at": "2026-09-14T14:59:51.269632+00:00"
+        }
+      },
+      {
+        "tool": "send_cobuild_message",
+        "args": {
+          "project_key": "KAOSHEADLESS",
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "allow_edit_project": false,
+          "message": "Read-only capability investigation. Do not create, modify, delete, build, execute code, run jobs or scenarios. Inspect this project and give its dataset, recipe, agent and scenario counts. Then report which currently exposed tools, if any, let you: invoke an existing plugin agent tool; run a project macro; create/manage a DSS agent Skill object from SKILL.md; read instance users/groups/settings; inspect host filesystem, logs, Kubernetes or PostgreSQL health. Distinguish exposed tools from mere knowledge of Dataiku APIs. Be concise and do not guess."
+        },
+        "seconds": 16.87,
+        "value": {
+          "status": "completed",
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "turn_id": "ed22985fb2054004b450ae09eae768c7",
+          "instance_name": "tam-kaosdex",
+          "project_key": "KAOSHEADLESS",
+          "project_url": "https://tam-global.fe-aws.dkucloud-dev.com/projects/KAOSHEADLESS/flow/",
+          "message": "Project inspection (read-only):\n\n- Datasets: **0**\n- Recipes: **0**\n- Agents: **0**\n- Scenarios: **0**\n\nCurrently exposed capabilities:\n\n| Requested capability | Exposed tool available? | Notes |\n|---|---:|---|\n| Invoke an existing plugin agent tool | **No** | Tools can be listed/inspected/configured, but no general plugin-tool invocation capability is exposed. |\n| Run a project macro | **No** | No macro execution tool is exposed. |\n| Create/manage a DSS Agent Skill object from `SKILL.md` | **No** | Agent and agent-tool management is exposed, but not DSS Agent Skill objects / `SKILL.md` management. |\n| Read instance users, groups, or global settings | **No** | No administration or instance-configuration inspection capability is exposed. |\n| Inspect host filesystem | **No** | No filesystem browsing or shell access is exposed. |\n| Inspect host/application logs | **Limited** | Job and scenario log readers are exposed, but not general DSS/host logs. |\n| Inspect Kubernetes health | **No** | No Kubernetes inspection capability is exposed. |\n| Inspect PostgreSQL health | **No** | No database infrastructure health capability is exposed. |\n\nThese statements cover **currently exposed tools only**, not capabilities that may exist in Dataiku APIs or plugins outside this session.",
+          "response_type": "assistant_message",
+          "is_error": false,
+          "is_confirmation_request": false,
+          "is_question_request": false
+        }
+      },
+      {
+        "tool": "send_cobuild_message",
+        "args": {
+          "project_key": "KAOSHEADLESS",
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "allow_edit_project": true,
+          "message": "In this dedicated empty test project, create one native GRELCalculator agent tool named ATK Headless Calculator Probe. Give it a concise description saying it evaluates arithmetic expressions for a harmless integration test. Use the supported built-in tool type and its required settings. Do not create an agent yet, do not create datasets or recipes, and do not run any tools/jobs or make external calls. Report its exact tool ID and the settings you applied. If that tool type cannot be created, report the limitation without substituting a different type."
+        },
+        "seconds": 24.97,
+        "value": {
+          "status": "completed",
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "turn_id": "cf5765c14c484fbe857956fbd0146a0f",
+          "instance_name": "tam-kaosdex",
+          "project_key": "KAOSHEADLESS",
+          "project_url": "https://tam-global.fe-aws.dkucloud-dev.com/projects/KAOSHEADLESS/flow/",
+          "message": "Created native **GRELCalculator** tool: [ATK Headless Calculator Probe](AGENT_TOOL:jyQRegd)\n\n- **Exact tool ID:** `jyQRegd`\n- **Type:** `GRELCalculator`\n- **Description:** \u201cEvaluates arithmetic expressions for a harmless integration test.\u201d\n- **Parameters:** `{}` (no required parameters exposed)\n- **Require human approval:** `false`\n- **Allow editing inputs:** `false`\n\nNo agent, dataset, recipe, job, external call, or scenario was created or run.",
+          "response_type": "assistant_message",
+          "is_error": false,
+          "is_confirmation_request": false,
+          "is_question_request": false
+        }
+      },
+      {
+        "tool": "get_agent_tool_settings",
+        "args": {
+          "project_key": "KAOSHEADLESS",
+          "tool_id": "jyQRegd"
+        },
+        "seconds": 0.85,
+        "value": {
+          "projectKey": "KAOSHEADLESS",
+          "id": "jyQRegd",
+          "name": "ATK Headless Calculator Probe",
+          "type": "GRELCalculator",
+          "params": {},
+          "dkuProperties": [],
+          "singleInstance": false,
+          "requireHumanApproval": false,
+          "allowEditingInputs": false,
+          "additionalDescriptionForLLM": "Evaluates arithmetic expressions for a harmless integration test.",
+          "creationTag": {
+            "versionNumber": 0,
+            "lastModifiedBy": {
+              "login": "kaosdex"
+            },
+            "lastModifiedOn": 1789398091365
+          },
+          "versionTag": {
+            "versionNumber": 1,
+            "lastModifiedBy": {
+              "login": "kaosdex"
+            },
+            "lastModifiedOn": 1789398100056
+          },
+          "cobuildTags": {
+            "createdByCobuild": true,
+            "lastEditTimestamp": 1789398100056,
+            "conversationId": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+            "runId": "f5e1f877-4c90-426e-9ed5-71517cf9b534"
+          },
+          "tags": [],
+          "customFields": {},
+          "checklists": {
+            "checklists": []
+          }
+        }
+      },
+      {
+        "tool": "send_cobuild_message",
+        "args": {
+          "project_key": "KAOSHEADLESS",
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "allow_edit_project": true,
+          "message": "The created tool jyQRegd has been verified by direct read-back. Now create one native simple visual agent (TOOLS_USING_AGENT) named ATK Headless Native Agent Probe in KAOSHEADLESS. Use the available LLM ID bedrock:bhavikbedrock:us.anthropic.claude-sonnet-4-6 and attach only tool jyQRegd. System prompt: You are a harmless arithmetic integration-test agent. Always use your calculator tool for arithmetic. Return the numeric answer and state that it came from the calculator. Do not claim access to DSS administration, files, networks, or other tools. Set a small iteration limit if supported. Create a usable active version. Do not execute it yet, and do not create any other objects. Report exact agent ID, active version, model ID and attached tool IDs."
+        },
+        "seconds": 26.4,
+        "value": {
+          "status": "completed",
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "turn_id": "d2d5732d44b048269e2e7039f20ab642",
+          "instance_name": "tam-kaosdex",
+          "project_key": "KAOSHEADLESS",
+          "project_url": "https://tam-global.fe-aws.dkucloud-dev.com/projects/KAOSHEADLESS/flow/",
+          "message": "Created the active native simple visual agent [ATK Headless Native Agent Probe](AI_AGENT:LxcOUtyv).\n\n- **Agent ID:** `LxcOUtyv`\n- **Active version:** `v1`\n- **Model ID:** `bedrock:bhavikbedrock:us.anthropic.claude-sonnet-4-6`\n- **Attached tool IDs:** `jyQRegd` only\n- **System prompt:** applied exactly as requested.\n\nThe tool-backed agent was created but not executed. No other objects were created.",
+          "response_type": "assistant_message",
+          "is_error": false,
+          "is_confirmation_request": false,
+          "is_question_request": false
+        }
+      },
+      {
+        "tool": "get_agent_settings",
+        "args": {
+          "project_key": "KAOSHEADLESS",
+          "agent_id": "LxcOUtyv"
+        },
+        "seconds": 0.76,
+        "value": {
+          "id": "LxcOUtyv",
+          "name": "ATK Headless Native Agent Probe",
+          "type": "TOOLS_USING_AGENT",
+          "version": {
+            "versionId": "v1",
+            "llmId": "bedrock:bhavikbedrock:us.anthropic.claude-sonnet-4-6",
+            "systemPrompt": "You are a harmless arithmetic integration-test agent. Always use your calculator tool for arithmetic. Return the numeric answer and state that it came from the calculator. Do not claim access to DSS administration, files, networks, or other tools.",
+            "tools": [
+              {
+                "toolRef": "jyQRegd",
+                "disabled": false
+              }
+            ]
+          }
+        }
+      },
+      {
+        "tool": "send_cobuild_message",
+        "args": {
+          "project_key": "KAOSHEADLESS",
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "allow_edit_project": true,
+          "message": "The native agent configuration has been verified by read-back. If you have an exposed tool for testing/running native agents, run agent LxcOUtyv once with this input: Use your calculator tool to compute 17 * 23. Return the result and whether the execution trace actually shows a call to jyQRegd. Do not change configurations, create objects, run other agents, or answer the arithmetic yourself. If your exposed tools cannot invoke/test the agent, report that limitation instead of substituting Python, APIs, or a simulated answer."
+        },
+        "seconds": 240.01,
+        "value": {
+          "status": "in_progress",
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "turn_id": "9ae0f34e3cba4d69949a75ba1c1c60a5",
+          "project_key": "KAOSHEADLESS",
+          "project_url": "https://tam-global.fe-aws.dkucloud-dev.com/projects/KAOSHEADLESS/flow/",
+          "next_action": "Poll get_cobuild_turn_status with this exact turn_id."
+        }
+      },
+      {
+        "tool": "get_cobuild_turn_status",
+        "args": {
+          "project_key": "KAOSHEADLESS",
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "turn_id": "9ae0f34e3cba4d69949a75ba1c1c60a5"
+        },
+        "seconds": 240.01,
+        "value": {
+          "status": "in_progress",
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "turn_id": "9ae0f34e3cba4d69949a75ba1c1c60a5",
+          "project_key": "KAOSHEADLESS",
+          "project_url": "https://tam-global.fe-aws.dkucloud-dev.com/projects/KAOSHEADLESS/flow/",
+          "next_action": "Poll get_cobuild_turn_status with this exact turn_id."
+        }
+      },
+      {
+        "tool": "get_cobuild_turn_status",
+        "args": {
+          "project_key": "KAOSHEADLESS",
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "turn_id": "9ae0f34e3cba4d69949a75ba1c1c60a5"
+        },
+        "seconds": 240.03,
+        "value": {
+          "status": "in_progress",
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "turn_id": "9ae0f34e3cba4d69949a75ba1c1c60a5",
+          "project_key": "KAOSHEADLESS",
+          "project_url": "https://tam-global.fe-aws.dkucloud-dev.com/projects/KAOSHEADLESS/flow/",
+          "next_action": "Poll get_cobuild_turn_status with this exact turn_id."
+        }
+      },
+      {
+        "tool": "get_cobuild_turn_status",
+        "args": {
+          "project_key": "KAOSHEADLESS",
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "turn_id": "9ae0f34e3cba4d69949a75ba1c1c60a5"
+        },
+        "seconds": 33.19,
+        "value": {
+          "status": "completed",
+          "conversation_id": "2bdbdf18-6d18-48a1-8e80-93abd16234f2",
+          "turn_id": "9ae0f34e3cba4d69949a75ba1c1c60a5",
+          "instance_name": "tam-kaosdex",
+          "project_key": "KAOSHEADLESS",
+          "project_url": "https://tam-global.fe-aws.dkucloud-dev.com/projects/KAOSHEADLESS/flow/",
+          "message": "Operation was aborted by the user.",
+          "response_type": "assistant_message",
+          "is_error": false,
+          "is_confirmation_request": false,
+          "is_question_request": false
+        }
+      },
+      {
+        "tool": "list_agents",
+        "args": {
+          "project_key": "KAOSHEADLESS"
+        },
+        "seconds": 0.84,
+        "value": {
+          "columns": [
+            "id",
+            "name",
+            "type"
+          ],
+          "rows": [
+            [
+              "LxcOUtyv",
+              "ATK Headless Native Agent Probe",
+              "TOOLS_USING_AGENT"
+            ]
+          ]
+        }
+      },
+      {
+        "tool": "list_agent_tools",
+        "args": {
+          "project_key": "KAOSHEADLESS"
+        },
+        "seconds": 0.76,
+        "value": {
+          "columns": [
+            "id",
+            "name",
+            "type",
+            "description"
+          ],
+          "rows": [
+            [
+              "jyQRegd",
+              "ATK Headless Calculator Probe",
+              "GRELCalculator",
+              ""
+            ]
+          ]
+        }
+      },
+      {
+        "tool": "list_datasets",
+        "args": {
+          "project_key": "KAOSHEADLESS"
+        },
+        "seconds": 0.76,
+        "value": {
+          "columns": [
+            "name",
+            "type",
+            "connection",
+            "shared"
+          ],
+          "rows": []
+        }
+      },
+      {
+        "tool": "list_recipes",
+        "args": {
+          "project_key": "KAOSHEADLESS"
+        },
+        "seconds": 0.75,
+        "value": {
+          "columns": [
+            "name",
+            "type",
+            "inputs",
+            "outputs"
+          ],
+          "rows": []
+        }
+      },
+      {
+        "tool": "list_scenarios",
+        "args": {
+          "project_key": "KAOSHEADLESS"
+        },
+        "seconds": 0.75,
+        "value": {
+          "scenarios": {
+            "columns": [
+              "id",
+              "name",
+              "active",
+              "type",
+              "running",
+              "shortDesc",
+              "tags"
+            ],
+            "rows": []
+          }
+        }
+      }
+    ],
+    "execution_test": {
+      "outcome": "aborted_after_stall",
+      "ui_displayed_duration": "14min",
+      "cancellation_surface": "Cobuild UI stop button",
+      "verified_tool_call_events": [
+        {
+          "type": "tool_call",
+          "tool": "navigate_to_page",
+          "parameters": {
+            "agentVersionId": "v1",
+            "id": "LxcOUtyv",
+            "pageType": "AGENT_VERSION"
+          },
+          "runId": "21afe2fc-c431-48a1-959e-6213622e9645",
+          "requestId": "call_SC7VHUuOUP2PmbNJ2nRLfX2n"
+        },
+        {
+          "type": "tool_call",
+          "tool": "agent_building_chat_control",
+          "parameters": {
+            "msg": "Use your calculator tool to compute 17 * 23.",
+            "operation": "sendMessageAndWaitForCompletion"
+          },
+          "runId": "21afe2fc-c431-48a1-959e-6213622e9645",
+          "requestId": "call_eWeOkBMAEYxL09NlJHfHUcsL"
+        }
+      ],
+      "native_agent_test_chat": "empty when inspected during stall"
+    },
+    "independent_sdk_execution": {
+      "duration_seconds": 2.46,
+      "outcome": "provider_permission_denied",
+      "provider": "AWS Bedrock",
+      "http_status": 403,
+      "denied_action": "bedrock:InvokeModelWithResponseStream",
+      "identity": "kaosdex via the selected connection assumed role",
+      "model": "us.anthropic.claude-sonnet-4-6",
+      "interpretation": "Configuration is verified; runtime success is not verified. This is separate from the Cobuild UI-control stall."
+    },
+    "final_inventory": {
+      "agents": 1,
+      "agent_tools": 1,
+      "datasets": 0,
+      "recipes": 0,
+      "scenarios": 0
+    }
+  }
+}

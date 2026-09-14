@@ -35,19 +35,28 @@ export function historyWindow(range: RangeKey, nowMs: number) {
 
 export function runSegments(scenario: ScenarioRow, range: RangeKey, nowMs: number): RunSegment[] {
   const window = historyWindow(range, nowMs);
+  const hour = 3_600_000;
+  // Round the display to browser-local hours; leave recorded runtime untouched.
+  // Subtract minutes instead of setHours so repeated DST hours stay distinct.
+  const hourStart = (ms: number) => {
+    const date = new Date(ms);
+    return ms - date.getMinutes() * 60_000 - date.getSeconds() * 1000 - date.getMilliseconds();
+  };
   return recentRuns(scenario).flatMap((run) => {
-    if (run.start == null || run.start > window.end) return [];
+    if (run.start == null || run.start >= window.end) return [];
     const validEnd = run.end != null && run.end >= run.start;
     const end = validEnd ? run.end! : run.start;
     if (end < window.start || (end === window.start && run.start < end)) return [];
     const duration = validEnd
       ? `${((end - run.start) / 1000).toLocaleString()} s`
       : 'duration unavailable';
+    const displayStart = hourStart(run.start);
+    const displayEnd = hourStart(Math.max(run.start, end - 1)) + hour;
     return [
       {
-        start: Math.max(0, (run.start - window.start) / window.span),
-        end: Math.min(1, (end - window.start) / window.span),
-        point: end === run.start,
+        start: Math.max(0, (displayStart - window.start) / window.span),
+        end: Math.min(1, (displayEnd - window.start) / window.span),
+        point: false,
         outcome: run.outcome,
         label: `${run.outcome} · ${new Date(run.start).toLocaleString()} · ${duration}`,
       },

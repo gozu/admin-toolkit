@@ -158,6 +158,14 @@ export function ScenariosPage() {
     [shownRows, range, nowMs, history],
   );
   const maxLoad = useMemo(() => Math.max(Number.EPSILON, ...load.map((b) => b.count)), [load]);
+  const loadLine = useMemo(() => {
+    const y = (count: number) => 96 - (count / maxLoad) * 88;
+    return [
+      `0,${y(load[0]?.count ?? 0)}`,
+      ...load.map((b, i) => `${((i + 0.5) / load.length) * 1000},${y(b.count)}`),
+      `1000,${y(load.at(-1)?.count ?? 0)}`,
+    ].join(' ');
+  }, [load, maxLoad]);
   const peakBucket = useMemo(
     () => load.reduce((mi, b, i, arr) => (b.count > arr[mi].count ? i : mi), 0),
     [load],
@@ -197,7 +205,7 @@ export function ScenariosPage() {
             <p className="mt-0.5 max-w-3xl text-xs text-[var(--text-muted)]">
               {history ? (
                 <>
-                  Actual completed runs, colored by outcome and sized by recorded duration. Latest
+                  Actual completed runs shown as full-hour bars. Hover for precise durations. Latest
                   10 runs fetched per scenario; this is a sample, not a complete period history.
                   Load uses recorded runtime, including failed runs, and shows average concurrent
                   sampled runs. Times are local to your browser.
@@ -372,7 +380,8 @@ export function ScenariosPage() {
             <div className="flex items-center gap-3 text-[10px] text-[var(--text-secondary)]">
               {(history
                 ? [
-                    ['success', OUTCOME_COLORS.SUCCESS],
+                    ['success · enabled', OUTCOME_COLORS.SUCCESS],
+                    ['disabled', 'var(--text-muted)'],
                     ['warning', OUTCOME_COLORS.WARNING],
                     ['failed / aborted', OUTCOME_COLORS.FAILED],
                     ['unknown', 'var(--text-tertiary)'],
@@ -448,24 +457,61 @@ export function ScenariosPage() {
                       {history ? '(avg concurrent runs)' : `(${shownTimeBased.length} time-based)`}
                     </span>
                   </div>
-                  <div className="relative h-10 flex items-end gap-px">
+                  <div className={`relative flex items-end ${history ? 'h-24' : 'h-10 gap-px'}`}>
+                    {history && (
+                      <svg
+                        className="absolute inset-0 h-full w-full"
+                        viewBox="0 0 1000 100"
+                        preserveAspectRatio="none"
+                        role="img"
+                        aria-label={`Sampled runtime load: average concurrent runs, peak ${maxLoad.toFixed(3)}`}
+                      >
+                        {[8, 52, 96].map((y) => (
+                          <line
+                            key={y}
+                            x1="0"
+                            x2="1000"
+                            y1={y}
+                            y2={y}
+                            stroke="var(--border-glass)"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                        ))}
+                        <polyline
+                          points={loadLine}
+                          fill="none"
+                          stroke="var(--neon-cyan)"
+                          strokeWidth="2"
+                          strokeLinejoin="round"
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      </svg>
+                    )}
                     {load.map((b) => (
                       <div
                         key={b.index}
-                        className="flex-1 rounded-t-sm"
+                        className={
+                          history
+                            ? 'relative h-full flex-1 hover:bg-[var(--bg-glass-hover)]'
+                            : 'flex-1 rounded-t-sm'
+                        }
                         title={
                           history && 'runtimeMs' in b
                             ? `${b.label}: ${b.count.toFixed(3)} average concurrent runs · ${fmtDuration(b.runtimeMs as number)} total runtime (sampled)`
                             : `${b.label}: ${b.count} scheduled scenario${b.count === 1 ? '' : 's'}`
                         }
-                        style={{
-                          height: `${(b.count / maxLoad) * 100}%`,
-                          minHeight: b.count > 0 ? '1px' : 0,
-                          backgroundColor:
-                            b.index === peakBucket && b.count > 0
-                              ? 'var(--neon-magenta)'
-                              : 'var(--neon-cyan-dim)',
-                        }}
+                        style={
+                          history
+                            ? undefined
+                            : {
+                                height: `${(b.count / maxLoad) * 100}%`,
+                                minHeight: b.count > 0 ? '1px' : 0,
+                                backgroundColor:
+                                  b.index === peakBucket && b.count > 0
+                                    ? 'var(--neon-magenta)'
+                                    : 'var(--neon-cyan-dim)',
+                              }
+                        }
                       />
                     ))}
                   </div>
@@ -791,25 +837,32 @@ function ScheduleTrack({
       )}
       {segments.map((s, i) => {
         const outcome = history ? (s as RunSegment).outcome : undefined;
+        const failed = outcome === 'FAILED' || outcome === 'ABORTED';
         const segmentColor = history
-          ? (OUTCOME_COLORS[outcome ?? ''] ?? 'var(--text-tertiary)')
+          ? failed
+            ? OUTCOME_COLORS.FAILED
+            : !active
+              ? 'var(--text-muted)'
+              : (OUTCOME_COLORS[outcome ?? ''] ?? 'var(--text-tertiary)')
           : color;
         return (
           <div
             key={i}
-            className="absolute rounded-full"
-            title={s.label}
+            className={history ? 'absolute rounded-sm' : 'absolute rounded-full'}
+            title={s.label + (history && !active ? ' · scenario disabled' : '')}
             data-outcome={outcome}
             style={{
-              left: `${s.start * 100}%`,
-              width: s.point ? (history ? '3px' : '14px') : `${(s.end - s.start) * 100}%`,
-              minWidth: '3px',
+              left: history
+                ? `min(${s.start * 100}%, calc(100% - 10px))`
+                : `${s.start * 100}%`,
+              width: s.point ? '14px' : `${(s.end - s.start) * 100}%`,
+              minWidth: history ? '10px' : '3px',
               top: '50%',
               height: history ? '5px' : '3px',
               transform: s.point ? 'translate(-50%, -50%)' : 'translateY(-50%)',
               backgroundColor: segmentColor,
               // Very short runs can share a pixel at wide ranges. Keep failures visible.
-              zIndex: outcome === 'FAILED' || outcome === 'ABORTED' ? 3 : outcome === 'WARNING' ? 2 : 1,
+              zIndex: failed ? 3 : outcome === 'WARNING' ? 2 : 1,
               boxShadow:
                 !history && active
                   ? '0 0 5px color-mix(in srgb, var(--neon-green) 55%, transparent)'

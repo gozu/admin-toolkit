@@ -5,6 +5,7 @@ import type { SparkPoint } from '../missionControl/microViz';
 import type { ColumnDef } from '../../../utils/dataGridTypes';
 import {
   LENS_COLOR,
+  LENS_CALCULATION,
   LENS_META,
   formatLens,
   formatSeconds,
@@ -85,6 +86,8 @@ export function ClassCards({
             type="button"
             onClick={() => onLens(l)}
             aria-pressed={active}
+            title={LENS_CALCULATION[l]}
+            aria-description={LENS_CALCULATION[l]}
             className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${
               active
                 ? 'border-[var(--accent)] bg-[var(--bg-glass)]'

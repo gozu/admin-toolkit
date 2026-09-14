@@ -95,7 +95,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   { id: 'project-cost', label: 'Cost / CRU', navLabel: 'Cost', section: 'Projects', navSection: 'PROJECTS', keywords: ['cost', 'cru', 'compute', 'resource', 'usage', 'memory', 'cpu', 'llm', 'audit'], streamEndpoint: '/api/cru/stream', availability: 'always', lifecycle: { fields: ['projectCostLoading'] } },
 
   // USERS
-  { id: 'users', label: 'Users', section: 'Users', navSection: 'USERS', keywords: ['user', 'owner', 'login', 'email', 'accountability', 'ownership'], availability: 'always', lifecycle: { fields: [
+  { id: 'users', label: 'Users', navLabel: 'Insights', section: 'Users', navSection: 'USERS', keywords: ['user', 'owner', 'login', 'email', 'accountability', 'ownership'], availability: 'always', lifecycle: { fields: [
     'usersLoading',
     'projectFootprintLoading',
     'codeEnvsLoading',

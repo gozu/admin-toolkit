@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Inactive Project Cleaner explains its edit-based inactivity calculation and no longer claims to exclude active scenarios or deployed bundles. Compute resource cards explain their calculations on hover.
+- The Users sidebar entry is labeled Insights, matching Projects and Code Envs.
 - Disclosure buttons keep a stable hit area while pressed, fixing missed arrow clicks and row jumps in the SQL Pushdown Audit. Owner and project arrows now share the sidebar's smooth chevron rotation and respect reduced motion.
 
 ## [0.4.845] - 2026-09-11

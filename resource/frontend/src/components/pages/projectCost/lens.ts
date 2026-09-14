@@ -26,6 +26,14 @@ export const LENS_META: Record<CostLens, { label: string; short: string; unit: s
   llm: { label: 'LLM', short: 'LLM', unit: '$' },
 };
 
+export const LENS_CALCULATION: Record<CostLens, string> = {
+  mem: 'Resident memory × time for DSS-host processes, summed in GB·h. Uses each process’s highest cumulative reading in the scanned audit logs, so repeated updates are not double-counted. 1 GB·h is 1 GB held for 1 hour.',
+  cpu: 'CPU time consumed by DSS-host processes, summed in CPU·h (CPU milliseconds ÷ 3,600,000). Uses each process’s highest cumulative reading in the scanned audit logs. 1 CPU·h is one core busy for 1 hour.',
+  sql: 'Database engine execution time, summed in seconds from each query’s highest cumulative reading in the scanned audit logs. Excludes time spent fetching results.',
+  k8s: 'The larger of sampled pod memory × time and requested memory × job lifetime, in GB·h. Sampling uses measured gaps between pod snapshots in the scanned audit logs; the two totals are not added together.',
+  llm: 'Estimated USD cost reported by DSS in the scanned LLM audit records, summed using the highest cumulative cost per usage ID. This is an estimate, not a provider invoice.',
+};
+
 // K8s per-project cost: census actuals when the collector saw the pods,
 // falling back to request×lifetime reservations (never summed — they measure
 // the same residency two ways).

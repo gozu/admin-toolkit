@@ -50,6 +50,16 @@ function defaultSort(rows: ProjectRow[]): ProjectRow[] {
 
 // ── Component ──
 
+function InactivityExplanation() {
+  return (
+    <p className="text-sm text-[var(--text-muted)] mt-1">
+      Inactivity counts days since the latest project Git change, skipping DSS upgrade migrations
+      when possible (365-day default). It measures edits, not job runs; active scenarios and
+      deployed bundles are not checked.
+    </p>
+  );
+}
+
 export function InactiveProjectCleaner() {
   const hostId = getActiveHostId();
   const cachedProjects = getCachedInactiveProjects(hostId);
@@ -217,6 +227,7 @@ export function InactiveProjectCleaner() {
           <h3 className="text-lg font-semibold text-[var(--text-primary)]">
             Inactive Project Cleaner
           </h3>
+          <InactivityExplanation />
           <p className="text-sm text-[var(--text-muted)] mt-1">Loading inactive project data…</p>
         </section>
       </div>
@@ -230,6 +241,7 @@ export function InactiveProjectCleaner() {
           <h3 className="text-lg font-semibold text-[var(--text-primary)]">
             Inactive Project Cleaner
           </h3>
+          <InactivityExplanation />
           <p className="text-sm text-[var(--neon-red)] mt-1">
             Failed to load inactive projects: {fetchError}
           </p>
@@ -245,10 +257,8 @@ export function InactiveProjectCleaner() {
           <h3 className="text-lg font-semibold text-[var(--text-primary)]">
             Inactive Project Cleaner
           </h3>
-          <p className="text-sm text-[var(--text-muted)] mt-1">
-            No inactive projects found. Projects with 365+ days of inactivity, no active scenarios,
-            and no deployed bundles will appear here.
-          </p>
+          <InactivityExplanation />
+          <p className="text-sm text-[var(--text-muted)] mt-1">No projects meet the inactivity threshold.</p>
         </section>
       </div>
     );
@@ -262,9 +272,9 @@ export function InactiveProjectCleaner() {
           <h3 className="text-lg font-semibold text-[var(--text-primary)]">
             Inactive Project Cleaner
           </h3>
-          <p className="text-sm text-[var(--text-muted)]">
-            Projects inactive for 365+ days with no active scenarios or deployed bundles. A backup
-            is uploaded to the selected managed folder before deletion.
+          <InactivityExplanation />
+          <p className="text-sm text-[var(--text-muted)] mt-1">
+            A backup is uploaded to the selected managed folder before deletion.
           </p>
           <div className="mt-3 flex items-center gap-2">
             <label

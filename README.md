@@ -6,7 +6,7 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.845-blue)
+![Version](https://img.shields.io/badge/version-0.4.847-blue)
 ![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-13%2B-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -55,7 +55,7 @@ The **ATK Admin Agent** is one generalist across fleet health triage, scoping, i
 
 ### Projects
 
-**Insights** computes the per-project footprint: size on disk, code envs, scenarios, flow complexity, permissions, and a health grade for every project. **App Instances** traces App-as-recipe sprawl, `keepInstance` causes, leftovers, and orphans. **Scenarios** projects schedules onto a shared timeline and surfaces failures, silence, overlap, broken/dormant chains, and invalid run-as users. **Compute** attributes compute usage to projects. **Cost** analyzes CRU and project spend signals. **Cleaner** *(tool)* finds projects inactive for a configurable number of days (no active scenarios, no deployed bundles), backs them up to a managed folder, and deletes them.
+**Insights** computes the per-project footprint: size on disk, code envs, scenarios, flow complexity, permissions, and a health grade for every project. **App Instances** traces App-as-recipe sprawl, `keepInstance` causes, leftovers, and orphans. **Scenarios** shows recent runs as full-hour bars with grey disabled scenarios, red failures, and a runtime-load line chart based on precise durations, plus a configured-schedule view. History is limited to the latest 10 runs per scenario. It also surfaces failures, silence, overlap, broken/dormant chains, and invalid run-as users. **Compute** attributes compute usage to projects. **Cost** analyzes CRU and project spend signals. **Cleaner** *(tool)* finds projects inactive for a configurable number of days (no active scenarios, no deployed bundles), backs them up to a managed folder, and deletes them.
 
 <div align="center"><img src="docs/screenshots/projects-insights.png" alt="Project footprint — size, code envs and per-project health" width="850" /></div>
 
@@ -110,7 +110,7 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 | Projects | Cleaner 🔴 | Backup + delete inactive projects |
 | Projects | Insights | Per-project footprint and health |
 | Projects | App Instances | App-as-recipe sprawl: instances per template, `keepInstance` recipes, orphans |
-| Projects | Scenarios | Scenario schedules on one timeline: trigger categories, load clustering, live next/last runs, failure/silence/overlap/chain/run-as signals |
+| Projects | Scenarios | Full-hour run bars, precise sampled runtime line chart, configured schedules, live next/last runs, failure/silence/overlap/chain/run-as signals |
 | Projects | Compute | Compute usage by project |
 | Projects | Cost | CRU and project spend analysis |
 | Users | Users | Ownership, activity, accountability |

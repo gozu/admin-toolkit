@@ -170,9 +170,9 @@ export function temporalSummary(t: ScenarioTrigger): string {
   const rf = Math.max(1, p.repeatFrequency || 1);
   const hour = p.hour ?? 0;
   const minute = p.minute ?? 0;
-  // Configured local time (matching the DSS UI) + the zone when not server —
-  // the timeline dash, by contrast, sits at the server-time position.
-  const tz = p.timezone && p.timezone !== 'SERVER' ? ` (${p.timezone})` : '';
+  // Keep configured clock time. Omit UTC/SERVER in compact labels while
+  // retaining named zones that distinguish other trigger-local times.
+  const tz = p.timezone && p.timezone !== 'SERVER' && p.timezone !== 'UTC' ? ` (${p.timezone})` : '';
   const at = timeOfDayLabel(hour, minute) + tz;
 
   switch (p.frequency) {
@@ -186,7 +186,7 @@ export function temporalSummary(t: ScenarioTrigger): string {
     }
     case 'Monthly': {
       const dom = monthlyDayOfMonth(t);
-      return rf === 1 ? `Monthly (day ${dom}) ${at}` : `Every ${rf} mo (day ${dom}) ${at}`;
+      return `${rf === 1 ? 'Monthly' : `${rf}mo`} · day ${dom} · ${at}`;
     }
     case 'Hourly':
       return rf === 1 ? `Hourly :${pad2(minute)}` : `Every ${rf} hrs :${pad2(minute)}`;

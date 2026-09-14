@@ -151,6 +151,7 @@ def _listing_row(project_key: str, raw: Dict[str, Any]) -> Dict[str, Any]:
         'avgDurationMs': None,
         'runsSampled': 0,
         'recentOutcomes': [],
+        'recentRuns': [],
         'runsError': None,
     }
 
@@ -233,6 +234,7 @@ def _enrich_from_runs(project: Any, row: Dict[str, Any]) -> None:
     row['lastRunStart'] = newest['start']
     row['lastRunEnd'] = newest['end']
     row['recentOutcomes'] = [r['outcome'] for r in completed]
+    row['recentRuns'] = completed
     row['runsSampled'] = len(completed)
 
     streak = 0

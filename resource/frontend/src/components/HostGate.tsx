@@ -410,7 +410,7 @@ export function HostGate({ onEnter }: HostGateProps) {
             </svg>
             <div className="space-y-2">
               <p><strong className="text-[var(--text-primary)]">Community beta</strong> — built to help with everyday administration, without official Dataiku support. Review findings before making changes, and try unfamiliar actions in a sandbox first.</p>
-              <p>Usage analytics are collected by default to help improve Admin Toolkit, without names or email addresses. Administrators can opt out in <strong className="font-medium">Settings → Product Usage Analytics</strong>.</p>
+              <p>Anonymous Usage Analytics are collected by default to help improve Admin Toolkit. You can opt out in the Settings.</p>
             </div>
           </div>
         </div>

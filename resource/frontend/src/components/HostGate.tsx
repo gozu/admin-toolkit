@@ -408,7 +408,10 @@ export function HostGate({ onEnter }: HostGateProps) {
             <svg className="w-4 h-4 mt-0.5 shrink-0 text-[var(--neon-amber)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p><strong className="text-[var(--text-primary)]">Beta, best-effort tool</strong> — not officially supported and lightly tested. Results may be wrong, so verify outputs before acting and test against a sandbox before production.</p>
+            <div className="space-y-2">
+              <p><strong className="text-[var(--text-primary)]">Community beta</strong> — built to help with everyday administration, without official Dataiku support. Review findings before making changes, and try unfamiliar actions in a sandbox first.</p>
+              <p>Usage analytics are collected by default to help improve Admin Toolkit, without names or email addresses. Administrators can opt out in <strong className="font-medium">Settings → Product Usage Analytics</strong>.</p>
+            </div>
           </div>
         </div>
 

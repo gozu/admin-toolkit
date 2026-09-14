@@ -826,6 +826,14 @@ def plan_admin_action(client, host='local', action=None, target=None, params=Non
         raise ToolkitError(
             '%s does not accept batched targets — plan each target separately. '
             'Batchable actions: %s.' % (action, ', '.join(sorted(BATCHABLE_ACTIONS))))
+    from . import capability_routing
+    route = capability_routing.request_operation(
+        client, action, 'plan', {'target': target, 'targets': targets, 'params': params}, host)
+    # A human may revoke a capability while Cobuild is working.
+    if route is not None:
+        action_gates._cache['gates'] = None
+        if not action_gates.action_enabled(client, action):
+            return action_gates.disabled_error(action)
     if len(target_list) == 1:
         canonical, plan = _PLANNERS[action](client, host, target_list[0], params or {})
     else:
@@ -856,7 +864,7 @@ def plan_admin_action(client, host='local', action=None, target=None, params=Non
                      'action/host/target, confirm=true, and the confirm_token.'),
     })
     out['canonicalTarget'] = canonical
-    return out
+    return capability_routing.finish_operation(client, out, route, host)
 
 
 def _execute_batch(client, host, action, batch_targets):
@@ -919,6 +927,17 @@ def execute_admin_action(client, host='local', action=None, target=None,
                           'remediation': 'Re-run plan_admin_action and present the fresh plan '
                                          'for a new confirmation — tokens are single-use, '
                                          'expire after 15 minutes, and die on any drift.'}}
+    from . import capability_routing
+    route = capability_routing.request_operation(client, action, 'execute', {'target': target}, host)
+    if route is not None:
+        action_gates._cache['gates'] = None
+        if not action_gates.action_enabled(client, action):
+            return action_gates.disabled_error(action)
+        # Never allow time spent in Cobuild to extend a plan's approval window.
+        try:
+            confirm.verify(password, confirm_token, action, host, target)
+        except confirm.ConfirmTokenError as exc:
+            return {'error': {'code': 'confirm-token-rejected', 'message': str(exc)}}
     exec_target = target
     if action == 'python-run' and isinstance(target, dict):
         # Executor-side single-use redemption is keyed by the token, not the
@@ -973,4 +992,4 @@ def execute_admin_action(client, host='local', action=None, target=None,
                 'recorded': written,
                 'note': 'Prior values recorded; restorable from the last 50 changes per item.',
             }
-    return shaping.enforce_budget(out)
+    return capability_routing.finish_operation(client, shaping.enforce_budget(out), route, host)

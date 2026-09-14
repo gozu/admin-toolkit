@@ -1177,3 +1177,10 @@ SENSOR_DESCRIPTIONS = {
         'webapp page. Answer "can you X?" / "what can you do?" from this — never '
         "claim a capability is missing without checking it first."),
 }
+
+# Register once at the common implementation boundary: plugin tools, LangChain
+# tools and scheduled callers all honor the same per-capability provider.
+from .capability_routing import sensor as _routed_sensor
+for _sensor_name in SENSOR_DESCRIPTIONS:
+    globals()[_sensor_name] = _routed_sensor(globals()[_sensor_name])
+del _sensor_name

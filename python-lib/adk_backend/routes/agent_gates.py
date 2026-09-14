@@ -25,12 +25,13 @@ import json
 import logging
 import threading
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from adk_backend.clients import _local_thread_client
 from adk_backend.utils import advanced, local_only
 from atk_agent_common import actuator, tools_impl
 from atk_agent_common import actions as actions_registry
+from atk_agent_common import capability_routing
 from atk_agent_common.remediation_map import AUTO_EXCLUDED
 
 bp = Blueprint('agent_gates', __name__)
@@ -79,11 +80,13 @@ def _read_autonomous(config=None):
         return {}
 
 
-def _write_maps(gates, autonomous):
+def _write_maps(gates, autonomous, providers=None):
     settings = _local_thread_client().get_plugin(_PLUGIN_ID).get_settings()
     config = settings.get_raw().setdefault('config', {})
     config[_PARAM] = json.dumps(gates, sort_keys=True)
     config[_PARAM_AUTO] = json.dumps(autonomous, sort_keys=True)
+    if providers is not None:
+        config[capability_routing.PARAM] = json.dumps(providers, sort_keys=True)
     settings.save()
 
 
@@ -131,12 +134,14 @@ def apply_capability_updates(gates, autonomous, gate_updates=None, auto_updates=
     return gates, autonomous
 
 
-def _catalog(gates, autonomous):
+def _catalog(gates, autonomous, providers=None):
     """Contract rows for the Permissions page: every capability with its
     Enabled + effective Autonomous state (AND-ed with enabled, and with
     autoCapable for actions, so a row never claims an autonomy that could
     not actually run)."""
+    providers = providers or {}
     sensors = [{'name': name, 'mode': 'read', 'description': description,
+                'provider': providers.get(name, 'existing'),
                 'enabled': bool(gates.get(name, True)),
                 'autonomous': bool(gates.get(name, True))
                 and bool(autonomous.get(name, True))}
@@ -147,6 +152,7 @@ def _catalog(gates, autonomous):
         enabled = bool(gates.get(action, False))
         auto_capable = action not in AUTO_EXCLUDED
         actions.append({'action': action,
+                        'provider': providers.get(action, 'existing'),
                         'mode': actions_registry.MODES[action],
                         'risk': actions_registry.ALL_RISKS[action],
                         'shape': actions_registry.SHAPES[action],
@@ -160,17 +166,18 @@ def _catalog(gates, autonomous):
     return sensors, actions
 
 
-def _settings_payload(gates, autonomous):
-    sensors, actions = _catalog(gates, autonomous)
+def _settings_payload(gates, autonomous, providers=None):
+    sensors, actions = _catalog(gates, autonomous, providers)
     return {'ok': True, 'sensors': sensors, 'actions': actions,
-            'gates': gates, 'autonomous': autonomous}
+            'gates': gates, 'autonomous': autonomous, 'providers': providers or {}}
 
 
 @bp.route('/api/agents/action-settings')
 @local_only
 def api_action_settings():
     config = _plugin_config()
-    return jsonify(_settings_payload(_read_gates(config), _read_autonomous(config)))
+    return jsonify(_settings_payload(_read_gates(config), _read_autonomous(config),
+                                    capability_routing.parse_providers(config.get(capability_routing.PARAM))))
 
 
 @bp.route('/api/agents/action-settings/update', methods=['POST'])
@@ -180,19 +187,24 @@ def api_action_settings_update():
     body = request.get_json(force=True, silent=True) or {}
     gate_updates = body.get('gates')
     auto_updates = body.get('autonomous')
-    for name, updates in (('gates', gate_updates), ('autonomous', auto_updates)):
+    provider_updates = body.get('providers')
+    for name, updates in (('gates', gate_updates), ('autonomous', auto_updates),
+                          ('providers', provider_updates)):
         if updates is not None and not isinstance(updates, dict):
             return jsonify({'ok': False,
-                            'error': '%s must be a {name: bool} map' % name}), 400
+                            'error': '%s must be an object keyed by capability name' % name}), 400
     known = set(actuator.ACTIONS) | set(tools_impl.SENSOR_DESCRIPTIONS)
     try:
         with _write_lock:
             config = _plugin_config()
-            gates, autonomous = apply_capability_updates(
-                _read_gates(config), _read_autonomous(config),
-                gate_updates, auto_updates,
-                known=known, sensors=set(tools_impl.SENSOR_DESCRIPTIONS))
-            _write_maps(gates, autonomous)
+            gates, autonomous = _read_gates(config), _read_autonomous(config)
+            if gate_updates or auto_updates or provider_updates is None:
+                gates, autonomous = apply_capability_updates(
+                    gates, autonomous, gate_updates, auto_updates,
+                    known=known, sensors=set(tools_impl.SENSOR_DESCRIPTIONS))
+            providers = capability_routing.merge_providers(
+                config.get(capability_routing.PARAM), provider_updates or {}, known)
+            _write_maps(gates, autonomous, providers)
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400
     except Exception as exc:
@@ -202,7 +214,49 @@ def api_action_settings_update():
     _LOGGER.info('[agent-gates] updated: gates=%s autonomous=%s',
                  json.dumps(gate_updates or {}, sort_keys=True)[:300],
                  json.dumps(auto_updates or {}, sort_keys=True)[:300])
-    return jsonify(_settings_payload(gates, autonomous))
+    return jsonify(_settings_payload(gates, autonomous, providers))
+
+
+def _cobuild_owner():
+    from adk_backend import cobuild_bridge
+    caller = request.headers.get('Authorization', '') + '\n' + request.headers.get('Cookie', '')
+    return cobuild_bridge.owner_key(g.client, getattr(g, 'host_id', 'local'), caller)
+
+
+@bp.route('/api/agents/cobuild-turn', methods=['POST'])
+def api_cobuild_turn():
+    """Start inference only. No arbitrary prompt, API call or executor is accepted."""
+    from adk_backend import cobuild_bridge
+    body = request.get_json(force=True, silent=True) or {}
+    if len(json.dumps(body)) > 100000:
+        return jsonify({'status': 'failed', 'message': 'Cobuild input exceeds the operation budget.'}), 400
+    try:
+        if body.get('phase') == 'result':
+            return jsonify(cobuild_bridge.submit_result(body.get('turnId'), _cobuild_owner(),
+                                                       body.get('result')))
+        name = body.get('capability')
+        phase = body.get('phase')
+        sensors = set(tools_impl.SENSOR_DESCRIPTIONS)
+        known = sensors | set(actuator.ACTIONS)
+        if name not in known or phase not in (('read',) if name in sensors else ('plan', 'execute')):
+            raise ValueError('Unknown capability or operation phase.')
+        arguments = body.get('arguments')
+        if not isinstance(arguments, dict) or not isinstance(body.get('requestId'), str):
+            raise ValueError('An arguments object and requestId are required.')
+        config = _plugin_config()
+        if not _read_gates(config).get(name, name in sensors):
+            return jsonify({'status': 'failed', 'message': 'Capability is disabled in Agent Permissions.'}), 403
+        project = str(config.get('agent_cobuild_project') or 'ADMINTOOLKIT').strip()
+        return jsonify(cobuild_bridge.submit(g.client, _cobuild_owner(), project,
+                                             name, phase, arguments, body['requestId']))
+    except (ValueError, TypeError) as exc:
+        return jsonify({'status': 'failed', 'message': str(exc)[:800]}), 400
+
+
+@bp.route('/api/agents/cobuild-turn/<turn_id>')
+def api_cobuild_turn_status(turn_id):
+    from adk_backend import cobuild_bridge
+    return jsonify(cobuild_bridge.status(turn_id, _cobuild_owner()))
 
 
 # ── Autonomous daily agent (triage sweep) panel ──────────────────────────────

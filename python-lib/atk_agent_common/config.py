@@ -77,6 +77,7 @@ def resolve(plugin_config=None):
         # kernel-start snapshot only — action_gates.py fetches the live map
         # through the backend with this as the offline fallback.
         'agent_action_gates': _parse_gates(pick('agent_action_gates')),
+        'agent_capability_providers': pick('agent_capability_providers'),
     }
     # Per-action autonomy map (the "Auto" column). Seeding keys off the RAW
     # string being empty: a never-written param inherits the legacy

@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.853",
+    "version": "0.4.854",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -392,6 +392,23 @@
             "mandatory": false,
             "defaultValue": "",
             "visibilityCondition": "false"
+        },
+        {
+            "name": "agent_capability_providers",
+            "label": "Agent capability providers (managed)",
+            "description": "Per-capability Existing/Cobuild routes, managed in Agents > Permissions. Existing is the default. Cobuild requests ADTK operations and explains their actual results; ADTK retains execution and approval enforcement.",
+            "type": "TEXTAREA",
+            "mandatory": false,
+            "defaultValue": "",
+            "visibilityCondition": "false"
+        },
+        {
+            "name": "agent_cobuild_project",
+            "label": "Cobuild conversation project",
+            "description": "Project on each selected DSS host used for agent capability conversations. Must already exist and be accessible to the host identity.",
+            "type": "STRING",
+            "mandatory": false,
+            "defaultValue": "ADMINTOOLKIT"
         },
         {
             "name": "sep_outreach_thresholds",

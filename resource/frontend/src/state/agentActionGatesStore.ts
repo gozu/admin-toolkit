@@ -17,7 +17,10 @@ export interface SensorRow {
   description: string;
   enabled: boolean;
   autonomous: boolean;
+  provider?: CapabilityProvider;
 }
+
+export type CapabilityProvider = 'existing' | 'cobuild';
 
 export interface ActionRow {
   action: string;
@@ -30,6 +33,7 @@ export interface ActionRow {
   autonomous: boolean;
   /** false only for python-run — its Auto checkbox renders permanently off. */
   autoCapable: boolean;
+  provider?: CapabilityProvider;
 }
 
 interface ActionSettingsResponse {
@@ -56,7 +60,7 @@ export const agentActionGatesStore = createSyncStore<AgentActionGatesState>({
   loaded: false,
   saving: null,
   error: null,
-});
+}, { sessionScoped: true });
 
 export async function loadActionGates(): Promise<void> {
   agentActionGatesStore.patch({ loading: true, error: null });
@@ -79,7 +83,16 @@ export async function loadActionGates(): Promise<void> {
 type UpdateBody = {
   gates?: Record<string, boolean>;
   autonomous?: Record<string, boolean>;
+  providers?: Record<string, CapabilityProvider>;
 };
+
+/** Route selection does not enable a capability or grant autonomy. */
+export async function setCapabilityProvider(name: string, provider: CapabilityProvider): Promise<void> {
+  return postGateUpdate({ providers: { [name]: provider } }, name, {
+    sensor: (s) => s.name === name ? { ...s, provider } : s,
+    action: (a) => a.action === name ? { ...a, provider } : a,
+  });
+}
 
 /** Shared write path: snapshot → optimistic patch → POST → authoritative
  *  response (the server enforces the autonomous ⇒ enabled coupling) → revert

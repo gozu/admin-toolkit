@@ -84,33 +84,79 @@ distinct network request. No background lifecycle event contributes to retention
 
 ## Dashboards
 
-[dashboard-definitions.json](dashboard-definitions.json) contains two dashboards
-with ten insights each, all explicitly filtered by audience. The customer
-dashboard is pinned by default:
+[dashboard-definitions.json](dashboard-definitions.json) prepares **six dashboards**:
+three views for customers and the same three for internal installations. They
+share 34 saved insights across 38 placements, rather than creating duplicate
+charts. Every query carries an explicit audience filter. Only the customer
+overview is pinned. Internal usage must not enter the all-hands customer totals.
 
-1. Weekly distinct active users.
-2. Module adoption by distinct visitors.
-3. Active users by plugin version.
-4. Scan starts, completions, failures, and cancellations.
-5. P95 successful scan duration by scan source.
-6. Diagnostic exports and completed comparisons.
-7. Module opened → results viewed, aggregated per `visit_id`.
-8. Scan started → completed → results viewed, aggregated per `scan_id`.
-9. Weekly first-ever observed activity retention.
-10. Monthly first-ever observed activity retention.
+| Dashboard | Use it for | Charts, in reading order |
+|---|---|---|
+| **Admin Toolkit — Customers** | Monthly all-hands: reach and repeat use | Active installations over 30 days with previous-period comparison; active users over 30 days with comparison; monthly active installations; weekly active users; module adoption; monthly retention; exports and comparisons |
+| **Admin Toolkit — Customers — Adoption** | Choosing what to improve or explain better | Module adoption; observed plugin versions by installation; module opened → results viewed; weekly retention; monthly retention |
+| **Admin Toolkit — Customers — Reliability** | Finding scan friction and investigating releases | Scan outcomes; observed scan completion; scan started → completed → results viewed; p95 successful duration by scan source; completed scan sample counts; failures by plugin version; scan trigger mix |
 
-Separate funnels are deliberate: background scans can start before a module is
-opened, and ready-on-open pages need no new scan. Combining these into a strict
-four-step funnel would falsely label useful visits as failures. The scan funnel
-includes background work, where inspecting every result is not expected; filter
-by `trigger` when investigating deliberate scan workflows. Funnel windows are
-one hour. Change this for unusually long scans. Export/compare events are tracked
-separately and do not redefine the agreed open/navigation retention metric.
+The internal dashboards have the same names with **Internal** instead of
+**Customers**, and the same definitions. Compare patterns rather than expecting
+internal testing volumes to look like customer behavior.
 
-Retention uses calendar weeks/months, first-ever observed activity, and exact
-return periods rather than cumulative retention. Collection begins with this
-release; there is no historical backfill. Do not treat incomplete recent periods
-as zero retention or infer original installation dates from first observed usage.
+### How to use these as a product team
+
+- **At the all-hands:** report active customer installations and users, the most
+  visited modules, and repeat usage once cohorts mature. State the date window
+  and reporting coverage. The overview defaults to rolling 30 days; for a
+  calendar-month report select the completed month and label it accordingly.
+  Retention has its own longer cohort window; do not shorten it to a single month.
+- **Weekly product review:** look at module adoption and the per-module results
+  funnel together. A widely used module with weak results visibility is a
+  candidate for investigation. Low module traffic alone does not prove low value
+  in an occasional-use admin tool. Read module rows separately: Settings/help
+  pages have no scan results to convert to.
+- **Weekly engineering review:** use the scan completion funnel to find sources
+  worth investigating, then inspect latency, sample counts, trigger and version.
+  Compare the same sources/triggers across versions. Pick a concrete issue to
+  investigate rather than treating every movement as a regression.
+
+### Interpretation rules
+
+- Active installations are distinct `installation_id` values on `adtk_activity`.
+  This is observed installation reach, **not customer companies, installed base,
+  seats, or rollout coverage**. One customer can run multiple installations.
+  No Group Analytics configuration is needed for this distinct-property count.
+- Active users and retention use only app opens/module navigation. Background
+  scans cannot inflate them. Users are pseudonymous and installation-scoped;
+  browser fallback can split one person across browsers. Do not sum weekly
+  unique users or module rows to obtain monthly unique users.
+- The plugin-version table measures versions seen during the window. An
+  installation that upgrades appears under both versions; it is not a current
+  inventory, and its rows cannot be summed as unique installations.
+- Separate funnels are deliberate: background scans can start before a module
+  opens, and cached pages need no new scan. Module funnels match `visit_id`;
+  scan funnels match `scan_id`. Scan funnels require an actually observed start,
+  excluding starts inferred after a scan had finished. Their conversion window
+  is one hour. A closed tab, host switch, long-running scan or lost event can
+  leave an incomplete funnel; that is not automatically a product error.
+- `trigger=automatic` covers background work. `manual` means an explicit forced
+  refresh; `on_demand` means a page requested data, not necessarily a button
+  click. Inspecting every background scan result is not expected.
+- Scan outcome charts show event counts. Do not divide completions by starts
+  from a time bucket and call that a success rate; events cross time boundaries.
+  Use the matched scan funnel. Failure-by-version counts also need exposure
+  context before being called a release regression.
+- P95 duration covers successful runs only and is in milliseconds. Use the
+  adjacent successful-run sample counts; a percentile from a handful of runs is
+  unstable. A scan source can serve multiple modules. Failing/stalled runs do
+  not appear in successful-duration percentiles.
+- Retention uses first-ever **observed** activity, calendar weeks/months and exact
+  return periods. Collection starts at rollout, with no historical backfill.
+  Inspect cohort sizes and exclude incomplete periods; they are not zero
+  retention. This is user retention, not company retention.
+- Analytics opt-outs, unavailable networking and older versions are absent.
+  Empty charts at rollout are expected. We cannot infer satisfaction, time
+  saved, company churn or non-reporting installations from these events.
+
+No automated alerts or email/Slack subscriptions are created. First establish a
+baseline with representative customer usage, then choose thresholds and recipients.
 
 ## Provision or update
 
@@ -128,13 +174,20 @@ python3 scripts/setup_posthog_analytics.py --apply
 ```
 
 The script prompts without echoing or saving the key, or accepts
-`POSTHOG_PERSONAL_API_KEY` from the environment. It updates only matching names
+`POSTHOG_PERSONAL_API_KEY` from the environment or `~/.posthog-api-key`. It updates only matching names
 with its own `admin-toolkit-product-analytics-v1` tag, preserves other dashboard
-memberships, and leaves unrelated reports alone. The public `phc_` token cannot
+memberships, shares the same saved insight across dashboards, and leaves unrelated reports alone. Re-running is safe; same-named user-created charts without the management tag are not overwritten. The public `phc_` token cannot
 perform this step. The generated definitions are prepared, not evidence that
 the dashboards already exist in the account.
 
 References: [capture API](https://posthog.com/docs/api/capture),
 [insights API](https://posthog.com/docs/api/insights),
 [dashboards API](https://posthog.com/docs/api/dashboards),
+[retention](https://posthog.com/docs/product-analytics/retention).
+
+Dashboard definitions were checked against the official PostHog query schema.
+Until applied with account access, live query execution and rendering remain unverified.
+
+Design references: [trends aggregations](https://posthog.com/docs/product-analytics/trends/aggregations),
+[funnels](https://posthog.com/docs/product-analytics/funnels), and
 [retention](https://posthog.com/docs/product-analytics/retention).

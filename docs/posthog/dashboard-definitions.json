@@ -5,17 +5,37 @@
       "admin-toolkit-product-analytics-v1",
       "customer"
     ],
-    "description": "Product usage, task funnels, and weekly/monthly retention. Internal = tam-global/akaos serving installations. All others = customers. Pseudonymous DSS users where available; browser fallback otherwise. Only installations with analytics enabled and working network access are represented.",
+    "description": "All-hands overview: observed reach, repeat use, and useful workflows. Internal = tam-global/akaos serving installations; all others = customers. Only observed installations with analytics enabled, working network access, and an instrumented version are represented. Read each insight description for its denominator and limits. Current calendar periods are incomplete.",
     "pinned": true,
     "insights": [
       {
-        "name": "Admin Toolkit \u2014 Customers \u2014 Active users",
-        "description": "Distinct pseudonymous users opening the app or navigating modules. Automatic scans do not count.",
+        "name": "Admin Toolkit \u2014 Customers \u2014 Active installations \u2014 30 days",
+        "description": "Distinct installations with a webapp open or module visit in the last 30 days, compared with the preceding 30 days. This is observed reach, not customer companies or the installed base. Opt-outs, offline and older installations are absent.",
         "tags": [
           "admin-toolkit-product-analytics-v1",
           "customer"
         ],
         "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_activity",
+              "math": "hogql",
+              "math_hogql": "uniq(properties.installation_id)"
+            }
+          ],
+          "interval": "week",
+          "trendsFilter": {
+            "display": "BoldNumber",
+            "showLegend": true
+          },
+          "compareFilter": {
+            "compare": true
+          },
           "properties": [
             {
               "key": "audience",
@@ -25,7 +45,93 @@
                 "customer"
               ]
             }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Active users \u2014 30 days",
+        "description": "Distinct pseudonymous users in the whole 30-day window, compared with the preceding 30 days. Do not sum weekly unique users. Identity is scoped to each installation; browser fallback can count one person more than once.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_activity",
+              "math": "dau"
+            }
           ],
+          "interval": "week",
+          "trendsFilter": {
+            "display": "BoldNumber",
+            "showLegend": true
+          },
+          "compareFilter": {
+            "compare": true
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "customer"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Monthly active installations",
+        "description": "Distinct active installations in each calendar month. The current month is incomplete; first observed activity is not an installation date.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-6m"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_activity",
+              "math": "hogql",
+              "math_hogql": "uniq(properties.installation_id)"
+            }
+          ],
+          "interval": "month",
+          "trendsFilter": {
+            "display": "ActionsLineGraph",
+            "showLegend": true
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "customer"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Active users",
+        "description": "Distinct users per calendar week opening the app or navigating modules. Automatic scans do not count. Current week is incomplete.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
           "dateRange": {
             "date_from": "-90d"
           },
@@ -37,17 +143,11 @@
               "math": "dau"
             }
           ],
-          "interval": "week"
-        }
-      },
-      {
-        "name": "Admin Toolkit \u2014 Customers \u2014 Module adoption",
-        "description": "Distinct users visiting each module. Shared underlying scans do not inflate adoption.",
-        "tags": [
-          "admin-toolkit-product-analytics-v1",
-          "customer"
-        ],
-        "query": {
+          "interval": "week",
+          "trendsFilter": {
+            "display": "ActionsLineGraph",
+            "showLegend": true
+          },
           "properties": [
             {
               "key": "audience",
@@ -57,9 +157,19 @@
                 "customer"
               ]
             }
-          ],
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Module adoption",
+        "description": "Distinct visitors per module over the whole last 30 days. Users can appear in several modules; do not sum rows as total users.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
           "dateRange": {
-            "date_from": "-90d"
+            "date_from": "-30d"
           },
           "kind": "TrendsQuery",
           "series": [
@@ -70,20 +180,15 @@
             }
           ],
           "interval": "week",
+          "trendsFilter": {
+            "display": "ActionsTable",
+            "showLegend": true
+          },
           "breakdownFilter": {
             "breakdown": "module_id",
-            "breakdown_type": "event"
-          }
-        }
-      },
-      {
-        "name": "Admin Toolkit \u2014 Customers \u2014 Plugin versions",
-        "description": "Active users by the serving Toolkit version, independent of the selected managed host.",
-        "tags": [
-          "admin-toolkit-product-analytics-v1",
-          "customer"
-        ],
-        "query": {
+            "breakdown_type": "event",
+            "breakdown_limit": 50
+          },
           "properties": [
             {
               "key": "audience",
@@ -93,7 +198,59 @@
                 "customer"
               ]
             }
-          ],
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Month retention",
+        "description": "First-ever observed activity cohorts returning to open or navigate the app in a later calendar period. Use cohort counts alongside percentages; exclude incomplete periods. Collection starts at rollout, not original installation. This is user retention, not customer/company retention.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-12m"
+          },
+          "kind": "RetentionQuery",
+          "retentionFilter": {
+            "period": "Month",
+            "totalIntervals": 7,
+            "targetEntity": {
+              "id": "adtk_activity",
+              "name": "adtk_activity",
+              "type": "events"
+            },
+            "returningEntity": {
+              "id": "adtk_activity",
+              "name": "adtk_activity",
+              "type": "events"
+            },
+            "retentionType": "retention_first_ever_occurrence",
+            "retentionReference": "total",
+            "cumulative": false,
+            "timeWindowMode": "strict_calendar_dates"
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "customer"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Exports and comparisons",
+        "description": "Diagnostic bundles built and handed to the browser, and successfully computed comparisons. Download events do not prove files were saved. These are optional workflows, not prerequisites for meaningful use.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
           "dateRange": {
             "date_from": "-90d"
           },
@@ -101,25 +258,20 @@
           "series": [
             {
               "kind": "EventsNode",
-              "event": "adtk_activity",
-              "math": "dau"
+              "event": "adtk_snapshot_created",
+              "math": "total"
+            },
+            {
+              "kind": "EventsNode",
+              "event": "adtk_comparison_completed",
+              "math": "total"
             }
           ],
           "interval": "week",
-          "breakdownFilter": {
-            "breakdown": "plugin_version",
-            "breakdown_type": "event"
-          }
-        }
-      },
-      {
-        "name": "Admin Toolkit \u2014 Customers \u2014 Scan outcomes",
-        "description": "Underlying lifecycle runs, counted once across modules sharing a scan. Includes automatic work; filter trigger for manual/on-demand runs.",
-        "tags": [
-          "admin-toolkit-product-analytics-v1",
-          "customer"
-        ],
-        "query": {
+          "trendsFilter": {
+            "display": "ActionsLineGraph",
+            "showLegend": true
+          },
           "properties": [
             {
               "key": "audience",
@@ -129,9 +281,252 @@
                 "customer"
               ]
             }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "Admin Toolkit \u2014 Customers \u2014 Adoption",
+    "tags": [
+      "admin-toolkit-product-analytics-v1",
+      "customer"
+    ],
+    "description": "Product review: which modules earn use, where visits reach results, and whether users return. Internal = tam-global/akaos serving installations; all others = customers. Only observed installations with analytics enabled, working network access, and an instrumented version are represented. Read each insight description for its denominator and limits. Current calendar periods are incomplete.",
+    "pinned": false,
+    "insights": [
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Module adoption",
+        "description": "Distinct visitors per module over the whole last 30 days. Users can appear in several modules; do not sum rows as total users.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_module_opened",
+              "math": "dau"
+            }
           ],
+          "interval": "week",
+          "trendsFilter": {
+            "display": "ActionsTable",
+            "showLegend": true
+          },
+          "breakdownFilter": {
+            "breakdown": "module_id",
+            "breakdown_type": "event",
+            "breakdown_limit": 50
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "customer"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Plugin versions",
+        "description": "Distinct active installations by observed plugin version in the last 30 days. An installation that upgrades appears under both versions; this is observed version usage, not an inventory of the latest installed version.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_activity",
+              "math": "hogql",
+              "math_hogql": "uniq(properties.installation_id)"
+            }
+          ],
+          "interval": "week",
+          "trendsFilter": {
+            "display": "ActionsTable",
+            "showLegend": true
+          },
+          "breakdownFilter": {
+            "breakdown": "plugin_version",
+            "breakdown_type": "event",
+            "breakdown_limit": 50
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "customer"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Module opened \u2192 results viewed",
+        "description": "Per visit, including ready-on-open pages. Results means at least one completed data source was displayed, not proof of reading. Settings, help, and other modules without scan results are not expected to convert; inspect data-bearing modules individually.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "FunnelsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_module_opened"
+            },
+            {
+              "kind": "EventsNode",
+              "event": "adtk_results_viewed"
+            }
+          ],
+          "breakdownFilter": {
+            "breakdown": "module_id",
+            "breakdown_type": "event"
+          },
+          "funnelsFilter": {
+            "funnelWindowInterval": 1,
+            "funnelWindowIntervalUnit": "hour",
+            "funnelOrderType": "ordered",
+            "funnelAggregateByHogQL": "properties.visit_id"
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "customer"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Week retention",
+        "description": "First-ever observed activity cohorts returning to open or navigate the app in a later calendar period. Use cohort counts alongside percentages; exclude incomplete periods. Collection starts at rollout, not original installation. This is user retention, not customer/company retention.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
           "dateRange": {
             "date_from": "-90d"
+          },
+          "kind": "RetentionQuery",
+          "retentionFilter": {
+            "period": "Week",
+            "totalIntervals": 9,
+            "targetEntity": {
+              "id": "adtk_activity",
+              "name": "adtk_activity",
+              "type": "events"
+            },
+            "returningEntity": {
+              "id": "adtk_activity",
+              "name": "adtk_activity",
+              "type": "events"
+            },
+            "retentionType": "retention_first_ever_occurrence",
+            "retentionReference": "total",
+            "cumulative": false,
+            "timeWindowMode": "strict_calendar_dates"
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "customer"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Month retention",
+        "description": "First-ever observed activity cohorts returning to open or navigate the app in a later calendar period. Use cohort counts alongside percentages; exclude incomplete periods. Collection starts at rollout, not original installation. This is user retention, not customer/company retention.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-12m"
+          },
+          "kind": "RetentionQuery",
+          "retentionFilter": {
+            "period": "Month",
+            "totalIntervals": 7,
+            "targetEntity": {
+              "id": "adtk_activity",
+              "name": "adtk_activity",
+              "type": "events"
+            },
+            "returningEntity": {
+              "id": "adtk_activity",
+              "name": "adtk_activity",
+              "type": "events"
+            },
+            "retentionType": "retention_first_ever_occurrence",
+            "retentionReference": "total",
+            "cumulative": false,
+            "timeWindowMode": "strict_calendar_dates"
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "customer"
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "Admin Toolkit \u2014 Customers \u2014 Reliability",
+    "tags": [
+      "admin-toolkit-product-analytics-v1",
+      "customer"
+    ],
+    "description": "Engineering review: scan outcomes, observed completion, latency, and release investigation. Internal = tam-global/akaos serving installations; all others = customers. Only observed installations with analytics enabled, working network access, and an instrumented version are represented. Read each insight description for its denominator and limits. Current calendar periods are incomplete.",
+    "pinned": false,
+    "insights": [
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Scan outcomes",
+        "description": "Recorded lifecycle starts, completions, failures, and cancellations. These are event volumes, not a completion percentage: events can cross date boundaries. Use Observed scan completion for a matched-start denominator.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-30d"
           },
           "kind": "TrendsQuery",
           "series": [
@@ -156,54 +551,11 @@
               "math": "total"
             }
           ],
-          "interval": "week"
-        }
-      },
-      {
-        "name": "Admin Toolkit \u2014 Customers \u2014 Slow scans (p95)",
-        "description": "95th-percentile successful scan duration in milliseconds, by scan source.",
-        "tags": [
-          "admin-toolkit-product-analytics-v1",
-          "customer"
-        ],
-        "query": {
-          "properties": [
-            {
-              "key": "audience",
-              "type": "event",
-              "operator": "exact",
-              "value": [
-                "customer"
-              ]
-            }
-          ],
-          "dateRange": {
-            "date_from": "-90d"
+          "interval": "day",
+          "trendsFilter": {
+            "display": "ActionsLineGraph",
+            "showLegend": true
           },
-          "kind": "TrendsQuery",
-          "series": [
-            {
-              "kind": "EventsNode",
-              "event": "adtk_scan_completed",
-              "math": "p95",
-              "math_property": "duration_ms"
-            }
-          ],
-          "interval": "week",
-          "breakdownFilter": {
-            "breakdown": "scan_key",
-            "breakdown_type": "event"
-          }
-        }
-      },
-      {
-        "name": "Admin Toolkit \u2014 Customers \u2014 Exports and comparisons",
-        "description": "Diagnostic snapshots built and handed to the browser download, and successfully computed comparisons. Does not prove a file was saved to disk.",
-        "tags": [
-          "admin-toolkit-product-analytics-v1",
-          "customer"
-        ],
-        "query": {
           "properties": [
             {
               "key": "audience",
@@ -213,78 +565,51 @@
                 "customer"
               ]
             }
-          ],
-          "dateRange": {
-            "date_from": "-90d"
-          },
-          "kind": "TrendsQuery",
-          "series": [
-            {
-              "kind": "EventsNode",
-              "event": "adtk_snapshot_created",
-              "math": "total"
-            },
-            {
-              "kind": "EventsNode",
-              "event": "adtk_comparison_completed",
-              "math": "total"
-            }
-          ],
-          "interval": "week"
+          ]
         }
       },
       {
-        "name": "Admin Toolkit \u2014 Customers \u2014 Module opened \u2192 results viewed",
-        "description": "Per visit, including ready-on-open modules. Results means a visible page with at least one completed data source, not proof of reading every row. Breakdown is module_id.",
+        "name": "Admin Toolkit \u2014 Customers \u2014 Observed scan completion",
+        "description": "Observed starts reaching completion within one hour, matched by scan_id. Excludes starts inferred after completion. Breakdown separates automatic/manual/on-demand work. Failed/cancelled scans, tab closes, host switches, missing events, and longer scans can all leave a gap.",
         "tags": [
           "admin-toolkit-product-analytics-v1",
           "customer"
         ],
         "query": {
-          "properties": [
-            {
-              "key": "audience",
-              "type": "event",
-              "operator": "exact",
-              "value": [
-                "customer"
-              ]
-            }
-          ],
           "dateRange": {
-            "date_from": "-90d"
+            "date_from": "-30d"
           },
           "kind": "FunnelsQuery",
           "series": [
             {
               "kind": "EventsNode",
-              "event": "adtk_module_opened"
+              "event": "adtk_scan_started",
+              "properties": [
+                {
+                  "key": "start_observed",
+                  "type": "event",
+                  "operator": "exact",
+                  "value": [
+                    true
+                  ]
+                }
+              ]
             },
             {
               "kind": "EventsNode",
-              "event": "adtk_results_viewed"
+              "event": "adtk_scan_completed"
             }
           ],
           "breakdownFilter": {
-            "breakdown": "module_id",
+            "breakdown": "trigger",
             "breakdown_type": "event"
           },
           "funnelsFilter": {
             "funnelWindowInterval": 1,
             "funnelWindowIntervalUnit": "hour",
             "funnelOrderType": "ordered",
-            "funnelAggregateByHogQL": "properties.visit_id"
-          }
-        }
-      },
-      {
-        "name": "Admin Toolkit \u2014 Customers \u2014 Scan started \u2192 completed \u2192 results viewed",
-        "description": "Per scan_id, so a later retry cannot complete an earlier failed attempt. Includes background scans; inspecting every background scan is not expected. Use trigger to focus on manual/on-demand runs.",
-        "tags": [
-          "admin-toolkit-product-analytics-v1",
-          "customer"
-        ],
-        "query": {
+            "funnelAggregateByHogQL": "properties.scan_id"
+          },
           "properties": [
             {
               "key": "audience",
@@ -294,15 +619,35 @@
                 "customer"
               ]
             }
-          ],
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Scan started \u2192 completed \u2192 results viewed",
+        "description": "Observed starts, completion, then visible results for the same scan_id within one hour. Includes background scans; viewing every background result is not expected. Filter trigger to focus on deliberate tasks.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
           "dateRange": {
-            "date_from": "-90d"
+            "date_from": "-30d"
           },
           "kind": "FunnelsQuery",
           "series": [
             {
               "kind": "EventsNode",
-              "event": "adtk_scan_started"
+              "event": "adtk_scan_started",
+              "properties": [
+                {
+                  "key": "start_observed",
+                  "type": "event",
+                  "operator": "exact",
+                  "value": [
+                    true
+                  ]
+                }
+              ]
             },
             {
               "kind": "EventsNode",
@@ -322,17 +667,7 @@
             "funnelWindowIntervalUnit": "hour",
             "funnelOrderType": "ordered",
             "funnelAggregateByHogQL": "properties.scan_id"
-          }
-        }
-      },
-      {
-        "name": "Admin Toolkit \u2014 Customers \u2014 Week retention",
-        "description": "First-ever observed activity cohorts returning to open or navigate the app. Weekly/monthly calendar periods; exclude incomplete periods when reporting. Collection begins at rollout, not original installation.",
-        "tags": [
-          "admin-toolkit-product-analytics-v1",
-          "customer"
-        ],
-        "query": {
+          },
           "properties": [
             {
               "key": "audience",
@@ -342,39 +677,39 @@
                 "customer"
               ]
             }
-          ],
-          "dateRange": {
-            "date_from": "-90d"
-          },
-          "kind": "RetentionQuery",
-          "retentionFilter": {
-            "period": "Week",
-            "totalIntervals": 9,
-            "targetEntity": {
-              "id": "adtk_activity",
-              "name": "adtk_activity",
-              "type": "events"
-            },
-            "returningEntity": {
-              "id": "adtk_activity",
-              "name": "adtk_activity",
-              "type": "events"
-            },
-            "retentionType": "retention_first_ever_occurrence",
-            "retentionReference": "total",
-            "cumulative": false,
-            "timeWindowMode": "strict_calendar_dates"
-          }
+          ]
         }
       },
       {
-        "name": "Admin Toolkit \u2014 Customers \u2014 Month retention",
-        "description": "First-ever observed activity cohorts returning to open or navigate the app. Weekly/monthly calendar periods; exclude incomplete periods when reporting. Collection begins at rollout, not original installation.",
+        "name": "Admin Toolkit \u2014 Customers \u2014 Slow scans (p95)",
+        "description": "95th-percentile duration of successful runs, in milliseconds, by scan source over the last 30 days. Failed or stalled scans are absent. Read alongside sample counts; small samples are unstable. A scan source can serve several modules.",
         "tags": [
           "admin-toolkit-product-analytics-v1",
           "customer"
         ],
         "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_scan_completed",
+              "math": "p95",
+              "math_property": "duration_ms"
+            }
+          ],
+          "interval": "week",
+          "trendsFilter": {
+            "display": "ActionsTable",
+            "showLegend": true
+          },
+          "breakdownFilter": {
+            "breakdown": "scan_key",
+            "breakdown_type": "event",
+            "breakdown_limit": 50
+          },
           "properties": [
             {
               "key": "audience",
@@ -384,29 +719,130 @@
                 "customer"
               ]
             }
-          ],
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Completed scan samples",
+        "description": "Successful run counts per scan source for the same 30-day window as the p95 table. Use these counts before prioritizing slow sources.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
           "dateRange": {
-            "date_from": "-12m"
+            "date_from": "-30d"
           },
-          "kind": "RetentionQuery",
-          "retentionFilter": {
-            "period": "Month",
-            "totalIntervals": 7,
-            "targetEntity": {
-              "id": "adtk_activity",
-              "name": "adtk_activity",
-              "type": "events"
-            },
-            "returningEntity": {
-              "id": "adtk_activity",
-              "name": "adtk_activity",
-              "type": "events"
-            },
-            "retentionType": "retention_first_ever_occurrence",
-            "retentionReference": "total",
-            "cumulative": false,
-            "timeWindowMode": "strict_calendar_dates"
-          }
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_scan_completed",
+              "math": "total"
+            }
+          ],
+          "interval": "week",
+          "trendsFilter": {
+            "display": "ActionsTable",
+            "showLegend": true
+          },
+          "breakdownFilter": {
+            "breakdown": "scan_key",
+            "breakdown_type": "event",
+            "breakdown_limit": 50
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "customer"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Failures by plugin version",
+        "description": "Recorded scan failure counts by version. This is volume, not a failure rate: popular versions naturally have more opportunities to fail. Filter the completion funnel to the same version before calling a release a regression.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_scan_failed",
+              "math": "total"
+            }
+          ],
+          "interval": "day",
+          "trendsFilter": {
+            "display": "ActionsLineGraph",
+            "showLegend": true
+          },
+          "breakdownFilter": {
+            "breakdown": "plugin_version",
+            "breakdown_type": "event",
+            "breakdown_limit": 50
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "customer"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Customers \u2014 Scan trigger mix",
+        "description": "Starts by automatic/manual/on_demand/unknown trigger. On-demand means a page requested data, not necessarily a button click. Use this to interpret background work before judging scan funnel drop-off.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "customer"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_scan_started",
+              "math": "total"
+            }
+          ],
+          "interval": "day",
+          "trendsFilter": {
+            "display": "ActionsLineGraph",
+            "showLegend": true
+          },
+          "breakdownFilter": {
+            "breakdown": "trigger",
+            "breakdown_type": "event",
+            "breakdown_limit": 50
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "customer"
+              ]
+            }
+          ]
         }
       }
     ]
@@ -417,17 +853,37 @@
       "admin-toolkit-product-analytics-v1",
       "internal"
     ],
-    "description": "Product usage, task funnels, and weekly/monthly retention. Internal = tam-global/akaos serving installations. All others = customers. Pseudonymous DSS users where available; browser fallback otherwise. Only installations with analytics enabled and working network access are represented.",
+    "description": "All-hands overview: observed reach, repeat use, and useful workflows. Internal = tam-global/akaos serving installations; all others = customers. Only observed installations with analytics enabled, working network access, and an instrumented version are represented. Read each insight description for its denominator and limits. Current calendar periods are incomplete.",
     "pinned": false,
     "insights": [
       {
-        "name": "Admin Toolkit \u2014 Internal \u2014 Active users",
-        "description": "Distinct pseudonymous users opening the app or navigating modules. Automatic scans do not count.",
+        "name": "Admin Toolkit \u2014 Internal \u2014 Active installations \u2014 30 days",
+        "description": "Distinct installations with a webapp open or module visit in the last 30 days, compared with the preceding 30 days. This is observed reach, not customer companies or the installed base. Opt-outs, offline and older installations are absent.",
         "tags": [
           "admin-toolkit-product-analytics-v1",
           "internal"
         ],
         "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_activity",
+              "math": "hogql",
+              "math_hogql": "uniq(properties.installation_id)"
+            }
+          ],
+          "interval": "week",
+          "trendsFilter": {
+            "display": "BoldNumber",
+            "showLegend": true
+          },
+          "compareFilter": {
+            "compare": true
+          },
           "properties": [
             {
               "key": "audience",
@@ -437,7 +893,93 @@
                 "internal"
               ]
             }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Active users \u2014 30 days",
+        "description": "Distinct pseudonymous users in the whole 30-day window, compared with the preceding 30 days. Do not sum weekly unique users. Identity is scoped to each installation; browser fallback can count one person more than once.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_activity",
+              "math": "dau"
+            }
           ],
+          "interval": "week",
+          "trendsFilter": {
+            "display": "BoldNumber",
+            "showLegend": true
+          },
+          "compareFilter": {
+            "compare": true
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "internal"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Monthly active installations",
+        "description": "Distinct active installations in each calendar month. The current month is incomplete; first observed activity is not an installation date.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-6m"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_activity",
+              "math": "hogql",
+              "math_hogql": "uniq(properties.installation_id)"
+            }
+          ],
+          "interval": "month",
+          "trendsFilter": {
+            "display": "ActionsLineGraph",
+            "showLegend": true
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "internal"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Active users",
+        "description": "Distinct users per calendar week opening the app or navigating modules. Automatic scans do not count. Current week is incomplete.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
           "dateRange": {
             "date_from": "-90d"
           },
@@ -449,17 +991,11 @@
               "math": "dau"
             }
           ],
-          "interval": "week"
-        }
-      },
-      {
-        "name": "Admin Toolkit \u2014 Internal \u2014 Module adoption",
-        "description": "Distinct users visiting each module. Shared underlying scans do not inflate adoption.",
-        "tags": [
-          "admin-toolkit-product-analytics-v1",
-          "internal"
-        ],
-        "query": {
+          "interval": "week",
+          "trendsFilter": {
+            "display": "ActionsLineGraph",
+            "showLegend": true
+          },
           "properties": [
             {
               "key": "audience",
@@ -469,9 +1005,19 @@
                 "internal"
               ]
             }
-          ],
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Module adoption",
+        "description": "Distinct visitors per module over the whole last 30 days. Users can appear in several modules; do not sum rows as total users.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
           "dateRange": {
-            "date_from": "-90d"
+            "date_from": "-30d"
           },
           "kind": "TrendsQuery",
           "series": [
@@ -482,20 +1028,15 @@
             }
           ],
           "interval": "week",
+          "trendsFilter": {
+            "display": "ActionsTable",
+            "showLegend": true
+          },
           "breakdownFilter": {
             "breakdown": "module_id",
-            "breakdown_type": "event"
-          }
-        }
-      },
-      {
-        "name": "Admin Toolkit \u2014 Internal \u2014 Plugin versions",
-        "description": "Active users by the serving Toolkit version, independent of the selected managed host.",
-        "tags": [
-          "admin-toolkit-product-analytics-v1",
-          "internal"
-        ],
-        "query": {
+            "breakdown_type": "event",
+            "breakdown_limit": 50
+          },
           "properties": [
             {
               "key": "audience",
@@ -505,7 +1046,59 @@
                 "internal"
               ]
             }
-          ],
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Month retention",
+        "description": "First-ever observed activity cohorts returning to open or navigate the app in a later calendar period. Use cohort counts alongside percentages; exclude incomplete periods. Collection starts at rollout, not original installation. This is user retention, not customer/company retention.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-12m"
+          },
+          "kind": "RetentionQuery",
+          "retentionFilter": {
+            "period": "Month",
+            "totalIntervals": 7,
+            "targetEntity": {
+              "id": "adtk_activity",
+              "name": "adtk_activity",
+              "type": "events"
+            },
+            "returningEntity": {
+              "id": "adtk_activity",
+              "name": "adtk_activity",
+              "type": "events"
+            },
+            "retentionType": "retention_first_ever_occurrence",
+            "retentionReference": "total",
+            "cumulative": false,
+            "timeWindowMode": "strict_calendar_dates"
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "internal"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Exports and comparisons",
+        "description": "Diagnostic bundles built and handed to the browser, and successfully computed comparisons. Download events do not prove files were saved. These are optional workflows, not prerequisites for meaningful use.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
           "dateRange": {
             "date_from": "-90d"
           },
@@ -513,25 +1106,20 @@
           "series": [
             {
               "kind": "EventsNode",
-              "event": "adtk_activity",
-              "math": "dau"
+              "event": "adtk_snapshot_created",
+              "math": "total"
+            },
+            {
+              "kind": "EventsNode",
+              "event": "adtk_comparison_completed",
+              "math": "total"
             }
           ],
           "interval": "week",
-          "breakdownFilter": {
-            "breakdown": "plugin_version",
-            "breakdown_type": "event"
-          }
-        }
-      },
-      {
-        "name": "Admin Toolkit \u2014 Internal \u2014 Scan outcomes",
-        "description": "Underlying lifecycle runs, counted once across modules sharing a scan. Includes automatic work; filter trigger for manual/on-demand runs.",
-        "tags": [
-          "admin-toolkit-product-analytics-v1",
-          "internal"
-        ],
-        "query": {
+          "trendsFilter": {
+            "display": "ActionsLineGraph",
+            "showLegend": true
+          },
           "properties": [
             {
               "key": "audience",
@@ -541,9 +1129,252 @@
                 "internal"
               ]
             }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "Admin Toolkit \u2014 Internal \u2014 Adoption",
+    "tags": [
+      "admin-toolkit-product-analytics-v1",
+      "internal"
+    ],
+    "description": "Product review: which modules earn use, where visits reach results, and whether users return. Internal = tam-global/akaos serving installations; all others = customers. Only observed installations with analytics enabled, working network access, and an instrumented version are represented. Read each insight description for its denominator and limits. Current calendar periods are incomplete.",
+    "pinned": false,
+    "insights": [
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Module adoption",
+        "description": "Distinct visitors per module over the whole last 30 days. Users can appear in several modules; do not sum rows as total users.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_module_opened",
+              "math": "dau"
+            }
           ],
+          "interval": "week",
+          "trendsFilter": {
+            "display": "ActionsTable",
+            "showLegend": true
+          },
+          "breakdownFilter": {
+            "breakdown": "module_id",
+            "breakdown_type": "event",
+            "breakdown_limit": 50
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "internal"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Plugin versions",
+        "description": "Distinct active installations by observed plugin version in the last 30 days. An installation that upgrades appears under both versions; this is observed version usage, not an inventory of the latest installed version.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_activity",
+              "math": "hogql",
+              "math_hogql": "uniq(properties.installation_id)"
+            }
+          ],
+          "interval": "week",
+          "trendsFilter": {
+            "display": "ActionsTable",
+            "showLegend": true
+          },
+          "breakdownFilter": {
+            "breakdown": "plugin_version",
+            "breakdown_type": "event",
+            "breakdown_limit": 50
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "internal"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Module opened \u2192 results viewed",
+        "description": "Per visit, including ready-on-open pages. Results means at least one completed data source was displayed, not proof of reading. Settings, help, and other modules without scan results are not expected to convert; inspect data-bearing modules individually.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "FunnelsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_module_opened"
+            },
+            {
+              "kind": "EventsNode",
+              "event": "adtk_results_viewed"
+            }
+          ],
+          "breakdownFilter": {
+            "breakdown": "module_id",
+            "breakdown_type": "event"
+          },
+          "funnelsFilter": {
+            "funnelWindowInterval": 1,
+            "funnelWindowIntervalUnit": "hour",
+            "funnelOrderType": "ordered",
+            "funnelAggregateByHogQL": "properties.visit_id"
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "internal"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Week retention",
+        "description": "First-ever observed activity cohorts returning to open or navigate the app in a later calendar period. Use cohort counts alongside percentages; exclude incomplete periods. Collection starts at rollout, not original installation. This is user retention, not customer/company retention.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
           "dateRange": {
             "date_from": "-90d"
+          },
+          "kind": "RetentionQuery",
+          "retentionFilter": {
+            "period": "Week",
+            "totalIntervals": 9,
+            "targetEntity": {
+              "id": "adtk_activity",
+              "name": "adtk_activity",
+              "type": "events"
+            },
+            "returningEntity": {
+              "id": "adtk_activity",
+              "name": "adtk_activity",
+              "type": "events"
+            },
+            "retentionType": "retention_first_ever_occurrence",
+            "retentionReference": "total",
+            "cumulative": false,
+            "timeWindowMode": "strict_calendar_dates"
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "internal"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Month retention",
+        "description": "First-ever observed activity cohorts returning to open or navigate the app in a later calendar period. Use cohort counts alongside percentages; exclude incomplete periods. Collection starts at rollout, not original installation. This is user retention, not customer/company retention.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-12m"
+          },
+          "kind": "RetentionQuery",
+          "retentionFilter": {
+            "period": "Month",
+            "totalIntervals": 7,
+            "targetEntity": {
+              "id": "adtk_activity",
+              "name": "adtk_activity",
+              "type": "events"
+            },
+            "returningEntity": {
+              "id": "adtk_activity",
+              "name": "adtk_activity",
+              "type": "events"
+            },
+            "retentionType": "retention_first_ever_occurrence",
+            "retentionReference": "total",
+            "cumulative": false,
+            "timeWindowMode": "strict_calendar_dates"
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "internal"
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "Admin Toolkit \u2014 Internal \u2014 Reliability",
+    "tags": [
+      "admin-toolkit-product-analytics-v1",
+      "internal"
+    ],
+    "description": "Engineering review: scan outcomes, observed completion, latency, and release investigation. Internal = tam-global/akaos serving installations; all others = customers. Only observed installations with analytics enabled, working network access, and an instrumented version are represented. Read each insight description for its denominator and limits. Current calendar periods are incomplete.",
+    "pinned": false,
+    "insights": [
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Scan outcomes",
+        "description": "Recorded lifecycle starts, completions, failures, and cancellations. These are event volumes, not a completion percentage: events can cross date boundaries. Use Observed scan completion for a matched-start denominator.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-30d"
           },
           "kind": "TrendsQuery",
           "series": [
@@ -568,54 +1399,11 @@
               "math": "total"
             }
           ],
-          "interval": "week"
-        }
-      },
-      {
-        "name": "Admin Toolkit \u2014 Internal \u2014 Slow scans (p95)",
-        "description": "95th-percentile successful scan duration in milliseconds, by scan source.",
-        "tags": [
-          "admin-toolkit-product-analytics-v1",
-          "internal"
-        ],
-        "query": {
-          "properties": [
-            {
-              "key": "audience",
-              "type": "event",
-              "operator": "exact",
-              "value": [
-                "internal"
-              ]
-            }
-          ],
-          "dateRange": {
-            "date_from": "-90d"
+          "interval": "day",
+          "trendsFilter": {
+            "display": "ActionsLineGraph",
+            "showLegend": true
           },
-          "kind": "TrendsQuery",
-          "series": [
-            {
-              "kind": "EventsNode",
-              "event": "adtk_scan_completed",
-              "math": "p95",
-              "math_property": "duration_ms"
-            }
-          ],
-          "interval": "week",
-          "breakdownFilter": {
-            "breakdown": "scan_key",
-            "breakdown_type": "event"
-          }
-        }
-      },
-      {
-        "name": "Admin Toolkit \u2014 Internal \u2014 Exports and comparisons",
-        "description": "Diagnostic snapshots built and handed to the browser download, and successfully computed comparisons. Does not prove a file was saved to disk.",
-        "tags": [
-          "admin-toolkit-product-analytics-v1",
-          "internal"
-        ],
-        "query": {
           "properties": [
             {
               "key": "audience",
@@ -625,78 +1413,51 @@
                 "internal"
               ]
             }
-          ],
-          "dateRange": {
-            "date_from": "-90d"
-          },
-          "kind": "TrendsQuery",
-          "series": [
-            {
-              "kind": "EventsNode",
-              "event": "adtk_snapshot_created",
-              "math": "total"
-            },
-            {
-              "kind": "EventsNode",
-              "event": "adtk_comparison_completed",
-              "math": "total"
-            }
-          ],
-          "interval": "week"
+          ]
         }
       },
       {
-        "name": "Admin Toolkit \u2014 Internal \u2014 Module opened \u2192 results viewed",
-        "description": "Per visit, including ready-on-open modules. Results means a visible page with at least one completed data source, not proof of reading every row. Breakdown is module_id.",
+        "name": "Admin Toolkit \u2014 Internal \u2014 Observed scan completion",
+        "description": "Observed starts reaching completion within one hour, matched by scan_id. Excludes starts inferred after completion. Breakdown separates automatic/manual/on-demand work. Failed/cancelled scans, tab closes, host switches, missing events, and longer scans can all leave a gap.",
         "tags": [
           "admin-toolkit-product-analytics-v1",
           "internal"
         ],
         "query": {
-          "properties": [
-            {
-              "key": "audience",
-              "type": "event",
-              "operator": "exact",
-              "value": [
-                "internal"
-              ]
-            }
-          ],
           "dateRange": {
-            "date_from": "-90d"
+            "date_from": "-30d"
           },
           "kind": "FunnelsQuery",
           "series": [
             {
               "kind": "EventsNode",
-              "event": "adtk_module_opened"
+              "event": "adtk_scan_started",
+              "properties": [
+                {
+                  "key": "start_observed",
+                  "type": "event",
+                  "operator": "exact",
+                  "value": [
+                    true
+                  ]
+                }
+              ]
             },
             {
               "kind": "EventsNode",
-              "event": "adtk_results_viewed"
+              "event": "adtk_scan_completed"
             }
           ],
           "breakdownFilter": {
-            "breakdown": "module_id",
+            "breakdown": "trigger",
             "breakdown_type": "event"
           },
           "funnelsFilter": {
             "funnelWindowInterval": 1,
             "funnelWindowIntervalUnit": "hour",
             "funnelOrderType": "ordered",
-            "funnelAggregateByHogQL": "properties.visit_id"
-          }
-        }
-      },
-      {
-        "name": "Admin Toolkit \u2014 Internal \u2014 Scan started \u2192 completed \u2192 results viewed",
-        "description": "Per scan_id, so a later retry cannot complete an earlier failed attempt. Includes background scans; inspecting every background scan is not expected. Use trigger to focus on manual/on-demand runs.",
-        "tags": [
-          "admin-toolkit-product-analytics-v1",
-          "internal"
-        ],
-        "query": {
+            "funnelAggregateByHogQL": "properties.scan_id"
+          },
           "properties": [
             {
               "key": "audience",
@@ -706,15 +1467,35 @@
                 "internal"
               ]
             }
-          ],
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Scan started \u2192 completed \u2192 results viewed",
+        "description": "Observed starts, completion, then visible results for the same scan_id within one hour. Includes background scans; viewing every background result is not expected. Filter trigger to focus on deliberate tasks.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
           "dateRange": {
-            "date_from": "-90d"
+            "date_from": "-30d"
           },
           "kind": "FunnelsQuery",
           "series": [
             {
               "kind": "EventsNode",
-              "event": "adtk_scan_started"
+              "event": "adtk_scan_started",
+              "properties": [
+                {
+                  "key": "start_observed",
+                  "type": "event",
+                  "operator": "exact",
+                  "value": [
+                    true
+                  ]
+                }
+              ]
             },
             {
               "kind": "EventsNode",
@@ -734,17 +1515,7 @@
             "funnelWindowIntervalUnit": "hour",
             "funnelOrderType": "ordered",
             "funnelAggregateByHogQL": "properties.scan_id"
-          }
-        }
-      },
-      {
-        "name": "Admin Toolkit \u2014 Internal \u2014 Week retention",
-        "description": "First-ever observed activity cohorts returning to open or navigate the app. Weekly/monthly calendar periods; exclude incomplete periods when reporting. Collection begins at rollout, not original installation.",
-        "tags": [
-          "admin-toolkit-product-analytics-v1",
-          "internal"
-        ],
-        "query": {
+          },
           "properties": [
             {
               "key": "audience",
@@ -754,39 +1525,39 @@
                 "internal"
               ]
             }
-          ],
-          "dateRange": {
-            "date_from": "-90d"
-          },
-          "kind": "RetentionQuery",
-          "retentionFilter": {
-            "period": "Week",
-            "totalIntervals": 9,
-            "targetEntity": {
-              "id": "adtk_activity",
-              "name": "adtk_activity",
-              "type": "events"
-            },
-            "returningEntity": {
-              "id": "adtk_activity",
-              "name": "adtk_activity",
-              "type": "events"
-            },
-            "retentionType": "retention_first_ever_occurrence",
-            "retentionReference": "total",
-            "cumulative": false,
-            "timeWindowMode": "strict_calendar_dates"
-          }
+          ]
         }
       },
       {
-        "name": "Admin Toolkit \u2014 Internal \u2014 Month retention",
-        "description": "First-ever observed activity cohorts returning to open or navigate the app. Weekly/monthly calendar periods; exclude incomplete periods when reporting. Collection begins at rollout, not original installation.",
+        "name": "Admin Toolkit \u2014 Internal \u2014 Slow scans (p95)",
+        "description": "95th-percentile duration of successful runs, in milliseconds, by scan source over the last 30 days. Failed or stalled scans are absent. Read alongside sample counts; small samples are unstable. A scan source can serve several modules.",
         "tags": [
           "admin-toolkit-product-analytics-v1",
           "internal"
         ],
         "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_scan_completed",
+              "math": "p95",
+              "math_property": "duration_ms"
+            }
+          ],
+          "interval": "week",
+          "trendsFilter": {
+            "display": "ActionsTable",
+            "showLegend": true
+          },
+          "breakdownFilter": {
+            "breakdown": "scan_key",
+            "breakdown_type": "event",
+            "breakdown_limit": 50
+          },
           "properties": [
             {
               "key": "audience",
@@ -796,29 +1567,130 @@
                 "internal"
               ]
             }
-          ],
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Completed scan samples",
+        "description": "Successful run counts per scan source for the same 30-day window as the p95 table. Use these counts before prioritizing slow sources.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
           "dateRange": {
-            "date_from": "-12m"
+            "date_from": "-30d"
           },
-          "kind": "RetentionQuery",
-          "retentionFilter": {
-            "period": "Month",
-            "totalIntervals": 7,
-            "targetEntity": {
-              "id": "adtk_activity",
-              "name": "adtk_activity",
-              "type": "events"
-            },
-            "returningEntity": {
-              "id": "adtk_activity",
-              "name": "adtk_activity",
-              "type": "events"
-            },
-            "retentionType": "retention_first_ever_occurrence",
-            "retentionReference": "total",
-            "cumulative": false,
-            "timeWindowMode": "strict_calendar_dates"
-          }
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_scan_completed",
+              "math": "total"
+            }
+          ],
+          "interval": "week",
+          "trendsFilter": {
+            "display": "ActionsTable",
+            "showLegend": true
+          },
+          "breakdownFilter": {
+            "breakdown": "scan_key",
+            "breakdown_type": "event",
+            "breakdown_limit": 50
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "internal"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Failures by plugin version",
+        "description": "Recorded scan failure counts by version. This is volume, not a failure rate: popular versions naturally have more opportunities to fail. Filter the completion funnel to the same version before calling a release a regression.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_scan_failed",
+              "math": "total"
+            }
+          ],
+          "interval": "day",
+          "trendsFilter": {
+            "display": "ActionsLineGraph",
+            "showLegend": true
+          },
+          "breakdownFilter": {
+            "breakdown": "plugin_version",
+            "breakdown_type": "event",
+            "breakdown_limit": 50
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "internal"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Admin Toolkit \u2014 Internal \u2014 Scan trigger mix",
+        "description": "Starts by automatic/manual/on_demand/unknown trigger. On-demand means a page requested data, not necessarily a button click. Use this to interpret background work before judging scan funnel drop-off.",
+        "tags": [
+          "admin-toolkit-product-analytics-v1",
+          "internal"
+        ],
+        "query": {
+          "dateRange": {
+            "date_from": "-30d"
+          },
+          "kind": "TrendsQuery",
+          "series": [
+            {
+              "kind": "EventsNode",
+              "event": "adtk_scan_started",
+              "math": "total"
+            }
+          ],
+          "interval": "day",
+          "trendsFilter": {
+            "display": "ActionsLineGraph",
+            "showLegend": true
+          },
+          "breakdownFilter": {
+            "breakdown": "trigger",
+            "breakdown_type": "event",
+            "breakdown_limit": 50
+          },
+          "properties": [
+            {
+              "key": "audience",
+              "type": "event",
+              "operator": "exact",
+              "value": [
+                "internal"
+              ]
+            }
+          ]
         }
       }
     ]

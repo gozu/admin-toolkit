@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Prepared separate customer/internal PostHog dashboards for the all-hands overview, module adoption and retention, and scan reliability, with explicit metric definitions, installation reach, version analysis, and reusable saved insights.
+
 ## [0.4.856] - 2026-09-14
 
 ### Changed

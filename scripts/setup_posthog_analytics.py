@@ -26,69 +26,141 @@ def event(name, math=None):
 
 
 def definitions():
+    """Three decision-focused dashboards per audience, sharing saved insights."""
     dashboards = []
     for audience, label in [('customer', 'Customers'), ('internal', 'Internal')]:
-        properties = [{'key': 'audience', 'type': 'event', 'operator': 'exact', 'value': [audience]}]
-        common = {'properties': properties, 'dateRange': {'date_from': '-90d'}}
-        insights = []
+        audience_filter = [{'key': 'audience', 'type': 'event', 'operator': 'exact', 'value': [audience]}]
+        insights = {}
 
-        def add(name, description, query):
-            insights.append({'name': f'Admin Toolkit — {label} — {name}', 'description': description,
-                             'tags': [TAG, audience], 'query': {**common, **query}})
+        def add(name, description, query, window='-90d'):
+            insights[name] = {
+                'name': f'Admin Toolkit — {label} — {name}',
+                'description': description,
+                'tags': [TAG, audience],
+                'query': {'dateRange': {'date_from': window}, **query, 'properties': audience_filter},
+            }
 
-        def trends(name, description, series, breakdown=None, interval='week'):
-            query = {'kind': 'TrendsQuery', 'series': series, 'interval': interval}
+        def trends(name, description, series, breakdown=None, interval='week',
+                   window='-90d', display='ActionsLineGraph', compare=False):
+            query = {'kind': 'TrendsQuery', 'series': series, 'interval': interval,
+                     'trendsFilter': {'display': display, 'showLegend': True}}
             if breakdown:
-                query['breakdownFilter'] = {'breakdown': breakdown, 'breakdown_type': 'event'}
-            add(name, description, query)
+                query['breakdownFilter'] = {'breakdown': breakdown, 'breakdown_type': 'event',
+                                            'breakdown_limit': 50}
+            if compare:
+                query['compareFilter'] = {'compare': True}
+            add(name, description, query, window)
 
-        trends('Active users', 'Distinct pseudonymous users opening the app or navigating modules. Automatic scans do not count.',
+        installations = {**event('adtk_activity', 'hogql'),
+                         'math_hogql': 'uniq(properties.installation_id)'}
+        trends('Active installations — 30 days',
+               'Distinct installations with a webapp open or module visit in the last 30 days, compared with the preceding 30 days. '
+               'This is observed reach, not customer companies or the installed base. Opt-outs, offline and older installations are absent.',
+               [installations], window='-30d', display='BoldNumber', compare=True)
+        trends('Active users — 30 days',
+               'Distinct pseudonymous users in the whole 30-day window, compared with the preceding 30 days. '
+               'Do not sum weekly unique users. Identity is scoped to each installation; browser fallback can count one person more than once.',
+               [event('adtk_activity', 'dau')], window='-30d', display='BoldNumber', compare=True)
+        trends('Monthly active installations',
+               'Distinct active installations in each calendar month. The current month is incomplete; first observed activity is not an installation date.',
+               [installations], interval='month', window='-6m')
+        trends('Active users',
+               'Distinct users per calendar week opening the app or navigating modules. Automatic scans do not count. Current week is incomplete.',
                [event('adtk_activity', 'dau')])
-        trends('Module adoption', 'Distinct users visiting each module. Shared underlying scans do not inflate adoption.',
-               [event('adtk_module_opened', 'dau')], 'module_id')
-        trends('Plugin versions', 'Active users by the serving Toolkit version, independent of the selected managed host.',
-               [event('adtk_activity', 'dau')], 'plugin_version')
-        trends('Scan outcomes', 'Underlying lifecycle runs, counted once across modules sharing a scan. Includes automatic work; filter trigger for manual/on-demand runs.',
-               [event(name, 'total') for name in ['adtk_scan_started', 'adtk_scan_completed', 'adtk_scan_failed', 'adtk_scan_cancelled']])
-        trends('Slow scans (p95)', '95th-percentile successful scan duration in milliseconds, by scan source.',
-               [{**event('adtk_scan_completed', 'p95'), 'math_property': 'duration_ms'}], 'scan_key')
-        trends('Exports and comparisons', 'Diagnostic snapshots built and handed to the browser download, and successfully computed comparisons. Does not prove a file was saved to disk.',
+        trends('Module adoption',
+               'Distinct visitors per module over the whole last 30 days. Users can appear in several modules; do not sum rows as total users.',
+               [event('adtk_module_opened', 'dau')], 'module_id', window='-30d', display='ActionsTable')
+        trends('Plugin versions',
+               'Distinct active installations by observed plugin version in the last 30 days. An installation that upgrades appears under both versions; '
+               'this is observed version usage, not an inventory of the latest installed version.',
+               [installations], 'plugin_version', window='-30d', display='ActionsTable')
+        trends('Exports and comparisons',
+               'Diagnostic bundles built and handed to the browser, and successfully computed comparisons. Download events do not prove files were saved. '
+               'These are optional workflows, not prerequisites for meaningful use.',
                [event('adtk_snapshot_created', 'total'), event('adtk_comparison_completed', 'total')])
-        add('Module opened → results viewed',
-            'Per visit, including ready-on-open modules. Results means a visible page with at least one completed data source, not proof of reading every row. Breakdown is module_id.', {
-                'kind': 'FunnelsQuery',
-                'series': [event('adtk_module_opened'), event('adtk_results_viewed')],
-                'breakdownFilter': {'breakdown': 'module_id', 'breakdown_type': 'event'},
+
+        def funnel(name, description, series, aggregate, breakdown):
+            add(name, description, {
+                'kind': 'FunnelsQuery', 'series': series,
+                'breakdownFilter': {'breakdown': breakdown, 'breakdown_type': 'event'},
                 'funnelsFilter': {'funnelWindowInterval': 1, 'funnelWindowIntervalUnit': 'hour',
-                                  'funnelOrderType': 'ordered', 'funnelAggregateByHogQL': 'properties.visit_id'},
-            })
-        add('Scan started → completed → results viewed',
-            'Per scan_id, so a later retry cannot complete an earlier failed attempt. Includes background scans; inspecting every background scan is not expected. Use trigger to focus on manual/on-demand runs.', {
-                'kind': 'FunnelsQuery',
-                'series': [event(name) for name in ['adtk_scan_started', 'adtk_scan_completed', 'adtk_scan_results_viewed']],
-                'breakdownFilter': {'breakdown': 'scan_key', 'breakdown_type': 'event'},
-                'funnelsFilter': {'funnelWindowInterval': 1, 'funnelWindowIntervalUnit': 'hour',
-                                  'funnelOrderType': 'ordered', 'funnelAggregateByHogQL': 'properties.scan_id'},
-            })
+                                  'funnelOrderType': 'ordered', 'funnelAggregateByHogQL': aggregate},
+            }, '-30d')
+
+        funnel('Module opened → results viewed',
+               'Per visit, including ready-on-open pages. Results means at least one completed data source was displayed, not proof of reading. '
+               'Settings, help, and other modules without scan results are not expected to convert; inspect data-bearing modules individually.',
+               [event('adtk_module_opened'), event('adtk_results_viewed')], 'properties.visit_id', 'module_id')
+        observed_start = {**event('adtk_scan_started'), 'properties': [
+            {'key': 'start_observed', 'type': 'event', 'operator': 'exact', 'value': [True]},
+        ]}
+        funnel('Observed scan completion',
+               'Observed starts reaching completion within one hour, matched by scan_id. Excludes starts inferred after completion. '
+               'Breakdown separates automatic/manual/on-demand work. Failed/cancelled scans, tab closes, host switches, missing events, and longer scans can all leave a gap.',
+               [observed_start, event('adtk_scan_completed')], 'properties.scan_id', 'trigger')
+        funnel('Scan started → completed → results viewed',
+               'Observed starts, completion, then visible results for the same scan_id within one hour. '
+               'Includes background scans; viewing every background result is not expected. Filter trigger to focus on deliberate tasks.',
+               [observed_start, event('adtk_scan_completed'), event('adtk_scan_results_viewed')],
+               'properties.scan_id', 'scan_key')
+        trends('Scan outcomes',
+               'Recorded lifecycle starts, completions, failures, and cancellations. These are event volumes, not a completion percentage: '
+               'events can cross date boundaries. Use Observed scan completion for a matched-start denominator.',
+               [event(name, 'total') for name in ['adtk_scan_started', 'adtk_scan_completed', 'adtk_scan_failed', 'adtk_scan_cancelled']],
+               interval='day', window='-30d')
+        trends('Slow scans (p95)',
+               '95th-percentile duration of successful runs, in milliseconds, by scan source over the last 30 days. '
+               'Failed or stalled scans are absent. Read alongside sample counts; small samples are unstable. A scan source can serve several modules.',
+               [{**event('adtk_scan_completed', 'p95'), 'math_property': 'duration_ms'}],
+               'scan_key', window='-30d', display='ActionsTable')
+        trends('Completed scan samples',
+               'Successful run counts per scan source for the same 30-day window as the p95 table. Use these counts before prioritizing slow sources.',
+               [event('adtk_scan_completed', 'total')], 'scan_key', window='-30d', display='ActionsTable')
+        trends('Failures by plugin version',
+               'Recorded scan failure counts by version. This is volume, not a failure rate: popular versions naturally have more opportunities to fail. '
+               'Filter the completion funnel to the same version before calling a release a regression.',
+               [event('adtk_scan_failed', 'total')], 'plugin_version', interval='day', window='-30d')
+        trends('Scan trigger mix',
+               'Starts by automatic/manual/on_demand/unknown trigger. On-demand means a page requested data, not necessarily a button click. '
+               'Use this to interpret background work before judging scan funnel drop-off.',
+               [event('adtk_scan_started', 'total')], 'trigger', interval='day', window='-30d')
+
         for period, intervals, window in [('Week', 9, '-90d'), ('Month', 7, '-12m')]:
             entity = {'id': 'adtk_activity', 'name': 'adtk_activity', 'type': 'events'}
             add(f'{period} retention',
-                'First-ever observed activity cohorts returning to open or navigate the app. Weekly/monthly calendar periods; exclude incomplete periods when reporting. Collection begins at rollout, not original installation.', {
-                    'kind': 'RetentionQuery', 'dateRange': {'date_from': window},
+                'First-ever observed activity cohorts returning to open or navigate the app in a later calendar period. '
+                'Use cohort counts alongside percentages; exclude incomplete periods. Collection starts at rollout, not original installation. '
+                'This is user retention, not customer/company retention.', {
+                    'kind': 'RetentionQuery',
                     'retentionFilter': {'period': period, 'totalIntervals': intervals,
                                         'targetEntity': entity, 'returningEntity': entity,
                                         'retentionType': 'retention_first_ever_occurrence',
                                         'retentionReference': 'total', 'cumulative': False,
                                         'timeWindowMode': 'strict_calendar_dates'},
-                })
-        dashboards.append({
-            'name': f'Admin Toolkit — {label}', 'tags': [TAG, audience],
-            'description': 'Product usage, task funnels, and weekly/monthly retention. '
-                           'Internal = tam-global/akaos serving installations. All others = customers. '
-                           'Pseudonymous DSS users where available; browser fallback otherwise. '
-                           'Only installations with analytics enabled and working network access are represented.',
-            'pinned': audience == 'customer', 'insights': insights,
-        })
+                }, window)
+
+        boards = [
+            ('', 'All-hands overview: observed reach, repeat use, and useful workflows.', [
+                'Active installations — 30 days', 'Active users — 30 days', 'Monthly active installations',
+                'Active users', 'Module adoption', 'Month retention', 'Exports and comparisons',
+            ]),
+            (' — Adoption', 'Product review: which modules earn use, where visits reach results, and whether users return.', [
+                'Module adoption', 'Plugin versions', 'Module opened → results viewed', 'Week retention', 'Month retention',
+            ]),
+            (' — Reliability', 'Engineering review: scan outcomes, observed completion, latency, and release investigation.', [
+                'Scan outcomes', 'Observed scan completion', 'Scan started → completed → results viewed',
+                'Slow scans (p95)', 'Completed scan samples', 'Failures by plugin version', 'Scan trigger mix',
+            ]),
+        ]
+        for suffix, purpose, names in boards:
+            dashboards.append({
+                'name': f'Admin Toolkit — {label}{suffix}', 'tags': [TAG, audience],
+                'description': purpose + ' Internal = tam-global/akaos serving installations; all others = customers. '
+                               'Only observed installations with analytics enabled, working network access, and an instrumented version are represented. '
+                               'Read each insight description for its denominator and limits. Current calendar periods are incomplete.',
+                'pinned': audience == 'customer' and not suffix,
+                'insights': [insights[name] for name in names],
+            })
     return dashboards
 
 
@@ -138,7 +210,15 @@ class PostHog:
                 match = next((i for i in existing_insights if i.get('name') == insight['name'] and TAG in (i.get('tags') or []) and not i.get('deleted')), None)
                 memberships = list(dict.fromkeys([*(match.get('dashboards', []) if match else []), dashboard_id]))
                 body = {**insight, 'dashboards': memberships}
-                self.request(f'insights/{match["id"]}/' if match else 'insights/', 'PATCH' if match else 'POST', body)
+                saved_insight = self.request(f'insights/{match["id"]}/' if match else 'insights/', 'PATCH' if match else 'POST', body)
+                # An insight can be shared across boards created in this run.
+                # Keep the local snapshot current to avoid duplicate creations
+                # or dropping a membership added by the preceding board.
+                current = {**body, **saved_insight}
+                if match:
+                    match.update(current)
+                else:
+                    existing_insights.append(current)
             print(f'{dashboard["name"]}: {self.origin}/project/{self.base.split("/projects/")[1].split("/")[0]}/dashboard/{dashboard_id}')
 
 
@@ -150,7 +230,8 @@ def main():
     dashboard_definitions = definitions()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(dashboard_definitions, indent=2) + '\n')
-    print(f'Prepared {len(dashboard_definitions)} dashboards and 20 insights: {args.output}')
+    unique_insights = {i['name'] for d in dashboard_definitions for i in d['insights']}
+    print(f'Prepared {len(dashboard_definitions)} dashboards and {len(unique_insights)} shared insights: {args.output}')
     if args.apply:
         config = json.loads((ROOT / 'python-lib/adk_backend/product_analytics_config.json').read_text())
         key_file = Path.home() / '.posthog-api-key'

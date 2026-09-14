@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Scenarios restores full-hour run bars: disabled scenarios are grey and failures stay red. Sampled runtime load is a taller line chart computed from precise durations. Monthly trigger labels are shorter, and UTC is omitted from compact trigger labels.
+
 ## [0.4.846] - 2026-09-14
 
 ### Fixed

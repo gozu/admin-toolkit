@@ -103,9 +103,11 @@ def fixtures(run):
             if not getattr(run, 'only', None) or 'project-delete' in run.only:
                 run.action('project-delete', {'projectKey': key}, reset_project, verify_delete,
                            'Disposable project: independently verify absence and readable ZIP backup')
-            run.action('plugin-code-env-rebuild', {'pluginId': plugin_id}, reset_plugin_env, verify_rebuild,
+            if not getattr(run, 'only', None) or 'plugin-code-env-rebuild' in run.only:
+                run.action('plugin-code-env-rebuild', {'pluginId': plugin_id}, reset_plugin_env, verify_rebuild,
                        'Unused test plugin; no packages, core libraries or Jupyter requested')
-            run.action('plugin-uninstall', {'pluginId': plugin_id}, reset_plugin, verify_uninstall,
+            if not getattr(run, 'only', None) or 'plugin-uninstall' in run.only:
+                run.action('plugin-uninstall', {'pluginId': plugin_id}, reset_plugin, verify_uninstall,
                        'Unused test plugin: verify absence and readable ZIP backup')
     finally:
         errors = []

@@ -43,6 +43,8 @@ def fixtures(run):
             raise RuntimeError('Owned pod did not complete')
 
         def verify_pod(_):
+            # DSS deletion requests return before Kubernetes removes the object.
+            kubectl('-n ' + namespace + ' wait --for=delete pod/finished --timeout=90s')
             pods = json.loads(kubectl('-n ' + namespace + ' get pods -o json'))['items']
             assert not any(p['metadata']['name'] == 'finished' for p in pods)
             return {'completed_owned_pod_deleted': True, 'nodes': 1, 'instance_type': 't3.small'}

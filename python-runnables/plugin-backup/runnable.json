@@ -1,0 +1,17 @@
+{
+    "meta": {
+        "label": "Back up installed plugin",
+        "description": "Archive installed plugin source to an admin-selected managed folder before an update or uninstall.",
+        "icon": "icon-archive",
+        "macroRoles": [{"type": "PROJECT_MACROS"}]
+    },
+    "impersonate": false,
+    "requiresGlobalAdmin": true,
+    "resultType": "JSON_OBJECT",
+    "params": [
+        {"name": "plugin_id", "label": "Plugin ID", "type": "STRING", "mandatory": true},
+        {"name": "project_key", "label": "Backup project", "type": "STRING", "mandatory": true},
+        {"name": "folder_id", "label": "Backup folder", "type": "STRING", "mandatory": true},
+        {"name": "filename", "label": "Backup filename", "type": "STRING", "mandatory": true}
+    ]
+}

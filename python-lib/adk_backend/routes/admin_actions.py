@@ -495,11 +495,7 @@ def _impl_plugin_uninstall(client, body):
                          'First usages: %s'
                          % (plugin_id, len(usages), json.dumps(usages[:5], default=str)[:400])}
     filename = 'plugin-%s.zip' % _safe_name(plugin_id)
-    dest = _backup_folder_handle(client, folder_id)
-    with tempfile.NamedTemporaryFile(suffix='.zip', delete=True) as tmp:
-        client.download_plugin_to_file(plugin_id, tmp.name)
-        with open(tmp.name, 'rb') as fh:
-            dest.put_file(filename, fh)
+    _backup_plugin(client, plugin_id, folder_id, filename)
     future = plugin.delete(force=False)
     result = future.wait_for_result() if future is not None else None
     return {'ok': True, 'uninstalled': plugin_id, 'backupFile': filename,
@@ -542,6 +538,27 @@ def _impl_code_env_update(client, body):
     return {'ok': True, 'name': name, 'lang': lang, 'update': result, 'images': images}
 
 
+def _backup_plugin(client, plugin_id, folder_id, filename):
+    dest = _backup_folder_handle(client, folder_id)
+    info = next((row for row in client.list_plugins() if row['id'] == plugin_id), None)
+    if info is None:
+        raise ValueError('Plugin is no longer installed')
+    if info.get('isDev'):
+        with tempfile.NamedTemporaryFile(suffix='.zip', delete=True) as tmp:
+            client.download_plugin_to_file(plugin_id, tmp.name)
+            with open(tmp.name, 'rb') as fh:
+                dest.put_file(filename, fh)
+        return
+    macro = _resolve_macro_project(client).get_macro('pyrunnable_admin-toolkit_plugin-backup')
+    run_id = macro.run(params={
+        'plugin_id': plugin_id, 'project_key': _active_support_project(client).project_key,
+        'folder_id': folder_id, 'filename': filename,
+    }, wait=True)
+    result = macro.get_result(run_id, as_type='json')
+    if not isinstance(result, dict) or result.get('ok') is not True or result.get('backupFile') != filename:
+        raise RuntimeError('Plugin backup failed; mutation refused')
+
+
 def _impl_plugin_update(client, body):
     plugin_id = body.get('pluginId') or ''
     folder_id = body.get('folderId') or ''
@@ -550,11 +567,7 @@ def _impl_plugin_update(client, body):
                                       'itself through an agent.' % plugin_id}
     plugin = client.get_plugin(plugin_id)
     filename = 'plugin-%s-preupdate.zip' % _safe_name(plugin_id)
-    dest = _backup_folder_handle(client, folder_id)
-    with tempfile.NamedTemporaryFile(suffix='.zip', delete=True) as tmp:
-        client.download_plugin_to_file(plugin_id, tmp.name)
-        with open(tmp.name, 'rb') as fh:
-            dest.put_file(filename, fh)
+    _backup_plugin(client, plugin_id, folder_id, filename)
     future = plugin.update_from_store()
     result = future.wait_for_result() if future is not None else None
     return {'ok': True, 'updated': plugin_id, 'backupFile': filename, 'result': result}

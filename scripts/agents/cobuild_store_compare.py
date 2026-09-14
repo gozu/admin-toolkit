@@ -5,6 +5,7 @@ This checks source replacement, not migration of an in-use plugin's settings.
 """
 import io
 import json
+import time
 import zipfile
 from urllib.parse import urlsplit
 
@@ -12,6 +13,7 @@ from urllib.parse import urlsplit
 def fixtures(run):
     c, tk = run.dss, run.tk
     plugin_id = 'kml-format'
+    started_ms = time.time() * 1000
     assert not any(p['id'] == plugin_id for p in c.list_plugins()), 'Store fixture already exists; refusing'
     parts = urlsplit(tk.base_url).path.strip('/').split('/')
     support = c.get_project(parts[parts.index('web-apps-backends') + 1])
@@ -22,7 +24,27 @@ def fixtures(run):
     def installed():
         return next((p for p in c.list_plugins() if p['id'] == plugin_id), None)
 
+    def active_updates():
+        return [f for f in c.list_futures(all_users=True)
+                if f.get('alive') and f.get('payload', {}).get('action') == 'plugin_install'
+                and any(t.get('objectType') == 'PLUGIN' and t.get('projectKey') == plugin_id
+                        for t in f.get('payload', {}).get('targets', []))]
+
+    assert not active_updates(), 'A previous store operation is still running; reconcile it first'
+
+    def reconcile_updates():
+        deadline = time.monotonic() + 900
+        while active_updates() and time.monotonic() < deadline:
+            time.sleep(2)
+        pending = active_updates()
+        if pending:
+            for future in pending:
+                if future.get('startTime', 0) >= started_ms:
+                    c.get_future(future['jobId']).abort()
+            raise RuntimeError('Store update is still active; cleanup requires reconciliation')
+
     def reset():
+        reconcile_updates()
         if installed():
             assert not c.get_plugin(plugin_id).list_usages().get_raw().get('usages')
             c.get_plugin(plugin_id).delete()
@@ -54,6 +76,7 @@ def fixtures(run):
                        'Owned empty kml-format 0.0.0 placeholder replaced by store 0.1.0; previous source backed up')
     finally:
         errors = []
+        reconcile_updates()  # Never delete a fixture while its update is still running.
         try:
             if installed():
                 c.get_plugin(plugin_id).delete()

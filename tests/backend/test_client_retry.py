@@ -15,7 +15,7 @@ import requests
 
 from atk_agent_common import client as client_mod
 from atk_agent_common.client import ToolkitClient
-from atk_agent_common.errors import UnreachableHost
+from atk_agent_common.errors import UnreachableHost, BackendError
 
 
 class _Resp:
@@ -107,3 +107,20 @@ def test_connect_timeout_never_retried(monkeypatch):
 def test_session_sends_connection_close(monkeypatch):
     c, _ = _client(monkeypatch)
     assert c.session.headers.get('Connection') == 'close'
+
+
+def test_long_post_timeout_is_forwarded_without_retry(monkeypatch):
+    c, sleeps = _client(monkeypatch)
+    calls = []
+
+    def request(method, url, **kwargs):
+        calls.append((method, kwargs['timeout']))
+        raise requests.exceptions.ReadTimeout('slow store update')
+
+    monkeypatch.setattr(c.session, 'request', request)
+    with pytest.raises(BackendError) as failure:
+        c.post('/api/tools/admin-actions/plugin-update', timeout=900)
+    assert calls == [('POST', 900)]
+    assert sleeps['n'] == 0
+    assert 'outcome is unknown' in failure.value.remediation
+    assert 'may still be running' in failure.value.message

@@ -92,10 +92,10 @@ PENDING = {
     'image-delete': 'Needs an approved old image: server cutoff excludes freshly created images. No existing image deleted.',
     'cluster-start': 'Existing provisioned one t3.small; paired run interrupted by deployment. Needs a stable deployment window.',
     'cluster-stop': 'Existing stop interrupted by backend restart; AWS cleanup completed. Paired lifecycle comparison still pending.',
-    'cluster-pods-cleanup': 'Existing test found the pod still present immediately after deletion; needs async completion check on a new test cluster.',
-    'plugin-uninstall': 'Existing backup fails for an installed plugin: DSS download API accepts development plugins only. Cobuild cannot repair this executor defect.',
-    'plugin-update': 'Shares the installed-plugin backup path that failed during uninstall; store update not executed.',
-    'project-delete': 'Existing deleted the fixture; all three candidate attempts were interrupted by backend unavailability. No parity verdict.',
+    'cluster-pods-cleanup': 'Async deletion wait is fixed in the test; live comparison still needs a stable window for a new disposable cluster.',
+    'plugin-uninstall': 'Installed-plugin backup is fixed; re-run on a disposable unused plugin if no successful evidence is present.',
+    'plugin-update': 'Installed-plugin backup and long-operation timeout are fixed; live store-update verification is required.',
+    'project-delete': 'Earlier attempts were interrupted by backend restarts; those were not three meaningful Cobuild improvement attempts.',
 }
 
 

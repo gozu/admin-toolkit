@@ -138,12 +138,15 @@
     "transport": "deployed HTTP bridge"
   },
   {
-    "at": "2026-09-14T22:25:45.701369+00:00",
+    "at": "2026-09-14T23:07:26.548737+00:00",
     "capability": "continuous-activity-stop",
-    "attempt": 0,
-    "status": "blocked",
+    "attempt": 1,
+    "status": "same",
     "scope": "Disposable continuous Python sleep loop; no streaming data or external source",
-    "reason": "DataikuException during fixture"
+    "existing_seconds": 2.796,
+    "cobuild_seconds": 21.672,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
   },
   {
     "at": "2026-09-14T21:29:40.229438+00:00",
@@ -347,6 +350,17 @@
     "transport": "deployed HTTP bridge"
   },
   {
+    "at": "2026-09-14T23:13:58.366788+00:00",
+    "capability": "notebook-kernels-shutdown",
+    "attempt": 1,
+    "status": "same",
+    "scope": "One active empty notebook in a disposable project; file retained after shutdown",
+    "existing_seconds": 1.195,
+    "cobuild_seconds": 15.646,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
     "at": "2026-09-14T21:57:39.254107+00:00",
     "capability": "notification-send",
     "attempt": 1,
@@ -375,12 +389,26 @@
     "transport": "no execution"
   },
   {
-    "at": "2026-09-14T22:14:06.016705+00:00",
+    "at": "2026-09-14T23:11:31.638480+00:00",
     "capability": "plugin-uninstall",
-    "attempt": 0,
-    "status": "blocked",
+    "attempt": 1,
+    "status": "same",
     "scope": "Unused test plugin: verify absence and readable ZIP backup",
-    "reason": "AssertionError during postcondition"
+    "existing_seconds": 2.065,
+    "cobuild_seconds": 20.536,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T23:21:12.493773+00:00",
+    "capability": "plugin-update",
+    "attempt": 2,
+    "status": "same",
+    "scope": "Owned empty kml-format 0.0.0 placeholder replaced by store 0.1.0; previous source backed up",
+    "existing_seconds": 75.621,
+    "cobuild_seconds": 89.184,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
   },
   {
     "at": "2026-09-14T21:25:57.173328+00:00",
@@ -405,12 +433,15 @@
     "transport": "deployed HTTP bridge"
   },
   {
-    "at": "2026-09-14T22:10:52.097792+00:00",
+    "at": "2026-09-14T23:06:02.718028+00:00",
     "capability": "project-delete",
-    "attempt": 3,
-    "status": "failed",
+    "attempt": 1,
+    "status": "same",
     "scope": "Disposable project: independently verify absence and readable ZIP backup",
-    "reason": "BackendError during fixture"
+    "existing_seconds": 1.358,
+    "cobuild_seconds": 15.9,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
   },
   {
     "at": "2026-09-14T22:10:37.534834+00:00",

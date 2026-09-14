@@ -7,9 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.859] - 2026-09-14
+
+### Fixed
+
+- Store updates use the configured long-operation timeout. Timed-out mutations report an unknown outcome and are not automatically retried.
+
 ### Added
 
 - Prepared separate customer/internal PostHog dashboards for the all-hands overview, module adoption and retention, and scan reliability, with explicit metric definitions, installation reach, version analysis, and reusable saved insights.
+
+## [0.4.858] - 2026-09-14
+
+### Fixed
+
+- Corrected DSS parameter binding in the installed-plugin backup macro.
+
+## [0.4.857] - 2026-09-14
+
+### Fixed
+
+- Agent plugin uninstall/update now backs up installed plugin source through a host macro; the DSS download API remains available for development plugins. Failed backups still prevent mutation.
 
 ## [0.4.856] - 2026-09-14
 

@@ -6,7 +6,7 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.856-blue)
+![Version](https://img.shields.io/badge/version-0.4.859-blue)
 ![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-13%2B-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -166,7 +166,7 @@ flowchart LR
     end
     subgraph DSS["Dataiku DSS (local or remote)"]
         PYAPI["DSS Python API<br/>(reads + gated writes)"]
-        MACROS["16 privileged macros<br/>(ADMINTOOLKIT project)"]
+        MACROS["17 privileged macros<br/>(ADMINTOOLKIT project)"]
         HOST["Host resources:<br/>filesystem, /proc, kubectl,<br/>Docker registries, runtimedb"]
     end
     SPA -->|"fetch + SSE, X-DSS-Host-Id"| API
@@ -347,7 +347,7 @@ In addition, Under Settings, you can create python notebooks with the same algor
 plugin.json                  # plugin manifest (params, version, secrets)
 webapps/admin-toolkit/       # Flask webapp entrypoint
 python-lib/                  # backend: adk_backend/ (40 route groups) + shared libs
-python-runnables/            # 16 host-bound macros (host/resource/process metrics, adoption, K8s, images, DB, CS, CRU, triage, and cleanup/governance actions)
+python-runnables/            # 17 host-bound macros (host/resource/process metrics, adoption, K8s, images, DB, CS, CRU, triage, and cleanup/governance actions)
 python-lib/atk_agent_common/ # agents layer shared lib (tools impl, actuator, triage, audit)
 python-agents/               # 1 generalist plugin agent (ATK Admin Agent)
 python-agent-tools/          # 13 agent tools over the toolkit's sensor and guarded-action APIs

@@ -3,6 +3,7 @@ import { useDiag } from '../context/DiagContext';
 import { appVersionStore, backendFreshnessStore } from '../state/appVersionStore';
 import type { DataSource } from '../types';
 import { fetchJson } from '../utils/api';
+import { startProductAnalytics } from '../state/productAnalytics';
 
 interface ModeResponse {
   mode?: string;
@@ -64,6 +65,7 @@ export function useDataSource() {
         }
         if (cancelled) return;
         if (data && data.mode === 'live') {
+          startProductAnalytics();
           log('Detected live API mode');
           recordBackendFreshness(data, log);
           dispatch({ type: 'SET_DATA_SOURCE', payload: 'api' });

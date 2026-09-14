@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.852",
+    "version": "0.4.853",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -9,6 +9,29 @@
     },
     "paramsPythonSetup": "dbhealth-connection-choices.py",
     "params": [
+        {
+            "name": "sep_usage_analytics",
+            "label": "Product Usage Analytics",
+            "description": "Help improve Admin Toolkit by sharing feature usage with its maintainers through PostHog. Applies to every user of this installation.",
+            "type": "SEPARATOR"
+        },
+        {
+            "name": "usage_analytics_enabled",
+            "label": "Share product usage analytics",
+            "description": "Enabled by default. Sends webapp opens, module visits, scan outcomes and durations, exports, comparisons, plugin version, and pseudonymous user/installation identifiers. Does not send customer object names, page contents, emails, logs, or session recordings. Disable to opt out for this installation.",
+            "type": "BOOLEAN",
+            "defaultValue": true,
+            "mandatory": false
+        },
+        {
+            "name": "usage_analytics_secret",
+            "label": "Usage identity salt (managed)",
+            "description": "Generated locally to pseudonymize usage identifiers; retained across upgrades. Never sent to PostHog.",
+            "type": "PASSWORD",
+            "defaultValue": "",
+            "mandatory": false,
+            "visibilityCondition": "false"
+        },
         {
             "name": "sep_security",
             "label": "Advanced Actions",

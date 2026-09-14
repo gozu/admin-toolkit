@@ -6,6 +6,8 @@ import { getSessionEpoch, subscribeSessionEpoch } from './sessionCache';
 import { scanScheduler } from './scanScheduler';
 import { SCAN_POLICIES, type LifecycleFieldName } from '../utils/moduleRegistry';
 import type { Lifecycle } from '../types';
+import { usageTracker } from './productAnalytics';
+import type { ScanTrigger } from '../utils/usageEvents';
 
 export interface ScanState<TData> {
   data: TData | null;
@@ -86,10 +88,13 @@ export function createModuleScanStore<TData, TEvent>(
 
   subscribeSessionEpoch(() => { currentController?.abort(); currentController = null; });
 
-  async function runScan(signal: AbortSignal, priority: number, endpoint?: string): Promise<void> {
+  async function runScan(signal: AbortSignal, priority: number, endpoint?: string, trigger: ScanTrigger = 'unknown'): Promise<void> {
     const epoch = getSessionEpoch();
     const patch = (value: Partial<ScanState<TData>>) => {
-      if (epoch === getSessionEpoch()) store.patch(value);
+      if (epoch === getSessionEpoch()) {
+        store.patch(value);
+        usageTracker().observeScan(opts.loadingField, lifecycle(), trigger);
+      }
     };
     const controller = new AbortController();
     signal.addEventListener('abort', () => controller.abort(), { once: true });
@@ -160,7 +165,8 @@ export function createModuleScanStore<TData, TEvent>(
     if (s.data && !s.error && s.scanPhase !== 'aborted' && fresh && !force) return Promise.resolve();
     const endpoint = resolveStreamEndpoint();
     return scanScheduler.enqueue(opts.loadingField, priority, policy?.cheap ?? false,
-      (signal, effectivePriority) => runScan(signal, effectivePriority, endpoint));
+      (signal, effectivePriority) => runScan(signal, effectivePriority, endpoint,
+        force ? 'manual' : priority > 0 ? 'automatic' : 'on_demand'));
   }
 
   function lifecycle(): Lifecycle {

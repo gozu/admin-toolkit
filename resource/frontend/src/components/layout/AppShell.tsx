@@ -9,6 +9,7 @@ import { useTheme } from '../../hooks/useTheme';
 import dkulogo from '../../assets/dkulogo.png';
 import { exportAllTablesToZip } from '../../utils/exportTables';
 import { buildDiagBundle, snapshotDiagState } from '../../utils/diagBundle';
+import { captureUsage } from '../../state/productAnalytics';
 import { storeExportInArchive } from '../../utils/archiveStore';
 import { useDiag } from '../../context/DiagContext';
 import { UnlockModal } from '../UnlockModal';
@@ -241,6 +242,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
       a.href = URL.createObjectURL(blob);
       a.download = filename;
       a.click();
+      captureUsage('adtk_snapshot_created', { module_id: state.activePage, format: 'diagnostic_bundle', data_source: state.dataSource });
       URL.revokeObjectURL(a.href);
       void storeExportInArchive(blob, filename);
     } finally {

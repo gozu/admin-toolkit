@@ -8,6 +8,8 @@ import type { Lifecycle, ParsedData } from '../../types';
 import { SHARED_LOADING_FIELDS, type LifecycleFieldName } from '../../utils/moduleRegistry';
 import { deriveAnalysisLifecycle, lifecycleToLoadingProgress } from '../../utils/analysisLifecycle';
 import type { LoaderCtx } from './context';
+import { usageTracker } from '../../state/productAnalytics';
+import { getSessionEpoch } from '../../state/sessionCache';
 
 export type TrackField = LifecycleFieldName | readonly LifecycleFieldName[];
 
@@ -40,8 +42,10 @@ export function createLifecycleTracker(ctx: LoaderCtx, initialData: ParsedData):
   const { dispatch, isAbortError, getErrorMessage } = ctx;
   let currentParsedData = initialData;
   const sessionStartedAt = new Date().toISOString();
+  const epoch = getSessionEpoch();
 
   const patchLifecycle = (field: LifecycleFieldName, value: Lifecycle) => {
+    if (!ctx.cancelled() && epoch === getSessionEpoch()) usageTracker().observeScan(field, value, 'automatic');
     currentParsedData = { ...currentParsedData, [field]: value };
     dispatch({ type: 'SET_PARSED_DATA', payload: currentParsedData });
     updateAnalysisLoading();

@@ -42,6 +42,8 @@ import { hydrateHostKeyStatus, useHostKeyState } from './state/hostKeyUnlockStor
 import { useKeyboardNavigation } from './hooks/useKeyboardNavigation';
 import { FxLayer } from './fx/FxLayer';
 import { ToastHub } from './components/common/ToastHub';
+import { useUsageScanObserver } from './hooks/useProductAnalytics';
+import { usageTracker } from './state/productAnalytics';
 
 // Lazy load comparison components
 const ComparisonUpload = lazy(() => import('./components/comparison/ComparisonUpload').then(m => ({ default: m.ComparisonUpload })));
@@ -72,6 +74,10 @@ function AppContent() {
   useApiDataLoader(liveMode && hostChosen, reloadKey);
   useScanStoreLoadingMirror();
   const hasResults = Object.keys(parsedData).length > 0 && !isLoading;
+  useUsageScanObserver(parsedData);
+  useEffect(() => {
+    if (!hasResults || !hostChosen || mode === 'comparison') usageTracker().leaveModule();
+  }, [hasResults, hostChosen, mode]);
   useDelayedPageWarmup(liveMode && hostChosen && hasResults, parsedData);
 
   useEffect(() => {

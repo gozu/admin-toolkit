@@ -23,6 +23,43 @@ bp = Blueprint('settings', __name__)
 _PLUGIN_ID = 'admin-toolkit'
 
 
+@bp.route('/api/usage/config', methods=['GET'])
+@local_only
+def api_usage_config():
+    from adk_backend.product_analytics import status
+    response = jsonify(status())
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@bp.route('/api/usage/config', methods=['POST'])
+@advanced
+@local_only
+def api_usage_update():
+    from adk_backend.product_analytics import set_enabled
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or not isinstance(body.get('enabled'), bool):
+        return jsonify({'error': 'enabled must be a boolean'}), 400
+    return jsonify(set_enabled(body['enabled']))
+
+
+@bp.route('/api/usage/events', methods=['POST'])
+@local_only
+def api_usage_events():
+    from adk_backend.chat.identity import resolve_chat_user
+    from adk_backend.product_analytics import accept_batch, status
+    if request.content_length is None or request.content_length > 48_000:
+        return jsonify({'error': 'invalid batch size'}), 413
+    config = status()
+    if not config['enabled'] or not config['configured']:
+        return jsonify({'accepted': 0, 'enabled': config['enabled']}), 202
+    try:
+        accepted = accept_batch(request.get_json(silent=True), resolve_chat_user())
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    return jsonify({'accepted': accepted, 'enabled': True}), 202
+
+
 def _persist_plugin_settings(updates: dict) -> dict:
     """Write backend-setting values through to the saved plugin config.
 

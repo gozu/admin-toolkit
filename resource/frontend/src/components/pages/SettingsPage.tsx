@@ -10,6 +10,7 @@ import { FindingWhitelistCard } from '../FindingWhitelistCard';
 import { AlgorithmReviewCard } from '../AlgorithmReviewCard';
 import { PerfAutoTuneCard } from '../PerfAutoTuneCard';
 import { SupportBundleCard } from '../SupportBundleCard';
+import { ProductAnalyticsCard } from '../ProductAnalyticsCard';
 import { datasetExportConfigStore } from '../../state/datasetExportConfigStore';
 
 export const SELECTED_MAIL_CHANNEL_STORAGE_KEY = 'selectedMailChannel';
@@ -147,6 +148,8 @@ export function SettingsPage() {
       <AgentsOutreachCard onOpenPermissions={() => setActivePage('agent-settings')} />
 
       <RemoteHostsCard />
+
+      <ProductAnalyticsCard onUnlock={() => setShowUnlock(true)} />
 
       <FindingWhitelistCard />
 

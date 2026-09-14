@@ -11,6 +11,7 @@ import { DEPRECATED_PAGES, EXPERIMENTAL_PAGES } from '../../utils/moduleRegistry
 import { useAdoptionVisible } from '../../state/adoptionUnlockStore';
 import { useReportVisible } from '../../state/reportUnlockStore';
 import { Spinner } from '../common/Spinner';
+import { ModuleUsage } from '../../hooks/useProductAnalytics';
 
 function HiddenFeatureNotice({ kind }: { kind: 'experimental' | 'deprecated' }) {
   const title =
@@ -261,6 +262,10 @@ export function PageRouter() {
         }}
       >
         <Suspense fallback={<LoadingSpinner />}>
+          {!hiddenKind && <ModuleUsage page={
+            (!adoptionVisible && (activePage === 'adoption' || activePage === 'user-churn')) ||
+            (!reportVisible && activePage === 'report') ? 'summary' : activePage
+          } data={state.parsedData} />}
           {hiddenKind ? <HiddenFeatureNotice kind={hiddenKind} /> : renderPage(activePage, adoptionVisible, reportVisible)}
         </Suspense>
       </motion.div>

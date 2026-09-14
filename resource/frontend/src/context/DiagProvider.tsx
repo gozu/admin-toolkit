@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useReducer } from 'react';
 import type { ReactNode } from 'react';
+import { captureUsage } from '../state/productAnalytics';
 import type {
   ExtractedFiles,
   ParsedData,
@@ -64,7 +65,10 @@ export function DiagProvider({ children }: { children: ReactNode }) {
   const setComparisonFile = useCallback((slot: 'before' | 'after', file: DiagFile) =>
     dispatch({ type: 'SET_COMPARISON_FILE', payload: { slot, file } }), [dispatch]);
   const clearComparisonFile = useCallback((slot: 'before' | 'after') => dispatch({ type: 'CLEAR_COMPARISON_FILE', payload: slot }), [dispatch]);
-  const setComparisonResult = useCallback((result: ComparisonResult) => dispatch({ type: 'SET_COMPARISON_RESULT', payload: result }), [dispatch]);
+  const setComparisonResult = useCallback((result: ComparisonResult) => {
+    dispatch({ type: 'SET_COMPARISON_RESULT', payload: result });
+    captureUsage('adtk_comparison_completed');
+  }, [dispatch]);
   const setComparisonViewMode = useCallback((mode: ComparisonViewMode) => dispatch({ type: 'SET_COMPARISON_VIEW_MODE', payload: mode }), [dispatch]);
   const setComparisonProcessing = useCallback((slot: 'before' | 'after', isProcessing: boolean) =>
     dispatch({ type: 'SET_COMPARISON_PROCESSING', payload: { slot, isProcessing } }), [dispatch]);

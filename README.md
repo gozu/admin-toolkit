@@ -329,6 +329,7 @@ Everything lives on the **Settings** page (plus the plugin preset for secrets):
 - **Agents chat persistence** — in the plugin settings, `chat_storage` turns on server-side conversation history for the Agents page: Off (browser-only, the default), Built-in SQLite, or a Remote SQL connection (PostgreSQL / SQL Server, with a configurable table prefix). Conversations are stored per user and per fleet host; storage changes apply on the next webapp backend restart.
 - **Performance tuning** — worker counts and cache windows, with a one-click **benchmark auto-tuner** that sweeps worker configurations against your real workload and applies the best one.
 - **Support bundle** — download a ZIP of backend logs, settings, and performance diagnostics for troubleshooting.
+- **Product usage analytics** — enabled by default, with an installation-wide opt-out in Settings or DSS plugin settings. Shares pseudonymous opens, module visits, scan outcomes/durations, diagnostic exports, comparisons, and plugin version with the maintainers through PostHog. No page contents, customer object names, email addresses, logs, or session recordings are collected. See [event definitions and dashboards](docs/posthog/README.md).
 
 <div align="center"><img src="docs/screenshots/settings.png" alt="Settings — mail channel, advanced actions, notebooks, dataset export, experimental features" width="850" /></div>
 
@@ -364,6 +365,7 @@ Every module plugs into shared navigation, lifecycle, and availability contracts
 - **Explicit unlock for writes** — delete / replace / migrate / deploy / send require the per-session red unlock backed by the plugin-level master password.
 - **Scoped host access** — host-bound operations run as DSS macros inside the dedicated `ADMINTOOLKIT` project under the DSS service account, never as arbitrary shell from the webapp.
 - **Backups before destruction** — the Project Cleaner uploads a project backup to a managed folder before any delete.
+- **Usage reporting control** — the local installation's analytics preference applies to all its users, even while inspecting remote hosts. Raw user identities stay in DSS; events use installation-specific pseudonyms. Disabling reporting stops new collection and clears queued events; already submitted events remain in PostHog.
 
 ---
 

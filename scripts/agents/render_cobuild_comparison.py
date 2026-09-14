@@ -222,7 +222,7 @@ def main():
     args.output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = args.output_dir / 'adtk-cobuild-comparison.csv'
     with csv_path.open('w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator='\n')
         writer.writeheader()
         writer.writerows(rows)
     encoded = json.dumps(rows, ensure_ascii=False).replace('<', '\\u003c')

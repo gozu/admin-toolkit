@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.851] - 2026-09-14
+
+### Fixed
+
+- Typing `adoption` again hides Activity and Churn from the sidebar and command palette. The visibility choice persists across reloads; hiding either open page returns to Users Insights.
+
 ## [0.4.850] - 2026-09-14
 
 ### Fixed

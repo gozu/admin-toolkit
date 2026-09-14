@@ -2,8 +2,8 @@ import type { PageId } from '../types';
 import { createSyncStore } from './createSyncStore';
 
 // UI-only reveal flag for the on-demand Users deep-dive. Persisted to
-// localStorage so a device that has opted in keeps it across reloads. Holds no
-// secret — flipping it only shows read-only analytics pages.
+// localStorage so the visibility choice survives reloads. Holds no secret —
+// flipping it only shows or hides read-only analytics pages.
 const STORAGE_KEY = 'admin-toolkit:adoptionUnlock';
 
 // Users-section pages revealed only after the deep-dive is unlocked (typing the
@@ -21,15 +21,17 @@ function readHint(): boolean {
 
 const store = createSyncStore<boolean>(readHint());
 
-/** Imperative reveal — callable from non-React code (the keydown handler). */
-export function unlockAdoption(): void {
-  if (store.get()) return;
-  store.set(true);
+/** Toggle the deep-dive and return its new visibility to the keydown handler. */
+export function toggleAdoption(): boolean {
+  const visible = !store.get();
+  store.set(visible);
   try {
-    globalThis.localStorage?.setItem(STORAGE_KEY, '1');
+    if (visible) globalThis.localStorage?.setItem(STORAGE_KEY, '1');
+    else globalThis.localStorage?.removeItem(STORAGE_KEY);
   } catch {
     /* localStorage unavailable */
   }
+  return visible;
 }
 
 /** React hook — is the deep-dive currently revealed on this device. */

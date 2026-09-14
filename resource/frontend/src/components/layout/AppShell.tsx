@@ -18,7 +18,7 @@ import { useAppVersion } from '../../state/appVersionStore';
 import { datasetExportConfigStore } from '../../state/datasetExportConfigStore';
 import { feedbackFromPageStore } from '../../state/feedbackFromPage';
 import { subscribeSessionEpoch } from '../../state/sessionCache';
-import { unlockAdoption, useAdoptionVisible } from '../../state/adoptionUnlockStore';
+import { EGG_GATED_PAGES, toggleAdoption } from '../../state/adoptionUnlockStore';
 import { pushToast } from '../../state/toastStore';
 import { anonCollect, isAnonEnabled, toggleAnonMode } from '../../utils/anonymize';
 
@@ -57,7 +57,6 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
   const { configuredConnection, loaded: datasetExportLoaded } = datasetExportConfigStore.use();
   const datasetExportEnabled = datasetExportLoaded && !!configuredConnection;
   const reducedMotion = useReducedMotion();
-  const adoptionVisible = useAdoptionVisible();
   const appVersion = useAppVersion();
   // Node id of the instance whose data is on screen (local, remote, or zip) —
   // session-epoch reset keeps it tracking the viewed host. Nothing renders
@@ -117,9 +116,8 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
     return () => window.removeEventListener('admin-toolkit:page-entered', onPageEntered);
   }, [activePage]);
 
-  // On-demand Users deep-dive: type the keyword outside any input to opt in.
+  // On-demand Users deep-dive: the same keyword shows or hides the pages.
   useEffect(() => {
-    if (adoptionVisible) return;
     const handler = (e: KeyboardEvent) => {
       const el = document.activeElement as HTMLElement | null;
       const tag = el?.tagName.toLowerCase();
@@ -127,17 +125,21 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
       if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
       eggBufRef.current = (eggBufRef.current + e.key.toLowerCase()).slice(-8);
       if (eggBufRef.current.endsWith('adoption')) {
-        unlockAdoption();
-        setActivePage('adoption');
+        eggBufRef.current = '';
+        if (toggleAdoption()) {
+          setActivePage('adoption');
+        } else if (EGG_GATED_PAGES.has(activePage)) {
+          setActivePage('users');
+        }
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [adoptionVisible, setActivePage]);
+  }, [activePage, setActivePage]);
 
   // Hidden "DSS dark" theme flavor: type the keyword outside any input to flip
-  // between the two dark flavors. Unlike the adoption egg this never detaches —
-  // the same word toggles back. Buffer lives in a ref so it survives the
+  // between the two dark flavors. The same word toggles back.
+  // Buffer lives in a ref so it survives the
   // re-subscription when toggleDssDark changes with the theme.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

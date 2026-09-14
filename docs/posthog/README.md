@@ -84,6 +84,12 @@ distinct network request. No background lifecycle event contributes to retention
 
 ## Dashboards
 
+| Live dashboard | Customers | Internal |
+|---|---|---|
+| All-hands overview | [Open](https://us.posthog.com/project/609487/dashboard/2096875) | [Open](https://us.posthog.com/project/609487/dashboard/2096879) |
+| Adoption | [Open](https://us.posthog.com/project/609487/dashboard/2096877) | [Open](https://us.posthog.com/project/609487/dashboard/2096880) |
+| Reliability | [Open](https://us.posthog.com/project/609487/dashboard/2096878) | [Open](https://us.posthog.com/project/609487/dashboard/2096882) |
+
 [dashboard-definitions.json](dashboard-definitions.json) prepares **six dashboards**:
 three views for customers and the same three for internal installations. They
 share 34 saved insights across 38 placements, rather than creating duplicate
@@ -174,11 +180,12 @@ python3 scripts/setup_posthog_analytics.py --apply
 ```
 
 The script prompts without echoing or saving the key, or accepts
-`POSTHOG_PERSONAL_API_KEY` from the environment or `~/.posthog-api-key`. It updates only matching names
+`POSTHOG_PERSONAL_API_KEY` from the environment or `~/.posthog-api.key`
+(the saved key location; `~/.posthog-api-key` is also accepted for compatibility). It updates only matching names
 with its own `admin-toolkit-product-analytics-v1` tag, preserves other dashboard
 memberships, shares the same saved insight across dashboards, and leaves unrelated reports alone. Re-running is safe; same-named user-created charts without the management tag are not overwritten. The public `phc_` token cannot
-perform this step. The generated definitions are prepared, not evidence that
-the dashboards already exist in the account.
+perform this step. The dashboards were published to project 609487 on 2026-09-14.
+The personal API key stays outside the repository and is not bundled with the plugin.
 
 References: [capture API](https://posthog.com/docs/api/capture),
 [insights API](https://posthog.com/docs/api/insights),
@@ -186,7 +193,10 @@ References: [capture API](https://posthog.com/docs/api/capture),
 [retention](https://posthog.com/docs/product-analytics/retention).
 
 Dashboard definitions were checked against the official PostHog query schema.
-Until applied with account access, live query execution and rendering remain unverified.
+On 2026-09-14, all 34 saved insight queries executed successfully against the live project;
+all six dashboard memberships (38 placements) and customer/internal query filters were verified.
+At verification, recorded product events were internal only. Customer dashboards are ready
+to populate as customer installations report activity. Browser rendering was not separately inspected.
 
 Design references: [trends aggregations](https://posthog.com/docs/product-analytics/trends/aggregations),
 [funnels](https://posthog.com/docs/product-analytics/funnels), and

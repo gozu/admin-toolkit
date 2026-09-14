@@ -234,10 +234,11 @@ def main():
     print(f'Prepared {len(dashboard_definitions)} dashboards and {len(unique_insights)} shared insights: {args.output}')
     if args.apply:
         config = json.loads((ROOT / 'python-lib/adk_backend/product_analytics_config.json').read_text())
-        key_file = Path.home() / '.posthog-api-key'
         key = os.environ.get('POSTHOG_PERSONAL_API_KEY')
-        if not key and key_file.is_file():
-            key = key_file.read_text().strip()
+        for filename in ('.posthog-api.key', '.posthog-api-key'):
+            key_file = Path.home() / filename
+            if not key and key_file.is_file():
+                key = key_file.read_text().strip()
         if not key:
             key = getpass.getpass('PostHog personal API key (hidden): ')
         if not key or key.startswith('phc_'):

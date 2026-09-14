@@ -7,6 +7,7 @@ import { SHOW_EXPERIMENTAL_STORAGE_KEY } from './pages/SettingsPage';
 import { useToggleFlag } from '../hooks/useToggleFlag';
 import { useModuleAvailability } from '../hooks/useModuleAvailability';
 import { EGG_GATED_PAGES, useAdoptionVisible } from '../state/adoptionUnlockStore';
+import { useReportVisible } from '../state/reportUnlockStore';
 
 const IS_MAC =
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
@@ -89,6 +90,7 @@ function CommandPaletteContent({ onClose }: { onClose: () => void }) {
     'experimental-flag-changed',
   );
   const adoptionVisible = useAdoptionVisible();
+  const reportVisible = useReportVisible();
   const hiddenPages = useModuleAvailability();
   const visibleDefs = useMemo(
     () =>
@@ -96,9 +98,10 @@ function CommandPaletteContent({ onClose }: { onClose: () => void }) {
         (d) =>
           (showExperimental || !EXPERIMENTAL_PAGES.has(d.id)) &&
           (adoptionVisible || !EGG_GATED_PAGES.has(d.id)) &&
+          (reportVisible || d.id !== 'report') &&
           !hiddenPages.has(d.id),
       ),
-    [showExperimental, adoptionVisible, hiddenPages],
+    [showExperimental, adoptionVisible, reportVisible, hiddenPages],
   );
 
   // Snapshot recents once per palette open (content remounts each time)

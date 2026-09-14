@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.852] - 2026-09-14
+
+### Changed
+
+- Report is hidden by default. Typing `report` outside inputs shows and opens it; typing it again hides it from navigation and the command palette, returning an open report to Summary. Visibility persists across reloads independently of advanced tools.
+
 ## [0.4.851] - 2026-09-14
 
 ### Fixed

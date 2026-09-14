@@ -6,7 +6,7 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.851-blue)
+![Version](https://img.shields.io/badge/version-0.4.852-blue)
 ![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-13%2B-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -89,7 +89,7 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 
 ### Misc
 
-**Settings** (see [Configuration](#configuration)), **Errors** (parsed backend log errors with context), **Sanity Check** (API self-diagnostics), **DB Health** *(tool)* (PostgreSQL runtimedb bloat/vacuum analysis), **Report** *(tool)* (export findings as a standalone report), with **Feedback** available from the header (file bugs and ideas from inside the app).
+**Settings** (see [Configuration](#configuration)), **Errors** (parsed backend log errors with context), **Sanity Check** (API self-diagnostics), **DB Health** *(tool)* (PostgreSQL runtimedb bloat/vacuum analysis), **Report** (export findings as a standalone report; hidden by default, type `report` outside inputs to show or hide it), with **Feedback** available from the header (file bugs and ideas from inside the app).
 
 ### Full page index
 
@@ -132,7 +132,7 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 | Misc | Errors | Parsed backend log errors |
 | Misc | Sanity Check | API self-diagnostics |
 | Misc | DB Health 🔴 | Runtimedb bloat/vacuum analysis |
-| Misc | Report 🔴 | Exportable findings report |
+| Misc | Report | Exportable findings report; toggle with `report` |
 | Misc | Feedback | In-app bug reports and ideas |
 
 🔴 = advanced tool page, hidden until [Advanced Actions](#advanced-actions-red-unlock) are unlocked.

@@ -19,6 +19,7 @@ import { datasetExportConfigStore } from '../../state/datasetExportConfigStore';
 import { feedbackFromPageStore } from '../../state/feedbackFromPage';
 import { subscribeSessionEpoch } from '../../state/sessionCache';
 import { EGG_GATED_PAGES, toggleAdoption } from '../../state/adoptionUnlockStore';
+import { toggleReport } from '../../state/reportUnlockStore';
 import { pushToast } from '../../state/toastStore';
 import { anonCollect, isAnonEnabled, toggleAnonMode } from '../../utils/anonymize';
 
@@ -116,7 +117,7 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
     return () => window.removeEventListener('admin-toolkit:page-entered', onPageEntered);
   }, [activePage]);
 
-  // On-demand Users deep-dive: the same keyword shows or hides the pages.
+  // On-demand pages: each keyword shows or hides its pages.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const el = document.activeElement as HTMLElement | null;
@@ -130,6 +131,13 @@ export function AppShell({ children, onRefreshCache, onBackToHosts }: AppShellPr
           setActivePage('adoption');
         } else if (EGG_GATED_PAGES.has(activePage)) {
           setActivePage('users');
+        }
+      } else if (eggBufRef.current.endsWith('report')) {
+        eggBufRef.current = '';
+        if (toggleReport()) {
+          setActivePage('report');
+        } else if (activePage === 'report') {
+          setActivePage('summary');
         }
       }
     };

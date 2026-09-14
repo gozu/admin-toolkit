@@ -134,7 +134,7 @@ export const MODULES: readonly ModuleDefinition[] = [
   { id: 'logs', label: 'Errors', section: 'Misc', navSection: 'MISC', keywords: ['log', 'error', 'exception', 'stack'], badge: 'logs', availability: 'always', lifecycle: { fields: ['logsLoading'] } },
   { id: 'sanity-check', label: 'Sanity Check', section: 'Misc', navSection: 'MISC', keywords: ['sanity', 'check', 'diagnostics', 'api'], availability: 'always', lifecycle: { fields: ['sanityCheckLoading'] } },
   { id: 'db-health', label: 'DB Health', section: 'Misc', navSection: 'MISC', keywords: ['postgres', 'database', 'vacuum', 'tables', 'runtimedb', 'bloat'], tool: true, availability: 'runtime-db', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['dbHealthLoading'] } },
-  { id: 'report', label: 'Report', section: 'Misc', navSection: 'MISC', keywords: ['report', 'export', 'download'], tool: true, availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['reportLoading'] } },
+  { id: 'report', label: 'Report', section: 'Misc', navSection: 'MISC', keywords: ['report', 'export', 'download'], availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['reportLoading'] } },
   { id: 'feedback', label: 'Feedback', section: 'Misc', navSection: 'MISC', keywords: ['feedback', 'bug', 'idea', 'report', 'suggestion'], availability: 'always', noLoadGlyph: true, analysis: 'manual', lifecycle: { fields: ['feedbackLoading'] } },
 ] as const;
 

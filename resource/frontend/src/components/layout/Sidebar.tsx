@@ -19,6 +19,7 @@ import { useAppVersion } from '../../state/appVersionStore';
 import { getDssBaseUrl } from '../../utils/codeEnvUsageLinks';
 import { useRedVisible } from '../../state/redUnlockStore';
 import { EGG_GATED_PAGES, useAdoptionVisible } from '../../state/adoptionUnlockStore';
+import { useReportVisible } from '../../state/reportUnlockStore';
 import { ExternalLinkIcon } from '../ExternalLinkIcon';
 import { DisclosureChevron } from '../common/DisclosureChevron';
 
@@ -799,6 +800,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
   const redVisible = useRedVisible();
   const appVersion = useAppVersion();
   const adoptionVisible = useAdoptionVisible();
+  const reportVisible = useReportVisible();
   const hiddenPages = useModuleAvailability();
   const reduced = useReducedMotion();
 
@@ -872,6 +874,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
     .map((section) => ({
       ...section,
       items: section.items.filter((id) => {
+        if (id === 'report' && !reportVisible) return false;
         if (EGG_GATED_PAGES.has(id) && !adoptionVisible) return false;
         if (hiddenPages.has(id)) return false;
         const m = MODULE_BY_ID[id];

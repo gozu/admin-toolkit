@@ -9,6 +9,7 @@ import {
 import { useToggleFlag } from '../../hooks/useToggleFlag';
 import { DEPRECATED_PAGES, EXPERIMENTAL_PAGES } from '../../utils/moduleRegistry';
 import { useAdoptionVisible } from '../../state/adoptionUnlockStore';
+import { useReportVisible } from '../../state/reportUnlockStore';
 import { Spinner } from '../common/Spinner';
 
 function HiddenFeatureNotice({ kind }: { kind: 'experimental' | 'deprecated' }) {
@@ -122,7 +123,7 @@ const crossfadeTransition = {
   ease: [0.16, 1, 0.3, 1] as [number, number, number, number],
 };
 
-function renderPage(activePage: PageId, adoptionVisible: boolean): React.ReactNode {
+function renderPage(activePage: PageId, adoptionVisible: boolean, reportVisible: boolean): React.ReactNode {
   switch (activePage) {
     case 'mission-control':
       return <MissionControlPage />;
@@ -182,7 +183,7 @@ function renderPage(activePage: PageId, adoptionVisible: boolean): React.ReactNo
     case 'plugins':
       return <ToolsContainer />;
     case 'report':
-      return <ReportPage />;
+      return reportVisible ? <ReportPage /> : <SummaryPage />;
     case 'db-health':
       return <DbHealthPage />;
     case 'llm-audit':
@@ -220,6 +221,7 @@ export function PageRouter() {
     'deprecated-flag-changed',
   );
   const adoptionVisible = useAdoptionVisible();
+  const reportVisible = useReportVisible();
 
   useEffect(() => {
     if (prevPageRef.current !== activePage) {
@@ -259,7 +261,7 @@ export function PageRouter() {
         }}
       >
         <Suspense fallback={<LoadingSpinner />}>
-          {hiddenKind ? <HiddenFeatureNotice kind={hiddenKind} /> : renderPage(activePage, adoptionVisible)}
+          {hiddenKind ? <HiddenFeatureNotice kind={hiddenKind} /> : renderPage(activePage, adoptionVisible, reportVisible)}
         </Suspense>
       </motion.div>
     </AnimatePresence>

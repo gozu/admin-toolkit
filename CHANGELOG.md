@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.853] - 2026-09-14
+
 ### Added
 
 - PostHog product usage analytics with an installation-wide opt-out, stable pseudonymous user/installation IDs, and separate customer/internal attribution (tam-global and akaos are internal). Tracks webapp opens, module visits, actual result visibility, scan outcomes and durations, diagnostic snapshot downloads, and completed comparisons.

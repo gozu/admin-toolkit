@@ -19,46 +19,46 @@ import {
   overlapRisk,
 } from '../../utils/scenarioSchedule';
 import type { ScenarioRow } from '../../types';
+import {
+  OUTCOME_COLORS,
+  historyTicks,
+  historyWindow,
+  runSegments,
+  runtimeLoad,
+  type RunSegment,
+} from '../../utils/scenarioHistory';
 
 const GRID_COLS =
   'minmax(6rem,0.85fr) minmax(9rem,1.3fr) minmax(8rem,1.15fr) minmax(4.5rem,0.55fr) minmax(5rem,0.7fr) minmax(16rem,3fr)';
 
-const CATEGORY_META: Record<
-  ScenarioCategory,
-  { label: string; title: string; className: string }
-> = {
-  'active-time-based': {
-    label: 'Active time-based',
-    title: 'Enabled scenarios with at least one active time-based trigger.',
-    className:
-      'bg-[var(--neon-green)]/20 text-[var(--neon-green)] border border-[var(--neon-green)]/40',
-  },
-  'inactive-time-based': {
-    label: 'Inactive time-based',
-    title: 'Disabled scenarios that still contain at least one active time-based trigger.',
-    className:
-      'bg-[var(--text-tertiary)]/15 text-[var(--text-secondary)] border border-[var(--text-tertiary)]/30',
-  },
-  'event-based': {
-    label: 'Event-based',
-    title: 'Scenarios with an active event trigger and no active time-based trigger.',
-    className:
-      'bg-[var(--neon-purple)]/20 text-[var(--neon-purple)] border border-[var(--neon-purple)]/40',
-  },
-  'no-trigger': {
-    label: 'No trigger',
-    title: 'Scenarios with no active trigger; they can only be started manually or through the API.',
-    className:
-      'bg-[var(--neon-amber)]/15 text-[var(--neon-amber)] border border-[var(--neon-amber)]/35',
-  },
-};
-
-const OUTCOME_COLORS: Record<string, string> = {
-  SUCCESS: 'var(--neon-green)',
-  WARNING: 'var(--neon-amber)',
-  FAILED: 'var(--neon-red)',
-  ABORTED: 'var(--neon-red)',
-};
+const CATEGORY_META: Record<ScenarioCategory, { label: string; title: string; className: string }> =
+  {
+    'active-time-based': {
+      label: 'Active time-based',
+      title: 'Enabled scenarios with at least one active time-based trigger.',
+      className:
+        'bg-[var(--neon-green)]/20 text-[var(--neon-green)] border border-[var(--neon-green)]/40',
+    },
+    'inactive-time-based': {
+      label: 'Inactive time-based',
+      title: 'Disabled scenarios that still contain at least one active time-based trigger.',
+      className:
+        'bg-[var(--text-tertiary)]/15 text-[var(--text-secondary)] border border-[var(--text-tertiary)]/30',
+    },
+    'event-based': {
+      label: 'Event-based',
+      title: 'Scenarios with an active event trigger and no active time-based trigger.',
+      className:
+        'bg-[var(--neon-purple)]/20 text-[var(--neon-purple)] border border-[var(--neon-purple)]/40',
+    },
+    'no-trigger': {
+      label: 'No trigger',
+      title:
+        'Scenarios with no active trigger; they can only be started manually or through the API.',
+      className:
+        'bg-[var(--neon-amber)]/15 text-[var(--neon-amber)] border border-[var(--neon-amber)]/35',
+    },
+  };
 
 /** "in 34 min" / "in 2 h" / "in 3 d" — DSS's own nextRun vs the scan finish
  *  time (never the wall clock: the React Compiler purity rule bans Date.now()
@@ -95,13 +95,13 @@ export function ScenariosPage() {
   const { data, loading, error, scanPhase, scanMessage, startedAt, finishedAt } =
     scenariosScan.use();
 
-  // Preserve the diag-parser page's initial "Active" view: an explicit selected
-  // category, ORed with the others, empty selection = show all.
+  // Run history includes disabled and manually triggered scenarios by default.
   const [categoryFilter, setCategoryFilter] = useState<Set<ScenarioCategory>>(
-    () => new Set<ScenarioCategory>(['active-time-based']),
+    () => new Set<ScenarioCategory>(),
   );
   const [range, setRange] = useState<RangeKey>('month');
-
+  const [view, setView] = useState<'history' | 'schedule'>('history');
+  const history = view === 'history';
 
   const lifecycle = scenariosScan.lifecycle();
   const complete = scanPhase === 'complete' && !!data;
@@ -110,13 +110,8 @@ export function ScenariosPage() {
 
   const allScenarios = useMemo(() => data?.scenarios ?? [], [data]);
   const categoryCounts = useMemo(() => countScenarioCategories(allScenarios), [allScenarios]);
-  const runningNow = useMemo(
-    () => allScenarios.filter((s) => s.running).length,
-    [allScenarios],
-  );
-  // Health signals across ALL scenarios (not just the filtered view) — the
-  // filter defaults to active-time-based, and a broken chain on an event-based
-  // row must not be invisible.
+  const runningNow = useMemo(() => allScenarios.filter((s) => s.running).length, [allScenarios]);
+  // Health signals stay visible across ALL scenarios when a filter hides rows.
   const signals = useMemo(() => {
     let failing = 0;
     let silent = 0;
@@ -158,20 +153,30 @@ export function ScenariosPage() {
     [shownTimeBased],
   );
 
-  const load = useMemo(() => bucketLoad(shownRows, range), [shownRows, range]);
-  const maxLoad = useMemo(() => Math.max(1, ...load.map((b) => b.count)), [load]);
+  const load = useMemo(
+    () => (history ? runtimeLoad(shownRows, range, nowMs) : bucketLoad(shownRows, range)),
+    [shownRows, range, nowMs, history],
+  );
+  const maxLoad = useMemo(() => Math.max(Number.EPSILON, ...load.map((b) => b.count)), [load]);
   const peakBucket = useMemo(
     () => load.reduce((mi, b, i, arr) => (b.count > arr[mi].count ? i : mi), 0),
     [load],
   );
   const peak = useMemo(() => peakTimeOfDay(shownActiveTimeBased), [shownActiveTimeBased]);
-  const ticks = useMemo(() => axisTicks(range), [range]);
+  const ticks = useMemo(
+    () => (history ? historyTicks(range, nowMs) : axisTicks(range)),
+    [range, nowMs, history],
+  );
   const rows = useMemo(
-    () => shownRows.map((s) => ({ scenario: s, segments: projectSegments(s, range) })),
-    [shownRows, range],
+    () =>
+      shownRows.map((s) => ({
+        scenario: s,
+        segments: history ? runSegments(s, range, nowMs) : projectSegments(s, range),
+      })),
+    [shownRows, range, nowMs, history],
   );
 
-  const showAdvisor = peak.count >= 3;
+  const showAdvisor = !history && peak.count >= 3;
   const toggleCategoryFilter = (category: ScenarioCategory) => {
     setCategoryFilter((previous) => {
       const next = new Set(previous);
@@ -187,14 +192,24 @@ export function ScenariosPage() {
         <div className="flex flex-wrap items-start gap-3">
           <div>
             <h4 className="text-sm font-semibold text-[var(--text-primary)]">
-              Scenario schedules
+              Scenario runs and schedules
             </h4>
             <p className="mt-0.5 max-w-3xl text-xs text-[var(--text-muted)]">
-              When scenarios are <em>configured</em> to fire, projected onto one shared timeline —
-              clustering (dozens of scenarios at 02:00) shows up as a load spike. Trigger times are
-              normalized to server time{data?.serverTz ? ` (${data.serverTz})` : ''};{' '}
-              <strong>Next run</strong> is DSS&apos;s own computation, and{' '}
-              <strong>Last run</strong> comes from the real run history.
+              {history ? (
+                <>
+                  Actual completed runs, colored by outcome and sized by recorded duration. Latest
+                  10 runs fetched per scenario; this is a sample, not a complete period history.
+                  Load uses recorded runtime, including failed runs, and shows average concurrent
+                  sampled runs. Times are local to your browser.
+                </>
+              ) : (
+                <>
+                  Configured trigger times projected onto a shared timeline in server time
+                  {data?.serverTz ? ` (${data.serverTz})` : ''}. Load counts distinct scenarios
+                  scheduled per bucket; it does not measure runtime.
+                  <strong> Next run</strong> is DSS&apos;s own computation.
+                </>
+              )}
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -219,7 +234,11 @@ export function ScenariosPage() {
         </div>
 
         {(loading || lifecycle.phase === 'done') && (
-          <ProgressIndicator lifecycle={lifecycle} message={loading ? scanMessage : undefined} hideWhenDone />
+          <ProgressIndicator
+            lifecycle={lifecycle}
+            message={loading ? scanMessage : undefined}
+            hideWhenDone
+          />
         )}
 
         {data && allScenarios.length > 0 && (
@@ -257,10 +276,7 @@ export function ScenariosPage() {
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="text-xs text-[var(--text-muted)]">Signals:</span>
             {signals.failing > 0 && (
-              <span
-                className="badge badge-critical"
-                title="Newest completed run FAILED or ABORTED"
-              >
+              <span className="badge badge-critical" title="Newest completed run FAILED or ABORTED">
                 {signals.failing} failing
               </span>
             )}
@@ -345,23 +361,35 @@ export function ScenariosPage() {
         <div className="glass-card overflow-hidden">
           {/* Timeline legend + range controls */}
           <div className="px-4 py-2.5 border-b border-[var(--border-glass)] flex items-center justify-between flex-wrap gap-2">
+            <div className="flex gap-1 bg-[var(--bg-elevated)] rounded-lg p-1">
+              <SegButton active={history} onClick={() => setView('history')}>
+                Run history
+              </SegButton>
+              <SegButton active={!history} onClick={() => setView('schedule')}>
+                Configured schedules
+              </SegButton>
+            </div>
             <div className="flex items-center gap-3 text-[10px] text-[var(--text-secondary)]">
-              <span className="flex items-center gap-1">
-                <span
-                  className="inline-block w-3.5 h-[3px] rounded-full"
-                  style={{ backgroundColor: 'var(--neon-green)' }}
-                />
-                active schedule
-              </span>
-              <span className="flex items-center gap-1">
-                <span
-                  className="inline-block w-3.5 h-[3px] rounded-full"
-                  style={{
-                    backgroundColor: 'color-mix(in srgb, var(--text-muted) 70%, transparent)',
-                  }}
-                />
-                inactive
-              </span>
+              {(history
+                ? [
+                    ['success', OUTCOME_COLORS.SUCCESS],
+                    ['warning', OUTCOME_COLORS.WARNING],
+                    ['failed / aborted', OUTCOME_COLORS.FAILED],
+                    ['unknown', 'var(--text-tertiary)'],
+                  ]
+                : [
+                    ['active schedule', 'var(--neon-green)'],
+                    ['inactive', 'var(--text-muted)'],
+                  ]
+              ).map(([label, color]) => (
+                <span key={label} className="flex items-center gap-1">
+                  <span
+                    className="inline-block w-3.5 h-[3px] rounded-full"
+                    style={{ backgroundColor: color }}
+                  />
+                  {label}
+                </span>
+              ))}
             </div>
             <div className="flex gap-1 bg-[var(--bg-elevated)] rounded-lg p-1">
               {RANGES.map((r) => (
@@ -372,6 +400,13 @@ export function ScenariosPage() {
             </div>
           </div>
 
+          {history && nowMs > 0 && (
+            <div className="px-4 py-2 text-[10px] text-[var(--text-muted)]">
+              {new Date(historyWindow(range, nowMs).start).toLocaleString()} –{' '}
+              {new Date(nowMs).toLocaleString()}
+              {' · '}Up to 10 recent runs per scenario. Gaps can reflect the sample limit.
+            </div>
+          )}
           {/* Advisor callout */}
           {showAdvisor && (
             <div className="px-4 pt-3">
@@ -408,9 +443,9 @@ export function ScenariosPage() {
                     className="text-[10px] uppercase tracking-wide text-[var(--text-muted)] self-center"
                     style={{ gridColumn: '1 / 6' }}
                   >
-                    Load distribution
+                    {history ? 'Runtime load · sampled' : 'Scheduled scenarios'}
                     <span className="ml-1 normal-case tracking-normal">
-                      ({shownTimeBased.length} time-based)
+                      {history ? '(avg concurrent runs)' : `(${shownTimeBased.length} time-based)`}
                     </span>
                   </div>
                   <div className="relative h-10 flex items-end gap-px">
@@ -418,9 +453,14 @@ export function ScenariosPage() {
                       <div
                         key={b.index}
                         className="flex-1 rounded-t-sm"
-                        title={`${b.label}: ${b.count} scenario${b.count === 1 ? '' : 's'}`}
+                        title={
+                          history && 'runtimeMs' in b
+                            ? `${b.label}: ${b.count.toFixed(3)} average concurrent runs · ${fmtDuration(b.runtimeMs as number)} total runtime (sampled)`
+                            : `${b.label}: ${b.count} scheduled scenario${b.count === 1 ? '' : 's'}`
+                        }
                         style={{
-                          height: `${Math.max(b.count > 0 ? 8 : 0, (b.count / maxLoad) * 100)}%`,
+                          height: `${(b.count / maxLoad) * 100}%`,
+                          minHeight: b.count > 0 ? '1px' : 0,
                           backgroundColor:
                             b.index === peakBucket && b.count > 0
                               ? 'var(--neon-magenta)'
@@ -447,8 +487,16 @@ export function ScenariosPage() {
                       .map((t, i) => (
                         <span
                           key={i}
-                          className="absolute -translate-x-1/2 whitespace-nowrap"
-                          style={{ left: `${t.pos * 100}%` }}
+                          className="absolute whitespace-nowrap"
+                          style={{
+                            left: `${t.pos * 100}%`,
+                            transform:
+                              t.pos === 0
+                                ? 'none'
+                                : t.pos === 1
+                                  ? 'translateX(-100%)'
+                                  : 'translateX(-50%)',
+                          }}
                         >
                           {t.label}
                         </span>
@@ -465,6 +513,7 @@ export function ScenariosPage() {
                       segments={segments}
                       ticks={ticks}
                       nowMs={nowMs}
+                      history={history}
                     />
                   ))}
                 </div>
@@ -493,11 +542,13 @@ function ScenarioTimelineRow({
   segments,
   ticks,
   nowMs,
+  history,
 }: {
   scenario: ScenarioRow;
   segments: ScheduleSegment[];
   ticks: ReturnType<typeof axisTicks>;
   nowMs: number;
+  history: boolean;
 }) {
   // A row whose settings fetch failed carries no triggers; DSS's own digest
   // from the listing still tells the truth about its schedule.
@@ -622,7 +673,9 @@ function ScenarioTimelineRow({
           'truncate text-xs ' +
           (scenario.settingsError ? 'text-[var(--neon-yellow)]' : 'text-[var(--text-secondary)]')
         }
-        title={scenario.settingsError ? `Settings unreadable: ${scenario.settingsError}` : triggerText}
+        title={
+          scenario.settingsError ? `Settings unreadable: ${scenario.settingsError}` : triggerText
+        }
       >
         {triggerText}
       </div>
@@ -641,8 +694,7 @@ function ScenarioTimelineRow({
             <span
               className="inline-block h-2 w-2 shrink-0 rounded-full"
               style={{
-                backgroundColor:
-                  OUTCOME_COLORS[scenario.lastRunOutcome] ?? 'var(--text-tertiary)',
+                backgroundColor: OUTCOME_COLORS[scenario.lastRunOutcome] ?? 'var(--text-tertiary)',
               }}
             />
             <span
@@ -662,7 +714,15 @@ function ScenarioTimelineRow({
           </span>
         )}
       </div>
-      <ScheduleTrack ticks={ticks} segments={segments} active={scenario.active} />
+      <ScheduleTrack
+        ticks={ticks}
+        segments={segments}
+        active={scenario.active}
+        history={history}
+        emptyLabel={
+          scenario.runsError ? 'Run history unreadable' : 'No sampled runs in this period'
+        }
+      />
     </div>
   );
 }
@@ -680,6 +740,7 @@ function SegButton({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={
         'px-3 py-1 text-xs font-medium rounded transition-colors ' +
         (active
@@ -696,10 +757,14 @@ function ScheduleTrack({
   ticks,
   segments,
   active,
+  history,
+  emptyLabel,
 }: {
   ticks: ReturnType<typeof axisTicks>;
   segments: ScheduleSegment[];
   active: boolean;
+  history: boolean;
+  emptyLabel: string;
 }) {
   const color = active
     ? 'var(--neon-green)'
@@ -719,46 +784,40 @@ function ScheduleTrack({
           }}
         />
       ))}
-      {/* Schedule marks. Calendar ranges: one short bar per firing day cell.
-          24h point fires: a fixed-width pill centered on the clock time. */}
-      {segments.map((s, i) =>
-        s.point ? (
+      {history && segments.length === 0 && (
+        <span className="absolute inset-0 flex items-center text-[10px] text-[var(--text-tertiary)]">
+          {emptyLabel}
+        </span>
+      )}
+      {segments.map((s, i) => {
+        const outcome = history ? (s as RunSegment).outcome : undefined;
+        const segmentColor = history
+          ? (OUTCOME_COLORS[outcome ?? ''] ?? 'var(--text-tertiary)')
+          : color;
+        return (
           <div
             key={i}
             className="absolute rounded-full"
             title={s.label}
+            data-outcome={outcome}
             style={{
               left: `${s.start * 100}%`,
-              width: '14px',
-              top: '50%',
-              height: '4px',
-              transform: 'translate(-50%, -50%)',
-              backgroundColor: color,
-              boxShadow: active
-                ? '0 0 5px color-mix(in srgb, var(--neon-green) 55%, transparent)'
-                : 'none',
-            }}
-          />
-        ) : (
-          <div
-            key={i}
-            className="absolute rounded-full"
-            title={s.label}
-            style={{
-              left: `${s.start * 100}%`,
-              width: `${(s.end - s.start) * 100}%`,
+              width: s.point ? (history ? '3px' : '14px') : `${(s.end - s.start) * 100}%`,
               minWidth: '3px',
               top: '50%',
-              height: '3px',
-              transform: 'translateY(-50%)',
-              backgroundColor: color,
-              boxShadow: active
-                ? '0 0 5px color-mix(in srgb, var(--neon-green) 55%, transparent)'
-                : 'none',
+              height: history ? '5px' : '3px',
+              transform: s.point ? 'translate(-50%, -50%)' : 'translateY(-50%)',
+              backgroundColor: segmentColor,
+              // Very short runs can share a pixel at wide ranges. Keep failures visible.
+              zIndex: outcome === 'FAILED' || outcome === 'ABORTED' ? 3 : outcome === 'WARNING' ? 2 : 1,
+              boxShadow:
+                !history && active
+                  ? '0 0 5px color-mix(in srgb, var(--neon-green) 55%, transparent)'
+                  : 'none',
             }}
           />
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }

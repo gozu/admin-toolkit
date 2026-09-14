@@ -40,10 +40,14 @@ export interface ScenarioChainIssue {
   kind: 'missing' | 'dormant';
 }
 
-/** One scenario, joined from the live listing (active/running/nextRun — state
- *  a diagnostic dump never carried), the per-scenario settings fetch
- *  (structured triggers, reporters, versionTag) and the per-scenario run
- *  history (outcomes, durations, streaks). */
+/** A completed run with its own outcome and recorded timestamps. */
+export interface ScenarioRun {
+  outcome: string;
+  start: number | null;
+  end: number | null;
+}
+
+/** One scenario joined from the live listing, settings, and run history. */
 export interface ScenarioRow {
   projectKey: string;
   id: string;
@@ -82,6 +86,8 @@ export interface ScenarioRow {
   avgDurationMs: number | null;
   runsSampled: number;
   recentOutcomes: string[];
+  /** Individual completed runs from the latest-10 sample. Optional for older scans. */
+  recentRuns?: ScenarioRun[];
   runsError: string | null;
 
   /** Patched onto the row from the done event; undefined until then, null

@@ -113,7 +113,7 @@ The deepest module — code-env sprawl is usually the #1 health problem on a mat
 | Projects | Scenarios | Full-hour run bars, precise sampled runtime line chart, configured schedules, live next/last runs, failure/silence/overlap/chain/run-as signals |
 | Projects | Compute | Compute usage by project |
 | Projects | Cost | CRU and project spend analysis |
-| Users | Users | Ownership, activity, accountability |
+| Users | Insights | Ownership, activity, accountability |
 | Users | Activity | Adoption, engagement, retention, and activity trends |
 | Users | Churn | Account lifecycle, dormant seats, reassignment estimates and reclaim candidates |
 | Plugins | Installed | Plugin inventory with usage |

@@ -89,7 +89,8 @@ def _exec_plugin_update(client, host, target):
     folder = _base.backup_folder(client, host)
     return _base.post_backend_action(client, host, 'plugin-update',
                                      {'pluginId': target['pluginId'],
-                                      'folderId': folder['id']})
+                                      'folderId': folder['id']},
+                                     timeout=getattr(client, 'heavy_timeout', 900))
 
 
 def _plan_plugin_code_env_rebuild(client, host, target, params):

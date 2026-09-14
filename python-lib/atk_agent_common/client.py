@@ -133,9 +133,9 @@ class ToolkitClient:
         return self._request('GET', path, host=host, params=params,
                              heavy=heavy, progress_path=progress_path)
 
-    def post(self, path, host='local', json=None, red=False, params=None, retry_safe=False):
+    def post(self, path, host='local', json=None, red=False, params=None, retry_safe=False, timeout=None):
         return self._request('POST', path, host=host, json=json, red=red, params=params,
-                             retry_safe=retry_safe)
+                             retry_safe=retry_safe, timeout=timeout)
 
     def delete(self, path, host='local', json=None, red=True, params=None, headers=None):
         return self._request('DELETE', path, host=host, json=json, red=red,
@@ -228,9 +228,9 @@ class ToolkitClient:
 
     def _request(self, method, path, host='local', params=None, json=None,
                  heavy=False, red=False, progress_path=None, extra_headers=None,
-                 retry_safe=False):
+                 retry_safe=False, timeout=None):
         eff_host = self._effective_host(path, host)
-        timeout = self.heavy_timeout if heavy else self.timeout
+        timeout = timeout or (self.heavy_timeout if heavy else self.timeout)
         retried_red = retried_keys = False
         while True:
             try:
@@ -238,6 +238,11 @@ class ToolkitClient:
                                 timeout=timeout, extra_headers=extra_headers,
                                 retry_safe=retry_safe)
             except requests.exceptions.Timeout:
+                if method not in ('GET', 'HEAD'):
+                    raise BackendError(
+                        'Timed out after %ss calling %s; the operation may still be running.' % (timeout, path),
+                        remediation='Inspect the target state and running DSS operation before retrying. '
+                                    'The mutation was not automatically retried; its outcome is unknown.')
                 if heavy:
                     raise ScanTimeout(
                         'The scan behind %s is still running after %ss.' % (path, timeout),

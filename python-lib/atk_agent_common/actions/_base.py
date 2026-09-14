@@ -29,11 +29,11 @@ def backup_folder(client, host):
     return folders[0]
 
 
-def post_backend_action(client, host, action, payload):
+def post_backend_action(client, host, action, payload, timeout=None):
     """Run one backend admin-action impl and normalize refusals to
     ToolkitError (the backend returns {'ok': False, 'error': ...} on 409)."""
     result = client.post('/api/tools/admin-actions/%s' % action, host=host, red=True,
-                         json=payload)
+                         json=payload, **({'timeout': timeout} if timeout is not None else {}))
     if isinstance(result, dict) and result.get('ok') is False:
         raise ToolkitError('%s refused/failed: %s' % (action, result.get('error') or result))
     return result

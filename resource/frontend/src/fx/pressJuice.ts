@@ -1,8 +1,7 @@
-// Game-feel button presses: action buttons squash on pointerdown and spring
+// Opt-in button presses: marked sidebar buttons squash on pointerdown and spring
 // back with a slight overshoot on release. WAAPI on the standalone `scale`
 // property, so it never fights Tailwind transitions or framer-motion
-// transforms. Disclosure buttons stay stationary so edge clicks remain inside
-// their hitboxes throughout the press.
+// transforms. Unmarked controls never receive this effect.
 
 import { prefersReducedMotion } from './fxBus';
 
@@ -28,7 +27,7 @@ export function initPressJuice(): () => void {
     if (!t || typeof t.closest !== 'function') return;
     const el = t.closest('button, [role="button"]') as HTMLElement | null;
     if (!el || el.hasAttribute('disabled') || el.getAttribute('aria-disabled') === 'true') return;
-    if (el.hasAttribute('aria-expanded')) return;
+    if (!el.hasAttribute('data-press-juice')) return;
     release();
     pressed = el;
     el.animate({ scale: ['1', '0.96'] }, { duration: 110, easing: PRESS_EASE, fill: 'forwards' });

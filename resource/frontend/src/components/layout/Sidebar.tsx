@@ -806,7 +806,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
   // navigation effect, so unrelated re-renders can't cancel it mid-flight
   // (framer would snap a keyframe target on any prop-identity change).
   // Suppressed when the navigation came from a press on the row itself —
-  // the global pressJuice squash already gives that click its feedback —
+  // the opted-in pressJuice squash already gives that click its feedback —
   // so the pulse fires only for keyboard/palette/breadcrumb navigation.
   const pressNavRef = useRef(false);
   const firstNavRef = useRef(true);
@@ -975,6 +975,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
         key={pageId}
         type="button"
         data-page-id={pageId}
+        data-press-juice
         onClick={() => {
           hideRailTip();
           // Guard on a real page change so a click on the already-active row
@@ -1057,6 +1058,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
             onMouseLeave={collapsed ? hideRailTip : undefined}
             title={collapsed ? undefined : 'Back to host picker'}
             aria-label="Back"
+            data-press-juice
             className={`flex items-center gap-2 rounded-md px-2 py-1 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors ${collapsed ? 'justify-center' : ''}`}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">
@@ -1081,6 +1083,7 @@ export function Sidebar({ collapsed, onToggleCollapse, onBackToHosts }: SidebarP
           onMouseLeave={collapsed ? hideRailTip : undefined}
           title={collapsed ? undefined : 'Collapse sidebar'}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          data-press-juice
           className={`flex items-center justify-center w-6 h-6 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors`}
         >
           <svg

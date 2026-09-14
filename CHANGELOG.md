@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.850] - 2026-09-14
+
+### Fixed
+
+- Squash-and-bounce press feedback is opt-in on left-sidebar navigation, Hosts, and collapse buttons. Other controls keep their existing expansion behavior without the global press animation.
+
 ## [0.4.849] - 2026-09-14
 
 ### Fixed

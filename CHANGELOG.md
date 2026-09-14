@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.846] - 2026-09-14
+
+### Fixed
+
+- Projects → Scenarios now defaults to actual run history: failed/aborted runs are red, warnings yellow, and successful runs green, independent of whether the scenario is enabled. Recorded durations determine run widths and sampled runtime load, including runs that cross time buckets. History is explicitly limited to the latest 10 fetched runs per scenario; configured schedules remain available with their distinct-scenario bucket counts.
+
 ## [0.4.845] - 2026-09-11
 
 ### Fixed

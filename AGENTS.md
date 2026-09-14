@@ -63,6 +63,13 @@ Frontend paths below are relative to `resource/frontend/src/`.
 - `TAMGLOBAL` is the internal TAM node (`make deploy-tamglobal-secure`). Customer instances are the real production environments. Routine `make deploy` targets DEV and TAMGLOBAL.
 - Push to GitHub through `make secure-push` (security-gated), never plain `git push`.
 
+### Oversized Security Reviews
+
+- On a review size failure, immediately investigate the largest file contributions using `scripts/secure-push.sh --inspect`. Start with the hypothesis that reports, duplicate exports, generated output, or vendor data dominate; verify it against the files before acting. Do not just retry, raise the cap, or send truncated input to reviewers.
+- Reference reports (including the Headless assessments) do not need LLM content review. Put future non-runtime report output in `docs/reports/`, or add exact legacy report paths to `scripts/security-review-report-excludes.txt`. All changed files retain the local secret pre-scan.
+- Exclude by purpose and path, not blanket extensions or all documentation. Application source, report generators, runtime configuration, dependency manifests/lockfiles, agent instructions, and skills remain in review. Do not move these into the reports directory to reduce size.
+- Rerun `--inspect` after correcting scope, then `make secure-push`. If actual source still exceeds the budget, split it into complete bounded reviews. Explain the measured cause and correction to the user.
+
 ## Key Paths
 
 - Frontend: `resource/frontend/src/`.

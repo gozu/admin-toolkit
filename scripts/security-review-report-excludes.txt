@@ -1,0 +1,13 @@
+# Non-runtime reference reports excluded from LLM content review.
+# All changed files still undergo the local secret pre-scan.
+# Use exact legacy paths or the dedicated reports directory, never extensions.
+# Generators, configuration, lockfiles, agent instructions and skills stay reviewed.
+docs/reports/**
+docs/headless-capability-matrix.csv
+docs/headless-capability-matrix.html
+docs/headless-capability-matrix.json
+docs/headless-cobuild-migration-assessment.md
+docs/headless-disposition-report.html
+docs/headless-disposition-report.md
+docs/headless-integration-assessment.md
+docs/headless-integration-evidence.json

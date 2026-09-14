@@ -1,9 +1,43 @@
 """Unit tests for the code-env build-log parsing core (Code Envs -> Broken)."""
 
+import json
+from types import SimpleNamespace
+from unittest.mock import Mock
+
 import pytest
+from flask import Flask
 
 from adk_backend import code_env_build as ceb
 from adk_backend.routes import code_env_broken as broken
+
+
+@pytest.mark.parametrize('streamed', [True, False])
+@pytest.mark.parametrize('answer', ['## Diagnosis\n\nUse a compatible package.\n', ''])
+def test_advice_ignores_non_text_chunks(monkeypatch, streamed, answer):
+    completion = Mock(settings={})
+    if streamed:
+        completion.execute_streamed.return_value = iter([
+            SimpleNamespace(text=None), SimpleNamespace(), SimpleNamespace(text=''),
+            SimpleNamespace(text=None), SimpleNamespace(text=answer),
+            SimpleNamespace(text=None),
+        ])
+    else:
+        completion.execute_streamed.side_effect = AttributeError('Streaming unavailable')
+        completion.execute.return_value = SimpleNamespace(text=answer or None)
+    project = Mock()
+    project.get_llm.return_value.new_completion.return_value = completion
+    monkeypatch.setattr(broken, '_local_toolkit_project', lambda: project)
+
+    app = Flask(__name__)
+    with app.test_request_context(json={'llmId': 'test-model'}):
+        response = broken.api_code_env_broken_advice()
+        events = response.get_data(as_text=True).split('\n\n')
+
+    chunks = [json.loads(event.split('data: ', 1)[1])['text']
+              for event in events if event.startswith('event: chunk\n')]
+    assert chunks == ([answer] if answer else [])
+    assert any(event.startswith('event: done\n') for event in events)
+    assert not any(event.startswith('event: error\n') for event in events)
 
 
 def _banner(title, ts='2026/08/04 13:13:26.021'):

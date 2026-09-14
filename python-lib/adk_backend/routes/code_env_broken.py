@@ -369,13 +369,17 @@ def api_code_env_broken_advice():
             try:
                 yield "event: phase\ndata: %s\n\n" % json.dumps({"phase": "Generating remediation"})
                 for chunk in completion.execute_streamed():
-                    text = str(chunk.text) if hasattr(chunk, 'text') else ''
-                    if text:
+                    # Metadata/reasoning chunks can carry text=None. Stringifying
+                    # them prefixes the answer with "None" and breaks Markdown.
+                    text = getattr(chunk, 'text', None)
+                    if isinstance(text, str) and text:
                         yield "event: chunk\ndata: %s\n\n" % json.dumps({"text": text})
             except (AttributeError, TypeError):
                 # execute_streamed() not available, fall back
                 resp = completion.execute()
-                yield "event: chunk\ndata: %s\n\n" % json.dumps({"text": str(resp.text)})
+                text = getattr(resp, 'text', None)
+                if isinstance(text, str) and text:
+                    yield "event: chunk\ndata: %s\n\n" % json.dumps({"text": text})
 
             yield "event: done\ndata: %s\n\n" % json.dumps({"llmId": llm_id})
         except Exception as exc:

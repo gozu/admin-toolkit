@@ -86,11 +86,13 @@ export function Modal({ isOpen, onClose, title, children, footer, sizePreset = '
               bounds="parent"
               dragHandleClassName="modal-drag-handle"
               className="modal-content flex flex-col overflow-hidden"
+              // Rnd defaults to inline-block, overriding the flex utility.
+              style={{ display: 'flex' }}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e: React.MouseEvent) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="modal-drag-handle flex items-center justify-between px-4 py-3 border-b border-[var(--border-glass)] cursor-move select-none">
+              <div className="modal-drag-handle flex shrink-0 items-center justify-between px-4 py-3 border-b border-[var(--border-glass)] cursor-move select-none">
                 <h3 className="text-lg font-semibold text-[var(--text-primary)]">{title}</h3>
                 <button
                   onClick={onClose}
@@ -116,11 +118,11 @@ export function Modal({ isOpen, onClose, title, children, footer, sizePreset = '
               </div>
 
               {/* Body */}
-              <div className="flex-1 overflow-auto p-4">{children}</div>
+              <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain p-4">{children}</div>
 
               {/* Footer */}
               {footer && (
-                <div className="px-4 py-3 border-t border-[var(--border-glass)]">{footer}</div>
+                <div className="shrink-0 px-4 py-3 border-t border-[var(--border-glass)]">{footer}</div>
               )}
             </Rnd>
           </motion.div>

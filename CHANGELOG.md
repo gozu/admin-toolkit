@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.849] - 2026-09-14
+
+### Fixed
+
+- Broken code environment advice scrolls through long answers with the modal header kept visible. Empty LLM stream events no longer insert `None` text or break the opening Markdown heading.
+
 ## [0.4.848] - 2026-09-14
 
 ### Fixed

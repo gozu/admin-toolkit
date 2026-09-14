@@ -1369,3 +1369,31 @@ imperative, grounded in real tool capabilities, and honest about heavy scans.
   (db-health, golden) belong on tam-global.
 - **Param `description` HTML** renders only for SEPARATOR params in plugin
   settings; regular field descriptions are plain text.
+
+
+## Per-capability execution paths
+
+Agents → Permissions includes an Execution path selector for every sensor and
+action. Existing preserves the original implementation. Headless / Cobuild uses
+the DSS Cobuild conversation SDK (the same service surface wrapped by Headless)
+to request the exact ADTK operation and explain the observed result. ADTK remains
+the operation executor, including macros, policy checks, plan tokens and audit.
+This is a Cobuild-to-ADTK bridge, not a native Cobuild implementation of 64 tools.
+
+The hidden `agent_capability_providers` map stores `existing` or `cobuild` per
+capability. Missing entries default to `existing`; selections are independent of
+Enabled and Autonomous grants. Running clients refresh selections within 30
+seconds. `agent_cobuild_project` selects an existing conversation project on the
+target host (default `ADMINTOOLKIT`). The selected host's DSS identity must have
+access to that project and working AI Services usage. No credentials or approval
+tokens are supplied to Cobuild as tool arguments.
+
+The response retains the observed ADTK result and adds `executionRoute`, including
+the actual executor, Cobuild conversation, timing and explanation. If the initial
+Cobuild request fails, ADTK does not execute or silently fall back. If explanation
+fails after execution, the real action outcome remains intact with an explanation
+warning; the action must not be retried merely to regenerate an explanation.
+
+These selectors route capability calls. They do not change the outer chat model,
+and do not affect standalone log AI analysis, code-environment AI advice or report
+generation. Per-turn Dataiku credit amounts are not reported by this adapter.

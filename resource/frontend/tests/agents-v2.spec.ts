@@ -639,7 +639,7 @@ test.describe('Agent Tuning (mocked backend)', () => {
     // In-memory capability catalog with the two-flag contract shape.
     const sensors = [
       { name: 'instance_health', mode: 'read', description: 'Health snapshot of one host.',
-        enabled: true, autonomous: true },
+        enabled: true, autonomous: true, provider: 'existing' },
     ];
     const actions = [
       { action: 'settings-set', mode: 'read/write', risk: 'amber',
@@ -661,7 +661,11 @@ test.describe('Agent Tuning (mocked backend)', () => {
       const body = JSON.parse(route.request().postData() || '{}') as {
         gates?: Record<string, boolean>;
         autonomous?: Record<string, boolean>;
+        providers?: Record<string, string>;
       };
+      for (const [name, value] of Object.entries(body.providers ?? {})) {
+        for (const sensor of sensors) if (sensor.name === name) sensor.provider = value;
+      }
       for (const [name, value] of Object.entries(body.gates ?? {})) {
         for (const a of actions)
           if (a.action === name) {
@@ -719,6 +723,14 @@ test.describe('Agent Tuning (mocked backend)', () => {
     // Ticking Auto on a disabled action also checks Enabled (server coupling).
     const enabledBox = page.getByRole('checkbox', { name: 'log-cleanup enabled' });
     await expect(enabledBox).not.toBeChecked();
+    const routeSelector = page.getByRole('combobox', { name: 'instance_health execution path' });
+    await expect(routeSelector).toHaveValue('existing');
+    await routeSelector.selectOption('cobuild');
+    await expect(routeSelector).toHaveValue('cobuild');
+    await expect(page.getByRole('checkbox', { name: 'instance_health enabled' })).toBeChecked();
+    await expect(enabledBox).not.toBeChecked();
+    await routeSelector.selectOption('existing');
+    await expect(routeSelector).toHaveValue('existing');
     await page.getByRole('checkbox', { name: 'log-cleanup autonomous' }).check();
     await expect(page.getByRole('checkbox', { name: 'log-cleanup autonomous' })).toBeChecked();
     await expect(enabledBox).toBeChecked();

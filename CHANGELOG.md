@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reworded the host-picker welcome notice with calmer community-beta guidance and a disclosure of default-on usage analytics, the absence of names/email addresses, and the administrator opt-out location.
 
+## [0.4.854] - 2026-09-14
+
+### Added
+
+- Per-capability Existing / Headless–Cobuild selection for all 11 agent sensors and 53 administrative actions. Existing remains the default. The Cobuild bridge requests exact operations and explains their actual results while ADTK retains diagnostics, execution, approvals and audit. Failed explanations preserve completed action outcomes; request failures do not silently fall back.
+
+
 ## [0.4.853] - 2026-09-14
 
 ### Added

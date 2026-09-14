@@ -1,0 +1,614 @@
+[
+  {
+    "at": "2026-09-14T22:10:09.672346+00:00",
+    "capability": "api-key-delete",
+    "attempt": 1,
+    "status": "same",
+    "scope": "New key belonging only to the disposable test user",
+    "existing_seconds": 0.148,
+    "cobuild_seconds": 15.27,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T22:18:09.109611+00:00",
+    "capability": "cluster-detach",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Empty manual cluster attachment; verify absence and readable backup; no cloud resources",
+    "existing_seconds": 4.583,
+    "cobuild_seconds": 20.501,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:59:45.955458+00:00",
+    "capability": "cluster-pods-cleanup",
+    "attempt": 0,
+    "status": "blocked",
+    "scope": "Delete one completed owned pod on a disposable cluster",
+    "reason": "AssertionError during postcondition"
+  },
+  {
+    "capability": "cluster-start",
+    "status": "blocked",
+    "scope": "Existing provisioned one t3.small; no completed paired Cobuild provisioning run",
+    "reason": "Backend restart interrupted the paired lifecycle run",
+    "transport": "live cluster test"
+  },
+  {
+    "capability": "cluster-stop",
+    "status": "blocked",
+    "scope": "Stop initiated on Existing; AWS deletion independently verified; no paired Cobuild stop",
+    "reason": "Backend restart interrupted the paired lifecycle run",
+    "transport": "live cluster test"
+  },
+  {
+    "at": "2026-09-14T22:07:26.283563+00:00",
+    "capability": "code-env-consolidate",
+    "attempt": 1,
+    "status": "same",
+    "scope": "One unused Python recipe moved between owned environments; no code executed",
+    "existing_seconds": 0.752,
+    "cobuild_seconds": 19.541,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T22:01:14.780591+00:00",
+    "capability": "code-env-delete",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Back up and delete unused disposable environment",
+    "existing_seconds": 0.464,
+    "cobuild_seconds": 17.521,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T22:00:54.474612+00:00",
+    "capability": "code-env-update",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Unused Python 3.11 environment with no requested packages",
+    "existing_seconds": 0.879,
+    "cobuild_seconds": 21.991,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "capability": "compute_cost",
+    "attempt": 1,
+    "status": "same",
+    "existing_seconds": 20.297,
+    "cobuild_seconds": 10.494
+  },
+  {
+    "at": "2026-09-14T21:17:30.444604+00:00",
+    "capability": "config_inspect",
+    "attempt": 1,
+    "status": "same",
+    "existing_seconds": 0.79,
+    "cobuild_seconds": 14.605,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:29:13.142912+00:00",
+    "capability": "connection-delete",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Unused disposable connection; definition backup retained by ADTK",
+    "existing_seconds": 4.507,
+    "cobuild_seconds": 23.273,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T22:07:42.721814+00:00",
+    "capability": "connection-index",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Read-only metadata crawl of kaosdb; completion checked, catalog contents not compared",
+    "existing_seconds": 0.169,
+    "cobuild_seconds": 16.268,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:33:06.016910+00:00",
+    "capability": "connection-test",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Read-only DSS connectivity test of akaos kaosdb connection",
+    "existing_seconds": 2.298,
+    "cobuild_seconds": 27.438,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:28:42.492538+00:00",
+    "capability": "connection-update",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Description of disposable connection",
+    "existing_seconds": 2.299,
+    "cobuild_seconds": 26.298,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T22:25:45.701369+00:00",
+    "capability": "continuous-activity-stop",
+    "attempt": 0,
+    "status": "blocked",
+    "scope": "Disposable continuous Python sleep loop; no streaming data or external source",
+    "reason": "DataikuException during fixture"
+  },
+  {
+    "at": "2026-09-14T21:29:40.229438+00:00",
+    "capability": "dataset-clear",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Uploaded dataset containing only synthetic CSV",
+    "existing_seconds": 1.555,
+    "cobuild_seconds": 23.724,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:30:10.280005+00:00",
+    "capability": "dataset-delete",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Unreferenced synthetic CSV dataset",
+    "existing_seconds": 3.244,
+    "cobuild_seconds": 25.448,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T22:16:20.944612+00:00",
+    "capability": "db-analyze",
+    "attempt": 1,
+    "status": "same",
+    "scope": "One owned 10-row table; verify maintenance and preserve row count; temporary DB Health credential restored",
+    "existing_seconds": 0.095,
+    "cobuild_seconds": 16.198,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T22:16:38.259248+00:00",
+    "capability": "db-reindex",
+    "attempt": 1,
+    "status": "same",
+    "scope": "One owned 10-row table; verify maintenance and preserve row count; temporary DB Health credential restored",
+    "existing_seconds": 0.095,
+    "cobuild_seconds": 17.205,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T22:16:04.635780+00:00",
+    "capability": "db-vacuum",
+    "attempt": 1,
+    "status": "same",
+    "scope": "One owned 10-row table; verify maintenance and preserve row count; temporary DB Health credential restored",
+    "existing_seconds": 0.117,
+    "cobuild_seconds": 18.257,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T22:15:46.225299+00:00",
+    "capability": "db_health",
+    "attempt": 1,
+    "status": "same",
+    "existing_seconds": 0.106,
+    "cobuild_seconds": 9.129,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T22:25:19.288368+00:00",
+    "capability": "docker-prune",
+    "attempt": 1,
+    "status": "same",
+    "scope": "One tiny imported dangling image; refuse other candidates; compare all pre-existing image IDs; builder mode untested",
+    "existing_seconds": 5.671,
+    "cobuild_seconds": 22.42,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:58:13.090824+00:00",
+    "capability": "exports-cleanup",
+    "attempt": 1,
+    "status": "same",
+    "scope": "One tiny owned artifact aged to 1980; pre-scan refuses extra candidates",
+    "existing_seconds": 1.861,
+    "cobuild_seconds": 22.968,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "capability": "image-delete",
+    "status": "blocked",
+    "reason": "New fixture excluded by enforced release-date cutoff; awaiting approved old image",
+    "transport": "source inspection of enforced cutoff; no deletion"
+  },
+  {
+    "capability": "instance_health",
+    "attempt": 1,
+    "status": "same",
+    "existing_seconds": 14.543,
+    "cobuild_seconds": 21.994
+  },
+  {
+    "at": "2026-09-14T22:00:28.557550+00:00",
+    "capability": "job-kill",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Abort a disposable Python recipe that only sleeps",
+    "existing_seconds": 1.153,
+    "cobuild_seconds": 17.243,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:58:33.908289+00:00",
+    "capability": "job-logs-cleanup",
+    "attempt": 1,
+    "status": "same",
+    "scope": "One tiny owned artifact aged to 1980; pre-scan refuses extra candidates",
+    "existing_seconds": 1.858,
+    "cobuild_seconds": 18.958,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:59:29.987913+00:00",
+    "capability": "k8s-apply-fix",
+    "attempt": 2,
+    "status": "same",
+    "scope": "Label one owned ConfigMap on the single t3.small test cluster",
+    "existing_seconds": 4.563,
+    "cobuild_seconds": 29.296,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:51:42.331028+00:00",
+    "capability": "k8s-exec-config-tune",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Memory limit on unused disposable execution config",
+    "existing_seconds": 20.052,
+    "cobuild_seconds": 37.2,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "capability": "k8s_health",
+    "attempt": 1,
+    "status": "same",
+    "existing_seconds": 4.302,
+    "cobuild_seconds": 12.883
+  },
+  {
+    "capability": "list_capabilities",
+    "attempt": 1,
+    "status": "same",
+    "existing_seconds": 0.771,
+    "cobuild_seconds": 10.207
+  },
+  {
+    "capability": "list_hosts",
+    "attempt": 1,
+    "status": "same",
+    "existing_seconds": 0.775,
+    "cobuild_seconds": 8.555
+  },
+  {
+    "at": "2026-09-14T21:58:56.895865+00:00",
+    "capability": "log-cleanup",
+    "attempt": 1,
+    "status": "same",
+    "scope": "One uniquely named 1980-dated rotated log; refuses extra candidates",
+    "existing_seconds": 2.974,
+    "cobuild_seconds": 19.981,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "capability": "log_errors",
+    "attempt": 1,
+    "status": "same",
+    "existing_seconds": 0.933,
+    "cobuild_seconds": 9.28
+  },
+  {
+    "capability": "log_tail",
+    "attempt": 3,
+    "status": "same",
+    "existing_seconds": 0.795,
+    "cobuild_seconds": 8.517
+  },
+  {
+    "at": "2026-09-14T21:21:08.601840+00:00",
+    "capability": "notebook-clear-outputs",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Saved synthetic notebook output; no kernel required",
+    "existing_seconds": 1.557,
+    "cobuild_seconds": 25.657,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:57:39.254107+00:00",
+    "capability": "notification-send",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Temporary SMTP channel \u2192 localhost capture sink; no message to a person",
+    "existing_seconds": 0.139,
+    "cobuild_seconds": 20.17,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T22:14:05.403025+00:00",
+    "capability": "plugin-code-env-rebuild",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Unused test plugin; no packages, core libraries or Jupyter requested",
+    "existing_seconds": 3.414,
+    "cobuild_seconds": 21.271,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "capability": "plugin-deploy",
+    "status": "blocked",
+    "reason": "Awaiting authorized second host for disposable plugin",
+    "transport": "no execution"
+  },
+  {
+    "at": "2026-09-14T22:14:06.016705+00:00",
+    "capability": "plugin-uninstall",
+    "attempt": 0,
+    "status": "blocked",
+    "scope": "Unused test plugin: verify absence and readable ZIP backup",
+    "reason": "AssertionError during postcondition"
+  },
+  {
+    "at": "2026-09-14T21:25:57.173328+00:00",
+    "capability": "project-change-owner",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Disposable project and test user",
+    "existing_seconds": 3.274,
+    "cobuild_seconds": 26.259,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:59:19.717526+00:00",
+    "capability": "project-clear-webapp-runs",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Owned old run removed; newest marker run must survive",
+    "existing_seconds": 1.86,
+    "cobuild_seconds": 20.96,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T22:10:52.097792+00:00",
+    "capability": "project-delete",
+    "attempt": 3,
+    "status": "failed",
+    "scope": "Disposable project: independently verify absence and readable ZIP backup",
+    "reason": "BackendError during fixture"
+  },
+  {
+    "at": "2026-09-14T22:10:37.534834+00:00",
+    "capability": "project-export",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Disposable project: read exported ZIP and confirm project survives",
+    "existing_seconds": 0.534,
+    "cobuild_seconds": 16.415,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:52:02.089519+00:00",
+    "capability": "project-set-cluster",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Select test cluster on disposable project; no workload launched",
+    "existing_seconds": 0.139,
+    "cobuild_seconds": 19.265,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T22:13:57.272862+00:00",
+    "capability": "project-variables-set",
+    "attempt": 1,
+    "status": "same",
+    "scope": "DSS runtime: value, audit row and settings history checked",
+    "existing_seconds": 0.405,
+    "cobuild_seconds": 18.331,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "capability": "python-run",
+    "status": "blocked",
+    "reason": "Awaiting exact-code approval for print(6 * 7) on each path",
+    "transport": "no execution"
+  },
+  {
+    "at": "2026-09-14T21:19:40.376053+00:00",
+    "capability": "scenario-disable",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Disable trigger-free disposable scenario",
+    "existing_seconds": 1.565,
+    "cobuild_seconds": 23.907,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:19:13.736526+00:00",
+    "capability": "scenario-enable",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Enable trigger-free disposable scenario",
+    "existing_seconds": 2.329,
+    "cobuild_seconds": 25.618,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T22:10:32.174685+00:00",
+    "capability": "scenario-kill",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Abort a disposable 180-second sleep; no business processing",
+    "existing_seconds": 0.083,
+    "cobuild_seconds": 16.206,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:31:09.776710+00:00",
+    "capability": "scenario-run",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Empty trigger-free disposable scenario",
+    "existing_seconds": 1.585,
+    "cobuild_seconds": 23.763,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:50:45.009627+00:00",
+    "capability": "settings-set",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Memory limit on unused disposable execution config",
+    "existing_seconds": 0.079,
+    "cobuild_seconds": 18.175,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "capability": "storage_footprint",
+    "attempt": 1,
+    "status": "same",
+    "existing_seconds": 2.119,
+    "cobuild_seconds": 13.072
+  },
+  {
+    "at": "2026-09-14T21:57:48.261060+00:00",
+    "capability": "tmp-cleanup",
+    "attempt": 1,
+    "status": "same",
+    "scope": "One tiny owned artifact aged to 1980; pre-scan refuses extra candidates",
+    "existing_seconds": 2.875,
+    "cobuild_seconds": 29.493,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:31:36.540614+00:00",
+    "capability": "toolkit-scenario-write",
+    "attempt": 1,
+    "status": "same",
+    "scope": "New empty inactive scenario in ADMINTOOLKIT; removed afterward",
+    "existing_seconds": 1.625,
+    "cobuild_seconds": 23.798,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:17:42.361798+00:00",
+    "capability": "toolkit_get",
+    "attempt": 1,
+    "status": "same",
+    "existing_seconds": 0.76,
+    "cobuild_seconds": 11.156,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:21:38.898838+00:00",
+    "capability": "user-disable",
+    "attempt": 1,
+    "status": "same",
+    "scope": "New test account with no groups",
+    "existing_seconds": 2.341,
+    "cobuild_seconds": 26.688,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:22:10.550318+00:00",
+    "capability": "user-enable",
+    "attempt": 1,
+    "status": "same",
+    "scope": "New test account with no groups",
+    "existing_seconds": 2.322,
+    "cobuild_seconds": 28.157,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:22:40.559606+00:00",
+    "capability": "user-update",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Display name only on new test account",
+    "existing_seconds": 2.339,
+    "cobuild_seconds": 26.502,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:20:40.226336+00:00",
+    "capability": "variables-set",
+    "attempt": 1,
+    "status": "same",
+    "scope": "One uniquely named test variable; removed in cleanup",
+    "existing_seconds": 1.556,
+    "cobuild_seconds": 23.879,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:33:35.218308+00:00",
+    "capability": "webapp-backend-restart",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Start disposable Flask backend from stopped state",
+    "existing_seconds": 1.558,
+    "cobuild_seconds": 23.81,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  },
+  {
+    "at": "2026-09-14T21:30:40.906198+00:00",
+    "capability": "webapp-backend-stop",
+    "attempt": 1,
+    "status": "same",
+    "scope": "Disposable Flask backend",
+    "existing_seconds": 1.562,
+    "cobuild_seconds": 23.751,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
+  }
+]

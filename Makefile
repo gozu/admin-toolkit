@@ -1,12 +1,12 @@
 # ============================================================================
 # Makefile â Multi-target deploy:
-#   - PROD: locked down via sudo wrappers + root-owned key
+#   - TAMGLOBAL: locked down via sudo wrappers + root-owned key
 #   - DEV:  via DSS API using .dss-url + .dss-api-key files
 #
 # Claude workflow:
 #   make deploy COMMIT_MSG="Deploy update"
 #
-# PROD wrappers installed by your setup script:
+# TAMGLOBAL wrappers installed by your setup script:
 #   /data/dss-secure-actions/bin/dss_plugin_update_admin-toolkit
 #   /data/dss-secure-actions/bin/dss_webapp_restart_DIAG_PARSER_BRANCH1
 # ============================================================================
@@ -39,7 +39,7 @@ DSS_API_KEY ?= $(shell cat .dss-api-key 2>/dev/null || cat ~/.dss-api-key 2>/dev
 WEBAPP_PROJECT_KEY ?= $(shell cat .dss-project-key 2>/dev/null || echo PYTHONAUDIT_TEST)
 WEBAPP_ID ?= $(shell cat .dss-webapp-id 2>/dev/null || echo nlJn2Gm)
 
-# PROD deploy (locked down) wrappers
+# TAMGLOBAL deploy (locked down) wrappers
 SECURE_DIST_DIR ?= $(CURDIR)/dist
 SECURE_PLUGIN_WRAPPER ?= /Users/akaos/Documents/dss-secure-actions/bin/dss_plugin_update_admin-toolkit
 SECURE_RESTART_WRAPPER ?= /Users/akaos/Documents/dss-secure-actions/bin/dss_webapp_restart_DIAG_PARSER_BRANCH1
@@ -116,7 +116,7 @@ maintenance-audit:
 	@node scripts/maintenance_audit.mjs
 
 # ----------------------------
-# Build plugin ZIP (prod/dev)
+# Build plugin ZIP (release/dev)
 # ----------------------------
 .PHONY: plugin dev dist-clean clean
 
@@ -165,9 +165,9 @@ clean: dist-clean
 	rm -rf resource/frontend/node_modules
 
 # ----------------------------
-# Secure PROD deploy
+# Secure TAMGLOBAL deploy
 # ----------------------------
-.PHONY: secure-copy-zip deploy-prod-secure
+.PHONY: secure-copy-zip deploy-tamglobal-secure
 
 secure-copy-zip:
 	@mkdir -p "$(SECURE_DIST_DIR)"
@@ -178,14 +178,14 @@ secure-copy-zip:
 		echo "[INFO] SECURE_DIST_DIR is the local dist/ — using built ZIP in place."; \
 	fi
 
-deploy-prod-secure: secure-copy-zip
-	@echo "[START] Deploying to PROD (secure wrappers)..."
+deploy-tamglobal-secure: secure-copy-zip
+	@echo "[START] Deploying to TAMGLOBAL (secure wrappers)..."
 	@sudo "$(SECURE_PLUGIN_WRAPPER)" "$(archive_file_name)" 2>&1 \
-		| python3 -c "import sys,json;r=json.load(sys.stdin);v=r.get('pluginDesc',{}).get('desc',{}).get('version','?');print('[SUCCESS] PROD plugin v%s installed'%v if r.get('messages',{}).get('success') else '[FAIL] PROD install failed')"
+		| python3 -c "import sys,json;r=json.load(sys.stdin);v=r.get('pluginDesc',{}).get('desc',{}).get('version','?');print('[SUCCESS] TAMGLOBAL plugin v%s installed'%v if r.get('messages',{}).get('success') else '[FAIL] TAMGLOBAL install failed')"
 	@if [ "$(RESTART_AFTER_DEPLOY)" = "1" ]; then \
-		echo "[START] Restarting PROD webapp backend (secure wrapper)..."; \
+		echo "[START] Restarting TAMGLOBAL webapp backend (secure wrapper)..."; \
 		sudo "$(SECURE_RESTART_WRAPPER)" "$(SECURE_WEBAPP_ID)" > /dev/null 2>&1; \
-		echo "[SUCCESS] PROD webapp backend restart requested."; \
+		echo "[SUCCESS] TAMGLOBAL webapp backend restart requested."; \
 	fi
 
 # ----------------------------
@@ -227,14 +227,14 @@ deploy-dev:
 # ----------------------------
 .PHONY: deploy-all deploy
 
-# DEV (akaos, via API) and PROD (secure sudo wrappers) are independent targets on
+# DEV (akaos, via API) and TAMGLOBAL (secure sudo wrappers) are independent targets on
 # different servers — run them concurrently and fail if either side fails.
 deploy-all:
 	@$(MAKE) deploy-dev & pid_dev=$$!; \
-	$(MAKE) deploy-prod-secure & pid_prod=$$!; \
+	$(MAKE) deploy-tamglobal-secure & pid_tamglobal=$$!; \
 	rc=0; \
 	wait $$pid_dev || rc=1; \
-	wait $$pid_prod || rc=1; \
+	wait $$pid_tamglobal || rc=1; \
 	exit $$rc
 
 # ----------------------------

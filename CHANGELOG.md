@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.855] - 2026-09-14
+
+### Changed
+
+- Reworded the host-picker welcome notice with calmer community-beta guidance and a disclosure of default-on usage analytics, the absence of names/email addresses, and the administrator opt-out location.
+
 ## [0.4.853] - 2026-09-14
 
 ### Added

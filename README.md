@@ -6,7 +6,7 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.853-blue)
+![Version](https://img.shields.io/badge/version-0.4.855-blue)
 ![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-13%2B-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -29,7 +29,9 @@ It scores what it finds, explains *why* something is unhealthy, and — behind a
 
 > **Admin-only tool.** Configure the webapp to require authentication and restrict it to admin groups. Do not expose it to regular users.
 
-> **Beta, best-effort.** Not officially supported by Dataiku. Verify outputs before acting, and test against a sandbox before pointing it at production.
+> **Community beta.** Built to help with everyday administration, without official Dataiku support. Review findings before making changes, and try unfamiliar actions in a sandbox first.
+>
+> Usage analytics are collected by default to help improve Admin Toolkit, without names or email addresses. Administrators can opt out in **Settings → Product Usage Analytics**.
 
 ## Feature tour
 

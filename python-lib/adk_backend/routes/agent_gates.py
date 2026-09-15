@@ -238,7 +238,7 @@ def api_cobuild_turn():
         phase = body.get('phase')
         sensors = set(tools_impl.SENSOR_DESCRIPTIONS)
         known = sensors | set(actuator.ACTIONS)
-        if name not in known or phase not in (('read',) if name in sensors else ('plan', 'execute')):
+        if name not in known or phase not in (('read', 'interpret') if name in sensors else ('plan', 'execute')):
             raise ValueError('Unknown capability or operation phase.')
         arguments = body.get('arguments')
         if not isinstance(arguments, dict) or not isinstance(body.get('requestId'), str):
@@ -248,7 +248,8 @@ def api_cobuild_turn():
             return jsonify({'status': 'failed', 'message': 'Capability is disabled in Agent Permissions.'}), 403
         project = str(config.get('agent_cobuild_project') or 'ADMINTOOLKIT').strip()
         return jsonify(cobuild_bridge.submit(g.client, _cobuild_owner(), project,
-                                             name, phase, arguments, body['requestId']))
+                                             name, phase, arguments, body['requestId'],
+                                             result=body.get('result'), host=getattr(g, 'host_id', 'local')))
     except (ValueError, TypeError) as exc:
         return jsonify({'status': 'failed', 'message': str(exc)[:800]}), 400
 
@@ -257,6 +258,16 @@ def api_cobuild_turn():
 def api_cobuild_turn_status(turn_id):
     from adk_backend import cobuild_bridge
     return jsonify(cobuild_bridge.status(turn_id, _cobuild_owner()))
+
+
+@bp.route('/api/agents/cobuild-read-status', methods=['POST'])
+def api_cobuild_read_status():
+    from adk_backend import cobuild_bridge
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict) or not isinstance(body.get('turnId'), str):
+        return jsonify({'status': 'unknown', 'message': 'Interpretation unavailable.'}), 400
+    return jsonify(cobuild_bridge.read_status(g.client, getattr(g, 'host_id', 'local'),
+                                             body.get('turnId'), body.get('viewTicket')))
 
 
 # ── Autonomous daily agent (triage sweep) panel ──────────────────────────────

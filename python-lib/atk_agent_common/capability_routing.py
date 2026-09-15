@@ -14,6 +14,7 @@ import time
 import uuid
 
 from .errors import ToolkitError
+from .read_interpretation import supports as compact_read_supported
 
 PARAM = 'agent_capability_providers'
 PROVIDERS = ('existing', 'cobuild')
@@ -161,6 +162,8 @@ def sensor(fn):
         bound = signature.bind(client, *args, **kwargs)
         bound.apply_defaults()
         arguments = {k: v for k, v in bound.arguments.items() if k != 'client'}
+        if compact_read_supported(fn.__name__, arguments) and selected(client, fn.__name__) == 'cobuild':
+            return _compact_read(fn, client, args, kwargs, arguments)
         route = request_operation(client, fn.__name__, 'read', arguments,
                                   host=arguments.get('host') or 'local')
         token = _NESTED.set(True)
@@ -170,3 +173,39 @@ def sensor(fn):
             _NESTED.reset(token)
         return finish_operation(client, result, route, arguments.get('host') or 'local')
     return routed
+
+
+def _compact_read(fn, client, args, kwargs, arguments):
+    started = time.monotonic()
+    host = arguments.get('host') or 'local'
+    # Replace the old request-phase server gate with a live check BEFORE the
+    # read. Do not infer authorization from a cached provider selection.
+    permissions = client.get('/api/agents/action-settings')
+    gates = permissions.get('gates') if isinstance(permissions, dict) else None
+    if not isinstance(gates, dict):
+        raise CapabilityRouteError('Live capability permissions are unavailable; read not run.')
+    if not gates.get(fn.__name__, True):
+        raise CapabilityRouteError('Capability is disabled in Agent Permissions; read not run.')
+    token = _NESTED.set(True)
+    try:
+        result = fn(client, *args, **kwargs)
+    finally:
+        _NESTED.reset(token)
+    route = {'provider': 'cobuild', 'transport': 'dataiku-cobuild-sdk', 'executor': 'adtk',
+             'variant': 'compact-read', 'phase': 'read', 'host': host,
+             'dataSeconds': round(time.monotonic() - started, 3),
+             'submittedAt': time.time(), 'creditUsage': 'not-reported',
+             'note': 'Data is ready independently. Cobuild interpretation is separate from the chat answer.'}
+    try:
+        job = client.post('/api/agents/cobuild-turn', host=host, json={
+            'capability': fn.__name__, 'phase': 'interpret', 'arguments': arguments,
+            'requestId': uuid.uuid4().hex, 'result': _without_credentials(result)})
+        if job.get('status') != 'pending' or not job.get('viewTicket'):
+            raise CapabilityRouteError('Cobuild interpretation was not queued.')
+        route['interpretation'] = job
+    except Exception as exc:
+        # Read already completed; never repeat it or hide it on inference failure.
+        route['interpretation'] = {'status': 'failed',
+                                   'message': 'Interpretation submission failed (%s).' % type(exc).__name__}
+    route['returnSeconds'] = round(time.monotonic() - started, 3)
+    return attach(result, route)

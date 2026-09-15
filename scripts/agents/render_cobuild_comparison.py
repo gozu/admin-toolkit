@@ -4,6 +4,7 @@ import argparse
 import csv
 import datetime
 import json
+import math
 import pathlib
 import sys
 
@@ -118,7 +119,22 @@ def collect(inputs):
     return by_name
 
 
-def rows_for(evidence):
+def latency_verdict(name, existing, cobuild):
+    if any(isinstance(value, bool) or not isinstance(value, (int, float))
+           or not math.isfinite(value) or value <= 0 for value in (existing, cobuild)):
+        return 'Not measured'
+    ratio = cobuild / existing
+    multiplier = f'{ratio:.2f}' if ratio < 1.1 else f'{ratio:.1f}'
+    if name in {'cluster-start', 'cluster-stop'}:
+        return f'{multiplier}× existing time; cloud variability, overhead not isolated'
+    if cobuild > existing:
+        return f'{multiplier}× slower in sample'
+    if cobuild == existing:
+        return 'Same time in sample (1.00×)'
+    return f'{multiplier}× existing time; cache/order affected, inconclusive'
+
+
+def rows_for(evidence, performance=None):
     catalog = list(tools_impl.SENSOR_DESCRIPTIONS) + list(actuator.ACTIONS)
     assert set(catalog) == set(PURPOSE) and len(catalog) == 64
     rows = []
@@ -130,6 +146,17 @@ def rows_for(evidence):
         if name == 'db_health' and e.get('transport') != 'deployed HTTP bridge':
             status = 'Blocked'
         existing, cobuild = e.get('existing_seconds', ''), e.get('cobuild_seconds', '')
+        pilot = name in ('toolkit_get', 'list_hosts', 'list_capabilities')
+        perf = (performance or {}).get(name, {})
+        compact = perf.get('compact', {})
+        bridge = perf.get('bridge', {})
+        base = perf.get('existing', {})
+        def median(variant, key):
+            return (variant.get(key) or {}).get('median', '')
+        optimized = median(compact, 'complete')
+        previous = median(bridge, 'complete')
+        improvement = (f'{100 * (1 - optimized / previous):.1f}% faster explanation vs bridge'
+                       if optimized != '' and previous else '')
         scope = e.get('scope') or ('Read with bounded/default arguments' if e and name in tools_impl.SENSOR_DESCRIPTIONS else '')
         if name == 'k8s_health' and status == 'Matched scope':
             scope = 'Empty cluster inventory only; no active-cluster health parity established'
@@ -143,14 +170,24 @@ def rows_for(evidence):
             'Tool / action': name, 'What it does': PURPOSE[name],
             'Type': 'Read' if name in tools_impl.SENSOR_DESCRIPTIONS else actions.MODES[name],
             'Switch': 'Existing / Headless-Cobuild',
-            'Cobuild path': 'Cobuild requests operation → ADTK executes → Cobuild explains result',
+            'Cobuild path': ('Pilot: ADTK reads → data returned → one asynchronous Cobuild interpretation; other arguments use original bridge'
+                             if pilot else 'Cobuild requests operation → ADTK executes → Cobuild explains result'),
             'What remains in ADTK': 'Executor, permissions, host routing, evidence' +
                 (', plans, confirmation and audit' if name in actuator.ACTIONS else ''),
             'Functional verdict': status,
             'Existing seconds': existing, 'Cobuild seconds': cobuild,
-            'Latency verdict': ('Cloud variability; overhead not isolated' if name in {'cluster-start', 'cluster-stop'}
-                else 'Slower in sample' if cobuild > existing else 'Cache/order affected; inconclusive')
-                if isinstance(existing, (float, int)) and isinstance(cobuild, (float, int)) else 'Not measured',
+            'Latency verdict': latency_verdict(name, existing, cobuild),
+            'Speed enhancement': ('Immediate data + one compact interpretation' if pilot else 'Original bridge retained'),
+            'Pilot scope': {'toolkit_get': 'Version endpoint, no field projection or parameters',
+                            'list_hosts': 'probe=False only', 'list_capabilities': 'Inventory counts interpretation; full catalog retained'}.get(name, ''),
+            'Pilot Existing median seconds': median(base, 'complete'),
+            'Pilot bridge median seconds': previous,
+            'Pilot data median seconds': median(compact, 'data'),
+            'Pilot explanation median seconds': optimized,
+            'Pilot successes / trials': f"{compact.get('successes', 0)} / {compact.get('samples', 0)}" if perf else '',
+            'Pilot full output matches': compact.get('full_output_matches', ''),
+            'Pilot performance verdict': improvement if perf else ('Measurement pending' if pilot else 'Not part of three-read pilot'),
+            'Second Look': 'Omitted at user request; existing permissions and confirmations retained',
             'Scope / remaining work': scope if status == 'Matched scope' else PENDING.get(name, e.get('reason') or 'Disposable fixture and both-path execution still required'),
             'Candidate attempt': e.get('attempt', ''),
             'Evidence transport': e.get('transport') or ('Direct Cobuild SDK + real ADTK reads' if e else ''),
@@ -181,6 +218,10 @@ tr{background:white}tbody tr:nth-child(even){background:#fafbfc}tbody tr:hover{b
 It does not replace the underlying tools with native Headless tools or move the outer chat model.</p>
 <p>“Matched scope” means successful results matched within the stated test.
 Latency is graded separately. Untested branches, billing totals and end-to-end chat quality remain unproven.</p>
+<p>Latency multiplier = Cobuild seconds ÷ Existing seconds: “2.3× slower” means Cobuild took 2.3 times as long in that sample.
+Cloud variability and cache/order caveats still apply.</p>
+<p>The speed pilot covers three read variants. Original timings remain historical evidence; pilot columns show repeated trials.
+Data arrives before a separate Cobuild interpretation. The outer chat model remains on LLM Mesh. Second Look is omitted.</p>
 <p class="meta">Updated __DATE__. Cobuild usage credits and BYO LLM token charges are separate. Per-call credit totals were not returned.</p>
 <div class="controls"><input id="search" type="search" aria-label="Search all columns" placeholder="Search tool, scope, blocker…">
 <select id="status" aria-label="Filter by verdict"><option value="">All verdicts</option></select>
@@ -195,7 +236,7 @@ Results are not 64 full tool certifications.</p></main>
 <script id="data" type="application/json">__DATA__</script>
 <script>
 const rows=JSON.parse(document.getElementById('data').textContent),$=id=>document.getElementById(id);
-const brief=['Tool / action','What it does','Functional verdict','Existing seconds','Cobuild seconds','Latency verdict','Scope / remaining work'];
+const brief=['Tool / action','What it does','Functional verdict','Speed enhancement','Pilot data median seconds','Pilot explanation median seconds','Pilot successes / trials','Pilot performance verdict','Existing seconds','Cobuild seconds','Latency verdict','Scope / remaining work'];
 let sort='Tool / action',dir=1,current=[];
 for(const [id,key] of [['status','Functional verdict'],['kind','Type']])for(const v of [...new Set(rows.map(r=>r[key]))].sort()){const o=document.createElement('option');o.value=o.textContent=v;$(id).append(o)}
 function render(){
@@ -218,9 +259,11 @@ def main():
     evidence.add_argument('--evidence-dir', type=pathlib.Path)
     evidence.add_argument('--evidence-file', type=pathlib.Path)
     parser.add_argument('--output-dir', required=True, type=pathlib.Path)
+    parser.add_argument('--performance-file', type=pathlib.Path)
     args = parser.parse_args()
     inputs = [args.evidence_file] if args.evidence_file else list(args.evidence_dir.glob('*.json'))
-    rows = rows_for(collect(inputs))
+    performance = json.loads(args.performance_file.read_text()) if args.performance_file else None
+    rows = rows_for(collect(inputs), performance)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = args.output_dir / 'adtk-cobuild-comparison.csv'
     with csv_path.open('w', newline='') as f:

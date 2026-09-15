@@ -5,6 +5,7 @@ import { fetchJson } from '../../utils/api';
 import { EXPLORE_TRACE_STORAGE_KEY, traceExplorerHandoffUrl } from '../../utils/agentLinks';
 import { getActiveHostId } from '../../state/hostStore';
 import { ActivityChips } from './ActivityChips';
+import { ReadInterpretation } from './ReadInterpretation';
 import { PlanCard } from './PlanCard';
 import { ExecutionCard } from './ExecutionCard';
 import { ActionItemsCard } from './ActionItemsCard';
@@ -198,12 +199,14 @@ function GateHint({
   if (code === 'agent-execution-disabled') {
     return (
       <div className="my-1.5 rounded-lg border border-[var(--neon-yellow)]/40 bg-[var(--neon-yellow)]/5 px-3 py-2 text-xs text-[var(--text-secondary)]">
-        <div className="font-semibold text-[var(--text-primary)]">Agentic actions are disabled for this agent</div>
+        <div className="font-semibold text-[var(--text-primary)]">
+          Agentic actions are disabled for this agent
+        </div>
         <p className="mt-0.5 leading-relaxed">
           This agent can plan but not execute until an admin enables{' '}
-          <span className="font-medium text-[var(--text-primary)]">Allow agentic actions</span> on the agent
-          itself (it&apos;s a per-agent setting, separate from the plugin kill-switch). After enabling it,
-          recycle the agent kernel so it re-reads the config.
+          <span className="font-medium text-[var(--text-primary)]">Allow agentic actions</span> on
+          the agent itself (it&apos;s a per-agent setting, separate from the plugin kill-switch).
+          After enabling it, recycle the agent kernel so it re-reads the config.
         </p>
         {agentConfigUrl && (
           <a
@@ -296,7 +299,10 @@ export function MessageView({
           return (
             // Prose keeps the old column's measure on ultrawide screens; the
             // transcript container itself is full-bleed like every other page.
-            <div key={i} className="ai-analysis-markdown chat-markdown max-w-[87.5rem] text-sm text-[var(--text-primary)]">
+            <div
+              key={i}
+              className="ai-analysis-markdown chat-markdown max-w-[87.5rem] text-sm text-[var(--text-primary)]"
+            >
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{segment.text}</ReactMarkdown>
             </div>
           );
@@ -304,9 +310,15 @@ export function MessageView({
         if (segment.type === 'activity') {
           return <ActivityChips key={i} items={segment.items} now={now} />;
         }
+        if (segment.type === 'read_interpretation') {
+          return <ReadInterpretation key={i} name={segment.name} result={segment.result} />;
+        }
         if (segment.type === 'stopped') {
           return (
-            <div key={i} className="flex items-center gap-1.5 pt-1 text-[11px] text-[var(--text-muted)]">
+            <div
+              key={i}
+              className="flex items-center gap-1.5 pt-1 text-[11px] text-[var(--text-muted)]"
+            >
               <span aria-hidden="true">⏹</span> stopped
             </div>
           );

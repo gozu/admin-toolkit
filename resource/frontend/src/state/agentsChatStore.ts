@@ -109,6 +109,7 @@ export interface PresetMeta {
 
 export type Segment =
   | { type: 'text'; text: string }
+  | { type: 'read_interpretation'; name: string; result: Record<string, unknown> }
   | { type: 'activity'; items: ActivityItem[] }
   | { type: 'plan'; plan: PlanCardData }
   | { type: 'execution'; execution: ExecutionCardData }
@@ -322,7 +323,8 @@ function readStored(): StoredState | null {
     const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { v?: number; state?: StoredState };
-    if (parsed?.v !== STORAGE_VERSION || typeof parsed.state?.conversations !== 'object') return null;
+    if (parsed?.v !== STORAGE_VERSION || typeof parsed.state?.conversations !== 'object')
+      return null;
     return sanitizeStored(parsed.state);
   } catch {
     return null;
@@ -339,7 +341,10 @@ function persistStored(state: AgentsChatState): void {
       activeConvIdByAgent: state.activeConvIdByAgent,
       selectedAgentId: state.selectedAgentId,
     };
-    globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify({ v: STORAGE_VERSION, state: stored }));
+    globalThis.localStorage?.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ v: STORAGE_VERSION, state: stored }),
+    );
   } catch {
     // best effort — quota exceeded or storage unavailable
   }
@@ -417,7 +422,11 @@ function appendText(segments: Segment[], text: string): Segment[] {
   return segments;
 }
 
-function applyAgentEvent(segments: Segment[], kind: string, data: Record<string, unknown>): Segment[] {
+function applyAgentEvent(
+  segments: Segment[],
+  kind: string,
+  data: Record<string, unknown>,
+): Segment[] {
   if (kind === 'tool_call') {
     const item: ActivityItem = {
       name: String(data.name || '?'),
@@ -476,6 +485,12 @@ function applyAgentEvent(segments: Segment[], kind: string, data: Record<string,
         });
       }
     }
+  } else if (kind === 'read_interpretation' && data.result && typeof data.result === 'object') {
+    segments.push({
+      type: 'read_interpretation',
+      name: String(data.name || 'Read'),
+      result: data.result as Record<string, unknown>,
+    });
   } else if (kind === 'plan') {
     const expiresIn = Number(data.expiresInSeconds) || 900;
     segments.push({
@@ -549,7 +564,8 @@ function normalizeActionItems(raw: unknown): ActionItemData[] {
         : null;
     const targets = Array.isArray(item.targets)
       ? item.targets.filter(
-          (t): t is Record<string, unknown> => Boolean(t) && typeof t === 'object' && !Array.isArray(t),
+          (t): t is Record<string, unknown> =>
+            Boolean(t) && typeof t === 'object' && !Array.isArray(t),
         )
       : null;
     out.push({
@@ -607,7 +623,11 @@ export async function ensureChatBootstrapped(): Promise<void> {
     ]);
     if (epoch !== sessionEpochCounter) return; // host switched mid-fetch
     agentsChatStore.patch({
-      persistence: { loaded: true, enabled: config.enabled, mode: (config as { mode?: string }).mode },
+      persistence: {
+        loaded: true,
+        enabled: config.enabled,
+        mode: (config as { mode?: string }).mode,
+      },
       traceExplorer: explorer,
     });
     if (config.enabled) void loadConversationList();
@@ -768,7 +788,10 @@ function persistMessages(conv: Conversation, positions: number[]): void {
       traceId: message.traceId,
       position: pos,
     }));
-  const traceId = messages.map((m) => m.traceId).filter(Boolean).pop();
+  const traceId = messages
+    .map((m) => m.traceId)
+    .filter(Boolean)
+    .pop();
   const epoch = sessionEpochCounter;
   void fetchJson<{ conversation: { id: string; title: string } }>(
     `/api/chat/conversations/${encodeURIComponent(conv.id)}/turn`,
@@ -806,9 +829,7 @@ function persistMessages(conv: Conversation, positions: number[]): void {
 /** Persist every message whose segments the predicate matches (post-settle
  * mutations touch existing rows — same ids, updated segments). */
 function persistWhere(conv: Conversation, match: (msg: ChatMessage) => boolean): void {
-  const positions = conv.messages
-    .map((msg, i) => (match(msg) ? i : -1))
-    .filter((i) => i >= 0);
+  const positions = conv.messages.map((msg, i) => (match(msg) ? i : -1)).filter((i) => i >= 0);
   persistMessages(conv, positions);
 }
 
@@ -823,9 +844,9 @@ export async function provisionTraceExplorer(): Promise<ProvisionResult> {
     method: 'POST',
   });
   if (result.ok) {
-    const explorer = await fetchJson<TraceExplorerStatus>('/api/agents/trace-explorer/status').catch(
-      () => null,
-    );
+    const explorer = await fetchJson<TraceExplorerStatus>(
+      '/api/agents/trace-explorer/status',
+    ).catch(() => null);
     if (explorer) agentsChatStore.patch({ traceExplorer: explorer });
   }
   return result;
@@ -864,9 +885,7 @@ function handoffLine(
   index: number,
   forModel: boolean,
 ): string {
-  const ref = forModel
-    ? ` [${item.id}]`
-    : '';
+  const ref = forModel ? ` [${item.id}]` : '';
   const itemRef = forModel ? ` item_ref=${JSON.stringify({ batchId, itemId: item.id })}` : '';
   const batched = item.targets && item.targets.length > 1;
   // Batched items carry the full targets[] for the model (ONE plan call with

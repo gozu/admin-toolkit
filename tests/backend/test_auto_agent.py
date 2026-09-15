@@ -99,6 +99,28 @@ def test_planner_crash_is_a_status_not_an_exception(monkeypatch):
     assert status['status'] == 'error' and 'no mesh' in status['error']
 
 
+def test_headless_planner_needs_no_mesh_model_and_records_actual_transport(monkeypatch):
+    from atk_agent_common import reasoning, agent_runtime, agent_tools
+    monkeypatch.setattr(reasoning, 'mode', lambda client: 'headless')
+    monkeypatch.setattr(agent_runtime, 'build_llm', lambda *_: pytest.fail('Outer Mesh call'))
+    monkeypatch.setattr(agent_tools, 'build_langchain_tools', lambda *a, **kw: [])
+    class Client:
+        def post(self, path, json):
+            if path.endswith('/stop'):
+                return {}
+            return {'status': 'completed', 'taskId': 't', 'revision': 0,
+                    'transport': 'dataiku-headless-mcp-in-process',
+                    'message': '{"type":"final","text":"No additional safe fix."}'}
+    summary = _fresh_summary()
+    status = auto_agent.run_llm_planner(Client(), _SETTINGS, _ROWS, ['local'],
+                                       summary, {'log-cleanup'}, 'r1', None)
+    assert status['status'] == 'ran' and status['executed'] == 0
+    assert summary['planningReasoning'] == {
+        'mode': 'headless', 'transport': 'dataiku-headless-mcp-in-process',
+        'llmTurns': 1, 'toolsRun': 0, 'status': 'completed',
+        'durationMs': summary['planningReasoning']['durationMs']}
+
+
 # ── propose_fix enforcement matrix ───────────────────────────────────────────
 
 def _call(action='log-cleanup', host='local', finding='disk-critical-/data',

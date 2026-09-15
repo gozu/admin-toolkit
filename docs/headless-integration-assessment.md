@@ -1,5 +1,7 @@
 > Historical assessment. The implemented whole-task migration and current readiness limits are documented in [Headless runtime](headless-runtime.md). Earlier operation-bridge and native-coverage recommendations are not the current routing specification.
 
+Implemented routing (2026-09-15): Headless MCP → Cobuild reasoning → deterministic ADTK adapter → guarded ADTK execution → Headless observation/final answer. Legacy retains LLM Mesh independently. All 64 capabilities retain their ADTK executors; native Headless writes are unavailable. See the [fresh comparison inventory](reports/headless-validation-2026-09-15.md) for actual outcomes rather than interpreting the native-coverage tables below as application coverage. Legacy remains the deployed default pending readiness validation.
+
 # Dataiku Headless integration assessment
 
 Investigated 14 September 2026. Recommendation: reuse Headless for standard DSS

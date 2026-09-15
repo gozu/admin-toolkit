@@ -68,8 +68,12 @@ not change ownership. Native clients/tool bundles are fresh per task.
 
 ## Lifecycle, progress and limits
 
-- At most eight live/unknown tasks per backend; idle connections expire after
-  one hour, allowing long ADTK operations to return their observations.
+- At most eight active tasks or outstanding SDK workers per backend; idle
+  connections expire after one hour, allowing long ADTK operations to return
+  their observations. Local timeouts retain worker capacity until the blocking
+  SDK call finishes. Unknown-outcome records then remain inspectable without
+  consuming connection capacity; they still cannot be resumed or retried.
+  Retired records expire after an hour or when the 128-record limit is reached.
 - Each model turn waits at most 300 seconds. A Headless pending response is
   polled using the exact retained turn ID, never resubmitted.
 - Chat emits waiting progress and heartbeat events during inference and ADTK tools.
@@ -82,6 +86,8 @@ not change ownership. Native clients/tool bundles are fresh per task.
   exceptions. Native Headless chat does not copy transcripts to interaction logs.
   DSS may retain its own Cobuild conversation according to instance policy.
 - Mode, transport, wall time, model-turn count and tool count are recorded.
+  Scheduled drafting includes these fields in the macro result and snapshot row;
+  autonomous planning includes them in the shared remediation summary.
   Cobuild model identity, credits and token usage are not inferred.
 
 ## Packaging and installation
@@ -122,11 +128,21 @@ gone; its eventual remote outcome cannot be recovered from this evidence.
 
 A new live MCP smoke conversation completed in 3.73 seconds. This is basic
 connectivity evidence, not a replacement for full capability or reliability
-validation. The 64-check runner now supports fresh Legacy/Headless runs:
+validation. DEV's installed runtime also passed a real HTTP chat read through
+Headless, then restored the saved Legacy mode. The production reasoning adapter
+planned an owned project-variable change without writing (18.182s), accepted
+the explicit confirmation card, executed exactly once (22.527s), and verified
+the change and fixture deletion independently through DSS. A synthetic health
+recommendation using the production prompt completed in 8.676s with no Mesh
+call and no tools. These are scoped checks, not a full scheduled sweep or an
+authorization to execute autonomous changes against existing workloads.
+
+The 64-check runner supports fresh Legacy/Headless runs:
 
 ```sh
 .venv/bin/python scripts/agents/headless_model_compare.py --output /tmp/headless-reads.json
 .venv/bin/python scripts/agents/run_cobuild_model_suite.py --execute --reasoning headless --output /tmp/headless-suite
+.venv/bin/python scripts/agents/render_headless_suite.py --source /tmp/headless-suite --version <measured-version> --output docs/reports/headless-validation
 ```
 
 Reports distinguish passed, failed, blocked and excluded. Historical passes are
@@ -134,3 +150,33 @@ not imported. Plugin deployment stays excluded. Cloud/image/Python destructive
 cases need fresh fixtures or authorization and remain explicitly blocked until
 those prerequisites exist. Keep the deployed default on Legacy while these
 readiness limits and the stalled remote call's root cause remain unresolved.
+
+### Fresh comparison and release evidence — 2026-09-15
+
+The [fresh 64-case report](reports/headless-validation-2026-09-15.md) measured
+plugin **0.4.867**: **57 passed, six blocked, one excluded** on the latest
+attempts. Earlier failed attempts remain in the JSON evidence. Log-tail was
+rerun after excluding only volatile window metadata from comparison. Store
+update was rerun after the fixture began waiting for asynchronous deletion
+and verifying absence before reinstalling; no uncertain action was replayed.
+The median paired Headless/Legacy task-time ratio was **1.10×**. This harness
+uses DSS's configured local AI server model for Legacy, not application agent
+overrides, and includes ADTK execution time. It is not a same-model benchmark.
+
+The audit timeline independently contained **93 successful comparison action
+records**, including the extra Legacy store trial. Ten owned projects, five
+owned plugins and their plugin environments were independently confirmed
+absent after cleanup. No customer instance was targeted.
+
+Release **0.4.868** adds outstanding-worker capacity accounting and scheduled
+reasoning metadata after that suite. Its verification includes **931 backend
+tests plus 23 subtests**, actual-MCP timeout/capacity regression coverage,
+frontend type/contract checks and the production build. The Permissions browser
+check passed with the new selector. The 64-case timings above remain labeled
+0.4.867; they are not silently reassigned to the later release.
+
+DEV's plugin environment has the pinned dependencies installed. TAMGLOBAL's
+release ZIP can be deployed through its secure wrapper, but the available TAM
+API key returns HTTP 401 when updating its Python environment. Headless there
+remains unverified until a working key or an administrator completes that
+environment update and restarts the backend. Legacy remains the default.

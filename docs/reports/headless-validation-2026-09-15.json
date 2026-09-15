@@ -1,0 +1,1386 @@
+{
+  "generated_at": "2026-09-15T23:22:07.463434+00:00",
+  "plugin_version_measured": "0.4.867",
+  "transport": "whole-task Legacy versus Dataiku Headless MCP v1",
+  "counts": {
+    "passed": 57,
+    "blocked": 6,
+    "excluded": 1
+  },
+  "legacy_model_selection": "DSS local AI server mainLLMId; application agent overrides were not applied by this comparison harness.",
+  "timing_scope": "One paired trial per passing capability; task wall time including tool execution.",
+  "paired_passes_with_timings": 57,
+  "cleanup": {
+    "fixture": "verified",
+    "data": "verified",
+    "runtime": "verified",
+    "native": "verified",
+    "archive": "verified",
+    "consolidate": "verified",
+    "detach": "verified",
+    "continuous": "verified",
+    "notebook": "verified",
+    "store": "verified",
+    "cleanup": "verified",
+    "docker": "verified",
+    "database": "verified",
+    "notification": "verified",
+    "project_cluster": "verified"
+  },
+  "rows": [
+    {
+      "capability": "list_hosts",
+      "group": "reads",
+      "status": "passed",
+      "legacy_seconds": 5.041,
+      "headless_seconds": 8.067,
+      "legacy_model_calls": 2,
+      "headless_model_calls": 2,
+      "headless_time_ratio": 1.6,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 5.041,
+          "headless_seconds": 8.067,
+          "legacy_model_calls": 2,
+          "headless_model_calls": 2,
+          "headless_time_ratio": 1.6,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "instance_health",
+      "group": "reads",
+      "status": "passed",
+      "legacy_seconds": 19.681,
+      "headless_seconds": 22.447,
+      "legacy_model_calls": 2,
+      "headless_model_calls": 2,
+      "headless_time_ratio": 1.141,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 19.681,
+          "headless_seconds": 22.447,
+          "legacy_model_calls": 2,
+          "headless_model_calls": 2,
+          "headless_time_ratio": 1.141,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "compute_cost",
+      "group": "reads",
+      "status": "passed",
+      "legacy_seconds": 32.218,
+      "headless_seconds": 15.082,
+      "legacy_model_calls": 2,
+      "headless_model_calls": 2,
+      "headless_time_ratio": 0.468,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 32.218,
+          "headless_seconds": 15.082,
+          "legacy_model_calls": 2,
+          "headless_model_calls": 2,
+          "headless_time_ratio": 0.468,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "config_inspect",
+      "group": "reads",
+      "status": "passed",
+      "legacy_seconds": 5.285,
+      "headless_seconds": 8.059,
+      "legacy_model_calls": 2,
+      "headless_model_calls": 2,
+      "headless_time_ratio": 1.525,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 5.285,
+          "headless_seconds": 8.059,
+          "legacy_model_calls": 2,
+          "headless_model_calls": 2,
+          "headless_time_ratio": 1.525,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "log_errors",
+      "group": "reads",
+      "status": "passed",
+      "legacy_seconds": 8.156,
+      "headless_seconds": 9.063,
+      "legacy_model_calls": 2,
+      "headless_model_calls": 2,
+      "headless_time_ratio": 1.111,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 8.156,
+          "headless_seconds": 9.063,
+          "legacy_model_calls": 2,
+          "headless_model_calls": 2,
+          "headless_time_ratio": 1.111,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "log_tail",
+      "group": "reads",
+      "status": "passed",
+      "legacy_seconds": 5.676,
+      "headless_seconds": 7.097,
+      "legacy_model_calls": 2,
+      "headless_model_calls": 2,
+      "headless_time_ratio": 1.25,
+      "note": "Filtered log observations match; only live window metadata differs.",
+      "attempts": [
+        {
+          "status": "failed",
+          "legacy_seconds": 6.72,
+          "headless_seconds": 8.09,
+          "legacy_model_calls": 2,
+          "headless_model_calls": 2,
+          "headless_time_ratio": 1.204,
+          "note": "Filtered log results matched; strict comparison failed on live window metadata."
+        },
+        {
+          "status": "passed",
+          "legacy_seconds": 5.676,
+          "headless_seconds": 7.097,
+          "legacy_model_calls": 2,
+          "headless_model_calls": 2,
+          "headless_time_ratio": 1.25,
+          "note": "Filtered log observations match; only live window metadata differs."
+        }
+      ]
+    },
+    {
+      "capability": "storage_footprint",
+      "group": "reads",
+      "status": "passed",
+      "legacy_seconds": 9.667,
+      "headless_seconds": 12.174,
+      "legacy_model_calls": 2,
+      "headless_model_calls": 2,
+      "headless_time_ratio": 1.259,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 9.667,
+          "headless_seconds": 12.174,
+          "legacy_model_calls": 2,
+          "headless_model_calls": 2,
+          "headless_time_ratio": 1.259,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "k8s_health",
+      "group": "reads",
+      "status": "passed",
+      "legacy_seconds": 13.363,
+      "headless_seconds": 12.858,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 2,
+      "headless_time_ratio": 0.962,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 13.363,
+          "headless_seconds": 12.858,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 2,
+          "headless_time_ratio": 0.962,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "toolkit_get",
+      "group": "reads",
+      "status": "passed",
+      "legacy_seconds": 4.877,
+      "headless_seconds": 8.055,
+      "legacy_model_calls": 2,
+      "headless_model_calls": 2,
+      "headless_time_ratio": 1.652,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 4.877,
+          "headless_seconds": 8.055,
+          "legacy_model_calls": 2,
+          "headless_model_calls": 2,
+          "headless_time_ratio": 1.652,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "list_capabilities",
+      "group": "reads",
+      "status": "passed",
+      "legacy_seconds": 13.63,
+      "headless_seconds": 15.077,
+      "legacy_model_calls": 2,
+      "headless_model_calls": 2,
+      "headless_time_ratio": 1.106,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 13.63,
+          "headless_seconds": 15.077,
+          "legacy_model_calls": 2,
+          "headless_model_calls": 2,
+          "headless_time_ratio": 1.106,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "scenario-enable",
+      "group": "fixture",
+      "status": "passed",
+      "legacy_seconds": 11.085,
+      "headless_seconds": 12.156,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.097,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 11.085,
+          "headless_seconds": 12.156,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.097,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "scenario-disable",
+      "group": "fixture",
+      "status": "passed",
+      "legacy_seconds": 8.386,
+      "headless_seconds": 12.167,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.451,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 8.386,
+          "headless_seconds": 12.167,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.451,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "project-variables-set",
+      "group": "fixture",
+      "status": "passed",
+      "legacy_seconds": 11.074,
+      "headless_seconds": 11.159,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.008,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 11.074,
+          "headless_seconds": 11.159,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.008,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "variables-set",
+      "group": "fixture",
+      "status": "passed",
+      "legacy_seconds": 10.619,
+      "headless_seconds": 12.147,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.144,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 10.619,
+          "headless_seconds": 12.147,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.144,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "notebook-clear-outputs",
+      "group": "fixture",
+      "status": "passed",
+      "legacy_seconds": 9.497,
+      "headless_seconds": 13.134,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.383,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 9.497,
+          "headless_seconds": 13.134,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.383,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "user-enable",
+      "group": "fixture",
+      "status": "passed",
+      "legacy_seconds": 10.713,
+      "headless_seconds": 14.183,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.324,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 10.713,
+          "headless_seconds": 14.183,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.324,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "user-disable",
+      "group": "fixture",
+      "status": "passed",
+      "legacy_seconds": 9.987,
+      "headless_seconds": 12.16,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.218,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 9.987,
+          "headless_seconds": 12.16,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.218,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "user-update",
+      "group": "fixture",
+      "status": "passed",
+      "legacy_seconds": 12.04,
+      "headless_seconds": 14.163,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.176,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 12.04,
+          "headless_seconds": 14.163,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.176,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "project-change-owner",
+      "group": "fixture",
+      "status": "passed",
+      "legacy_seconds": 9.733,
+      "headless_seconds": 11.165,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.147,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 9.733,
+          "headless_seconds": 11.165,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.147,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "connection-test",
+      "group": "data",
+      "status": "passed",
+      "legacy_seconds": 19.695,
+      "headless_seconds": 12.125,
+      "legacy_model_calls": 5,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 0.616,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 19.695,
+          "headless_seconds": 12.125,
+          "legacy_model_calls": 5,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 0.616,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "connection-update",
+      "group": "data",
+      "status": "passed",
+      "legacy_seconds": 11.58,
+      "headless_seconds": 12.157,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.05,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 11.58,
+          "headless_seconds": 12.157,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.05,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "connection-delete",
+      "group": "data",
+      "status": "passed",
+      "legacy_seconds": 18.354,
+      "headless_seconds": 14.51,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 0.791,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 18.354,
+          "headless_seconds": 14.51,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 0.791,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "dataset-clear",
+      "group": "data",
+      "status": "passed",
+      "legacy_seconds": 12.157,
+      "headless_seconds": 13.154,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.082,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 12.157,
+          "headless_seconds": 13.154,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.082,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "dataset-delete",
+      "group": "data",
+      "status": "passed",
+      "legacy_seconds": 13.28,
+      "headless_seconds": 14.311,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.078,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 13.28,
+          "headless_seconds": 14.311,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.078,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "webapp-backend-stop",
+      "group": "data",
+      "status": "passed",
+      "legacy_seconds": 11.011,
+      "headless_seconds": 12.157,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.104,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 11.011,
+          "headless_seconds": 12.157,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.104,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "webapp-backend-restart",
+      "group": "data",
+      "status": "passed",
+      "legacy_seconds": 14.75,
+      "headless_seconds": 16.156,
+      "legacy_model_calls": 4,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.095,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 14.75,
+          "headless_seconds": 16.156,
+          "legacy_model_calls": 4,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.095,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "scenario-run",
+      "group": "data",
+      "status": "passed",
+      "legacy_seconds": 10.818,
+      "headless_seconds": 18.172,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.68,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 10.818,
+          "headless_seconds": 18.172,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.68,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "toolkit-scenario-write",
+      "group": "data",
+      "status": "passed",
+      "legacy_seconds": 12.365,
+      "headless_seconds": 12.175,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 0.985,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 12.365,
+          "headless_seconds": 12.175,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 0.985,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "api-key-delete",
+      "group": "runtime",
+      "status": "passed",
+      "legacy_seconds": 16.725,
+      "headless_seconds": 15.148,
+      "legacy_model_calls": 4,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 0.906,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 16.725,
+          "headless_seconds": 15.148,
+          "legacy_model_calls": 4,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 0.906,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "scenario-kill",
+      "group": "runtime",
+      "status": "passed",
+      "legacy_seconds": 9.392,
+      "headless_seconds": 12.127,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.291,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 9.392,
+          "headless_seconds": 12.127,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.291,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "job-kill",
+      "group": "runtime",
+      "status": "passed",
+      "legacy_seconds": 12.649,
+      "headless_seconds": 16.258,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.285,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 12.649,
+          "headless_seconds": 16.258,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.285,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "code-env-update",
+      "group": "runtime",
+      "status": "passed",
+      "legacy_seconds": 15.421,
+      "headless_seconds": 16.969,
+      "legacy_model_calls": 4,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.1,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 15.421,
+          "headless_seconds": 16.969,
+          "legacy_model_calls": 4,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.1,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "code-env-delete",
+      "group": "runtime",
+      "status": "passed",
+      "legacy_seconds": 13.016,
+      "headless_seconds": 13.506,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.038,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 13.016,
+          "headless_seconds": 13.506,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.038,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "settings-set",
+      "group": "native",
+      "status": "passed",
+      "legacy_seconds": 15.778,
+      "headless_seconds": 11.153,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 0.707,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 15.778,
+          "headless_seconds": 11.153,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 0.707,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "k8s-exec-config-tune",
+      "group": "native",
+      "status": "passed",
+      "legacy_seconds": 30.055,
+      "headless_seconds": 36.195,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.204,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 30.055,
+          "headless_seconds": 36.195,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.204,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "project-export",
+      "group": "archive",
+      "status": "passed",
+      "legacy_seconds": 12.836,
+      "headless_seconds": 14.349,
+      "legacy_model_calls": 4,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.118,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 12.836,
+          "headless_seconds": 14.349,
+          "legacy_model_calls": 4,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.118,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "project-delete",
+      "group": "archive",
+      "status": "passed",
+      "legacy_seconds": 31.161,
+      "headless_seconds": 27.923,
+      "legacy_model_calls": 5,
+      "headless_model_calls": 5,
+      "headless_time_ratio": 0.896,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 31.161,
+          "headless_seconds": 27.923,
+          "legacy_model_calls": 5,
+          "headless_model_calls": 5,
+          "headless_time_ratio": 0.896,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "plugin-code-env-rebuild",
+      "group": "archive",
+      "status": "passed",
+      "legacy_seconds": 21.969,
+      "headless_seconds": 14.214,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 0.647,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 21.969,
+          "headless_seconds": 14.214,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 0.647,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "plugin-uninstall",
+      "group": "archive",
+      "status": "passed",
+      "legacy_seconds": 26.026,
+      "headless_seconds": 17.777,
+      "legacy_model_calls": 4,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 0.683,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 26.026,
+          "headless_seconds": 17.777,
+          "legacy_model_calls": 4,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 0.683,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "code-env-consolidate",
+      "group": "consolidate",
+      "status": "passed",
+      "legacy_seconds": 12.115,
+      "headless_seconds": 17.384,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.435,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 12.115,
+          "headless_seconds": 17.384,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.435,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "connection-index",
+      "group": "consolidate",
+      "status": "passed",
+      "legacy_seconds": 14.041,
+      "headless_seconds": 15.273,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.088,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 14.041,
+          "headless_seconds": 15.273,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.088,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "cluster-detach",
+      "group": "detach",
+      "status": "passed",
+      "legacy_seconds": 23.131,
+      "headless_seconds": 31.1,
+      "legacy_model_calls": 4,
+      "headless_model_calls": 5,
+      "headless_time_ratio": 1.345,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 23.131,
+          "headless_seconds": 31.1,
+          "legacy_model_calls": 4,
+          "headless_model_calls": 5,
+          "headless_time_ratio": 1.345,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "continuous-activity-stop",
+      "group": "continuous",
+      "status": "passed",
+      "legacy_seconds": 11.823,
+      "headless_seconds": 12.396,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.048,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 11.823,
+          "headless_seconds": 12.396,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.048,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "notebook-kernels-shutdown",
+      "group": "notebook",
+      "status": "passed",
+      "legacy_seconds": 16.695,
+      "headless_seconds": 14.362,
+      "legacy_model_calls": 4,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 0.86,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 16.695,
+          "headless_seconds": 14.362,
+          "legacy_model_calls": 4,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 0.86,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "plugin-update",
+      "group": "store",
+      "status": "passed",
+      "legacy_seconds": 79.307,
+      "headless_seconds": 83.607,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.054,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "failed",
+          "note": "Fresh run did not satisfy the completion/equivalence criterion; private evidence requires review."
+        },
+        {
+          "status": "passed",
+          "legacy_seconds": 79.307,
+          "headless_seconds": 83.607,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.054,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "tmp-cleanup",
+      "group": "cleanup",
+      "status": "passed",
+      "legacy_seconds": 22.093,
+      "headless_seconds": 23.241,
+      "legacy_model_calls": 4,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.052,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 22.093,
+          "headless_seconds": 23.241,
+          "legacy_model_calls": 4,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.052,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "exports-cleanup",
+      "group": "cleanup",
+      "status": "passed",
+      "legacy_seconds": 13.891,
+      "headless_seconds": 15.97,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.15,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 13.891,
+          "headless_seconds": 15.97,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.15,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "job-logs-cleanup",
+      "group": "cleanup",
+      "status": "passed",
+      "legacy_seconds": 14.502,
+      "headless_seconds": 18.982,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.309,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 14.502,
+          "headless_seconds": 18.982,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.309,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "log-cleanup",
+      "group": "cleanup",
+      "status": "passed",
+      "legacy_seconds": 16.314,
+      "headless_seconds": 17.978,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.102,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 16.314,
+          "headless_seconds": 17.978,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.102,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "project-clear-webapp-runs",
+      "group": "cleanup",
+      "status": "passed",
+      "legacy_seconds": 13.233,
+      "headless_seconds": 17.975,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.358,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 13.233,
+          "headless_seconds": 17.975,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.358,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "docker-prune",
+      "group": "docker",
+      "status": "passed",
+      "legacy_seconds": 25.436,
+      "headless_seconds": 20.167,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 0.793,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 25.436,
+          "headless_seconds": 20.167,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 0.793,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "db_health",
+      "group": "database",
+      "status": "passed",
+      "legacy_seconds": 7.709,
+      "headless_seconds": 10.098,
+      "legacy_model_calls": 2,
+      "headless_model_calls": 2,
+      "headless_time_ratio": 1.31,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 7.709,
+          "headless_seconds": 10.098,
+          "legacy_model_calls": 2,
+          "headless_model_calls": 2,
+          "headless_time_ratio": 1.31,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "db-vacuum",
+      "group": "database",
+      "status": "passed",
+      "legacy_seconds": 14.565,
+      "headless_seconds": 15.198,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.043,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 14.565,
+          "headless_seconds": 15.198,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.043,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "db-analyze",
+      "group": "database",
+      "status": "passed",
+      "legacy_seconds": 18.78,
+      "headless_seconds": 14.183,
+      "legacy_model_calls": 4,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 0.755,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 18.78,
+          "headless_seconds": 14.183,
+          "legacy_model_calls": 4,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 0.755,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "db-reindex",
+      "group": "database",
+      "status": "passed",
+      "legacy_seconds": 16.574,
+      "headless_seconds": 17.204,
+      "legacy_model_calls": 4,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.038,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 16.574,
+          "headless_seconds": 17.204,
+          "legacy_model_calls": 4,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.038,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "notification-send",
+      "group": "notification",
+      "status": "passed",
+      "legacy_seconds": 13.764,
+      "headless_seconds": 15.16,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.101,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 13.764,
+          "headless_seconds": 15.16,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.101,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "project-set-cluster",
+      "group": "project_cluster",
+      "status": "passed",
+      "legacy_seconds": 13.442,
+      "headless_seconds": 18.288,
+      "legacy_model_calls": 3,
+      "headless_model_calls": 3,
+      "headless_time_ratio": 1.361,
+      "note": "Both tasks completed with matching verified observations.",
+      "attempts": [
+        {
+          "status": "passed",
+          "legacy_seconds": 13.442,
+          "headless_seconds": 18.288,
+          "legacy_model_calls": 3,
+          "headless_model_calls": 3,
+          "headless_time_ratio": 1.361,
+          "note": "Both tasks completed with matching verified observations."
+        }
+      ]
+    },
+    {
+      "capability": "cluster-start",
+      "group": "cloud",
+      "status": "blocked",
+      "note": "Needs a new owned cluster lifecycle fixture; previous cloud resources were deleted.",
+      "attempts": [
+        {
+          "status": "blocked",
+          "note": "Needs a new owned cluster lifecycle fixture; previous cloud resources were deleted."
+        }
+      ]
+    },
+    {
+      "capability": "cluster-stop",
+      "group": "cloud",
+      "status": "blocked",
+      "note": "Needs a new owned cluster lifecycle fixture; previous cloud resources were deleted.",
+      "attempts": [
+        {
+          "status": "blocked",
+          "note": "Needs a new owned cluster lifecycle fixture; previous cloud resources were deleted."
+        }
+      ]
+    },
+    {
+      "capability": "cluster-pods-cleanup",
+      "group": "cloud",
+      "status": "blocked",
+      "note": "Needs a new owned cluster lifecycle fixture; previous cloud resources were deleted.",
+      "attempts": [
+        {
+          "status": "blocked",
+          "note": "Needs a new owned cluster lifecycle fixture; previous cloud resources were deleted."
+        }
+      ]
+    },
+    {
+      "capability": "k8s-apply-fix",
+      "group": "cloud",
+      "status": "blocked",
+      "note": "Needs a new owned cluster lifecycle fixture; previous cloud resources were deleted.",
+      "attempts": [
+        {
+          "status": "blocked",
+          "note": "Needs a new owned cluster lifecycle fixture; previous cloud resources were deleted."
+        }
+      ]
+    },
+    {
+      "capability": "image-delete",
+      "group": "images",
+      "status": "blocked",
+      "note": "Needs new disposable image targets; previous two deletion approvals were consumed.",
+      "attempts": [
+        {
+          "status": "blocked",
+          "note": "Needs new disposable image targets; previous two deletion approvals were consumed."
+        }
+      ]
+    },
+    {
+      "capability": "python-run",
+      "group": "python",
+      "status": "blocked",
+      "note": "Needs fresh per-run approval of concrete Python code; previous two approvals were consumed.",
+      "attempts": [
+        {
+          "status": "blocked",
+          "note": "Needs fresh per-run approval of concrete Python code; previous two approvals were consumed."
+        }
+      ]
+    },
+    {
+      "capability": "plugin-deploy",
+      "group": "excluded",
+      "status": "excluded",
+      "note": "plugin-deploy remains excluded at the user's request.",
+      "attempts": [
+        {
+          "status": "excluded",
+          "note": "plugin-deploy remains excluded at the user's request."
+        }
+      ]
+    }
+  ],
+  "median_paired_time_ratio": 1.102,
+  "legacy_median_seconds": 13.28,
+  "headless_median_seconds": 14.311
+}

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.868] - 2026-09-15
+
+### Fixed
+
+- Release Headless capacity after outstanding SDK work finishes, while retaining unknown outcomes and forbidding automatic retries. Local cancellation cannot release capacity while SDK work is still queued or running.
+- Record scheduled drafting/planning mode, transport and timings, and recognize Headless configuration without requiring a Legacy model.
+
 ## [0.4.867] - 2026-09-15
 
 ### Fixed

@@ -6,7 +6,7 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.867-blue)
+![Version](https://img.shields.io/badge/version-0.4.868-blue)
 ![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-13%2B-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -47,7 +47,7 @@ Instance vitals at a glance. **Mission Control** is the dense operations wall fo
 
 ### Agents
 
-The **ATK Admin Agent** is one generalist across fleet health triage, scoping, investigation, and guarded administration. It combines read-only sensors with a plan → approve → execute protocol: every mutation is checked below the model by the master kill-switch, capability gates, an exact-target HMAC confirmation token, the backend's Advanced Actions gate, and executor policy. **Prompts** versions prompt/model overrides, **Permissions** controls read/write/execute and autonomous access per capability, and the **How it works** link on the Agents page explains the safety model. Agent turns can use DSS ≥ 14.5 **Agent Interaction Logging** and a one-click Trace Explorer handoff. Conversations can optionally persist in built-in SQLite or Remote SQL, scoped per user and fleet host; all agent tools and the generalist ship inside this plugin.
+The **ATK Admin Agent** is one generalist across fleet health triage, scoping, investigation, and guarded administration. It combines read-only sensors with a plan → approve → execute protocol: every mutation is checked below the model by the master kill-switch, capability gates, an exact-target HMAC confirmation token, the backend's Advanced Actions gate, and executor policy. **Prompts** versions prompt/model overrides, **Permissions** controls read/write/execute and autonomous access per capability, and the **How it works** link on the Agents page explains the safety model. Legacy agent turns can use DSS ≥ 14.5 **Agent Interaction Logging** and a one-click Trace Explorer handoff; Headless does not copy its private conversation into those logs. Conversations can optionally persist in built-in SQLite or Remote SQL, scoped per user and fleet host; all agent tools and the generalist ship inside this plugin.
 
 **Permissions → Reasoning mode** exposes two task-level choices: **Headless** uses the actual Dataiku Headless MCP server and Cobuild to choose ADTK tools and produce the final answer; **Legacy** uses LLM Mesh for debugging and comparison. Both execute the same 11 sensors and 53 administrative actions through ADTK permissions, plans, confirmations, autonomy grants, backups and audit. Retired per-capability provider settings no longer insert Cobuild around individual operations. Chat, scheduled triage drafting and autonomous planning use the selected mode; standalone log AI, code-environment advice and report generation retain their existing models.
 
@@ -232,7 +232,7 @@ One password covers everything:
 
 - It unlocks Advanced Actions in the webapp (remembered per browser in a cookie — use **Forget on this device** on shared machines).
 - It encrypts remote-host API keys at rest (`adkfk1$…` blobs) and decrypts them automatically, with no separate unlock.
-- It lets the headless agents (daily triage, actuator) unlock red endpoints on their own.
+- It lets scheduled agents (daily triage, actuator) unlock red endpoints under their configured grants.
 - Leave **Master password** empty if you want the toolkit to stay permanently read-only.
 
 Upgrading from a pre-0.4.659 install to 0.4.660 or later? Nothing to do: the old `red_actions_password` / `host_keys_password` values are picked up automatically and migrated into **Master password** on first use, and installs that only ever set the hashed **Advanced Actions secret** keep working through the hash until you set the master password. (Upgrades that passed through 0.4.659 exactly lost the legacy values to DSS config pruning — re-enter the password once.)

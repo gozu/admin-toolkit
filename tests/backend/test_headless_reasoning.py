@@ -102,6 +102,24 @@ def test_failure_does_not_expose_private_exception_and_restart_is_explicit():
         service.snapshot(row['taskId'], 'owner')
 
 
+def test_unknown_record_retained_but_capacity_released_only_after_worker(monkeypatch):
+    monkeypatch.setattr(service, 'TURN_SECONDS', .03)
+    monkeypatch.setattr(service, 'MAX_SESSIONS', 1)
+    dss = DSS('slow', ['later'], .3)
+    row = wait(service.submit(dss, 'owner', 'ADMINTOOLKIT', 'once'), 'owner')
+    assert row['status'] == 'unknown'
+    with pytest.raises(ValueError, match='capacity'):
+        service.submit(DSS('new'), 'other', 'ADMINTOOLKIT', 'new')
+    time.sleep(.35)
+    monkeypatch.setattr(service, 'TURN_SECONDS', 3)
+    next_row = wait(service.submit(DSS('new'), 'other', 'ADMINTOOLKIT', 'new'), 'other')
+    assert next_row['message'] == 'new'
+    assert service.snapshot(row['taskId'], 'owner')['status'] == 'unknown'
+    assert len(dss.calls) == 1
+    from dataiku_mcp.tools import cobuild
+    assert not any(entry.instance_name == row['taskId'] for entry in cobuild._conversations.values())
+
+
 class Toolkit:
     def __init__(self, responses, gates=None):
         self.responses = iter(responses)

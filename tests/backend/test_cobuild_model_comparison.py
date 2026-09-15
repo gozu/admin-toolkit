@@ -8,7 +8,7 @@ import conftest  # noqa: F401
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts' / 'agents'))
-from cobuild_model_compare import TaskExecutor, task_loop
+from cobuild_model_compare import TaskExecutor, task_loop, observations_match
 from atk_agent_common import actuator, tools_impl
 
 
@@ -165,6 +165,15 @@ def test_all_capabilities_registered_and_actions_require_host_runtime(monkeypatc
     monkeypatch.delenv('DIP_HOME', raising=False)
     with pytest.raises(RuntimeError, match='selected DSS host'):
         run_group(SimpleNamespace(), 'fixture')
+
+
+def test_log_comparison_ignores_only_live_window_metadata():
+    a = {'lines': ['observed'], 'windowNote': 'earlier'}
+    b = {'lines': ['observed'], 'windowNote': 'later'}
+    assert observations_match('log_tail', [a, b])[0] is True
+    assert observations_match('log_tail', [a, dict(b, lines=['different'])])[0] is False
+    assert observations_match('log_tail', [a, dict(b, error='permission denied')])[0] is False
+    assert observations_match('instance_health', [a, b])[0] is False
 
 
 def test_report_does_not_relabel_historical_success_or_hide_latest_failure(tmp_path):

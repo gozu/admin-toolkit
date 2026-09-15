@@ -88,8 +88,9 @@ not change ownership. Native clients/tool bundles are fresh per task.
 The reviewed upstream pin is `9d7f6cc29a9406f347708c8811b5689ab257c6c8`
 (Dataiku Headless 0.6.0). Its repository is private. `make plugin` fetches that
 exact commit on the authorized build machine and packages only upstream Python
-source plus LICENSE/NOTICE into `resource/headless-server.zip`, with a SHA-256
-provenance manifest. No `.env`, profile, credential, Git metadata or developer
+source into the plugin's `python-lib/dataiku_mcp/`, alongside LICENSE/NOTICE
+and a SHA-256 provenance manifest. This is the import path DSS carries into
+webapp and agent kernels; it does not assume access to a resource directory. No `.env`, profile, credential, Git metadata or developer
 checkout enters the distribution. The private upstream source is not checked
 into this public repository.
 

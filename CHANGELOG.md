@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.866] - 2026-09-15
+
+### Fixed
+
+- Ship the pinned Headless server on the plugin Python import path used by DSS kernels. Missing dependencies now identify the module without exposing private exception details.
+
 ## [0.4.865] - 2026-09-15
 
 ### Changed

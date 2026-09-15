@@ -1,0 +1,710 @@
+{
+  "version": "0.4.864",
+  "repetitions": 3,
+  "tasks": {
+    "Version": {
+      "existing": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 0.794,
+          "min": 0.751,
+          "max": 0.831
+        },
+        "complete": {
+          "median": 0.794,
+          "min": 0.751,
+          "max": 0.834
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "bridge": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 11.08,
+          "min": 9.303,
+          "max": 11.298
+        },
+        "complete": {
+          "median": 11.08,
+          "min": 9.303,
+          "max": 11.298
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "optimized": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 0.75,
+          "min": 0.75,
+          "max": 0.762
+        },
+        "complete": {
+          "median": 6.915,
+          "min": 5.788,
+          "max": 7.089
+        },
+        "conversation": {
+          "median": 0.005,
+          "min": 0.005,
+          "max": 0.005
+        },
+        "send": {
+          "median": 6.155,
+          "min": 5.033,
+          "max": 6.24
+        },
+        "full_output_matches": 3,
+        "evidence_matches": 3,
+        "errors": []
+      }
+    },
+    "Hosts": {
+      "existing": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 0.764,
+          "min": 0.762,
+          "max": 0.822
+        },
+        "complete": {
+          "median": 0.764,
+          "min": 0.762,
+          "max": 0.822
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "bridge": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 11.066,
+          "min": 9.664,
+          "max": 12.976
+        },
+        "complete": {
+          "median": 11.066,
+          "min": 9.664,
+          "max": 12.976
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "optimized": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 0.761,
+          "min": 0.759,
+          "max": 0.771
+        },
+        "complete": {
+          "median": 5.295,
+          "min": 4.492,
+          "max": 6.274
+        },
+        "conversation": {
+          "median": 0.005,
+          "min": 0.004,
+          "max": 0.005
+        },
+        "send": {
+          "median": 4.527,
+          "min": 3.716,
+          "max": 5.508
+        },
+        "full_output_matches": 3,
+        "evidence_matches": 3,
+        "errors": []
+      }
+    },
+    "Capabilities": {
+      "existing": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 0.759,
+          "min": 0.0,
+          "max": 0.768
+        },
+        "complete": {
+          "median": 0.759,
+          "min": 0.0,
+          "max": 0.768
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "bridge": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 14.158,
+          "min": 13.007,
+          "max": 17.364
+        },
+        "complete": {
+          "median": 14.158,
+          "min": 13.007,
+          "max": 17.364
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "optimized": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 0.771,
+          "min": 0.763,
+          "max": 0.821
+        },
+        "complete": {
+          "median": 6.583,
+          "min": 5.228,
+          "max": 8.394
+        },
+        "conversation": {
+          "median": 0.005,
+          "min": 0.005,
+          "max": 0.005
+        },
+        "send": {
+          "median": 5.822,
+          "min": 4.355,
+          "max": 7.565
+        },
+        "full_output_matches": 3,
+        "evidence_matches": 3,
+        "errors": []
+      }
+    },
+    "System health": {
+      "existing": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 1.515,
+          "min": 1.503,
+          "max": 1.611
+        },
+        "complete": {
+          "median": 1.515,
+          "min": 1.503,
+          "max": 1.611
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "bridge": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 13.945,
+          "min": 13.52,
+          "max": 14.038
+        },
+        "complete": {
+          "median": 13.945,
+          "min": 13.52,
+          "max": 14.038
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "optimized": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 0.782,
+          "min": 0.757,
+          "max": 1.829
+        },
+        "complete": {
+          "median": 7.908,
+          "min": 7.66,
+          "max": 9.554
+        },
+        "conversation": {
+          "median": 0.005,
+          "min": 0.005,
+          "max": 0.005
+        },
+        "send": {
+          "median": 7.124,
+          "min": 6.896,
+          "max": 7.72
+        },
+        "full_output_matches": 3,
+        "evidence_matches": 3,
+        "errors": []
+      }
+    },
+    "Connections": {
+      "existing": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 0.759,
+          "min": 0.751,
+          "max": 0.795
+        },
+        "complete": {
+          "median": 0.759,
+          "min": 0.751,
+          "max": 0.795
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "bridge": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 12.776,
+          "min": 11.058,
+          "max": 12.878
+        },
+        "complete": {
+          "median": 12.776,
+          "min": 11.058,
+          "max": 12.878
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "optimized": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 0.766,
+          "min": 0.759,
+          "max": 0.767
+        },
+        "complete": {
+          "median": 6.485,
+          "min": 5.182,
+          "max": 7.463
+        },
+        "conversation": {
+          "median": 0.005,
+          "min": 0.005,
+          "max": 0.006
+        },
+        "send": {
+          "median": 5.719,
+          "min": 4.413,
+          "max": 6.694
+        },
+        "full_output_matches": 3,
+        "evidence_matches": 3,
+        "errors": []
+      }
+    },
+    "Plugins": {
+      "existing": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 0.751,
+          "min": 0.751,
+          "max": 0.758
+        },
+        "complete": {
+          "median": 0.751,
+          "min": 0.751,
+          "max": 0.758
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "bridge": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 12.805,
+          "min": 11.035,
+          "max": 12.829
+        },
+        "complete": {
+          "median": 12.805,
+          "min": 11.035,
+          "max": 12.829
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "optimized": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 0.76,
+          "min": 0.758,
+          "max": 1.284
+        },
+        "complete": {
+          "median": 6.107,
+          "min": 5.841,
+          "max": 6.69
+        },
+        "conversation": {
+          "median": 0.005,
+          "min": 0.005,
+          "max": 0.006
+        },
+        "send": {
+          "median": 5.34,
+          "min": 5.081,
+          "max": 5.459
+        },
+        "full_output_matches": 3,
+        "evidence_matches": 3,
+        "errors": []
+      }
+    },
+    "Projects": {
+      "existing": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 0.762,
+          "min": 0.759,
+          "max": 0.797
+        },
+        "complete": {
+          "median": 0.762,
+          "min": 0.759,
+          "max": 0.797
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "bridge": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 11.079,
+          "min": 11.078,
+          "max": 12.817
+        },
+        "complete": {
+          "median": 11.079,
+          "min": 11.078,
+          "max": 12.817
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "optimized": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 0.763,
+          "min": 0.752,
+          "max": 0.774
+        },
+        "complete": {
+          "median": 7.109,
+          "min": 7.008,
+          "max": 9.867
+        },
+        "conversation": {
+          "median": 0.005,
+          "min": 0.005,
+          "max": 0.005
+        },
+        "send": {
+          "median": 6.35,
+          "min": 6.232,
+          "max": 9.077
+        },
+        "full_output_matches": 3,
+        "evidence_matches": 3,
+        "errors": []
+      }
+    },
+    "Kubernetes reachability": {
+      "existing": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 4.308,
+          "min": 4.035,
+          "max": 4.358
+        },
+        "complete": {
+          "median": 4.308,
+          "min": 4.035,
+          "max": 4.358
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "bridge": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 16.203,
+          "min": 14.431,
+          "max": 17.85
+        },
+        "complete": {
+          "median": 16.203,
+          "min": 14.431,
+          "max": 17.85
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "optimized": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 3.287,
+          "min": 3.282,
+          "max": 3.548
+        },
+        "complete": {
+          "median": 10.659,
+          "min": 10.064,
+          "max": 11.543
+        },
+        "conversation": {
+          "median": 0.005,
+          "min": 0.005,
+          "max": 0.006
+        },
+        "send": {
+          "median": 7.364,
+          "min": 6.506,
+          "max": 8.253
+        },
+        "full_output_matches": 3,
+        "evidence_matches": 3,
+        "errors": []
+      }
+    },
+    "Installation overview": {
+      "existing": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 2.278,
+          "min": 2.274,
+          "max": 2.395
+        },
+        "complete": {
+          "median": 2.278,
+          "min": 2.274,
+          "max": 2.395
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "bridge": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 35.838,
+          "min": 33.518,
+          "max": 36.896
+        },
+        "complete": {
+          "median": 35.838,
+          "min": 33.518,
+          "max": 36.896
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "optimized": {
+        "samples": 3,
+        "successes": 2,
+        "failures": 1,
+        "data": {
+          "median": 0.766,
+          "min": 0.762,
+          "max": 0.841
+        },
+        "complete": {
+          "median": 7.753,
+          "min": 7.086,
+          "max": 8.419
+        },
+        "conversation": {
+          "median": 0.005,
+          "min": 0.005,
+          "max": 0.005
+        },
+        "send": {
+          "median": 6.981,
+          "min": 6.312,
+          "max": 7.65
+        },
+        "full_output_matches": 3,
+        "evidence_matches": 2,
+        "errors": [
+          "interpretation/mismatch/facts"
+        ]
+      }
+    },
+    "Estate inventory": {
+      "existing": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 5.653,
+          "min": 5.554,
+          "max": 5.743
+        },
+        "complete": {
+          "median": 5.653,
+          "min": 5.554,
+          "max": 5.743
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "bridge": {
+        "samples": 3,
+        "successes": 3,
+        "failures": 0,
+        "data": {
+          "median": 41.066,
+          "min": 40.66,
+          "max": 42.089
+        },
+        "complete": {
+          "median": 41.066,
+          "min": 40.66,
+          "max": 42.089
+        },
+        "conversation": null,
+        "send": null,
+        "full_output_matches": 3,
+        "evidence_matches": 0,
+        "errors": []
+      },
+      "optimized": {
+        "samples": 3,
+        "successes": 2,
+        "failures": 1,
+        "data": {
+          "median": 3.579,
+          "min": 3.285,
+          "max": 3.612
+        },
+        "complete": {
+          "median": 13.986,
+          "min": 13.82,
+          "max": 14.152
+        },
+        "conversation": {
+          "median": 0.005,
+          "min": 0.005,
+          "max": 0.005
+        },
+        "send": {
+          "median": 10.392,
+          "min": 10.224,
+          "max": 10.56
+        },
+        "full_output_matches": 3,
+        "evidence_matches": 2,
+        "errors": [
+          "interpretation/malformed-json"
+        ]
+      }
+    }
+  }
+}

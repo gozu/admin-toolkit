@@ -1,0 +1,64 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cobuild: ten task benchmark</title><style>
+body{font:15px/1.6 system-ui,sans-serif;background:#10151d;color:#e2e8f0;max-width:1250px;margin:40px auto;padding:0 24px}
+h1{font-size:30px}h2{margin-top:34px;color:#8cd9ca}p{max-width:1050px;color:#b6c2d1}.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{text-align:right;padding:10px 12px;border-bottom:1px solid #293444;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}th{color:#8cd9ca;font-size:13px}tbody tr:hover{background:#182432}
+</style><main><h1>Cobuild: ten read-task performance measurements</h1>
+<p>Measured 2026-09-15 on internal DEV (akaos), running Admin Toolkit 0.4.864.</p>
+<p>3 repetitions per task and route. Table values are medians in seconds. The CSV preserves every sample; the JSON includes minimum and maximum values. Completion medians use successful completions only; rejected explanations remain recorded as failures. Data medians include retained successful reads even when their explanation failed.</p>
+<div class="scroll"><table><thead><tr><th>Task</th><th>Existing data</th><th>Original Cobuild completion</th><th>Optimized data</th><th>Optimized completion</th><th>Data / Existing</th><th>Completion / Existing</th><th>Completion speedup</th></tr></thead><tbody>
+<tr><td>Version</td><td>0.79s</td><td>11.08s</td><td>0.75s</td><td>6.92s</td><td>0.94×</td><td>8.71×</td><td>1.60×</td></tr>
+<tr><td>Hosts</td><td>0.76s</td><td>11.07s</td><td>0.76s</td><td>5.29s</td><td>1.00×</td><td>6.93×</td><td>2.09×</td></tr>
+<tr><td>Capabilities</td><td>0.76s</td><td>14.16s</td><td>0.77s</td><td>6.58s</td><td>1.02×</td><td>8.67×</td><td>2.15×</td></tr>
+<tr><td>System health</td><td>1.51s</td><td>13.95s</td><td>0.78s</td><td>7.91s</td><td>0.52×</td><td>5.22×</td><td>1.76×</td></tr>
+<tr><td>Connections</td><td>0.76s</td><td>12.78s</td><td>0.77s</td><td>6.49s</td><td>1.01×</td><td>8.54×</td><td>1.97×</td></tr>
+<tr><td>Plugins</td><td>0.75s</td><td>12.80s</td><td>0.76s</td><td>6.11s</td><td>1.01×</td><td>8.13×</td><td>2.10×</td></tr>
+<tr><td>Projects</td><td>0.76s</td><td>11.08s</td><td>0.76s</td><td>7.11s</td><td>1.00×</td><td>9.33×</td><td>1.56×</td></tr>
+<tr><td>Kubernetes reachability</td><td>4.31s</td><td>16.20s</td><td>3.29s</td><td>10.66s</td><td>0.76×</td><td>2.47×</td><td>1.52×</td></tr>
+<tr><td>Installation overview</td><td>2.28s</td><td>35.84s</td><td>0.77s</td><td>7.75s †</td><td>0.34×</td><td>3.40×</td><td>4.62×</td></tr>
+<tr><td>Estate inventory</td><td>5.65s</td><td>41.07s</td><td>3.58s</td><td>13.99s †</td><td>0.63×</td><td>2.47×</td><td>2.94×</td></tr>
+</tbody></table></div>
+<p>† At least one explanation was rejected; the median uses successful completions. All attempts and validation counts appear below.</p>
+<h2>What was measured</h2>
+<p>Existing: deterministic ADTK tools, without Cobuild explanation. Original bridge: an operation-request turn, read execution, and result-acknowledgment turn for every read.</p>
+<p>Optimized: one backend task request checks permissions, dispatches existing read handlers, returns their data, and queues one Cobuild interpretation. A separate SSE connection receives the finished explanation.</p>
+<p>Data time ends when the calling client receives the full deterministic output. Completion time includes the explanation. Both clocks start at tool dispatch, so these are not end-to-end natural-language chat timings.</p>
+<p>Installation overview combines version, hosts, and plugins. Estate inventory combines connections, projects, and Kubernetes reachability. Existing and original bridge execute these reads sequentially; the task API executes up to three concurrently.</p>
+<p>The combined tasks explicitly exercise the batch API. Ordinary eligible single sensor calls use the fused endpoint automatically; the outer chat planner has not been changed to combine separate tool calls.</p>
+<p>Routes rotate order on each repetition. Shared caches are not cleared. Capability inventory may use a 30-second permission cache on Existing; the optimized route reloads permissions each time. This is a small, warm-instance sample, not a load test or a tail-latency estimate.</p>
+<p>The client runs from the development workstation against DEV. Network and proxy latency are included. Cobuild send-message timing includes server orchestration and response handling, not just model generation.</p>
+<p>All tasks are read-only. No mutations, permission changes, or provider-setting changes are part of the benchmark. Detailed scans and action execution retain their previous routing.</p>
+<h2>Validation and failures</h2>
+<div class="scroll"><table><thead><tr><th>Task</th><th>Existing success</th><th>Original success</th><th>Optimized success</th><th>Optimized raw output matches</th><th>Exact interpretation evidence matches</th></tr></thead><tbody>
+<tr><td>Version</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td></tr>
+<tr><td>Hosts</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td></tr>
+<tr><td>Capabilities</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td></tr>
+<tr><td>System health</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td></tr>
+<tr><td>Connections</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td></tr>
+<tr><td>Plugins</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td></tr>
+<tr><td>Projects</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td></tr>
+<tr><td>Kubernetes reachability</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td><td>3/3</td></tr>
+<tr><td>Installation overview</td><td>3/3</td><td>3/3</td><td>2/3</td><td>3/3</td><td>2/3</td></tr>
+<tr><td>Estate inventory</td><td>3/3</td><td>3/3</td><td>2/3</td><td>3/3</td><td>2/3</td></tr>
+</tbody></table></div>
+<p>Installation overview, optimized: interpretation/mismatch/facts.</p>
+<p>Estate inventory, optimized: interpretation/malformed-json.</p>
+<p>Raw output comparisons use the Existing sample from the same repetition. Live observations can change between calls; an output mismatch alone is not proof of incorrect execution. Interpretation validation checks the exact typed, allowlisted evidence and digest; it does not prove every sentence of model prose correct. Private observed data is kept outside the repository and is not included in these artifacts.</p>
+<h2>Remaining Cobuild time</h2>
+<div class="scroll"><table><thead><tr><th>Task</th><th>Conversation creation</th><th>Send message / response</th></tr></thead><tbody>
+<tr><td>Version</td><td>0.01s</td><td>6.16s</td></tr>
+<tr><td>Hosts</td><td>0.01s</td><td>4.53s</td></tr>
+<tr><td>Capabilities</td><td>0.01s</td><td>5.82s</td></tr>
+<tr><td>System health</td><td>0.01s</td><td>7.12s</td></tr>
+<tr><td>Connections</td><td>0.01s</td><td>5.72s</td></tr>
+<tr><td>Plugins</td><td>0.01s</td><td>5.34s</td></tr>
+<tr><td>Projects</td><td>0.01s</td><td>6.35s</td></tr>
+<tr><td>Kubernetes reachability</td><td>0.01s</td><td>7.36s</td></tr>
+<tr><td>Installation overview</td><td>0.01s</td><td>6.98s</td></tr>
+<tr><td>Estate inventory</td><td>0.01s</td><td>10.39s</td></tr>
+</tbody></table></div>
+<h2>Verification</h2>
+<p>890 backend tests and 23 subtests passed. Three browser tests covered pending, completed, failed, and expired interpretations while retaining read data. Frontend typecheck, contracts, and packaged production build passed. Version 0.4.864 was deployed to DEV and TAMGLOBAL.</p>
+<p>Maintenance audit: no errors; the existing unreferenced `docs/screenshots/overview.png` warning remains. The build also retains its existing bundle-size/deprecated-plugin warnings.</p>
+<p>Reproduce with `scripts/agents/benchmark_cobuild_tasks.py --samples 3 --output-dir &lt;private-directory&gt;`, then publish its aggregates using `scripts/agents/render_cobuild_task_benchmark.py`.</p></main></html>

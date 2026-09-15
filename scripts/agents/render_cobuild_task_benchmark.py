@@ -21,7 +21,9 @@ def render(summary):
         '# Cobuild: ten read-task performance measurements', '',
         f"Measured 2026-09-15 on internal DEV (akaos), running Admin Toolkit {summary['version']}.", '',
         f"{summary['repetitions']} repetitions per task and route. Table values are medians in seconds. "
-        'The CSV preserves every sample; the JSON includes minimum and maximum values.', '',
+        'The CSV preserves every sample; the JSON includes minimum and maximum values. '
+        'Completion medians use successful completions only; rejected explanations remain recorded as failures. '
+        'Data medians include retained successful reads even when their explanation failed.', '',
         '| Task | Existing data | Original Cobuild completion | Optimized data | Optimized completion | Data / Existing | Completion / Existing | Completion speedup |',
         '|---|---:|---:|---:|---:|---:|---:|---:|',
     ]
@@ -31,8 +33,9 @@ def render(summary):
         ratio = f'{data / base:.2f}×' if base and data is not None else '—'
         speedup = f'{old / complete:.2f}×' if complete and old is not None else '—'
         complete_ratio = f'{complete / base:.2f}×' if base and complete is not None else '—'
-        lines.append(f'| {name} | {number(base)} | {number(old)} | {number(data)} | {number(complete)} | {ratio} | {complete_ratio} | {speedup} |')
-    lines += ['', '## What was measured', '',
+        complete_text = number(complete) + (' †' if groups['optimized']['failures'] else '')
+        lines.append(f'| {name} | {number(base)} | {number(old)} | {number(data)} | {complete_text} | {ratio} | {complete_ratio} | {speedup} |')
+    lines += ['', '† At least one explanation was rejected; the median uses successful completions. All attempts and validation counts appear below.', '', '## What was measured', '',
         '- Existing: deterministic ADTK tools, without Cobuild explanation. Original bridge: an operation-request turn, read execution, and result-acknowledgment turn for every read.',
         '- Optimized: one backend task request checks permissions, dispatches existing read handlers, returns their data, and queues one Cobuild interpretation. A separate SSE connection receives the finished explanation.',
         '- Data time ends when the calling client receives the full deterministic output. Completion time includes the explanation. Both clocks start at tool dispatch, so these are not end-to-end natural-language chat timings.',
@@ -49,6 +52,10 @@ def render(summary):
         counts = [f"{groups[v]['successes']}/{groups[v]['samples']}" for v in ('existing', 'bridge', 'optimized')]
         group = groups['optimized']
         lines.append(f"| {name} | {' | '.join(counts)} | {group['full_output_matches']}/{group['samples']} | {group['evidence_matches']}/{group['samples']} |")
+    for name, groups in summary['tasks'].items():
+        for variant, group in groups.items():
+            if group['errors']:
+                lines.extend(['', f"{name}, {variant}: " + ', '.join(group['errors']) + '.'])
     lines += ['', 'Raw output comparisons use the Existing sample from the same repetition. Live observations can change between calls; an output mismatch alone is not proof of incorrect execution. Interpretation validation checks the exact typed, allowlisted evidence and digest; it does not prove every sentence of model prose correct. Private observed data is kept outside the repository and is not included in these artifacts.', '',
         '## Remaining Cobuild time', '',
         '| Task | Conversation creation | Send message / response |', '|---|---:|---:|']

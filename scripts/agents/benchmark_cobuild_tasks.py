@@ -78,6 +78,15 @@ def stats(values):
                 max=round(max(values), 3)) if values else None
 
 
+def failure_category(row):
+    message = row.get('interpretation', {}).get('message')
+    safe_codes = {'interpretation/' + c for c in (
+        'provider-error', 'interaction-required', 'empty-response', 'malformed-json',
+        'non-object', 'invalid-summary', 'mismatch/type', 'mismatch/request_id',
+        'mismatch/evidence_sha256', 'mismatch/facts')}
+    return message if isinstance(message, str) and message in safe_codes else row.get('error', 'unknown')
+
+
 def publish(rows, output, samples, version):
     # Compare every variant to the Existing output in the same repetition,
     # regardless of the alternating execution order.
@@ -103,7 +112,7 @@ def publish(rows, output, samples, version):
                 send=stats([r['send_seconds'] for r in good if 'send_seconds' in r]),
                 full_output_matches=sum(r.get('full_output_match') is True for r in group),
                 evidence_matches=sum(r.get('evidence_match') is True for r in group),
-                errors=[r.get('error', 'unknown') for r in group if r['status'] != 'completed'])
+                errors=[failure_category(r) for r in group if r['status'] != 'completed'])
     (output / 'samples-private.json').write_text(json.dumps(rows, indent=2))
     (output / 'summary.json').write_text(json.dumps(summary, indent=2))
     with (output / 'timings.csv').open('w') as handle:

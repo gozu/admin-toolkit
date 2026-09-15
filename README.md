@@ -51,6 +51,8 @@ The **ATK Admin Agent** is one generalist across fleet health triage, scoping, i
 
 When **Cobuild** is selected in Permissions, version reads, host lists without probes, capability inventories, basic system health, connection/plugin/project inventories, and Kubernetes reachability return deterministic data through one task request with fresh permission checks. A separate background Cobuild interpretation streams when ready. The bounded read-task API also supports up to six independent reads with one shared interpretation. Detailed scans, other arguments, and actions retain their existing routes. Cobuild usage does not require an additional Second Look review; existing permissions and confirmations still apply. The outer chat model remains on LLM Mesh.
 
+See the [ten-task performance measurements](docs/reports/adtk-cobuild-ten-task-benchmark.md) for timings, output comparisons, and interpretation failure counts.
+
 ### Connections
 
 **Inventory** lists every connection with type and usage trends. **Insights** is the matrix view — datasets, recipes, LLM assets, filesystem usages, audit flags, and health per connection. **Health** runs live connection tests. **FS Migration** *(tool)* is an outreach-driven campaign to move data off local filesystem connections, with owner notification emails.

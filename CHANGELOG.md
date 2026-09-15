@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.861] - 2026-09-14
+
+### Fixed
+
+- ECR image-deletion plans and execution use the selected DSS host's macro, including for the local instance. Containerized webapps no longer substitute their own registry access for the host's; existing cutoff checks, dry runs, and non-ECR adapters are preserved.
+
+## [0.4.860] - 2026-09-14
+
+### Fixed
+
+- Image Cleaner resolves registry URLs through DSS 15 image-build configurations, fixing ECR region detection when the webapp cannot use instance metadata. The host macro and webapp share the same lookup while preserving older execution-config layouts.
+- Agent cluster start/stop wait at least 30 minutes for cloud provisioning or teardown, honoring larger configured timeouts. An expired request reports an unknown outcome and is never automatically repeated.
+- Cobuild retains a requested operation’s conversation for up to one hour while ADTK executes, so an unrelated tool call cannot discard a normal cluster provisioning result after ten minutes.
+
 ## [0.4.859] - 2026-09-14
 
 ### Fixed

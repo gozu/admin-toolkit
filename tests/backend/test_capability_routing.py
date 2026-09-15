@@ -120,3 +120,27 @@ def test_route_owner_isolated_by_host_and_caller():
     client = SimpleNamespace(host='https://instance.invalid')
     assert bridge.owner_key(client, 'a', 'session') != bridge.owner_key(client, 'b', 'session')
     assert bridge.owner_key(client, 'a', 'session') != bridge.owner_key(client, 'a', 'other')
+
+
+def test_unrelated_turn_does_not_evict_long_running_operation(monkeypatch):
+    from concurrent.futures import Future
+    conversation = object()
+
+    def submit(fn, *args):
+        future = Future()
+        future.set_result({'_conversation': conversation})
+        return future
+
+    now = [0]
+    monkeypatch.setattr(bridge, '_TURNS', {})
+    monkeypatch.setattr(bridge, '_pool', lambda: SimpleNamespace(submit=submit))
+    monkeypatch.setattr(bridge.time, 'monotonic', lambda: now[0])
+    operation = bridge.submit(None, 'owner', 'project', 'cluster-start', 'execute', {}, 'id')
+    now[0] = 1800
+    bridge.submit(None, 'owner', 'project', 'list_hosts', 'read', {}, 'other')
+    result = bridge.submit_result(operation['turnId'], 'owner', {'ok': True})
+    assert result['status'] == 'pending'
+    assert bridge.submit_result(operation['turnId'], 'owner', {'ok': True}) == result
+    now[0] = 5500
+    bridge.submit(None, 'owner', 'project', 'list_hosts', 'read', {}, 'third')
+    assert operation['turnId'] not in bridge._TURNS

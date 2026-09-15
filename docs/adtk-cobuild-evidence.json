@@ -22,26 +22,37 @@
     "transport": "deployed HTTP bridge"
   },
   {
-    "at": "2026-09-14T21:59:45.955458+00:00",
+    "at": "2026-09-15T00:22:19.555511+00:00",
     "capability": "cluster-pods-cleanup",
-    "attempt": 0,
-    "status": "blocked",
-    "scope": "Delete one completed owned pod on a disposable cluster",
-    "reason": "AssertionError during postcondition"
+    "attempt": 1,
+    "status": "same",
+    "scope": "Delete one completed owned pod in the current namespace on a disposable cluster",
+    "existing_seconds": 3.125,
+    "cobuild_seconds": 18.2,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
   },
   {
+    "at": "2026-09-15T00:21:48.434637+00:00",
     "capability": "cluster-start",
-    "status": "blocked",
-    "scope": "Existing provisioned one t3.small; no completed paired Cobuild provisioning run",
-    "reason": "Backend restart interrupted the paired lifecycle run",
-    "transport": "live cluster test"
+    "status": "same",
+    "attempt": 1,
+    "scope": "Actual provisioning on both paths; one Ready t3.small; test HTTP timeout 1800s; timings exclude plan",
+    "existing_seconds": 807.776,
+    "cobuild_seconds": 793.451,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
   },
   {
+    "at": "2026-09-15T00:33:34.777827+00:00",
     "capability": "cluster-stop",
-    "status": "blocked",
-    "scope": "Stop initiated on Existing; AWS deletion independently verified; no paired Cobuild stop",
-    "reason": "Backend restart interrupted the paired lifecycle run",
-    "transport": "live cluster test"
+    "status": "same",
+    "attempt": 1,
+    "scope": "Stop both provisioned clusters; independently verify EKS, node, nodegroup and control-plane stack absence; timings exclude plan",
+    "existing_seconds": 558.887,
+    "cobuild_seconds": 561.405,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
   },
   {
     "at": "2026-09-14T22:07:26.283563+00:00",
@@ -236,10 +247,15 @@
     "transport": "deployed HTTP bridge"
   },
   {
+    "at": "2026-09-15T00:40:42.519958+00:00",
     "capability": "image-delete",
-    "status": "blocked",
-    "reason": "New fixture excluded by enforced release-date cutoff; awaiting approved old image",
-    "transport": "source inspection of enforced cutoff; no deletion"
+    "status": "same",
+    "scope": "Two authorized oldest akaos base images tagged DSS 14.7.0; one deletion per path; other repository images preserved",
+    "attempt": 1,
+    "existing_seconds": 3.669,
+    "cobuild_seconds": 20.707,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
   },
   {
     "capability": "instance_health",
@@ -271,13 +287,13 @@
     "transport": "deployed HTTP bridge"
   },
   {
-    "at": "2026-09-14T21:59:29.987913+00:00",
+    "at": "2026-09-14T23:55:31.037319+00:00",
     "capability": "k8s-apply-fix",
-    "attempt": 2,
+    "attempt": 1,
     "status": "same",
     "scope": "Label one owned ConfigMap on the single t3.small test cluster",
-    "existing_seconds": 4.563,
-    "cobuild_seconds": 29.296,
+    "existing_seconds": 4.357,
+    "cobuild_seconds": 26.011,
     "request_and_result_verified": true,
     "transport": "deployed HTTP bridge"
   },
@@ -383,10 +399,10 @@
     "transport": "deployed HTTP bridge"
   },
   {
+    "at": "2026-09-15T00:41:27.489572+00:00",
     "capability": "plugin-deploy",
-    "status": "blocked",
-    "reason": "Awaiting authorized second host for disposable plugin",
-    "transport": "no execution"
+    "status": "skipped",
+    "reason": "Skipped at user request"
   },
   {
     "at": "2026-09-14T23:11:31.638480+00:00",
@@ -477,10 +493,15 @@
     "transport": "deployed HTTP bridge"
   },
   {
+    "at": "2026-09-14T23:42:10.706189+00:00",
     "capability": "python-run",
-    "status": "blocked",
-    "reason": "Awaiting exact-code approval for print(6 * 7) on each path",
-    "transport": "no execution"
+    "status": "same",
+    "scope": "Exactly two approved executions of print(6 * 7), one per path; stdout, stderr, exit code and timeout checked",
+    "attempt": 1,
+    "existing_seconds": 0.111,
+    "cobuild_seconds": 16.184,
+    "request_and_result_verified": true,
+    "transport": "deployed HTTP bridge"
   },
   {
     "at": "2026-09-14T21:19:40.376053+00:00",

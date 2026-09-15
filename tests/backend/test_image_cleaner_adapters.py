@@ -304,6 +304,60 @@ class EcrAdapterTest(unittest.TestCase):
         self.assertEqual(len(failed), 2)
 
 
+class EcrDeleteHostContextTest(unittest.TestCase):
+    def test_local_and_remote_preflight_and_delete_use_selected_host(self):
+        from flask import g
+        selected = object()
+        images = [{'repositoryName': 'dku-owned', 'imageDigest': 'sha256:owned'}]
+        for host in ('local', 'remote'):
+            for dry_run in (True, False):
+                with self.subTest(host=host, dry_run=dry_run), \
+                     backend.app.test_request_context(json={'provider': 'ecr', 'cutoff': '2020-01-01',
+                                                            'images': images, 'dryRun': dry_run}), \
+                     mock.patch.object(image_cleaner, '_safe_request_host_id', return_value=host), \
+                     mock.patch.object(image_cleaner, '_image_cleaner_validate_cutoff', return_value=(None, {})), \
+                     mock.patch.object(image_cleaner, '_image_cleaner_macro', return_value={'ok': True}) as macro, \
+                     mock.patch.object(image_cleaner, '_image_cleaner_adapter') as adapter:
+                    g.client = selected
+                    response, status = image_cleaner.api_image_cleaner_delete()
+                    self.assertEqual(status, 200)
+                    macro.assert_called_once()
+                    self.assertEqual(macro.call_args.args, (selected, 'delete'))
+                    kwargs = dict(macro.call_args.kwargs)
+                    self.assertEqual(json.loads(kwargs.pop('images_json')), images)
+                    self.assertEqual(kwargs, {'provider': 'ecr', 'cutoff': '2020-01-01', 'dryRun': dry_run})
+                    adapter.assert_not_called()
+        self.assertTrue(image_cleaner.api_image_cleaner_delete._admin_toolkit_advanced)
+
+    def test_macro_failure_does_not_retry_with_webapp_credentials(self):
+        from flask import g
+        with backend.app.test_request_context(json={'provider': 'ecr', 'cutoff': '2020-01-01',
+                                                    'images': [{'repositoryName': 'dku-owned', 'imageDigest': 'x'}]}), \
+             mock.patch.object(image_cleaner, '_image_cleaner_validate_cutoff', return_value=(None, {})), \
+             mock.patch.object(image_cleaner, '_image_cleaner_macro', side_effect=RuntimeError('unavailable')) as macro, \
+             mock.patch.object(image_cleaner, '_image_cleaner_adapter') as adapter:
+            g.client = object()
+            _, status = image_cleaner.api_image_cleaner_delete()
+            self.assertEqual(status, 502)
+            macro.assert_called_once()
+            adapter.assert_not_called()
+
+    def test_local_other_providers_keep_their_existing_adapter(self):
+        for provider in ('acr', 'gar'):
+            with self.subTest(provider=provider), \
+                 backend.app.test_request_context(json={'provider': provider, 'cutoff': '2020-01-01',
+                                                        'images': [{'repositoryName': 'dku-owned', 'imageDigest': 'x'}]}), \
+                 mock.patch.object(image_cleaner, '_safe_request_host_id', return_value='local'), \
+                 mock.patch.object(image_cleaner, '_image_cleaner_validate_cutoff', return_value=(None, {})), \
+                 mock.patch.object(image_cleaner, '_image_cleaner_macro') as macro, \
+                 mock.patch.object(image_cleaner, '_image_cleaner_adapter') as adapter:
+                adapter.return_value.head_image.return_value = None
+                _, status = image_cleaner.api_image_cleaner_delete()
+                self.assertEqual(status, 400)
+                adapter.assert_called_once_with(provider)
+                macro.assert_not_called()
+
+
 # ──────────────────────────────────────────────────────────────────────
 # SSE shape — inject a fake adapter, assert init → repo* → done
 # ──────────────────────────────────────────────────────────────────────

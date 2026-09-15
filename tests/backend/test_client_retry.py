@@ -124,3 +124,28 @@ def test_long_post_timeout_is_forwarded_without_retry(monkeypatch):
     assert sleeps['n'] == 0
     assert 'outcome is unknown' in failure.value.remediation
     assert 'may still be running' in failure.value.message
+
+
+@pytest.mark.parametrize('action', ['cluster-start', 'cluster-stop'])
+@pytest.mark.parametrize('configured,expected', [(900, 1800), (2400, 2400)])
+def test_cluster_lifecycle_waits_without_reissuing_mutation(monkeypatch, action, configured, expected):
+    from atk_agent_common.actions import clusters
+
+    c, sleeps = _client(monkeypatch)
+    c.heavy_timeout = configured
+    calls = []
+
+    def request(method, url, **kwargs):
+        calls.append((method, url, kwargs['timeout']))
+        raise requests.exceptions.ReadTimeout('provisioning still running')
+
+    monkeypatch.setattr(c.session, 'request', request)
+    execute = getattr(clusters, '_exec_' + action.replace('-', '_'))
+    with pytest.raises(BackendError) as failure:
+        execute(c, None, {'clusterId': 'owned-test'})
+    assert len(calls) == 1
+    assert calls[0][0] == 'POST'
+    assert calls[0][1].endswith('/' + action)
+    assert calls[0][2] == expected
+    assert sleeps['n'] == 0
+    assert 'outcome is unknown' in failure.value.remediation

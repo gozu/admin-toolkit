@@ -86,13 +86,13 @@ PENDING = {
     'notification-send': 'Needs a controlled recipient or test sink; no real messages sent.',
     'python-run': 'Needs a concrete code plan and the existing per-run human acknowledgment.',
     'docker-prune': 'Need to isolate cache/images; current action has instance-wide scope.',
-    'plugin-deploy': 'Needs a disposable plugin and an authorized second host.',
+    'plugin-deploy': 'Skipped at the user’s request; no paired deployment comparison performed.',
     'continuous-activity-stop': 'Needs a running disposable continuous recipe.',
     'notebook-kernels-shutdown': 'Needs an active disposable notebook kernel.',
-    'image-delete': 'Needs an approved old image: server cutoff excludes freshly created images. No existing image deleted.',
-    'cluster-start': 'Existing provisioned one t3.small; paired run interrupted by deployment. Needs a stable deployment window.',
-    'cluster-stop': 'Existing stop interrupted by backend restart; AWS cleanup completed. Paired lifecycle comparison still pending.',
-    'cluster-pods-cleanup': 'Async deletion wait is fixed in the test; live comparison still needs a stable window for a new disposable cluster.',
+    'image-delete': 'Two oldest akaos DSS 14.7.0 images authorized; DSS 15 registry lookup fixed locally; deletion retry awaits deployment after cluster cleanup.',
+    'cluster-start': 'Quiet-window retry underway: Existing provisioned one Ready t3.small; Cobuild provisioning comparison pending.',
+    'cluster-stop': 'Quiet-window lifecycle comparison underway; verify all cloud resources absent after each stop.',
+    'cluster-pods-cleanup': 'Fixture corrected to use the namespace DSS cleans; paired retry pending on the second disposable cluster.',
     'plugin-uninstall': 'Installed-plugin backup is fixed; re-run on a disposable unused plugin if no successful evidence is present.',
     'plugin-update': 'Installed-plugin backup and long-operation timeout are fixed; live store-update verification is required.',
     'project-delete': 'Earlier attempts were interrupted by backend restarts; those were not three meaningful Cobuild improvement attempts.',
@@ -125,7 +125,8 @@ def rows_for(evidence):
     for name in catalog:
         e = evidence.get(name, {})
         status = {'same': 'Matched scope', 'blocked': 'Blocked', 'failed': 'Needs fix',
-                  'needs_review': 'Needs review', 'baseline_failed': 'Blocked'}.get(e.get('status'), 'Not tested')
+                  'needs_review': 'Needs review', 'baseline_failed': 'Blocked',
+                  'skipped': 'Skipped'}.get(e.get('status'), 'Not tested')
         if name == 'db_health' and e.get('transport') != 'deployed HTTP bridge':
             status = 'Blocked'
         existing, cobuild = e.get('existing_seconds', ''), e.get('cobuild_seconds', '')
@@ -147,7 +148,8 @@ def rows_for(evidence):
                 (', plans, confirmation and audit' if name in actuator.ACTIONS else ''),
             'Functional verdict': status,
             'Existing seconds': existing, 'Cobuild seconds': cobuild,
-            'Latency verdict': ('Slower in sample' if cobuild > existing else 'Cache/order affected; inconclusive')
+            'Latency verdict': ('Cloud variability; overhead not isolated' if name in {'cluster-start', 'cluster-stop'}
+                else 'Slower in sample' if cobuild > existing else 'Cache/order affected; inconclusive')
                 if isinstance(existing, (float, int)) and isinstance(cobuild, (float, int)) else 'Not measured',
             'Scope / remaining work': scope if status == 'Matched scope' else PENDING.get(name, e.get('reason') or 'Disposable fixture and both-path execution still required'),
             'Candidate attempt': e.get('attempt', ''),
@@ -187,7 +189,7 @@ Latency is graded separately. Untested branches, billing totals and end-to-end c
 <button id="reset">Reset</button><button id="download">Download filtered CSV</button>
 <span id="count" class="count" aria-live="polite"></span></div>
 <div class="table"><table><thead><tr id="head"></tr></thead><tbody id="body"></tbody></table></div>
-<p class="meta">All mutations use disposable fixtures unless the scope states a read-only probe.
+<p class="meta">Mutations use disposable fixtures or explicitly authorized existing targets, as stated in each scope.
 Audit and history were verified separately for project-variable changes in DSS.
 Results are not 64 full tool certifications.</p></main>
 <script id="data" type="application/json">__DATA__</script>

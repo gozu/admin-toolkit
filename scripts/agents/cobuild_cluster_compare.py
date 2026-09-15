@@ -7,10 +7,14 @@ import json
 import time
 
 
-def fixtures(run):
+def fixtures(run, only=None):
     cid = 'atk-cobuild-20260914'
     cluster = run.dss.get_cluster(cid)
     namespace = 'atk-comparison'
+    # DSS delete_finished_pods() uses kubectl's current namespace, not all
+    # namespaces. This cluster is owned exclusively by the comparison.
+    pod_namespace = 'default'
+    pod_name = 'atk-comparison-finished'
 
     def kubectl(command):
         result = cluster.run_kubectl(command)
@@ -32,11 +36,11 @@ def fixtures(run):
             return {'owned_configmap_label': 'after', 'nodes': 1, 'instance_type': 't3.small'}
 
         def reset_pod():
-            kubectl('-n ' + namespace + ' delete pod finished --ignore-not-found=true --wait=true')
-            kubectl('-n ' + namespace + ' run finished --image=public.ecr.aws/docker/library/busybox:1.37 --restart=Never --command -- true')
+            kubectl('-n ' + pod_namespace + ' delete pod ' + pod_name + ' --ignore-not-found=true --wait=true')
+            kubectl('-n ' + pod_namespace + ' run ' + pod_name + ' --image=public.ecr.aws/docker/library/busybox:1.37 --restart=Never --command -- true')
             end = time.monotonic() + 120
             while time.monotonic() < end:
-                pod = json.loads(kubectl('-n ' + namespace + ' get pod finished -o json'))
+                pod = json.loads(kubectl('-n ' + pod_namespace + ' get pod ' + pod_name + ' -o json'))
                 if pod['status'].get('phase') == 'Succeeded':
                     return
                 time.sleep(2)
@@ -44,16 +48,22 @@ def fixtures(run):
 
         def verify_pod(_):
             # DSS deletion requests return before Kubernetes removes the object.
-            kubectl('-n ' + namespace + ' wait --for=delete pod/finished --timeout=90s')
-            pods = json.loads(kubectl('-n ' + namespace + ' get pods -o json'))['items']
-            assert not any(p['metadata']['name'] == 'finished' for p in pods)
-            return {'completed_owned_pod_deleted': True, 'nodes': 1, 'instance_type': 't3.small'}
+            end = time.monotonic() + 90
+            while time.monotonic() < end:
+                pods = json.loads(kubectl('-n ' + pod_namespace + ' get pods -o json'))['items']
+                if not any(p['metadata']['name'] == pod_name for p in pods):
+                    return {'completed_owned_pod_deleted': True, 'nodes': 1, 'instance_type': 't3.small'}
+                time.sleep(2)
+            raise AssertionError('Completed owned pod was not deleted within 90 seconds')
 
         with run.gates(['k8s-apply-fix', 'cluster-pods-cleanup']):
-            run.action('k8s-apply-fix', {'clusterId': cid, 'commands': [
-                'label configmap comparison comparison=after --overwrite -n ' + namespace]},
-                reset_map, verify_map, 'Label one owned ConfigMap on the single t3.small test cluster')
-            run.action('cluster-pods-cleanup', {'clusterId': cid}, reset_pod, verify_pod,
-                       'Delete one completed owned pod on a disposable cluster')
+            if only is None or 'k8s-apply-fix' in only:
+                run.action('k8s-apply-fix', {'clusterId': cid, 'commands': [
+                    'label configmap comparison comparison=after --overwrite -n ' + namespace]},
+                    reset_map, verify_map, 'Label one owned ConfigMap on the single t3.small test cluster')
+            if only is None or 'cluster-pods-cleanup' in only:
+                run.action('cluster-pods-cleanup', {'clusterId': cid}, reset_pod, verify_pod,
+                           'Delete one completed owned pod in the current namespace on a disposable cluster')
     finally:
+        kubectl('-n ' + pod_namespace + ' delete pod ' + pod_name + ' --ignore-not-found=true --wait=false')
         kubectl('delete namespace ' + namespace + ' --wait=false')

@@ -103,7 +103,8 @@ def _plan_cluster_stop(client, host, target, params):
 def _exec_cluster_stop(client, host, target):
     return _base.post_backend_action(client, host, 'cluster-stop',
                                      {'clusterId': target['clusterId'],
-                                      'terminate': bool(target.get('terminate'))})
+                                      'terminate': bool(target.get('terminate'))},
+                                     timeout=max(1800, getattr(client, 'heavy_timeout', 900)))
 
 
 def _plan_cluster_start(client, host, target, params):
@@ -121,8 +122,11 @@ def _plan_cluster_start(client, host, target, params):
 
 
 def _exec_cluster_start(client, host, target):
+    # Cloud provisioning regularly exceeds the ordinary 30-second timeout.
+    # Keep one request pending; never retry a mutation with an unknown outcome.
     return _base.post_backend_action(client, host, 'cluster-start',
-                                     {'clusterId': target['clusterId']})
+                                     {'clusterId': target['clusterId']},
+                                     timeout=max(1800, getattr(client, 'heavy_timeout', 900)))
 
 
 def _plan_cluster_pods_cleanup(client, host, target, params):

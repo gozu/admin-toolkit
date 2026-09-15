@@ -98,31 +98,9 @@ def _settings_registry_hint():
         settings = dataiku.api_client().get_general_settings().get_raw()
     except Exception:
         return None
-    cs = settings.get('containerSettings') if isinstance(settings, dict) else None
-    if not isinstance(cs, dict):
-        return None
-    configs = cs.get('executionConfigs') or []
-    default_name = cs.get('defaultExecutionConfig')
-    ordered = []
-    for config in configs:
-        if isinstance(config, dict) and config.get('name') == default_name:
-            ordered.insert(0, config)
-        elif isinstance(config, dict):
-            ordered.append(config)
-    generic = cs.get('executionConfigsGenericOverrides')
-    if isinstance(generic, dict):
-        ordered.append(generic)
-    for config in ordered:
-        url = str(config.get('repositoryURL') or '').strip()
-        if not url:
-            continue
-        if re.match(r'^(?:https?://)?\d+\.dkr\.ecr\.([a-z0-9-]+)\.amazonaws\.com', url, re.I):
-            return {'provider': 'ecr', 'registryUrl': url, 'source': 'dss-config'}
-        if re.match(r'^(?:https?://)?([a-zA-Z0-9]+\.azurecr\.io)', url, re.I):
-            return {'provider': 'acr', 'registryUrl': url, 'source': 'dss-config'}
-        if re.match(r'^(?:https?://)?([a-z0-9-]+-docker\.pkg\.dev|(?:[a-z0-9-]+\.)?gcr\.io)', url, re.I):
-            return {'provider': 'gar', 'registryUrl': url, 'source': 'dss-config'}
-    return None
+    from atk_agent_common.registry_settings import registry_hint
+    hint = registry_hint(settings)
+    return dict(hint, source='dss-config') if hint else None
 
 
 def _aws_region_from_imds(timeout=2.0):

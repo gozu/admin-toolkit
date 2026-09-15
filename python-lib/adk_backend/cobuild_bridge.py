@@ -15,6 +15,7 @@ _LOCK = threading.Lock()
 _TURNS = {}
 _MAX_PENDING = 8
 _TTL = 600
+_RESULT_TTL = 3600  # Keep the conversation while long ADTK operations run.
 
 
 def _pool():
@@ -124,13 +125,15 @@ def submit(client, owner, project_key, capability, phase, arguments, request_id)
     with _LOCK:
         now = time.monotonic()
         for key, row in list(_TURNS.items()):
-            if row['future'].done() and now - row['created'] > _TTL:
+            ttl = _RESULT_TTL if row.get('awaitingResult') else _TTL
+            if row['future'].done() and now - row['created'] > ttl:
                 del _TURNS[key]
         if sum(not r['future'].done() for r in _TURNS.values()) >= _MAX_PENDING:
             raise ValueError('Cobuild worker capacity is full; retry after an existing turn finishes.')
         turn_id = uuid.uuid4().hex
         future = _pool().submit(run_turn, client, project_key, capability, phase, arguments, request_id)
-        _TURNS[turn_id] = {'future': future, 'owner': owner, 'created': now}
+        _TURNS[turn_id] = {'future': future, 'owner': owner, 'created': now,
+                           'awaitingResult': True}
     return {'status': 'pending', 'turnId': turn_id}
 
 
@@ -150,6 +153,8 @@ def submit_result(turn_id, owner, result):
         _TURNS[result_id] = {'future': _pool().submit(acknowledge, conversation, result),
                              'owner': owner, 'created': time.monotonic()}
         row['acknowledgment'] = result_id
+        row['awaitingResult'] = False
+        row['created'] = time.monotonic()
     return {'status': 'pending', 'turnId': result_id}
 
 

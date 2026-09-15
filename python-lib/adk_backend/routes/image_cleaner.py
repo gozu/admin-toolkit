@@ -538,7 +538,7 @@ class GarAdapter(RegistryAdapter):
 # ── Detection ──
 
 def _image_cleaner_walk_container_settings() -> Optional[Dict[str, str]]:
-    """Walk containerSettings.executionConfigs[] looking for a recognizable registry URL.
+    """Find the default execution config’s registry, including DSS 15 build-config references.
     Returns {provider, registryUrl} or None. Never raises."""
     try:
         try:
@@ -548,37 +548,8 @@ def _image_cleaner_walk_container_settings() -> Optional[Dict[str, str]]:
         settings = client.get_general_settings().get_raw()
     except Exception:
         return None
-    cs = settings.get('containerSettings') if isinstance(settings, dict) else None
-    if not isinstance(cs, dict):
-        return None
-
-    configs = cs.get('executionConfigs') or []
-    default_name = cs.get('defaultExecutionConfig')
-    ordered: List[Dict[str, Any]] = []
-    for c in configs:
-        if isinstance(c, dict) and c.get('name') == default_name:
-            ordered.insert(0, c)
-        elif isinstance(c, dict):
-            ordered.append(c)
-    generic = cs.get('executionConfigsGenericOverrides')
-    if isinstance(generic, dict):
-        ordered.append(generic)
-
-    ecr_re = re.compile(r'^(?:https?://)?\d+\.dkr\.ecr\.([a-z0-9-]+)\.amazonaws\.com', re.I)
-    acr_re = re.compile(r'^(?:https?://)?([a-zA-Z0-9]+\.azurecr\.io)', re.I)
-    gar_re = re.compile(r'^(?:https?://)?([a-z0-9-]+-docker\.pkg\.dev|(?:[a-z0-9-]+\.)?gcr\.io)', re.I)
-
-    for c in ordered:
-        url = (c.get('repositoryURL') or '').strip()
-        if not url:
-            continue
-        if ecr_re.match(url):
-            return {'provider': 'ecr', 'registryUrl': url}
-        if acr_re.match(url):
-            return {'provider': 'acr', 'registryUrl': url}
-        if gar_re.match(url):
-            return {'provider': 'gar', 'registryUrl': url}
-    return None
+    from atk_agent_common.registry_settings import registry_hint
+    return registry_hint(settings)
 
 
 def _imds_probe_aws(timeout: float = 2.0) -> Optional[str]:

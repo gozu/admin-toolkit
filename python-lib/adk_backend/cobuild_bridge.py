@@ -180,6 +180,20 @@ def submit(client, owner, project_key, capability, phase, arguments, request_id,
         if not supports(capability, arguments):
             raise ValueError('Unsupported read interpretation.')
         facts, digest = evidence(capability, result)
+        return submit_read_facts(client, owner, project_key, capability, facts, digest,
+                                 request_id, host, variant='compact-read')
+    return _submit_job(client, owner, host, request_id, capability, None,
+                       run_turn, (client, project_key, capability, phase, arguments, request_id))
+
+
+def submit_read_facts(client, owner, project_key, capability, facts, digest, request_id,
+                      host='local', variant='read-task'):
+    return _submit_job(client, owner, host, request_id, capability, variant,
+                       interpret_read, (client, project_key, capability, facts, digest, request_id))
+
+
+def _submit_job(client, owner, host, request_id, capability, variant, fn, args):
+    interpretation = variant is not None
     with _LOCK:
         now = time.monotonic()
         for key, row in list(_TURNS.items()):
@@ -189,9 +203,7 @@ def submit(client, owner, project_key, capability, phase, arguments, request_id,
         if sum(not r['future'].done() for r in _TURNS.values()) >= _MAX_PENDING:
             raise ValueError('Cobuild worker capacity is full; retry after an existing turn finishes.')
         turn_id = uuid.uuid4().hex
-        future = (_pool().submit(interpret_read, client, project_key, capability, facts, digest, request_id)
-                  if interpretation else
-                  _pool().submit(run_turn, client, project_key, capability, phase, arguments, request_id))
+        future = _pool().submit(fn, *args)
         _TURNS[turn_id] = {'future': future, 'owner': owner, 'created': now,
                            'awaitingResult': not interpretation}
         if interpretation:
@@ -201,7 +213,7 @@ def submit(client, owner, project_key, capability, phase, arguments, request_id,
             _TURNS[turn_id].update(viewHash=hashlib.sha256(ticket.encode()).hexdigest(),
                                    viewHost=owner_key(client, host, ''),
                                    metadata={'requestId': request_id, 'capability': capability,
-                                             'variant': 'compact-read', 'attempt': 1})
+                                             'variant': variant, 'attempt': 1})
             return {'status': 'pending', 'turnId': turn_id, 'viewTicket': ticket}
     return {'status': 'pending', 'turnId': turn_id}
 
@@ -217,6 +229,28 @@ def read_status(client, host, turn_id, ticket):
             return {'status': 'unknown', 'message': 'Interpretation unavailable or expired.'}
         owner = row['owner']
     return status(turn_id, owner)
+
+
+def stream_read(client, host, turn_id, ticket):
+    """Wait on completion, with keepalives; no one-second polling delay."""
+    from concurrent.futures import TimeoutError
+    deadline = time.monotonic() + 240
+    while True:
+        result = read_status(client, host, turn_id, ticket)
+        if result['status'] != 'pending':
+            yield 'event: done\ndata: ' + json.dumps(result) + '\n\n'
+            return
+        if time.monotonic() >= deadline:
+            yield 'event: done\ndata: {"status":"unknown","message":"Interpretation wait expired."}\n\n'
+            return
+        with _LOCK:
+            future = _TURNS[turn_id]['future']
+        try:
+            future.result(timeout=min(15, max(.01, deadline - time.monotonic())))
+        except TimeoutError:
+            yield ': keepalive\n\n'
+        except Exception:
+            pass  # status() sanitizes worker failures on the next iteration.
 
 
 def submit_result(turn_id, owner, result):

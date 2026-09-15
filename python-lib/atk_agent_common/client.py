@@ -129,6 +129,10 @@ class ToolkitClient:
         return host
 
     # ── public verbs ─────────────────────────────────────────────────────────
+    def read_task(self, operations, host='local'):
+        return self.post('/api/agents/read-task', host=host,
+                         json={'operations': operations}, timeout=self.heavy_timeout)
+
     def get(self, path, host='local', params=None, heavy=False, progress_path=None):
         return self._request('GET', path, host=host, params=params,
                              heavy=heavy, progress_path=progress_path)

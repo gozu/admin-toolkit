@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.864] - 2026-09-15
+
+### Changed
+
+- Eligible Cobuild reads execute through one task request with fresh permission checks and return data before interpretation. The bounded task API can run independent reads concurrently and submit one shared explanation. Interpretation completion now streams without one-second status polling; host binding and existing access controls remain enforced.
+
 ## [0.4.863] - 2026-09-15
 
 ### Fixed

@@ -270,6 +270,43 @@ def api_cobuild_read_status():
                                              body.get('turnId'), body.get('viewTicket')))
 
 
+@bp.route('/api/agents/cobuild-read-stream', methods=['POST'])
+def api_cobuild_read_stream():
+    from adk_backend import cobuild_bridge
+    from adk_backend.utils import _sse_response
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict) or not isinstance(body.get('turnId'), str):
+        return jsonify({'status': 'unknown', 'message': 'Interpretation unavailable.'}), 400
+    client, host = g.client, getattr(g, 'host_id', 'local')
+    return _sse_response(lambda: cobuild_bridge.stream_read(
+        client, host, body['turnId'], body.get('viewTicket')))
+
+
+@bp.route('/api/agents/read-task', methods=['POST'])
+def api_read_task():
+    from adk_backend import read_tasks
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict) or len(json.dumps(body)) > 100000:
+        return jsonify({'error': 'Expected a bounded read task object.'}), 400
+    try:
+        config = _plugin_config()
+        if not isinstance(config, dict):
+            raise ValueError('Invalid configuration')
+        parsed = json.loads(config.get(_PARAM) or '{}')
+        if not isinstance(parsed, dict) or any(type(v) is not bool for v in parsed.values()):
+            raise ValueError('Invalid gates')
+    except Exception:
+        return jsonify({'error': 'Agent Permissions could not be loaded.'}), 503
+    try:
+        return jsonify(read_tasks.run(body, config, parsed, _read_autonomous(config), _cobuild_owner()))
+    except read_tasks.ReadAccessError as exc:
+        return jsonify(exc.payload), exc.status
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    except (ValueError, TypeError) as exc:
+        return jsonify({'error': str(exc)[:200]}), 400
+
+
 # ── Autonomous daily agent (triage sweep) panel ──────────────────────────────
 # One GET powers the whole Permissions-page panel; one POST writes its knobs.
 # Per-action autonomy moved to the main capability list (the Auto column) —

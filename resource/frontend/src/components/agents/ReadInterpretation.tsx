@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { fetchJson } from '../../utils/api';
+import { fetchSse } from '../../utils/api';
 import { ProgressIndicator } from '../common/ProgressIndicator';
 import type { Lifecycle } from '../../types';
 
@@ -17,7 +17,7 @@ interface Route {
   interpretation: Job;
 }
 
-/** Component-local state is discarded with the session's transcript. Polling
+/** Component-local state is discarded with the session's transcript. Streaming
  * explicitly pins the originating host and aborts on unmount/host switch. */
 export function ReadInterpretation({
   name,
@@ -72,7 +72,7 @@ export function ReadInterpretation({
         });
       }
     }
-    async function poll() {
+    async function stream() {
       try {
         if (Date.now() - route.submittedAt * 1000 > 240_000) {
           settle({
@@ -81,7 +81,11 @@ export function ReadInterpretation({
           });
           return;
         }
-        const next = await fetchJson<Job>('/api/agents/cobuild-read-status', {
+        timer = setTimeout(() => {
+          settle({ status: 'unknown', message: 'Interpretation wait expired; read data is retained.' });
+          controller.abort();
+        }, 240_000 - Math.max(0, Date.now() - route.submittedAt * 1000));
+        for await (const frame of fetchSse('/api/agents/cobuild-read-stream', {
           method: 'POST',
           signal: controller.signal,
           headers: { 'Content-Type': 'application/json', 'X-DSS-Host-Id': route.host },
@@ -89,19 +93,24 @@ export function ReadInterpretation({
             turnId: route.interpretation.turnId,
             viewTicket: route.interpretation.viewTicket,
           }),
-        });
-        settle(next);
-        if (!controller.signal.aborted && next.status === 'pending')
-          timer = setTimeout(() => void poll(), 1000);
+        })) {
+          if (frame.event === 'done') {
+            settle(frame.payload as Job);
+            return;
+          }
+        }
+        settle({ status: 'unknown', message: 'Interpretation stream ended; read data is retained.' });
       } catch {
         settle({
           status: 'failed',
           message: 'Could not retrieve the Cobuild interpretation. Read data is retained.',
         });
+      } finally {
+        clearTimeout(timer);
       }
     }
     settle(route.interpretation);
-    if (route.interpretation.status === 'pending') void poll();
+    if (route.interpretation.status === 'pending') void stream();
     return () => {
       controller.abort();
       clearTimeout(timer);

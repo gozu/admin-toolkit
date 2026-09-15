@@ -162,6 +162,15 @@ def sensor(fn):
         bound = signature.bind(client, *args, **kwargs)
         bound.apply_defaults()
         arguments = {k: v for k, v in bound.arguments.items() if k != 'client'}
+        from .read_tasks import supports as task_supported
+        if (task_supported(fn.__name__, arguments) and callable(getattr(client, 'read_task', None))
+                and selected(client, fn.__name__) == 'cobuild'):
+            started = time.monotonic()
+            task = client.read_task([{'name': fn.__name__, 'arguments': arguments}],
+                                    host=arguments.get('host') or 'local')
+            result = task['results'][0]['data']
+            route = dict(task['executionRoute'], returnSeconds=round(time.monotonic() - started, 3))
+            return attach(result, route)
         if compact_read_supported(fn.__name__, arguments) and selected(client, fn.__name__) == 'cobuild':
             return _compact_read(fn, client, args, kwargs, arguments)
         route = request_operation(client, fn.__name__, 'read', arguments,

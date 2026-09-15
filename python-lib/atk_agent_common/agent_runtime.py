@@ -88,7 +88,7 @@ def _result_event(name, result, duration_ms, call_id=None):
         events[0]['id'] = call_id
     out = [{'chunk': {'type': 'event', 'eventKind': 'tool_result', 'eventData': events[0]}}]
     if isinstance(parsed, dict):
-        if (parsed.get('executionRoute') or {}).get('variant') == 'compact-read':
+        if (parsed.get('executionRoute') or {}).get('variant') in {'compact-read', 'read-task'}:
             out.append({'chunk': {'type': 'event', 'eventKind': 'read_interpretation',
                                   'eventData': {'name': name, 'result': parsed}}})
         if name == _PLAN_TOOL and parsed.get('confirm_token'):

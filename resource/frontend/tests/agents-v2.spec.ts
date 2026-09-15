@@ -745,15 +745,17 @@ test.describe('Cobuild immediate reads', () => {
   for (const outcome of ['completed', 'failed', 'unknown']) {
     test(`data is visible while interpretation waits, then ${outcome}`, async ({ page }) => {
       await mockAgentsBackend(page);
-      let polls = 0;
-      let release = false;
-      await page.route('**/api/agents/cobuild-read-status', async (route) => {
+      let streams = 0;
+      let release!: () => void;
+      const ready = new Promise<void>((resolve) => { release = resolve; });
+      await page.route('**/api/agents/cobuild-read-stream', async (route) => {
         expect(route.request().headers()['x-dss-host-id']).toBe('local');
         expect(route.request().postDataJSON()).toEqual({ turnId: 'read-a', viewTicket: 'read-only-ticket' });
-        polls += 1;
-        await route.fulfill({ json: release
-          ? { status: outcome, summary: 'ADTK is running version 1.', message: 'interpretation/empty-response' }
-          : { status: 'pending' } });
+        streams += 1;
+        await ready;
+        await route.fulfill({ contentType: 'text/event-stream', body: sse('done', {
+          status: outcome, summary: 'ADTK is running version 1.', message: 'interpretation/empty-response',
+        }) });
       });
       await page.route('**/api/agents/chat', (route) => route.fulfill({
         contentType: 'text/event-stream', body: sse('agent_event', {
@@ -773,11 +775,11 @@ test.describe('Cobuild immediate reads', () => {
       await page.getByText('Read data', { exact: true }).click();
       await expect(page.locator('pre').filter({ hasText: 'runningVersion' })).toBeVisible();
       await expect(page.getByText('ADTK is running version 1.')).toHaveCount(0);
-      release = true;
+      release();
       await expect(page.getByText(outcome === 'completed' ? 'Cobuild interpretation ready'
         : outcome === 'unknown' ? 'Cobuild interpretation unavailable or expired' : 'interpretation/empty-response')).toBeVisible();
       await expect(page.getByText('toolkit_get · Data ready')).toBeVisible();
-      expect(polls).toBeGreaterThan(1);
+      expect(streams).toBe(1);
       if (outcome === 'completed') await expect(page.getByText('ADTK is running version 1.')).toBeVisible();
     });
   }

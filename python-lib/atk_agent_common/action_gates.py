@@ -36,6 +36,9 @@ def _config_map(client, key):
 
 def _maps(client):
     """The live gate + autonomous maps, cached briefly — one fetch fills both."""
+    task_maps = getattr(client, '_task_gate_maps', None)
+    if isinstance(task_maps, tuple):
+        return task_maps
     now = time.time()
     if _cache['gates'] is not None and now - _cache['ts'] < _TTL_S:
         return _cache['gates'], _cache['autonomous']

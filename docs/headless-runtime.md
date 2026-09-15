@@ -72,7 +72,8 @@ not change ownership. Native clients/tool bundles are fresh per task.
   one hour, allowing long ADTK operations to return their observations.
 - Each model turn waits at most 300 seconds. A Headless pending response is
   polled using the exact retained turn ID, never resubmitted.
-- Chat emits waiting progress and heartbeat events. Outcomes include completed,
+- Chat emits waiting progress and heartbeat events during inference and ADTK tools.
+  A tool wait is bounded to one hour; an expired wait does not retry the operation. Outcomes include completed,
   failed and unknown. Stopping local polling is **not verified remote cancellation**.
 - Unknown tasks cannot accept another message. Backend restart loses local
   conversation state and reports the loss; it does not transparently start over.

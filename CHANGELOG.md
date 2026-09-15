@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.867] - 2026-09-15
+
+### Fixed
+
+- Recognize signed confirmation tokens followed by approval-card sentence punctuation. Keep progress heartbeats during ADTK execution, stop launching tools after local cancellation, and report lost MCP transport outcomes as unknown.
+
 ## [0.4.866] - 2026-09-15
 
 ### Fixed

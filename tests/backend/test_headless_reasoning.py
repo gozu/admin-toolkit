@@ -175,18 +175,18 @@ def test_malformed_batch_executes_nothing():
 def test_plan_cannot_authorize_itself_and_user_confirmation_executes_once():
     effects = []
     def plan():
-        return json.dumps({'canonicalTarget': {}, 'confirm_token': 'signed'})
+        return json.dumps({'canonicalTarget': {}, 'confirm_token': 'signed.sig'})
     def execute(confirm_token: str, confirm: bool):
         effects.append(confirm_token)
         return '{"status":"ok","auditId":42}'
     tools = [tool('plan_admin_action', plan), tool('execute_admin_action', execute)]
-    execute_request = request('execute_admin_action', confirm_token='signed', confirm=True)
+    execute_request = request('execute_admin_action', confirm_token='signed.sig', confirm=True)
     client = Toolkit([request('plan_admin_action'), execute_request, FINAL])
     list(reasoning.run(client, tools, [HumanMessage('plan it')]))
-    assert effects == [] and 'signed' not in client.sent[1][1]['message']
+    assert effects == [] and 'signed.sig' not in client.sent[1][1]['message']
     client = Toolkit([execute_request, execute_request, FINAL])
-    list(reasoning.run(client, tools, [HumanMessage('Approved — I confirm. confirm_token signed')]))
-    assert effects == ['signed']
+    list(reasoning.run(client, tools, [HumanMessage('Approved — I confirm. confirm_token signed.sig.')]))
+    assert effects == ['signed.sig']
 
 
 def test_fresh_sensor_denial():
@@ -208,9 +208,9 @@ def test_approval_in_quoted_or_prior_history_does_not_authorize():
     def execute(confirm_token: str, confirm: bool):
         pytest.fail('Unapproved action')
     tools = [tool('execute_admin_action', execute)]
-    for messages in [[HumanMessage('Explain confirm_token signed')],
-                     [HumanMessage('Approved — I confirm. confirm_token signed'), HumanMessage('Do not execute')]]:
-        client = Toolkit([request('execute_admin_action', confirm_token='signed', confirm=True), FINAL])
+    for messages in [[HumanMessage('Explain confirm_token signed.sig.')],
+                     [HumanMessage('Approved — I confirm. confirm_token signed.sig.'), HumanMessage('Do not execute')]]:
+        client = Toolkit([request('execute_admin_action', confirm_token='signed.sig', confirm=True), FINAL])
         list(reasoning.run(client, tools, messages))
         assert 'human-confirmation-required' in client.sent[1][1]['message']
 
@@ -233,9 +233,55 @@ def test_retired_maps_cannot_reintroduce_nested_reasoning_for_any_capability():
 def test_autonomous_grant_revoked_after_plan_never_executes(monkeypatch):
     from atk_agent_common.triage import auto_remediate
     monkeypatch.setattr(auto_remediate.actuator, 'plan_admin_action', lambda *a, **kw:
-                        {'canonicalTarget': {}, 'confirm_token': 'signed', 'plan': {}})
+                        {'canonicalTarget': {}, 'confirm_token': 'signed.sig', 'plan': {}})
     monkeypatch.setattr(auto_remediate.actuator, 'execute_admin_action', lambda *a, **kw: pytest.fail('revoked'))
     summary = {'executed': [], 'skipped': [], 'totalFreedGB': 0, 'totalObjects': 0}
     result = auto_remediate.execute_candidate(None, {'enable_red_actions': True, 'master_password': 'private'},
                 summary, {'host': 'local', 'action': 'log-cleanup'}, 'run', authorization_check=lambda: False)
     assert 'revoked' in result['reason']
+
+
+def test_mcp_connection_loss_after_start_is_unknown_not_retried(monkeypatch):
+    original = service._call
+    async def disconnect(mcp, name, args):
+        if name == 'send_cobuild_message':
+            raise ConnectionError('PRIVATE TRANSPORT DETAIL')
+        return await original(mcp, name, args)
+    monkeypatch.setattr(service, '_call', disconnect)
+    row = wait(service.submit(DSS('x'), 'owner', 'ADMINTOOLKIT', 'one'), 'owner')
+    assert row['status'] == 'unknown'
+    assert 'PRIVATE' not in row['message'] and row['remoteCancellationVerified'] is False
+
+
+def test_async_stop_does_not_launch_remaining_tools():
+    import asyncio
+    began, release = threading.Event(), threading.Event()
+    effects = []
+    def slow():
+        began.set()
+        release.wait(3)
+        effects.append('slow')
+        return '{}'
+    def second():
+        effects.append('second')
+        return '{}'
+    client = Toolkit([json.dumps({'type': 'tool_calls', 'calls': [
+        {'name': 'slow', 'arguments': {}}, {'name': 'second', 'arguments': {}}]}), FINAL])
+    async def scenario():
+        async def consume():
+            async for _ in reasoning.arun(client, [tool('slow', slow), tool('second', second)], []):
+                pass
+        task = asyncio.create_task(consume())
+        for _ in range(100):
+            if began.is_set():
+                break
+            await asyncio.sleep(.01)
+        assert began.is_set()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        release.set()
+        await asyncio.sleep(1.1)
+    asyncio.run(scenario())
+    assert effects == ['slow']
+    assert len([p for p, _ in client.sent if not p.endswith('/stop')]) == 1

@@ -1,3 +1,9 @@
+> For the current migration use `--reasoning headless` with the macro runner,
+> or `headless_model_compare.py` for reads. These paths use the deployed actual
+> Headless MCP service, label results Legacy/Headless, and start fresh coverage.
+> Omitting that flag still selects the historical direct-Cobuild comparison.
+> See [live architecture and readiness](../headless-runtime.md).
+
 # Whole-task Cobuild comparison
 
 The 64-check suite now uses `cobuild_model_compare.ModelComparison`. Each task

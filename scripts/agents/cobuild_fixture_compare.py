@@ -171,7 +171,11 @@ def main():
     parser.add_argument('--key-file', default=str(ROOT / '.dss-api-key'))
     parser.add_argument('--output', required=True)
     parser.add_argument('--action', action='append')
+    parser.add_argument('--legacy-operation-bridge', action='store_true')
     args = parser.parse_args()
+    if not args.legacy_operation_bridge:
+        parser.error('Use run_cobuild_model_suite.py --execute --group fixture --output <directory>; '
+                     'the old local bridge requires --legacy-operation-bridge')
     if not args.execute:
         parser.error('--execute is required for live fixture mutations')
     run = Comparison(args.url_file, args.key_file, args.output)

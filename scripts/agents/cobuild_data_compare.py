@@ -193,7 +193,11 @@ if __name__ == '__main__':
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--output', required=True)
     parser.add_argument('--action', action='append')
+    parser.add_argument('--legacy-operation-bridge', action='store_true')
     args = parser.parse_args()
     if not args.execute:
         parser.error('--execute is required')
+    if not args.legacy_operation_bridge:
+        parser.error('Use run_cobuild_model_suite.py --execute --group data --output <directory>; '
+                     'the old local bridge requires --legacy-operation-bridge')
     fixtures(Comparison(ROOT / '.dss-url', ROOT / '.dss-api-key', args.output), args.action)

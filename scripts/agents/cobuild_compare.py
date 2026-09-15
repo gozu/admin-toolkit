@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Live Existing/Cobuild comparisons through the deployed HTTP bridge.
+"""Shared fixture utilities and the historical operation-bridge comparison.
+
+The CLI now defaults to whole-task model replacement. Historical measurements
+require --legacy-operation-bridge explicitly.
 
 Run with the repository venv. Credentials remain in files/in memory. Only
 sanitized verdicts are written; model responses and customer diagnostics are
@@ -207,8 +210,11 @@ def main():
     parser.add_argument('--key-file', default=str(ROOT / '.dss-api-key'))
     parser.add_argument('--output', required=True)
     parser.add_argument('--read', action='append', choices=sorted(READS))
+    parser.add_argument('--legacy-operation-bridge', action='store_true')
     args = parser.parse_args()
-    run = Comparison(args.url_file, args.key_file, args.output)
+    from cobuild_model_compare import ModelComparison
+    runner = Comparison if args.legacy_operation_bridge else ModelComparison
+    run = runner(args.url_file, args.key_file, args.output)
     for name in args.read or READS:
         run.read(name, READS[name])
 

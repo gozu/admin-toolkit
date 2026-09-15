@@ -1,0 +1,65 @@
+capability,status,existing_seconds,cobuild_seconds,latency_ratio,existing_model_calls,cobuild_model_calls,scope,reason,model
+list_hosts,same,6.255,7.273,1.163,2,2,"Bounded read; {""probe"": false}",,anthropic:Claude:claude-opus-4-8
+instance_health,same,20.973,22.82,1.088,2,2,"Bounded read; {""include_score"": false, ""sections"": [""system"", ""issues""], ""top_n"": 3}",,anthropic:Claude:claude-opus-4-8
+compute_cost,same,30.03,13.227,0.44,2,2,"Bounded read; {""top_n"": 3}",,anthropic:Claude:claude-opus-4-8
+config_inspect,same,5.17,6.97,1.348,2,2,"Bounded read; {""domain"": ""projects"", ""name_filter"": ""ATKCOBUILDTEST""}",,anthropic:Claude:claude-opus-4-8
+log_errors,same,6.522,7.986,1.224,2,2,"Bounded read; {""top_n"": 3}",,anthropic:Claude:claude-opus-4-8
+log_tail,needs_review,5.67,6.316,1.114,2,2,"Bounded read; {""lines"": 5, ""pattern"": ""ATK_COMPARISON_NO_SUCH_LINE""}",Only live log-window metadata changed; filtered log results match.,anthropic:Claude:claude-opus-4-8
+storage_footprint,same,9.736,9.287,0.954,2,2,"Bounded read; {""top_n"": 3}",,anthropic:Claude:claude-opus-4-8
+k8s_health,same,15.058,14.818,0.984,3,2,"Bounded read; {""top_n"": 3}",,anthropic:Claude:claude-opus-4-8
+toolkit_get,same,5.232,6.875,1.314,2,2,"Bounded read; {""endpoint"": ""version""}",,anthropic:Claude:claude-opus-4-8
+list_capabilities,same,19.654,16.423,0.836,2,2,Bounded read; {},,anthropic:Claude:claude-opus-4-8
+scenario-enable,same,12.075,11.026,0.913,3,3,Enable trigger-free disposable scenario,,anthropic:Claude:claude-opus-4-8
+scenario-disable,same,12.691,11.657,0.919,3,3,Disable trigger-free disposable scenario,,anthropic:Claude:claude-opus-4-8
+project-variables-set,same,12.071,11.623,0.963,3,3,One disposable project variable,,anthropic:Claude:claude-opus-4-8
+variables-set,same,8.534,12.046,1.412,3,3,One uniquely named test variable; removed in cleanup,,anthropic:Claude:claude-opus-4-8
+notebook-clear-outputs,same,15.997,13.953,0.872,3,3,Saved synthetic notebook output; no kernel required,,anthropic:Claude:claude-opus-4-8
+user-enable,same,11.802,12.152,1.03,3,3,New test account with no groups,,anthropic:Claude:claude-opus-4-8
+user-disable,same,21.175,9.544,0.451,4,3,New test account with no groups,,anthropic:Claude:claude-opus-4-8
+user-update,same,12.958,14.758,1.139,3,3,Display name only on new test account,,anthropic:Claude:claude-opus-4-8
+project-change-owner,same,11.038,19.976,1.81,3,3,Disposable project and test user,,anthropic:Claude:claude-opus-4-8
+connection-test,same,10.746,16.423,1.528,3,3,Read-only DSS connectivity test of akaos kaosdb connection,,anthropic:Claude:claude-opus-4-8
+connection-update,same,13.594,12.617,0.928,3,3,Description of disposable connection,,anthropic:Claude:claude-opus-4-8
+connection-delete,same,13.736,12.672,0.923,3,3,Unused disposable connection; definition backup retained by ADTK,,anthropic:Claude:claude-opus-4-8
+dataset-clear,same,13.058,14.153,1.084,3,3,Uploaded dataset containing only synthetic CSV,,anthropic:Claude:claude-opus-4-8
+dataset-delete,same,19.854,11.089,0.559,4,3,Unreferenced synthetic CSV dataset,,anthropic:Claude:claude-opus-4-8
+webapp-backend-stop,same,11.689,12.657,1.083,3,3,Disposable Flask backend,,anthropic:Claude:claude-opus-4-8
+webapp-backend-restart,same,16.222,12.933,0.797,4,3,Start disposable Flask backend from stopped state,,anthropic:Claude:claude-opus-4-8
+scenario-run,same,10.903,14.685,1.347,3,3,Empty trigger-free disposable scenario,,anthropic:Claude:claude-opus-4-8
+toolkit-scenario-write,same,10.566,13.02,1.232,3,3,New empty inactive scenario in ADMINTOOLKIT; removed afterward,,anthropic:Claude:claude-opus-4-8
+api-key-delete,same,18.171,11.845,0.652,4,3,New key belonging only to the disposable test user,,anthropic:Claude:claude-opus-4-8
+scenario-kill,same,11.986,11.572,0.965,3,3,Abort a disposable 180-second sleep; no business processing,,anthropic:Claude:claude-opus-4-8
+job-kill,same,14.106,16.021,1.136,3,3,Abort a disposable Python recipe that only sleeps,,anthropic:Claude:claude-opus-4-8
+code-env-update,same,11.573,13.118,1.134,3,3,Unused Python 3.11 environment with no requested packages,,anthropic:Claude:claude-opus-4-8
+code-env-delete,same,12.298,14.53,1.181,3,3,Back up and delete unused disposable environment,,anthropic:Claude:claude-opus-4-8
+settings-set,same,14.692,11.166,0.76,3,3,Memory limit on unused disposable execution config,,anthropic:Claude:claude-opus-4-8
+k8s-exec-config-tune,same,40.002,31.933,0.798,3,3,Memory limit on unused disposable execution config,,anthropic:Claude:claude-opus-4-8
+project-export,same,17.238,12.951,0.751,4,3,Disposable project: read exported ZIP and confirm project survives,,anthropic:Claude:claude-opus-4-8
+project-delete,same,31.062,28.537,0.919,5,4,Disposable project: independently verify absence and readable ZIP backup,,anthropic:Claude:claude-opus-4-8
+plugin-code-env-rebuild,same,13.585,14.585,1.074,3,3,"Unused test plugin; no packages, core libraries or Jupyter requested",,anthropic:Claude:claude-opus-4-8
+plugin-uninstall,same,27.495,16.982,0.618,5,3,Unused test plugin: verify absence and readable ZIP backup,,anthropic:Claude:claude-opus-4-8
+code-env-consolidate,same,13.501,12.536,0.929,3,3,One unused Python recipe moved between owned environments; no code executed,,anthropic:Claude:claude-opus-4-8
+connection-index,same,15.037,12.505,0.832,4,3,"Read-only metadata crawl of kaosdb; completion checked, catalog contents not compared",,anthropic:Claude:claude-opus-4-8
+cluster-detach,same,22.99,20.588,0.896,4,4,Empty manual cluster attachment; verify absence and readable backup; no cloud resources,,anthropic:Claude:claude-opus-4-8
+continuous-activity-stop,same,12.743,12.324,0.967,3,3,Disposable continuous Python sleep loop; no streaming data or external source,,anthropic:Claude:claude-opus-4-8
+notebook-kernels-shutdown,same,17.249,13.271,0.769,4,3,One active empty notebook in a disposable project; file retained after shutdown,,anthropic:Claude:claude-opus-4-8
+plugin-update,same,88.502,83.217,0.94,4,3,Owned empty kml-format 0.0.0 placeholder replaced by store 0.1.0; previous source backed up,,anthropic:Claude:claude-opus-4-8
+tmp-cleanup,same,16.186,24.053,1.486,3,4,One tiny owned artifact aged to 1980; pre-scan refuses extra candidates,,anthropic:Claude:claude-opus-4-8
+exports-cleanup,same,12.213,14.32,1.173,3,3,One tiny owned artifact aged to 1980; pre-scan refuses extra candidates,,anthropic:Claude:claude-opus-4-8
+job-logs-cleanup,same,13.416,22.987,1.713,3,3,One tiny owned artifact aged to 1980; pre-scan refuses extra candidates,,anthropic:Claude:claude-opus-4-8
+log-cleanup,same,15.3,16.095,1.052,3,3,One uniquely named 1980-dated rotated log; refuses extra candidates,,anthropic:Claude:claude-opus-4-8
+project-clear-webapp-runs,same,19.129,15.181,0.794,4,3,Owned old run removed; newest marker run must survive,,anthropic:Claude:claude-opus-4-8
+docker-prune,same,22.341,19.28,0.863,3,3,One tiny imported dangling image; refuse other candidates; compare all pre-existing image IDs; builder mode untested,,anthropic:Claude:claude-opus-4-8
+db_health,same,7.517,10.83,1.441,2,2,"Bounded read; {""connection"": ""kaosdb"", ""top_n"": 2, ""view"": ""tables""}",,anthropic:Claude:claude-opus-4-8
+db-vacuum,same,10.041,14.973,1.491,3,3,One owned 10-row table; verify maintenance and preserve row count; temporary DB Health credential restored,,anthropic:Claude:claude-opus-4-8
+db-analyze,same,11.584,12.376,1.068,3,3,One owned 10-row table; verify maintenance and preserve row count; temporary DB Health credential restored,,anthropic:Claude:claude-opus-4-8
+db-reindex,same,12.861,16.637,1.294,3,3,One owned 10-row table; verify maintenance and preserve row count; temporary DB Health credential restored,,anthropic:Claude:claude-opus-4-8
+notification-send,same,9.957,14.991,1.506,3,3,Temporary SMTP channel → localhost capture sink; no message to a person,,anthropic:Claude:claude-opus-4-8
+project-set-cluster,same,15.186,12.859,0.847,3,3,Select an empty manual cluster definition on an owned project; no workload or cloud resources,,anthropic:Claude:claude-opus-4-8
+cluster-start,blocked,,,,,,,Needs a new owned cluster lifecycle fixture; previous cloud resources were deleted.,
+cluster-stop,blocked,,,,,,,Needs a new owned cluster lifecycle fixture; previous cloud resources were deleted.,
+cluster-pods-cleanup,blocked,,,,,,,Needs a new owned cluster lifecycle fixture; previous cloud resources were deleted.,
+k8s-apply-fix,blocked,,,,,,,Needs a new owned cluster lifecycle fixture; previous cloud resources were deleted.,
+image-delete,blocked,,,,,,,Needs new disposable image targets; previous two deletion approvals were consumed.,
+python-run,blocked,,,,,,,Needs fresh per-run approval of concrete Python code; previous two approvals were consumed.,
+plugin-deploy,skipped,,,,,,,plugin-deploy remains excluded at the user's request.,

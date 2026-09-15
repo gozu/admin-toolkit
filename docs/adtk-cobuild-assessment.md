@@ -1,5 +1,11 @@
 # ADTK with Cobuild: what stays, what changes
 
+**Historical operation-bridge assessment.** The 64-check suite now has a
+[whole-task model replacement runner](agent-workflows/cobuild-model-comparison.md).
+Its [new measurements](reports/adtk-cobuild-model-replacement.html) include model
+selection and final generation on both paths. The historical passes and timings
+below are not replacement-run results and do not change live application routing.
+
 **63 of 64 capabilities matched within their tested functional scope.** `plugin-deploy` is **skipped at the user’s request**, not failed. The latest retries resolved Python execution, cluster start, cluster stop, pod cleanup and image deletion. ADTK **0.4.863** is deployed to akaos and TAMGLOBAL; live comparisons were performed on akaos.
 
 The [CSV](adtk-cobuild-comparison.csv) and [interactive table](adtk-cobuild-comparison.html) contain all **11 sensors and 53 actions**, with purpose, route, retained ADTK responsibilities, measured verdict, timings, scope and remaining limits. Search across columns, filter by verdict or type, sort, show route details, or export the filtered rows. These files and this assessment are also in the user’s Public folder.

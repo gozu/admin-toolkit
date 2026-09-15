@@ -17,10 +17,9 @@ export interface SensorRow {
   description: string;
   enabled: boolean;
   autonomous: boolean;
-  provider?: CapabilityProvider;
 }
 
-export type CapabilityProvider = 'existing' | 'cobuild';
+export type ReasoningMode = 'legacy' | 'headless';
 
 export interface ActionRow {
   action: string;
@@ -33,11 +32,11 @@ export interface ActionRow {
   autonomous: boolean;
   /** false only for python-run — its Auto checkbox renders permanently off. */
   autoCapable: boolean;
-  provider?: CapabilityProvider;
 }
 
 interface ActionSettingsResponse {
   ok: boolean;
+  reasoningMode: ReasoningMode;
   sensors: SensorRow[];
   actions: ActionRow[];
   gates: Record<string, boolean>;
@@ -45,6 +44,7 @@ interface ActionSettingsResponse {
 }
 
 interface AgentActionGatesState {
+  reasoningMode: ReasoningMode;
   sensors: SensorRow[];
   actions: ActionRow[];
   loading: boolean;
@@ -54,6 +54,7 @@ interface AgentActionGatesState {
 }
 
 export const agentActionGatesStore = createSyncStore<AgentActionGatesState>({
+  reasoningMode: 'legacy',
   sensors: [],
   actions: [],
   loading: false,
@@ -67,6 +68,7 @@ export async function loadActionGates(): Promise<void> {
   try {
     const res = await fetchJson<ActionSettingsResponse>('/api/agents/action-settings');
     agentActionGatesStore.patch({
+      reasoningMode: res.reasoningMode,
       sensors: res.sensors ?? [],
       actions: res.actions ?? [],
       loading: false,
@@ -83,15 +85,12 @@ export async function loadActionGates(): Promise<void> {
 type UpdateBody = {
   gates?: Record<string, boolean>;
   autonomous?: Record<string, boolean>;
-  providers?: Record<string, CapabilityProvider>;
+  reasoningMode?: ReasoningMode;
 };
 
-/** Route selection does not enable a capability or grant autonomy. */
-export async function setCapabilityProvider(name: string, provider: CapabilityProvider): Promise<void> {
-  return postGateUpdate({ providers: { [name]: provider } }, name, {
-    sensor: (s) => s.name === name ? { ...s, provider } : s,
-    action: (a) => a.action === name ? { ...a, provider } : a,
-  });
+/** Mode is selected once per task and does not grant any permissions. */
+export async function setReasoningMode(reasoningMode: ReasoningMode): Promise<void> {
+  return postGateUpdate({ reasoningMode }, '__mode__', { sensor: (s) => s, action: (a) => a });
 }
 
 /** Shared write path: snapshot → optimistic patch → POST → authoritative
@@ -119,6 +118,7 @@ async function postGateUpdate(
       body: JSON.stringify(body),
     });
     agentActionGatesStore.patch({
+      reasoningMode: res.reasoningMode,
       sensors: res.sensors ?? [],
       actions: res.actions ?? [],
       saving: null,

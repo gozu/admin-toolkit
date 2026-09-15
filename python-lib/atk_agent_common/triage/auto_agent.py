@@ -101,6 +101,14 @@ def _allowed_actions_text(actions_allowed):
                      for a in actions_allowed)
 
 
+def live_authorized(client, action):
+    live = client.get('/api/agents/action-settings')
+    triage = client.get('/api/agents/triage-settings')
+    return bool(live.get('gates', {}).get(action, False)
+                and live.get('autonomous', {}).get(action, False)
+                and triage.get('enabled') and triage.get('killSwitch'))
+
+
 def run_llm_planner(client, settings, rows, flagged, summary, autonomous_actions,
                     run_id, llm_id):
     """One planning turn over tonight's flagged hosts. Mutates `summary`
@@ -111,8 +119,15 @@ def run_llm_planner(client, settings, rows, flagged, summary, autonomous_actions
     flagged_set = {h for h in (flagged or [])}
     if not flagged_set:
         return {'status': 'nothing-flagged'}
-    if not llm_id:
+    from .. import reasoning
+    try:
+        selected = reasoning.mode(client)
+    except Exception as exc:
+        return {'status': 'error', 'error': 'Reasoning settings unavailable (%s)' % type(exc).__name__}
+    if not llm_id and selected == 'legacy':
         return {'status': 'no-llm'}
+    if selected == 'headless':
+        llm_id = 'headless'
     from .. import actuator
     actions_allowed = sorted((set(autonomous_actions or ()) & set(actuator.ACTIONS))
                              - remediation_map.AUTO_EXCLUDED)
@@ -162,6 +177,12 @@ def run_llm_planner(client, settings, rows, flagged, summary, autonomous_actions
             if action not in allowed_set:
                 return _refuse(host, action, finding_id,
                                '%s has no Autonomous grant in Agents → Permissions' % action)
+            try:
+                granted = live_authorized(client, action)
+            except Exception:
+                granted = False
+            if not granted:
+                return _refuse(host, action, finding_id, 'Fresh Autonomous grant unavailable or revoked.')
             if host not in flagged_set:
                 return _refuse(host, action, finding_id,
                                'host %r is not flagged tonight — planner may only fix '
@@ -177,7 +198,8 @@ def run_llm_planner(client, settings, rows, flagged, summary, autonomous_actions
                     'target': targets if targets else target, 'reasoning': reasoning}
             entry = auto_remediate.execute_candidate(
                 client, settings, summary, cand, run_id,
-                tier='llm', agent_name=AGENT_NAME, llm_id=llm_id)
+                tier='llm', agent_name=AGENT_NAME, llm_id=llm_id,
+                authorization_check=lambda: live_authorized(client, action))
             if 'reason' in entry:
                 return json.dumps({'status': 'skipped', 'reason': entry['reason']})
             state['executed'] += 1
@@ -210,9 +232,8 @@ def run_llm_planner(client, settings, rows, flagged, summary, autonomous_actions
         messages = [SystemMessage(content=prompt),
                     HumanMessage(content='Review tonight\'s flagged hosts and propose any '
                                          'additional safe autonomous fixes.')]
-        llm = agent_runtime.build_llm(llm_id)
-        for _item in native_loop.run_native_loop(llm, tools, messages,
-                                                 max_iterations=MAX_TURNS):
+        for _item in reasoning.run(client, tools, messages, llm_id=llm_id,
+                                   max_iterations=MAX_TURNS, selected=selected):
             pass  # chunks/events are unwatched at night — outcomes land in summary
         return dict(state, status='ran')
     except Exception as exc:

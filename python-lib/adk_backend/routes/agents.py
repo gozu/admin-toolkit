@@ -248,17 +248,6 @@ def api_agents_chat():
             yield _sse_frame('done', done_payload)
         except Exception as exc:
             _LOGGER.warning('agent chat stream failed (agent %s): %s', agent_id, exc)
-            if not streamed and is_local and not override:
-                # Nothing reached the client yet — retry the whole turn
-                # natively (local only). Mid-stream failures do NOT retry:
-                # kernel tool calls may have had side effects and partial text
-                # is already on screen; a manual retry will itself fall back
-                # here if the kernel is still down.
-                reason = 'kernel-error: %s: %s' % (type(exc).__name__, str(exc)[:200])
-                for frame in _native_sse_frames(client, host_id, agent_id, clipped, chat_user,
-                                                fallback={'from': 'dataiku', 'reason': reason}):
-                    yield frame
-                return
             yield _sse_frame('error', {'message': '%s: %s' % (type(exc).__name__, str(exc)[:300])})
 
     return _sse_response(generate)

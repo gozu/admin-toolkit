@@ -160,6 +160,8 @@ export interface ChatMessage {
   // renders only what the runtime actually reported.
   /** Which runtime served the turn: 'native' | 'dataiku'. */
   runtime?: string;
+  reasoningMode?: 'headless' | 'legacy';
+  reasoningTransport?: string;
   /** Set when the turn was served by a fallback runtime (e.g. the kernel
    * relay failed pre-stream, or no agent instances exist): the runtime the
    * turn was ORIGINALLY routed to, with the reason it fell back. */
@@ -413,6 +415,7 @@ function updateAssistant(
 }
 
 function appendText(segments: Segment[], text: string): Segment[] {
+  settleReasoning(segments);
   const last = segments[segments.length - 1];
   if (last && last.type === 'text') {
     segments[segments.length - 1] = { type: 'text', text: last.text + text };
@@ -422,12 +425,30 @@ function appendText(segments: Segment[], text: string): Segment[] {
   return segments;
 }
 
+function settleReasoning(segments: Segment[]): void {
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg.type === 'activity') segments[i] = { ...seg, items: seg.items.map((item) =>
+      item.callId === 'reasoning' ? { ...item, running: false, ok: true } : item) };
+  }
+}
+
 function applyAgentEvent(
   segments: Segment[],
   kind: string,
   data: Record<string, unknown>,
 ): Segment[] {
+  if (kind === 'reasoning_progress') {
+    const item: ActivityItem = { name: `Headless reasoning · ${Number(data.elapsedSeconds) || 0}s`,
+      callId: 'reasoning', running: true };
+    const index = segments.findIndex((seg) => seg.type === 'activity' && seg.items.some((it) => it.callId === 'reasoning'));
+    const seg = segments[index];
+    if (seg?.type === 'activity') segments[index] = { ...seg, items: seg.items.map((it) => it.callId === 'reasoning' ? item : it) };
+    else segments.push({ type: 'activity', items: [item] });
+    return segments;
+  }
   if (kind === 'tool_call') {
+    settleReasoning(segments);
     const item: ActivityItem = {
       name: String(data.name || '?'),
       args: data.args,
@@ -1228,6 +1249,13 @@ async function streamTurn(
 
     const applyOp = (op: Exclude<StreamOp, { kind: 'text' }>) => {
       if (op.kind === 'event') {
+        if (op.eventKind === 'reasoning' && (op.data.mode === 'headless' || op.data.mode === 'legacy')) {
+          const messages = conv.messages.slice();
+          const last = messages[messages.length - 1];
+          if (last?.role === 'assistant') messages[messages.length - 1] = { ...last,
+            reasoningMode: op.data.mode, reasoningTransport: String(op.data.transport || '') };
+          conv = { ...conv, messages };
+        }
         conv = updateAssistant(conv, (segs) => applyAgentEvent(segs, op.eventKind, op.data));
       } else if (op.kind === 'done') {
         const payload = op.payload;

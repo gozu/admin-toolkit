@@ -27,7 +27,7 @@ def package(plugin_id):
                      'description': 'Owned benchmark fixtures; no production workloads',
                      'icon': 'icon-beaker', 'licenseInfo': 'Internal test'}}))
         sources = {'cobuild_compare.py', 'cobuild_model_compare.py', 'cobuild_model_suite.py',
-                   'render_cobuild_comparison.py'}
+                   'render_cobuild_comparison.py', 'headless_model_compare.py'}
         sources.update('cobuild_' + group + '_compare.py' for group in GROUPS
                        if group not in PREREQUISITES and group != 'reads')
         for name in sorted(sources):
@@ -37,6 +37,7 @@ def package(plugin_id):
             'meta': {'label': 'Model replacement checks', 'icon': 'icon-beaker'},
             'impersonate': False, 'requiresGlobalAdmin': True, 'resultType': 'JSON_OBJECT',
             'params': [{'name': 'group', 'label': 'Fixture group', 'type': 'STRING'},
+                       {'name': 'reasoning', 'label': 'Comparison transport', 'type': 'STRING'},
                        {'name': 'cases', 'label': 'Selected cases', 'type': 'STRING'}]}))
         z.writestr('code-env/python/desc.json', json.dumps({
             'acceptedPythonInterpreters': ['PYTHON311'], 'forceConda': False,
@@ -71,6 +72,7 @@ def main():
     import dataikuapi
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--execute', action='store_true')
+    parser.add_argument('--reasoning', choices=('cobuild', 'headless'), default='cobuild')
     parser.add_argument('--group', action='append', choices=tuple(GROUPS))
     parser.add_argument('--case', action='append', choices=tuple(inventory()))
     parser.add_argument('--output', required=True, type=pathlib.Path)
@@ -105,7 +107,8 @@ def main():
                 continue
             state.update(group=group, run_id=None)
             print('Starting fixture group: ' + group, flush=True)
-            state['run_id'] = macro.run(params={'group': group, 'cases': ','.join(selected)}, wait=False)
+            state['run_id'] = macro.run(params={'group': group, 'cases': ','.join(selected),
+                                                'reasoning': args.reasoning}, wait=False)
             active = True
             private_write(state_file, state)
             while macro.get_status(state['run_id']).get('running'):

@@ -47,6 +47,9 @@ class ToolkitClient:
         # (→ host-unreachable). A new connection costs ~ms against multi-second
         # backend queries — a trade we always want here.
         self.session.headers['Connection'] = 'close'
+        # Partition private MCP conversations even for callers sharing DSS run-as credentials.
+        import uuid
+        self.session.headers['X-ADTK-Reasoning-Caller'] = uuid.uuid4().hex
         self.timeout = settings.get('http_timeout_s', 30)
         self.heavy_timeout = settings.get('heavy_timeout_s', 900)
         self._hosts_cache = None

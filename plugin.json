@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.864",
+    "version": "0.4.865",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -396,7 +396,7 @@
         {
             "name": "agent_capability_providers",
             "label": "Agent capability providers (managed)",
-            "description": "Per-capability Existing/Cobuild routes, managed in Agents > Permissions. Existing is the default. Cobuild requests ADTK operations and explains their actual results; ADTK retains execution and approval enforcement.",
+            "description": "Retired per-operation provider map; retained only for migration history. Ignored by live execution. Select the whole-task reasoning mode in Agents > Permissions.",
             "type": "TEXTAREA",
             "mandatory": false,
             "defaultValue": "",
@@ -405,10 +405,11 @@
         {
             "name": "agent_cobuild_project",
             "label": "Cobuild conversation project",
-            "description": "Project on each selected DSS host used for agent capability conversations. Must already exist and be accessible to the host identity.",
+            "description": "Historical operation-bridge project, retained for comparison tooling. Live Headless conversations use ADMINTOOLKIT.",
             "type": "STRING",
             "mandatory": false,
-            "defaultValue": "ADMINTOOLKIT"
+            "defaultValue": "ADMINTOOLKIT",
+            "visibilityCondition": "false"
         },
         {
             "name": "sep_outreach_thresholds",
@@ -1011,6 +1012,23 @@
             "type": "STRING",
             "mandatory": false,
             "visibilityCondition": "false"
+        },
+        {
+            "name": "agent_reasoning_mode",
+            "label": "Agent reasoning mode",
+            "type": "SELECT",
+            "selectChoices": [
+                {
+                    "value": "legacy",
+                    "label": "Legacy \u2014 debugging and comparison"
+                },
+                {
+                    "value": "headless",
+                    "label": "Headless"
+                }
+            ],
+            "defaultValue": "legacy",
+            "description": "Whole-task reasoning for agent chat and scheduled triage. Headless uses actual Dataiku Headless MCP; ADTK validates all operations. Legacy remains the default pending readiness validation."
         }
     ]
 }

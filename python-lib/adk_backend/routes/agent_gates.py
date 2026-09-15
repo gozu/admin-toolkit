@@ -80,13 +80,15 @@ def _read_autonomous(config=None):
         return {}
 
 
-def _write_maps(gates, autonomous, providers=None):
+def _write_maps(gates, autonomous, providers=None, reasoning_mode=None):
     settings = _local_thread_client().get_plugin(_PLUGIN_ID).get_settings()
     config = settings.get_raw().setdefault('config', {})
     config[_PARAM] = json.dumps(gates, sort_keys=True)
     config[_PARAM_AUTO] = json.dumps(autonomous, sort_keys=True)
     if providers is not None:
         config[capability_routing.PARAM] = json.dumps(providers, sort_keys=True)
+    if reasoning_mode is not None:
+        config['agent_reasoning_mode'] = reasoning_mode
     settings.save()
 
 
@@ -166,10 +168,11 @@ def _catalog(gates, autonomous, providers=None):
     return sensors, actions
 
 
-def _settings_payload(gates, autonomous, providers=None):
+def _settings_payload(gates, autonomous, providers=None, reasoning_mode='legacy'):
     sensors, actions = _catalog(gates, autonomous, providers)
     return {'ok': True, 'sensors': sensors, 'actions': actions,
-            'gates': gates, 'autonomous': autonomous, 'providers': providers or {}}
+            'gates': gates, 'autonomous': autonomous, 'providers': providers or {},
+            'reasoningMode': reasoning_mode}
 
 
 @bp.route('/api/agents/action-settings')
@@ -177,7 +180,8 @@ def _settings_payload(gates, autonomous, providers=None):
 def api_action_settings():
     config = _plugin_config()
     return jsonify(_settings_payload(_read_gates(config), _read_autonomous(config),
-                                    capability_routing.parse_providers(config.get(capability_routing.PARAM))))
+                                    capability_routing.parse_providers(config.get(capability_routing.PARAM)),
+                                    config.get('agent_reasoning_mode') or 'legacy'))
 
 
 @bp.route('/api/agents/action-settings/update', methods=['POST'])
@@ -188,6 +192,9 @@ def api_action_settings_update():
     gate_updates = body.get('gates')
     auto_updates = body.get('autonomous')
     provider_updates = body.get('providers')
+    reasoning_mode = body.get('reasoningMode')
+    if reasoning_mode is not None and reasoning_mode not in ('legacy', 'headless'):
+        return jsonify({'ok': False, 'error': 'reasoningMode must be legacy or headless'}), 400
     for name, updates in (('gates', gate_updates), ('autonomous', auto_updates),
                           ('providers', provider_updates)):
         if updates is not None and not isinstance(updates, dict):
@@ -198,13 +205,16 @@ def api_action_settings_update():
         with _write_lock:
             config = _plugin_config()
             gates, autonomous = _read_gates(config), _read_autonomous(config)
-            if gate_updates or auto_updates or provider_updates is None:
+            if gate_updates or auto_updates or (provider_updates is None and reasoning_mode is None):
                 gates, autonomous = apply_capability_updates(
                     gates, autonomous, gate_updates, auto_updates,
                     known=known, sensors=set(tools_impl.SENSOR_DESCRIPTIONS))
             providers = capability_routing.merge_providers(
                 config.get(capability_routing.PARAM), provider_updates or {}, known)
-            _write_maps(gates, autonomous, providers)
+            if reasoning_mode is None:
+                _write_maps(gates, autonomous, providers)
+            else:
+                _write_maps(gates, autonomous, providers, reasoning_mode)
     except ValueError as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 400
     except Exception as exc:
@@ -214,7 +224,53 @@ def api_action_settings_update():
     _LOGGER.info('[agent-gates] updated: gates=%s autonomous=%s',
                  json.dumps(gate_updates or {}, sort_keys=True)[:300],
                  json.dumps(auto_updates or {}, sort_keys=True)[:300])
-    return jsonify(_settings_payload(gates, autonomous, providers))
+    from adk_backend.agent_native import clear_bundle_cache
+    clear_bundle_cache()
+    return jsonify(_settings_payload(gates, autonomous, providers,
+                                    reasoning_mode or config.get('agent_reasoning_mode') or 'legacy'))
+
+
+def _headless_owner():
+    from adk_backend import headless_service
+    # Per-ToolkitClient random identity stays stable across lazy red/remote
+    # unlocks. Unlock cookies must not change ownership halfway through a task.
+    identity = request.headers.get('X-ADTK-Reasoning-Caller', '')
+    if len(identity) != 32 or any(c not in '0123456789abcdef' for c in identity):
+        raise ValueError('A private reasoning caller identity is required.')
+    caller = request.headers.get('Authorization', '') + '\n' + identity
+    return headless_service.owner_key(g.client, getattr(g, 'host_id', 'local'), caller)
+
+
+@bp.route('/api/agents/headless/tasks', methods=['POST'])
+def api_headless_submit():
+    from adk_backend import headless_service
+    body = request.get_json(silent=True) or {}
+    try:
+        # Inference only. The service always disables native project editing;
+        # operations can only happen later through the guarded ADTK executors.
+        return jsonify(headless_service.submit(
+            g.client, _headless_owner(), 'ADMINTOOLKIT', body.get('message'),
+            body.get('taskId'), body.get('revision')))
+    except ValueError as exc:
+        return jsonify({'status': 'failed', 'message': str(exc)}), 400
+
+
+@bp.route('/api/agents/headless/tasks/<task_id>')
+def api_headless_status(task_id):
+    from adk_backend import headless_service
+    try:
+        return jsonify(headless_service.snapshot(task_id, _headless_owner()))
+    except ValueError as exc:
+        return jsonify({'status': 'unknown', 'message': str(exc)}), 404
+
+
+@bp.route('/api/agents/headless/tasks/<task_id>/stop', methods=['POST'])
+def api_headless_stop(task_id):
+    from adk_backend import headless_service
+    try:
+        return jsonify(headless_service.stop(task_id, _headless_owner()))
+    except ValueError as exc:
+        return jsonify({'status': 'unknown', 'message': str(exc)}), 404
 
 
 def _cobuild_owner():

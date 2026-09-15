@@ -124,7 +124,8 @@ def _effect(action, result):
 
 
 def execute_candidate(client, settings, summary, cand, run_id,
-                      tier='deterministic', agent_name='triage-auto', llm_id=None):
+                      tier='deterministic', agent_name='triage-auto', llm_id=None,
+                      authorization_check=None):
     """Run ONE autonomous candidate through the shared plan → execute path,
     appending a tier-tagged entry to summary['executed'] or ['skipped'] and
     updating the shared GB/object budget accounting. Both tiers funnel here.
@@ -177,6 +178,8 @@ def execute_candidate(client, settings, summary, cand, run_id,
     if summary['totalObjects'] >= max_objects:
         return skip('cumulative auto_remediate_max_objects cap (%d) reached' % max_objects)
     try:
+        if authorization_check is not None and not authorization_check():
+            return skip('Autonomous grant revoked after planning; execution refused')
         result = actuator.execute_admin_action(
             client, host=host, action=action,
             target=plan['canonicalTarget'], confirm_flag=True,

@@ -22,6 +22,8 @@ class ModelChecks(Runnable):
         # __file__ is python-runnables/checks/runnable.py inside this plugin.
         sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'python-lib'))
         from cobuild_model_compare import ModelComparison
+        if self.config.get('reasoning') == 'headless':
+            from headless_model_compare import HeadlessComparison as ModelComparison
         from cobuild_model_suite import run_group
         from atk_agent_common import config
         from atk_agent_common.client import ToolkitClient

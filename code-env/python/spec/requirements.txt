@@ -14,3 +14,10 @@ langchain-core
 Flask-SQLAlchemy==3.1.1
 SQLAlchemy>=2.0.16
 pymssql==2.3.13
+
+# Actual Headless server source is packaged by scripts/package_headless.py.
+# DSS runtime dependencies (no private GitHub credentials needed on hosts).
+dataiku-api-client==15.0.1
+python-dotenv==1.2.3
+fastmcp==4.0.3
+mcp==2.2.0

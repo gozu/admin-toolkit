@@ -98,23 +98,23 @@ class MyRunnable(Runnable):
                 row['previousScore'] = prev_score
 
         llm_id = settings.get('default_llm_id')
-        if not _bool(self.config.get('skip_llm')) and llm_id and result['flagged']:
-            from atk_agent_common.triage.provision import MACRO_PROJECT_KEY
-            dss = dataiku.api_client()
-            llm = dss.get_project(self.project_key or MACRO_PROJECT_KEY).get_llm(llm_id)
+        from atk_agent_common import reasoning
+        from langchain_core.messages import HumanMessage
+        selected = reasoning.mode(client)
+        if not _bool(self.config.get('skip_llm')) and (llm_id or selected == 'headless') and result['flagged']:
             for row in rows:
                 if row['host'] not in result['flagged']:
                     continue
                 try:
-                    completion = llm.new_completion()
-                    completion.with_message(RECOMMENDATION_PROMPT % json.dumps(row, default=str)[:8000])
-                    resp = completion.execute()
-                    row['recommendation'] = (resp.text or '').strip() if resp.success else \
-                        '[LLM draft failed: %s]' % getattr(resp, 'errorMessage', 'unknown')
+                    pieces = reasoning.run(client, [], [HumanMessage(content=
+                        RECOMMENDATION_PROMPT % json.dumps(row, default=str)[:8000])],
+                        llm_id=llm_id, selected=selected)
+                    row['recommendation'] = ''.join(
+                        (piece.get('chunk') or {}).get('text', '') for piece in pieces).strip()
                 except Exception as exc:
-                    row['recommendation'] = '[LLM draft failed: %s: %s]' % (type(exc).__name__, str(exc)[:150])
-
-        written = store.persist_sweep(settings['triage_connection'], rows, run_id, llm_id=llm_id)
+                    row['recommendation'] = '[Draft failed: %s; no fallback]' % type(exc).__name__
+        written = store.persist_sweep(settings['triage_connection'], rows, run_id,
+                                      llm_id='headless' if selected == 'headless' else llm_id)
 
         # Auto-remediation tiers (admin-granted Autonomous capabilities only;
         # failures become a digest warning, never a sweep failure). The LIVE

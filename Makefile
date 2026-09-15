@@ -132,6 +132,7 @@ plugin: dist-clean $(FRONTEND_STAMP)
 	echo "{\"remote_url\":\"${remote_url}\",\"last_commit_id\":\"${last_commit_id}\"}" > release_info.json
 	git archive -v -9 --format zip -o "dist/$(archive_file_name)" HEAD
 	zip -u "dist/$(archive_file_name)" release_info.json
+	python3 scripts/package_headless.py "dist/$(archive_file_name)"
 	rm -f release_info.json
 	@echo "[SUCCESS] Archiving plugin: dist/$(archive_file_name)"
 

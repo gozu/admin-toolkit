@@ -1,38 +1,9 @@
-"""Native agent runtime — the generalist loop run IN-PROCESS in this backend.
+"""Local host agent vehicle, using task-boundary Headless or Legacy reasoning.
 
-Since 0.4.777 the Dataiku agent kernel relay is the DEFAULT chat vehicle (the
-standard DSS-managed path: DSS-side agent settings, interaction logging,
-governance — and the only vehicle for remote hosts). The native runtime
-remains as (a) an explicit admin choice / debugging aid (Settings → Agents &
-Outreach, or a per-request runtime override), and (b) the automatic fallback:
-when the local host has no provisioned agent instances (the virtual
-generalist only exists natively) or when the kernel relay fails before
-streaming anything.
-
-What stays identical to the kernel path (parity by construction):
-  • tools, actuator protocol, gates, tuning overrides, prompts — all assembled
-    by atk_agent_common/generalist.py and executed through the same
-    ToolkitClient interface (native dispatches through this Flask app), so every
-    server-side safety layer (action gates, master kill-switch, HMAC confirm
-    tokens, audit rows, secret redaction) applies untouched;
-  • the LLM comes from the same resolution chain (Agent Tuning override >
-    per-agent llm_id > plugin default_llm_id) via the local LLM Mesh;
-  • the SSE event protocol and dku-trace span layout, so the frontend and the
-    Trace Explorer handoff cannot tell the runtimes apart.
-
-What the kernel could never give us:
-  • no kernel spin-up (first token in ~a second, not tens) and no recycle
-    ceremony after deploys — new code is live the moment the backend restarts;
-  • parallel tool execution with live out-of-order results (native_loop);
-  • heartbeat frames during long tools so proxies keep the stream open;
-  • Stop actually stops server-side work at the next yield;
-  • works without provisioned ADMINTOOLKIT instances — when none exist the
-    chat serves a "virtual" generalist whose execute gate is the plugin-level
-    master switch (enable_red_actions), every backend gate still enforced.
-
-Local host only: the kernel path remains the vehicle for chatting with a
-REMOTE host's agents (each deployed webapp is its own local hub, so in
-practice every instance gets the native runtime for itself).
+DSS agent kernels remain the remote-host vehicle. The virtual local generalist
+runs here when there are no provisioned agents. A failed kernel task is never
+replayed here. Each task builds its own client/tool bundle: cookie jars and
+private Headless identities are never shared between conversations.
 """
 
 import json
@@ -52,13 +23,8 @@ VIRTUAL_AGENT_ID = 'native-admin-generalist'
 VIRTUAL_AGENT_NAME = 'ATK Admin Agent'
 AGENTS_PROJECT_KEY = 'ADMINTOOLKIT'
 
-# ── setup-bundle cache ───────────────────────────────────────────────────────
-# Per-turn assembly costs a handful of toolkit/DSS reads (plugin config,
-# action gates, tuning prompts, agent instance). Within a short window none of
-# those can change unobserved — gates are re-enforced server-side at plan AND
-# execute, tuning prompts carry their own 60s cache — so follow-up turns reuse
-# the whole bundle and get to the first token immediately. Settings saves
-# clear it explicitly so knob changes still apply on the very next turn.
+# Compatibility hooks retained for settings saves and older callers. Mutable
+# bundles are deliberately no longer cached across users or task boundaries.
 _BUNDLE_TTL_S = 20.0
 # Ids are validated against the live agent list before a bundle is built, so
 # the key space is server-controlled — the cap is a backstop, not a policy.
@@ -85,30 +51,21 @@ def clear_bundle_cache():
 
 def _setup_bundle(agent_id):
     """{settings, client, agent_config, llm_id, llm, behavior, tools, prompt}
-    for one agent, cached _BUNDLE_TTL_S. Failures are raised, never cached."""
-    now = time.monotonic()
-    with _bundle_lock:
-        hit = _bundle_cache.get(agent_id)
-        if hit is not None and hit[0] > now:
-            return hit[1]
+    for one task, with a fresh private client. Failures are raised."""
     plugin_config = _get_plugin_config()
     settings = atk_config.resolve(plugin_config)
     client = build_client(plugin_config)
     agent_config = agent_instance_config_local(agent_id)
-    llm_id = agent_runtime.resolve_llm_id(client, agent_config or {})
+    from atk_agent_common import reasoning
+    selected = reasoning.mode(client)
+    llm_id = (agent_runtime.resolve_llm_id(client, agent_config or {})
+              if selected == 'legacy' else 'headless')
     behavior = _behavior_for(agent_config, settings)
     tools = generalist.build_toolset(client, behavior, llm_id)
     bundle = {'settings': settings, 'client': client, 'agent_config': agent_config,
-              'llm_id': llm_id, 'llm': agent_runtime.build_llm(llm_id),
+              'llm_id': llm_id, 'reasoning_mode': selected,
               'behavior': behavior, 'tools': tools,
               'prompt': generalist.build_system_prompt(client, behavior, tools)}
-    with _bundle_lock:
-        now = time.monotonic()
-        for key in [k for k, v in _bundle_cache.items() if v[0] <= now]:
-            del _bundle_cache[key]
-        while len(_bundle_cache) >= _BUNDLE_MAX:
-            del _bundle_cache[min(_bundle_cache, key=lambda k: _bundle_cache[k][0])]
-        _bundle_cache[agent_id] = (now + _BUNDLE_TTL_S, bundle)
     return bundle
 
 
@@ -179,6 +136,7 @@ def stream_native_turn(agent_id, messages, user=None):
         return
 
     trace.attributes['runtime'] = 'native'
+    trace.attributes['reasoningMode'] = bundle['reasoning_mode']
     trace.attributes['agentId'] = agent_id
     trace.attributes['llmId'] = bundle['llm_id']
     trace.inputs['messages'] = len(messages)
@@ -187,8 +145,10 @@ def stream_native_turn(agent_id, messages, user=None):
     text_parts = []
     stats = None
     try:
-        for item in native_loop.run_native_loop(bundle['llm'], bundle['tools'],
-                                                lc_messages, trace=trace):
+        from atk_agent_common import reasoning
+        for item in reasoning.run(bundle['client'], bundle['tools'], lc_messages,
+                                  llm_id=bundle['llm_id'], trace=trace,
+                                  selected=bundle['reasoning_mode']):
             if item.get('heartbeat'):
                 yield 'ping', {}
                 continue
@@ -210,15 +170,16 @@ def stream_native_turn(agent_id, messages, user=None):
         trace.end(int(time.time() * 1000))
 
     final = {'finishReason': 'stop', 'durationMs': _elapsed_ms(started),
-             'trace': trace.to_dict()}
+             'trace': trace.to_dict(), 'reasoningMode': bundle['reasoning_mode']}
     if stats is not None:
         final['llmTurns'] = stats.get('llmTurns')
         final['toolsRun'] = stats.get('toolsRun')
         if stats.get('usage'):
             final['usage'] = stats['usage']
-    _log_interaction_async(agent_id=agent_id, user=user, began_at=began_at,
-                           duration_ms=final['durationMs'], messages=messages,
-                           response_text=''.join(text_parts), trace_dict=final['trace'])
+    if bundle['reasoning_mode'] == 'legacy':
+        _log_interaction_async(agent_id=agent_id, user=user, began_at=began_at,
+                               duration_ms=final['durationMs'], messages=messages,
+                               response_text=''.join(text_parts), trace_dict=final['trace'])
     yield 'final', final
 
 

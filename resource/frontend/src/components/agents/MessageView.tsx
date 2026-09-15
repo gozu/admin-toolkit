@@ -319,7 +319,7 @@ export function MessageView({
               key={i}
               className="flex items-center gap-1.5 pt-1 text-[11px] text-[var(--text-muted)]"
             >
-              <span aria-hidden="true">⏹</span> stopped
+              <span aria-hidden="true">⏹</span> stopped locally · remote work may still be running
             </div>
           );
         }

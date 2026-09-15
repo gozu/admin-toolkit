@@ -42,6 +42,7 @@ def resolve(plugin_config=None):
         'http_timeout_s': int(pick('http_timeout_s', cfg.get('http_timeout_s') or 30)),
         'heavy_timeout_s': int(pick('heavy_timeout_s', cfg.get('heavy_timeout_s') or 900)),
         'default_llm_id': pick('default_llm_id'),
+        'agent_reasoning_mode': pick('agent_reasoning_mode', 'legacy'),
         # Default ON (0.4.777+): two more gates remain in the chain (webapp
         # per-action permissions; DSS-side agent execute setting), so an unset
         # raw config must resolve True — DSS never materializes defaultValue.

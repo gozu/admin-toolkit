@@ -168,35 +168,9 @@ export function AgentsOutreachCard({
 
       {values && (
         <div className="space-y-3 max-w-3xl">
-          <Field label="Agent runtime">
-            <div className="inline-flex rounded-lg border border-[var(--border-default)] overflow-hidden">
-              {(
-                [
-                  ['dataiku', 'Dataiku agent kernel'],
-                  ['native', 'Native (in-process)'],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => set('agent_runtime', id)}
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                    values.agent_runtime === id
-                      ? 'bg-[var(--accent)]/20 text-[var(--accent)]'
-                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </Field>
-          <p className="text-xs text-[var(--text-muted)] -mt-1">
-            The Dataiku agent kernel (default) is the standard DSS-managed path — DSS-side agent
-            settings, interaction logging and governance apply, and it is the only vehicle for
-            remote hosts. Native runs the loop inside the toolkit backend — a debugging choice
-            (instant start, no kernel recycles) that also serves as the automatic fallback when
-            the kernel can&apos;t (no provisioned instances, or a kernel error before streaming).
+          <p className="text-xs text-[var(--text-muted)]">
+            Choose Headless or Legacy in Agents → Permissions. The choice applies to whole tasks;
+            existing DSS agent hosting settings remain compatible.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Outreach mail channel">
@@ -207,7 +181,7 @@ export function AgentsOutreachCard({
                 onChange={(id) => set('outreach_mail_channel', id)}
               />
             </Field>
-            <Field label="Default LLM (agents)">
+            <Field label="Default LLM (Legacy)">
               <ChoiceSelect
                 value={values.default_llm_id}
                 choices={llms}

@@ -5,8 +5,8 @@ import {
   toggleActionGate,
   toggleAutonomous,
   toggleGatesBulk,
-  setCapabilityProvider,
-  type CapabilityProvider,
+  setReasoningMode,
+  type ReasoningMode,
   type ActionRow,
   type SensorRow,
 } from '../../state/agentActionGatesStore';
@@ -39,7 +39,7 @@ const RISK_DOT: Record<string, string> = {
 
 // One shared grid keeps the header labels and every row's cells aligned —
 // a real table: capability | description | Enabled | Auto, one row each.
-const ROW_GRID = 'grid grid-cols-[13.5rem_minmax(0,1fr)_11rem_4.5rem_4.5rem] gap-x-4';
+const ROW_GRID = 'grid grid-cols-[13.5rem_minmax(0,1fr)_4.5rem_4.5rem] gap-x-4';
 
 const HEAD_CELL = 'text-[11px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]';
 
@@ -60,7 +60,6 @@ function ColumnHeadRow() {
     <div className={`${ROW_GRID} border-b border-[var(--border-default)]/60 px-3 pt-1 pb-1.5`}>
       <span className={HEAD_CELL}>Capability</span>
       <span className={HEAD_CELL}>What it does</span>
-      <span className={HEAD_CELL}>Execution path</span>
       <span className={`${HEAD_CELL} justify-self-center`}>Enabled</span>
       <span className={`${HEAD_CELL} justify-self-center`}>Auto</span>
     </div>
@@ -98,8 +97,6 @@ function GateRow({
   saving,
   onToggleEnabled,
   onToggleAuto,
-  provider = 'existing',
-  onProvider,
 }: {
   name: string;
   enabled: boolean;
@@ -111,8 +108,6 @@ function GateRow({
   saving: boolean;
   onToggleEnabled: (enabled: boolean) => void;
   onToggleAuto: (allowed: boolean) => void;
-  provider?: CapabilityProvider;
-  onProvider: (provider: CapabilityProvider) => void;
 }) {
   return (
     <div
@@ -135,17 +130,6 @@ function GateRow({
             : 'Autonomous mode unavailable — manual per-run code acknowledgment always required.'
         }
       />
-      <select
-        aria-label={`${name} execution path`}
-        value={provider}
-        disabled={saving}
-        onChange={(e) => onProvider(e.target.value as CapabilityProvider)}
-        title="Cobuild requests the operation and explains the result. ADTK retains execution, permissions and approvals."
-        className="w-full min-w-0 self-center rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 py-1.5 text-xs text-[var(--text-primary)] disabled:opacity-50"
-      >
-        <option value="existing">Existing</option>
-        <option value="cobuild">Headless / Cobuild</option>
-      </select>
       <input
         type="checkbox"
         aria-label={`${name} enabled`}
@@ -228,7 +212,6 @@ function MasterReadRow({
         Everything the toolkit surfaces — health, config, cost, storage, logs, churn, audits —
         is readable by the agents. Each column&apos;s checkbox flips all sensors at once.
       </p>
-      <span className="self-center text-xs text-[var(--text-tertiary)]">Select per capability below</span>
       <input
         ref={enabledRef}
         type="checkbox"
@@ -313,7 +296,7 @@ function SectionCard({
 type PendingToggle = { kind: 'gates' | 'auto'; names: string[]; value: boolean };
 
 export function AgentSettingsPage() {
-  const { sensors, actions, loading, loaded, saving, error } = agentActionGatesStore.use();
+  const { sensors, actions, loading, loaded, saving, error, reasoningMode } = agentActionGatesStore.use();
   const { setActivePage } = useDiag();
   const { authed: unlocked } = useRedState();
   const [showUnlock, setShowUnlock] = useState(false);
@@ -399,10 +382,6 @@ export function AgentSettingsPage() {
       enabled={a.enabled}
       autonomous={a.autonomous}
       autoCapable={a.autoCapable}
-      provider={a.provider}
-      onProvider={(value) => requireUnlock(() => {
-        void setCapabilityProvider(a.action, value).catch(() => undefined);
-      })}
       risk={a.risk}
       detail={a.shape}
       chips={actionChips(a)}
@@ -455,12 +434,22 @@ export function AgentSettingsPage() {
             (on by default) still sits above everything — an admin can shut all agentic actions
             off there with one click.
           </p>
-          <p className="mt-2 text-[13px] text-[var(--text-muted)]">
-            <strong>Execution path</strong> preserves Existing by default. Headless / Cobuild
-            asks Cobuild to request the operation and explain its result; ADTK still runs the
-            diagnostic or approved action. Cobuild errors are reported without an automatic
-            fallback. Configure the conversation project in plugin settings. These switches
-            route capabilities; the chat agent&apos;s own model setting is unchanged.
+          <div className="flex items-center gap-3 pt-2">
+            <label htmlFor="agent-reasoning-mode" className="text-[13px] font-semibold">Reasoning mode</label>
+            <select id="agent-reasoning-mode" value={reasoningMode} disabled={saving !== null}
+              className="rounded border border-[var(--border-default)] bg-[var(--bg-surface)] px-2 py-1.5 text-[13px]"
+              onChange={(e) => { const value = e.target.value as ReasoningMode; requireUnlock(() => {
+                void setReasoningMode(value).catch(() => undefined);
+              }); }}>
+              <option value="headless">Headless</option>
+              <option value="legacy">Legacy</option>
+            </select>
+            <span className="text-xs text-[var(--text-muted)]">Applies to new chat tasks and scheduled triage.</span>
+          </div>
+          <p className="text-[13px] text-[var(--text-muted)]">
+            Headless chooses tools and writes answers through Cobuild; ADTK validates and executes every operation.
+            Legacy uses LLM Mesh for debugging and comparison. Failures never switch modes automatically.
+            Legacy remains the default while Headless validation is in progress.
           </p>
         </div>
 
@@ -520,10 +509,6 @@ export function AgentSettingsPage() {
                   enabled={s.enabled}
                   autonomous={s.autonomous}
                   autoCapable
-                  provider={s.provider}
-                  onProvider={(value) => requireUnlock(() => {
-                    void setCapabilityProvider(s.name, value).catch(() => undefined);
-                  })}
                   detail={s.description}
                   saving={saving === s.name || saving === '__bulk__' || saving === '__bulk-auto__'}
                   onToggleEnabled={(v) =>
@@ -573,10 +558,6 @@ export function AgentSettingsPage() {
                   enabled={a.enabled}
                   autonomous={false}
                   autoCapable={false}
-                  provider={a.provider}
-                  onProvider={(value) => requireUnlock(() => {
-                    void setCapabilityProvider(a.action, value).catch(() => undefined);
-                  })}
                   risk={a.risk}
                   detail={a.shape}
                   chips={a.localOnly ? ['local-only'] : []}

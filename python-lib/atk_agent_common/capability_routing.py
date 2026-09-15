@@ -63,25 +63,10 @@ def selected(client, name):
         return 'existing'
     if _OVERRIDE.get() is not None:
         return _OVERRIDE.get()
-    if getattr(client, 'settings', {}).get(PARAM, _UNCONFIGURED) is _UNCONFIGURED:
-        return 'existing'  # Older clients retain their unchanged behavior.
-    now = time.monotonic()
-    cached = getattr(client, '_capability_provider_cache', None)
-    if isinstance(cached, tuple) and now - cached[0] < 30:
-        return cached[1].get(name, 'existing')
-    raw = client.settings.get(PARAM)
-    try:
-        live = client.get('/api/agents/action-settings') or {}
-        if isinstance(live.get('providers'), dict):
-            raw = live['providers']
-    except Exception:
-        pass  # Same configured route; the later Cobuild call still fails explicitly.
-    try:
-        providers = parse_providers(raw)
-    except (ValueError, TypeError) as exc:
-        raise CapabilityRouteError('Invalid capability route configuration.') from exc
-    client._capability_provider_cache = (now, providers)
-    return providers.get(name, 'existing')
+    # Retired persisted provider maps are intentionally ignored. Whole-task
+    # Headless/Legacy selection now owns inference; executors never select a
+    # second model. Explicit context overrides remain for historical drills.
+    return 'existing'
 
 
 def _wait(client, payload, host):

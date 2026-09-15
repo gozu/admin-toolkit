@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.863] - 2026-09-15
+
+### Fixed
+
+- Cobuild version interpretations are instructed to stay within installed/running version and backend-staleness evidence, rather than infer upgrade availability or unrelated restart/kernel state.
+
+## [0.4.862] - 2026-09-15
+
+### Changed
+
+- Cobuild version reads, host lists without probes, and capability inventories return the complete ADTK data promptly and request one compact interpretation in the background. Chat shows data and interpretation readiness separately, preserves data on explanation failures, and keeps existing capability controls. Other reads and actions retain their current routes; no Second Look review was added.
+
 ## [0.4.861] - 2026-09-14
 
 ### Fixed

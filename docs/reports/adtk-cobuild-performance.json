@@ -1,0 +1,170 @@
+{
+  "toolkit_get": {
+    "existing": {
+      "samples": 10,
+      "successes": 10,
+      "failures": 0,
+      "data": {
+        "median": 0.756,
+        "min": 0.747,
+        "max": 0.763
+      },
+      "complete": {
+        "median": 0.756,
+        "min": 0.748,
+        "max": 0.764
+      },
+      "full_output_matches": 10,
+      "fact_matches": 10,
+      "failure_categories": []
+    },
+    "bridge": {
+      "samples": 10,
+      "successes": 10,
+      "failures": 0,
+      "data": {
+        "median": 11.081,
+        "min": 11.036,
+        "max": 12.815
+      },
+      "complete": {
+        "median": 11.081,
+        "min": 11.037,
+        "max": 12.815
+      },
+      "full_output_matches": 10,
+      "fact_matches": 10,
+      "failure_categories": []
+    },
+    "compact": {
+      "samples": 10,
+      "successes": 10,
+      "failures": 0,
+      "data": {
+        "median": 2.285,
+        "min": 2.234,
+        "max": 2.299
+      },
+      "complete": {
+        "median": 8.323,
+        "min": 8.241,
+        "max": 10.054
+      },
+      "full_output_matches": 10,
+      "fact_matches": 10,
+      "failure_categories": []
+    }
+  },
+  "list_hosts": {
+    "existing": {
+      "samples": 10,
+      "successes": 10,
+      "failures": 0,
+      "data": {
+        "median": 0.76,
+        "min": 0.745,
+        "max": 0.769
+      },
+      "complete": {
+        "median": 0.76,
+        "min": 0.745,
+        "max": 0.769
+      },
+      "full_output_matches": 10,
+      "fact_matches": 10,
+      "failure_categories": []
+    },
+    "bridge": {
+      "samples": 10,
+      "successes": 10,
+      "failures": 0,
+      "data": {
+        "median": 11.095,
+        "min": 9.329,
+        "max": 16.376
+      },
+      "complete": {
+        "median": 11.095,
+        "min": 9.329,
+        "max": 16.376
+      },
+      "full_output_matches": 10,
+      "fact_matches": 10,
+      "failure_categories": []
+    },
+    "compact": {
+      "samples": 10,
+      "successes": 10,
+      "failures": 0,
+      "data": {
+        "median": 2.284,
+        "min": 2.261,
+        "max": 2.294
+      },
+      "complete": {
+        "median": 8.312,
+        "min": 8.285,
+        "max": 10.102
+      },
+      "full_output_matches": 10,
+      "fact_matches": 10,
+      "failure_categories": []
+    }
+  },
+  "list_capabilities": {
+    "existing": {
+      "samples": 10,
+      "successes": 10,
+      "failures": 0,
+      "data": {
+        "median": 0.0,
+        "min": 0.0,
+        "max": 0.79
+      },
+      "complete": {
+        "median": 0.001,
+        "min": 0.0,
+        "max": 0.79
+      },
+      "full_output_matches": 10,
+      "fact_matches": 10,
+      "failure_categories": []
+    },
+    "bridge": {
+      "samples": 10,
+      "successes": 10,
+      "failures": 0,
+      "data": {
+        "median": 14.235,
+        "min": 12.073,
+        "max": 15.613
+      },
+      "complete": {
+        "median": 14.235,
+        "min": 12.073,
+        "max": 15.613
+      },
+      "full_output_matches": 10,
+      "fact_matches": 10,
+      "failure_categories": []
+    },
+    "compact": {
+      "samples": 10,
+      "successes": 10,
+      "failures": 0,
+      "data": {
+        "median": 1.538,
+        "min": 1.516,
+        "max": 2.294
+      },
+      "complete": {
+        "median": 7.559,
+        "min": 5.785,
+        "max": 8.319
+      },
+      "full_output_matches": 10,
+      "fact_matches": 10,
+      "failure_categories": []
+    }
+  }
+}

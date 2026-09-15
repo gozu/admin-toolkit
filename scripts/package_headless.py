@@ -51,10 +51,17 @@ def main():
     provenance = {'repository': REPOSITORY, 'commit': COMMIT,
                   'sha256': hashlib.sha256(value).hexdigest(), 'license': 'Apache-2.0'}
     with zipfile.ZipFile(args.plugin_zip, 'a', zipfile.ZIP_DEFLATED) as package:
-        if 'resource/headless-server.zip' in package.namelist():
+        if 'python-lib/dataiku_mcp/__init__.py' in package.namelist():
             raise RuntimeError('Headless was already packaged; rebuild a clean plugin ZIP.')
-        package.writestr('resource/headless-server.zip', value)
-        package.writestr('resource/headless-provenance.json', json.dumps(provenance, indent=2))
+        # DSS ships python-lib to webapp/agent kernels separately from resource.
+        # Put upstream modules on that same supported import path. No nested ZIP
+        # or filesystem assumption in the deployed inference code is needed.
+        with zipfile.ZipFile(io.BytesIO(value)) as upstream:
+            for name in upstream.namelist():
+                destination = ('python-lib/' + name if name.startswith('dataiku_mcp/')
+                               else 'python-lib/dataiku-headless-' + name)
+                package.writestr(destination, upstream.read(name))
+        package.writestr('python-lib/headless-provenance.json', json.dumps(provenance, indent=2))
     print('Packaged actual Dataiku Headless MCP at %s (%d bytes).' % (COMMIT, len(value)))
 
 

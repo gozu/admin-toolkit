@@ -9,8 +9,6 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 import hashlib
 import json
-from pathlib import Path
-import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -44,15 +42,6 @@ class Session:
 
 
 def _server():
-    resource = Path(__file__).resolve().parents[2] / 'resource'
-    package = resource / 'headless-server.zip'
-    if package.is_file():
-        provenance = json.loads((resource / 'headless-provenance.json').read_text())
-        if (provenance.get('commit') != '9d7f6cc29a9406f347708c8811b5689ab257c6c8'
-                or hashlib.sha256(package.read_bytes()).hexdigest() != provenance.get('sha256')):
-            raise ValueError('Packaged Headless provenance verification failed.')
-        if str(package) not in sys.path:
-            sys.path.insert(0, str(package))
     from dataiku_mcp import mcp
     from dataiku_mcp.tools import cobuild
     # Only these two bindings change. Upstream conversation/turn handling and
@@ -132,6 +121,11 @@ async def _run(row, first_message):
         # SDK/MCP exceptions can embed prompts or credentials. Return only type.
         row.status = 'failed'
         row.message = 'Headless transport failed (%s); no fallback or retry.' % type(exc).__name__
+        if isinstance(exc, ModuleNotFoundError):
+            name = exc.name or ''
+            if name and all(c.isalnum() or c in '._' for c in name):
+                row.message = ('Headless dependency missing: %s. Install the release ZIP and '
+                               'update the plugin environment; no fallback or retry.' % name)
     finally:
         row.stopped = True
         _BOUND.reset(token)

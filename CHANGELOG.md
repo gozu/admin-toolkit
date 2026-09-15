@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.865] - 2026-09-15
+
+### Changed
+
+- Added whole-task Headless MCP reasoning alongside explicit Legacy LLM Mesh for agent chat, triage recommendation drafting and autonomous planning. ADTK retains execution and approval authority; retired per-capability provider maps are ignored.
+- Bound Headless conversations to caller, credentials, host and project; poll retained turns without resending messages, report unknown outcomes, and remove automatic task replay after a kernel failure. Keep Legacy as the default pending readiness validation.
+- Package the pinned actual Headless server into release ZIPs with license/provenance and public runtime dependencies. No developer checkout or DSS-side GitHub credentials are required.
+
 ## [0.4.864] - 2026-09-15
 
 ### Changed

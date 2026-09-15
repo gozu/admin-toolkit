@@ -1,3 +1,5 @@
+> Historical assessment. The implemented whole-task migration and current readiness limits are documented in [Headless runtime](headless-runtime.md). Earlier operation-bridge and native-coverage recommendations are not the current routing specification.
+
 # ADTK with Cobuild handling agent inference
 
 Assessment: 14 September 2026. **Make Cobuild the target inference path for the in-scope agent features; retain ADTK as the operational application and tool backend.** Start with evidence-based scheduled recommendations. Full interactive and autonomous parity is conditional on a supported tool bridge, reliable background operation, and verified customer usage attribution.

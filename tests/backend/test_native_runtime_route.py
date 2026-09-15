@@ -156,23 +156,14 @@ def test_chat_virtual_agent_falls_back_to_native_tagged():
     assert done['fallbackReason'] == 'no-agent-instances'
 
 
-def test_chat_kernel_error_pre_stream_falls_back_native():
-    # _NoAgentsClient raises before the kernel streams anything → the turn
-    # retries natively and the done event is tagged with the kernel error.
+def test_chat_kernel_error_never_replays_task_natively():
     with mock.patch.object(agent_native, 'runtime_mode', return_value='dataiku'), \
-            mock.patch.object(agent_native, 'stream_native_turn',
-                              side_effect=_scripted_native_turn) as native_turn, \
+            mock.patch.object(agent_native, 'stream_native_turn') as native_turn, \
             mock.patch.object(backend, '_resolve_client', return_value=_NoAgentsClient()):
-        resp = backend.app.test_client().post(
-            '/api/agents/chat',
+        resp = backend.app.test_client().post('/api/agents/chat',
             json={'agentId': 'a1', 'messages': [{'role': 'user', 'content': 'hi'}]})
-    assert native_turn.called
-    body = resp.get_data(as_text=True)
-    assert 'event: error' not in body
-    done = json.loads(body.split('event: done\ndata: ')[1].split('\n')[0])
-    assert done['runtime'] == 'native'
-    assert done['fallbackFrom'] == 'dataiku'
-    assert done['fallbackReason'].startswith('kernel-error:')
+    assert not native_turn.called
+    assert 'event: error' in resp.get_data(as_text=True)
 
 
 class _MidStreamFailClient:
@@ -299,7 +290,7 @@ class _BundleBuilders:
         self._patches = [
             mock.patch.object(agent_native, '_get_plugin_config', side_effect=counted_config),
             mock.patch.object(agent_native.atk_config, 'resolve', return_value={'s': 1}),
-            mock.patch.object(agent_native, 'build_client', return_value=object()),
+            mock.patch.object(agent_native, 'build_client', side_effect=lambda _: mock.Mock(get=lambda _: {'reasoningMode': 'legacy'})),
             mock.patch.object(agent_native, 'agent_instance_config_local', return_value=None),
             mock.patch.object(agent_native.agent_runtime, 'resolve_llm_id', return_value='llm:x'),
             mock.patch.object(agent_native.agent_runtime, 'build_llm', return_value=object()),
@@ -316,18 +307,20 @@ class _BundleBuilders:
             p.stop()
 
 
-def test_setup_bundle_caches_within_ttl_and_clears():
+def test_setup_bundle_clients_are_not_shared_between_tasks():
     agent_native.clear_bundle_cache()
     try:
         with _BundleBuilders() as builders:
             first = agent_native._setup_bundle('a1')
-            assert agent_native._setup_bundle('a1') is first  # cache hit
-            assert builders.builds == 1
-            agent_native._setup_bundle('a2')  # keyed per agent
+            second = agent_native._setup_bundle('a1')
+            assert second is not first
+            assert second['client'] is not first['client']
             assert builders.builds == 2
+            agent_native._setup_bundle('a2')  # keyed per agent
+            assert builders.builds == 3
             agent_native.clear_bundle_cache()
             assert agent_native._setup_bundle('a1') is not first
-            assert builders.builds == 3
+            assert builders.builds == 4
     finally:
         agent_native.clear_bundle_cache()
 

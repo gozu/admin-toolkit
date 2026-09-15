@@ -1,3 +1,5 @@
+> Historical assessment. The implemented whole-task migration and current readiness limits are documented in [Headless runtime](headless-runtime.md). Earlier operation-bridge and native-coverage recommendations are not the current routing specification.
+
 # Dataiku Headless integration assessment
 
 Investigated 14 September 2026. Recommendation: reuse Headless for standard DSS

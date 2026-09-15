@@ -12,6 +12,13 @@ from atk_agent_common import remediation_map
 from atk_agent_common.triage import auto_agent, auto_remediate
 
 
+@pytest.fixture(autouse=True)
+def legacy_mode(monkeypatch):
+    from atk_agent_common import reasoning
+    monkeypatch.setattr(reasoning, 'mode', lambda client: 'legacy')
+    monkeypatch.setattr(auto_agent, 'live_authorized', lambda client, action: True)
+
+
 _SETTINGS = {'auto_remediate_max_gb': 20, 'auto_remediate_max_objects': 25,
              'auto_remediate_remote_hosts': False,
              'enable_red_actions': True, 'master_password': 'x'}
@@ -32,7 +39,8 @@ def _run_planner(monkeypatch, calls, summary, autonomous_actions,
     results = []
 
     def fake_execute(client, live_settings, summary_arg, cand, run_id,
-                     tier='deterministic', agent_name='triage-auto', llm_id=None):
+                     tier='deterministic', agent_name='triage-auto', llm_id=None,
+                     authorization_check=None):
         if execute_stub is not None:
             return execute_stub(cand, summary_arg, tier=tier,
                                 agent_name=agent_name, llm_id=llm_id)

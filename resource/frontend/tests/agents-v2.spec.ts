@@ -652,7 +652,8 @@ test.describe('Agent Tuning (mocked backend)', () => {
         shape: 'python-run {code, purpose}', batchable: false, localOnly: true,
         enabled: false, autonomous: false, autoCapable: false },
     ];
-    const payload = () => ({ ok: true, sensors, actions, gates: {}, autonomous: {} });
+    let reasoningMode = 'legacy';
+    const payload = () => ({ ok: true, sensors, actions, gates: {}, autonomous: {}, reasoningMode });
     await page.route('**/api/agents/action-settings', (route: Route) =>
       route.fulfill({ json: payload() }),
     );
@@ -661,11 +662,9 @@ test.describe('Agent Tuning (mocked backend)', () => {
       const body = JSON.parse(route.request().postData() || '{}') as {
         gates?: Record<string, boolean>;
         autonomous?: Record<string, boolean>;
-        providers?: Record<string, string>;
+        reasoningMode?: string;
       };
-      for (const [name, value] of Object.entries(body.providers ?? {})) {
-        for (const sensor of sensors) if (sensor.name === name) sensor.provider = value;
-      }
+      if (body.reasoningMode) reasoningMode = body.reasoningMode;
       for (const [name, value] of Object.entries(body.gates ?? {})) {
         for (const a of actions)
           if (a.action === name) {
@@ -723,14 +722,14 @@ test.describe('Agent Tuning (mocked backend)', () => {
     // Ticking Auto on a disabled action also checks Enabled (server coupling).
     const enabledBox = page.getByRole('checkbox', { name: 'log-cleanup enabled' });
     await expect(enabledBox).not.toBeChecked();
-    const routeSelector = page.getByRole('combobox', { name: 'instance_health execution path' });
-    await expect(routeSelector).toHaveValue('existing');
-    await routeSelector.selectOption('cobuild');
-    await expect(routeSelector).toHaveValue('cobuild');
+    const routeSelector = page.getByRole('combobox', { name: 'Reasoning mode' });
+    await expect(routeSelector).toHaveValue('legacy');
+    await routeSelector.selectOption('headless');
+    await expect(routeSelector).toHaveValue('headless');
     await expect(page.getByRole('checkbox', { name: 'instance_health enabled' })).toBeChecked();
     await expect(enabledBox).not.toBeChecked();
-    await routeSelector.selectOption('existing');
-    await expect(routeSelector).toHaveValue('existing');
+    await routeSelector.selectOption('legacy');
+    await expect(routeSelector).toHaveValue('legacy');
     await page.getByRole('checkbox', { name: 'log-cleanup autonomous' }).check();
     await expect(page.getByRole('checkbox', { name: 'log-cleanup autonomous' })).toBeChecked();
     await expect(enabledBox).toBeChecked();

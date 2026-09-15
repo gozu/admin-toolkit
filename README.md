@@ -6,7 +6,7 @@
 
 **A polished, multi-instance administration cockpit for Dataiku DSS: diagnostics, health scoring, cleanup tools, and cost insights in one webapp.**
 
-![Version](https://img.shields.io/badge/version-0.4.864-blue)
+![Version](https://img.shields.io/badge/version-0.4.865-blue)
 ![Dataiku DSS](https://img.shields.io/badge/Dataiku%20DSS-13%2B-2AB1AC)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
@@ -49,9 +49,9 @@ Instance vitals at a glance. **Mission Control** is the dense operations wall fo
 
 The **ATK Admin Agent** is one generalist across fleet health triage, scoping, investigation, and guarded administration. It combines read-only sensors with a plan → approve → execute protocol: every mutation is checked below the model by the master kill-switch, capability gates, an exact-target HMAC confirmation token, the backend's Advanced Actions gate, and executor policy. **Prompts** versions prompt/model overrides, **Permissions** controls read/write/execute and autonomous access per capability, and the **How it works** link on the Agents page explains the safety model. Agent turns can use DSS ≥ 14.5 **Agent Interaction Logging** and a one-click Trace Explorer handoff. Conversations can optionally persist in built-in SQLite or Remote SQL, scoped per user and fleet host; all agent tools and the generalist ship inside this plugin.
 
-When **Cobuild** is selected in Permissions, version reads, host lists without probes, capability inventories, basic system health, connection/plugin/project inventories, and Kubernetes reachability return deterministic data through one task request with fresh permission checks. A separate background Cobuild interpretation streams when ready. The bounded read-task API also supports up to six independent reads with one shared interpretation. Detailed scans, other arguments, and actions retain their existing routes. Cobuild usage does not require an additional Second Look review; existing permissions and confirmations still apply. The outer chat model remains on LLM Mesh.
+**Permissions → Reasoning mode** exposes two task-level choices: **Headless** uses the actual Dataiku Headless MCP server and Cobuild to choose ADTK tools and produce the final answer; **Legacy** uses LLM Mesh for debugging and comparison. Both execute the same 11 sensors and 53 administrative actions through ADTK permissions, plans, confirmations, autonomy grants, backups and audit. Retired per-capability provider settings no longer insert Cobuild around individual operations. Chat, scheduled triage drafting and autonomous planning use the selected mode; standalone log AI, code-environment advice and report generation retain their existing models.
 
-See the [ten-task performance measurements](docs/reports/adtk-cobuild-ten-task-benchmark.md) for timings, output comparisons, and interpretation failure counts.
+Legacy remains the deployed default pending Headless readiness validation. Install a release ZIP and update the plugin's Python environment to use Headless; a raw Git installation does not include the private upstream server distribution. See [Headless architecture, setup and validation](docs/headless-runtime.md). Stop ends local waiting; remote cancellation is not verified, and failed tasks never switch modes or automatically repeat uncertain writes.
 
 ### Connections
 

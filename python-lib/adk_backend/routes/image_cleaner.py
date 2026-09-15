@@ -918,7 +918,10 @@ def api_image_cleaner_delete():
         cutoff, _info = _image_cleaner_validate_cutoff(cutoff_str)
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    if _safe_request_host_id() != 'local':
+    # ECR credentials belong to the selected DSS host. A containerized webapp
+    # may resolve the registry URL yet have no access to the same AWS identity.
+    # Use the existing host preflight/deletion implementation for local ECR too.
+    if provider == 'ecr' or _safe_request_host_id() != 'local':
         try:
             result = _image_cleaner_macro(
                 g.client,
@@ -929,7 +932,7 @@ def api_image_cleaner_delete():
                 dryRun=dry_run,
             )
         except Exception as e:
-            _LOGGER.error("[image-cleaner] remote delete macro failed: %s", e)
+            _LOGGER.error("[image-cleaner] target delete macro failed: %s", e)
             return jsonify({
                 'ok': False,
                 'error': str(e),

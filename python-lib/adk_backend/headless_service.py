@@ -18,6 +18,7 @@ _BOUND = ContextVar('adtk_headless_identity')
 _LOCK = threading.RLock()
 _LOOP = None
 _SESSIONS = {}
+_SDK_TASKS = set()
 MAX_SESSIONS = 8
 TURN_SECONDS = 300
 IDLE_SECONDS = 3600  # ADTK cluster/host operations can take tens of minutes.
@@ -43,17 +44,59 @@ class Session:
     seconds: float = 0
     touched: float = field(default_factory=time.monotonic)
     queue: object = None
+    active: bool = True
+    sdk_pending: int = 0
+
+
+def _retire_upstream(row):
+    """Discard private local state only after its workers have finished."""
+    if row.active or row.sdk_pending:
+        return
+    from dataiku_mcp.tools import cobuild
+    for key, entry in list(cobuild._conversations.items()):
+        if entry.instance_name == row.id:
+            if entry.turn is None or entry.turn.task.done():
+                cobuild._conversations.pop(key, None)
+            else:
+                entry.turn.task.add_done_callback(lambda _: _retire_upstream(row))
+
+
+def _leased_executor(executor):
+    async def run(func, *args, **kwargs):
+        row = _BOUND.get()
+        with _LOCK:
+            row.sdk_pending += 1
+        # Cancellation of local MCP polling must not release capacity while a
+        # blocking SDK call is still queued/running. Retain the actual worker
+        # task until completion; never retry it or infer remote cancellation.
+        task = asyncio.create_task(executor(func, *args, **kwargs))
+        _SDK_TASKS.add(task)
+
+        def finished(done):
+            _SDK_TASKS.discard(done)
+            if not done.cancelled():
+                done.exception()  # Consume errors without logging private SDK text.
+            with _LOCK:
+                row.sdk_pending -= 1
+            asyncio.get_running_loop().call_soon(_retire_upstream, row)
+
+        task.add_done_callback(finished)
+        return await asyncio.shield(task)
+    return run
 
 
 def _server():
     from dataiku_mcp import mcp
     from dataiku_mcp.tools import cobuild
-    # Only these two bindings change. Upstream conversation/turn handling and
+    from dataiku_mcp.tools.utils import async_executor
+    # Request identity and worker accounting are bound here. Conversation/turn handling and
     # MCP serialization remain intact. ContextVars propagate through upstream's
     # copy_context executor; concurrent calls never mutate active-instance state.
     cobuild.get_dss_client = lambda: _BOUND.get().client
     cobuild.get_current_instance_for_tool = lambda: SimpleNamespace(
         name=_BOUND.get().id, url=_BOUND.get().client.host)
+    cobuild.run_blocking = _leased_executor(async_executor.run_blocking)
+    cobuild.run_cobuild_blocking = _leased_executor(async_executor.run_cobuild_blocking)
     return mcp
 
 
@@ -134,14 +177,12 @@ async def _run(row, first_message):
                                'update the plugin environment; no fallback or retry.' % name)
     finally:
         row.stopped = True
+        row.active = False
         _BOUND.reset(token)
         # Only retire completed upstream entries. A pending SDK call may still
         # run remotely; do not describe discarding local state as cancellation.
         if row.conversation:
-            from dataiku_mcp.tools import cobuild
-            entry = cobuild._conversations.get(row.conversation)
-            if entry and (entry.turn is None or entry.turn.task.done()):
-                cobuild._conversations.pop(row.conversation, None)
+            _retire_upstream(row)
 
 
 def _owned(task_id, owner):
@@ -157,7 +198,7 @@ def submit(client, owner, project, message, task_id=None, revision=None):
     with _LOCK:
         now = time.monotonic()
         for key, value in list(_SESSIONS.items()):
-            if value.stopped and value.status != 'unknown' and now - value.touched > IDLE_SECONDS:
+            if not value.active and not value.sdk_pending and now - value.touched > IDLE_SECONDS:
                 del _SESSIONS[key]
         if task_id:
             row = _owned(task_id, owner)
@@ -169,10 +210,10 @@ def submit(client, owner, project, message, task_id=None, revision=None):
             row.revision += 1
             _loop().call_soon_threadsafe(row.queue.put_nowait, message)
         else:
-            if sum(not s.stopped or s.status == 'unknown' for s in _SESSIONS.values()) >= MAX_SESSIONS:
+            if sum(s.active or bool(s.sdk_pending) for s in _SESSIONS.values()) >= MAX_SESSIONS:
                 raise ValueError('Headless capacity is full; inspect outstanding tasks.')
             if len(_SESSIONS) >= 128:
-                completed = [s for s in _SESSIONS.values() if s.stopped and s.status != 'unknown']
+                completed = [s for s in _SESSIONS.values() if not s.active and not s.sdk_pending]
                 if completed:
                     del _SESSIONS[min(completed, key=lambda s: s.touched).id]
             row = Session(owner, client, project)

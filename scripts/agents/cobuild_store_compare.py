@@ -24,6 +24,11 @@ def fixtures(run):
     def installed():
         return next((p for p in c.list_plugins() if p['id'] == plugin_id), None)
 
+    def delete_plugin():
+        c.get_plugin(plugin_id).delete().wait_for_result()
+        if installed():
+            raise RuntimeError('Owned plugin deletion was not verified')
+
     def active_updates():
         return [f for f in c.list_futures(all_users=True)
                 if f.get('alive') and f.get('payload', {}).get('action') == 'plugin_install'
@@ -47,7 +52,7 @@ def fixtures(run):
         reconcile_updates()
         if installed():
             assert not c.get_plugin(plugin_id).list_usages().get_raw().get('usages')
-            c.get_plugin(plugin_id).delete()
+            delete_plugin()
         stream = io.BytesIO()
         with zipfile.ZipFile(stream, 'w') as z:
             z.writestr('plugin.json', json.dumps({'id': plugin_id, 'version': '0.0.0', 'meta': {
@@ -79,7 +84,7 @@ def fixtures(run):
         reconcile_updates()  # Never delete a fixture while its update is still running.
         try:
             if installed():
-                c.get_plugin(plugin_id).delete()
+                delete_plugin()
         except Exception as exc:
             errors.append('plugin: ' + type(exc).__name__)
         try:

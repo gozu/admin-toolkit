@@ -250,6 +250,17 @@ def task_loop(project, model, provider, instructions, schemas, question, executo
     return row
 
 
+def observations_match(name, observations):
+    if observations[0] == observations[1]:
+        return True, ''
+    if name == 'log_tail' and all(isinstance(item, dict) for item in observations):
+        without_window = [{k: v for k, v in item.items() if k != 'windowNote'}
+                          for item in observations]
+        if without_window[0] == without_window[1]:
+            return True, 'Filtered log results match; live log-window metadata differs.'
+    return False, ''
+
+
 class ModelComparison(Comparison):
     providers = ('existing', 'cobuild')
     transport = TRANSPORT
@@ -287,6 +298,7 @@ class ModelComparison(Comparison):
         runs, observations = [], []
         for provider in self.providers:
             result = {}
+            phase = 'fixture-reset'
             try:
                 if reset:
                     reset()
@@ -296,6 +308,7 @@ class ModelComparison(Comparison):
                             + ('Fixture target: ' if action else 'Read constraints: ')
                             + json.dumps(target) + '\nScope: ' + scope
                             + '\nChoose the appropriate ADTK tools. Complete only this scoped task.')
+                phase = 'reasoning'
                 result = task_loop(self.project, self.model, provider, instructions, schemas, question, executor)
                 runs.append(result)
                 self.output.parent.mkdir(parents=True, exist_ok=True)
@@ -305,23 +318,19 @@ class ModelComparison(Comparison):
                     os.fchmod(stream.fileno(), 0o600)
                     stream.write(json.dumps(result, indent=2))
                 # Reconcile mutations even when the final explanation failed.
+                phase = 'verification'
                 evidence = verify(executor.result) if verify and executor.result is not None else executor.result
                 observations.append(normalize(evidence))
                 if result['status'] != 'completed' or evidence is None:
                     raise ValueError('Task did not complete with verified evidence')
             except Exception as exc:
-                self.save({'capability': name, 'status': 'blocked' if provider == 'existing' else 'failed',
+                self.save({'capability': name, 'status': 'blocked' if provider == 'existing' or phase == 'fixture-reset' else 'failed',
                            'provider': provider, 'transport': TRANSPORT, 'scope': scope,
+                           'phase': phase,
                            'reason': result.get('error_category') or type(exc).__name__,
                            'execution_attempted': bool(result.get('execution_attempted'))})
                 return
-        same = observations[0] == observations[1]
-        reason = ''
-        if not same and name == 'log_tail':
-            without_window = [{k: v for k, v in observation.items() if k != 'windowNote'}
-                              for observation in observations]
-            if without_window[0] == without_window[1]:
-                reason = 'Only live log-window metadata changed; filtered log results match.'
+        same, reason = observations_match(name, observations)
         self.save({'capability': name, 'status': 'same' if same else 'needs_review',
                    'reason': reason,
                    'transport': TRANSPORT, 'scope': scope, 'attempt': 1, 'model': self.model,

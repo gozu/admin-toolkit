@@ -439,7 +439,8 @@ def _triage_payload(client, config):
             'recipient': str(config.get('triage_recipient') or ''),
             'mailChannel': str(config.get('triage_mail_channel') or ''),
             'threshold': int(config.get('triage_score_threshold') or 75),
-            'llmConfigured': bool(str(config.get('default_llm_id') or '').strip()),
+            'llmConfigured': (config.get('agent_reasoning_mode') == 'headless'
+                              or bool(str(config.get('default_llm_id') or '').strip())),
         },
         'killSwitch': _truthy(config.get('enable_red_actions'), default=True),
         'masterPassword': bool(str(config.get('master_password') or '').strip()),

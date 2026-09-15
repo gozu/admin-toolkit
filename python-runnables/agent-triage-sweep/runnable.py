@@ -4,7 +4,7 @@ health triage').
 Flow per run:
   1. resolve plugin settings (backend URL, triage connection, threshold);
   2. deterministic sweep — health.py scores every host, no LLM in ranking;
-  3. one LLM Mesh completion per flagged host drafts a recommendation,
+  3. the selected Headless/Legacy reasoning mode drafts one recommendation per flagged host,
      grounded ONLY in that host's issues + signals;
   4. persist rows to agents.agent_triage_daily (upsert on day+host);
   5. deterministic auto-remediation tier (mapped finding→target fixes over
@@ -101,18 +101,34 @@ class MyRunnable(Runnable):
         from atk_agent_common import reasoning
         from langchain_core.messages import HumanMessage
         selected = reasoning.mode(client)
+        result['reasoningMode'] = selected
+        drafting = []
         if not _bool(self.config.get('skip_llm')) and (llm_id or selected == 'headless') and result['flagged']:
             for row in rows:
                 if row['host'] not in result['flagged']:
                     continue
+                started = time.monotonic()
+                metadata = row['recommendationReasoning'] = {
+                    'mode': selected,
+                    'transport': 'dataiku-headless-mcp-in-process' if selected == 'headless' else 'llm-mesh'}
                 try:
                     pieces = reasoning.run(client, [], [HumanMessage(content=
                         RECOMMENDATION_PROMPT % json.dumps(row, default=str)[:8000])],
                         llm_id=llm_id, selected=selected)
-                    row['recommendation'] = ''.join(
-                        (piece.get('chunk') or {}).get('text', '') for piece in pieces).strip()
+                    text = []
+                    for piece in pieces:
+                        text.append((piece.get('chunk') or {}).get('text', ''))
+                        for key in ('llmTurns', 'toolsRun'):
+                            if key in piece.get('stats', {}):
+                                metadata[key] = piece['stats'][key]
+                    row['recommendation'] = ''.join(text).strip()
+                    metadata['status'] = 'completed'
                 except Exception as exc:
                     row['recommendation'] = '[Draft failed: %s; no fallback]' % type(exc).__name__
+                    metadata['status'] = 'failed'
+                finally:
+                    metadata['durationMs'] = round((time.monotonic() - started) * 1000)
+                    drafting.append(dict(metadata))
         written = store.persist_sweep(settings['triage_connection'], rows, run_id,
                                       llm_id='headless' if selected == 'headless' else llm_id)
 
@@ -175,6 +191,7 @@ class MyRunnable(Runnable):
             'errored': errored,
             'errors': {r['host']: r.get('error') for r in rows if r.get('status') == 'error'},
             'rowsWritten': written,
+            'recommendationReasoning': drafting,
             'digestError': digest_error,
             'configWarning': config_warning,
             'snapshot': snapshot_info,
@@ -277,7 +294,7 @@ class MyRunnable(Runnable):
             'runId': getattr(self, '_run_id', None),
             'threshold': result['scoreThreshold'],
             'version': version,
-            'llmEnabled': bool(settings.get('default_llm_id')),
+            'llmEnabled': result.get('reasoningMode') == 'headless' or bool(settings.get('default_llm_id')),
             'maxGb': float(settings.get('auto_remediate_max_gb') or 20),
             'hostLabels': host_labels,
             'hosts': rows,

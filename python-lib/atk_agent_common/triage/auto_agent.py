@@ -1,7 +1,7 @@
 """LLM planning pass of the nightly triage sweep — the second autonomous tier.
 
-After the deterministic finding→build_target fixes run, one in-process agent
-loop (native_loop, sync, flask-free — runs fine in the macro kernel) reviews
+After the deterministic finding→build_target fixes run, the selected whole-task
+Headless/Legacy reasoning loop (sync, Flask-free) reviews
 the flagged hosts and may propose ANY action the admin marked Autonomous in
 Agents → Permissions. The model is NEVER trusted: every propose_fix call is
 enforced in code before the shared executor sees it —
@@ -23,6 +23,7 @@ exception — a planner crash must not cost the deterministic summary.
 
 import json
 import logging
+import time
 
 from .. import remediation_map
 from . import auto_remediate
@@ -134,6 +135,9 @@ def run_llm_planner(client, settings, rows, flagged, summary, autonomous_actions
     if not actions_allowed:
         return {'status': 'no-autonomous-actions'}
 
+    started = time.monotonic()
+    metadata = summary['planningReasoning'] = {
+        'mode': selected, 'transport': 'dataiku-headless-mcp-in-process' if selected == 'headless' else 'llm-mesh'}
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
         from langchain_core.tools import StructuredTool
@@ -234,10 +238,16 @@ def run_llm_planner(client, settings, rows, flagged, summary, autonomous_actions
                                          'additional safe autonomous fixes.')]
         for _item in reasoning.run(client, tools, messages, llm_id=llm_id,
                                    max_iterations=MAX_TURNS, selected=selected):
-            pass  # chunks/events are unwatched at night — outcomes land in summary
+            for key in ('llmTurns', 'toolsRun'):
+                if key in _item.get('stats', {}):
+                    metadata[key] = _item['stats'][key]
+        metadata['status'] = 'completed'
         return dict(state, status='ran')
     except Exception as exc:
+        metadata['status'] = 'failed'
         logger.warning('[triage-llm] planner failed: %s: %s',
                        type(exc).__name__, str(exc)[:300])
         return {'status': 'error',
                 'error': '%s: %s' % (type(exc).__name__, str(exc)[:300])}
+    finally:
+        metadata['durationMs'] = round((time.monotonic() - started) * 1000)

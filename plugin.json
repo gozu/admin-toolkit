@@ -1,6 +1,6 @@
 {
     "id": "admin-toolkit",
-    "version": "0.4.867",
+    "version": "0.4.868",
     "meta": {
         "label": "Admin Toolkit",
         "description": "Dataiku DSS administration toolkit: diagnostics, visualizations, and management tools, with multi-instance scanning across remote DSS hosts.",
@@ -268,7 +268,7 @@
         {
             "name": "agent_runtime",
             "label": "Agent runtime (webapp-managed)",
-            "description": "Managed in webapp Settings; declared here (hidden) so DSS keeps the value. 'dataiku' (default) relays through the Dataiku agent kernel; 'native' runs the agent loop in the webapp backend (debugging aid + automatic fallback).",
+            "description": "Hidden hosting configuration retained for compatibility. 'dataiku' relays through the DSS agent kernel; 'native' hosts the loop in the webapp backend. Kernel failures never replay automatically. This does not select the Headless/Legacy reasoning mode.",
             "type": "STRING",
             "mandatory": false,
             "defaultValue": "dataiku",

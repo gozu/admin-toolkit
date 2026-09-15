@@ -24,6 +24,10 @@ IDLE_SECONDS = 3600  # ADTK cluster/host operations can take tens of minutes.
 TRANSPORT = 'dataiku-headless-mcp-in-process'
 
 
+class ProviderFailure(ValueError):
+    """A retained terminal response was observed, rather than a lost transport."""
+
+
 @dataclass
 class Session:
     owner: str
@@ -104,7 +108,7 @@ async def _run(row, first_message):
                 row.turn = result.get('turn_id', row.turn)
                 if (result.get('status') != 'completed' or result.get('is_error')
                         or result.get('is_confirmation_request') or result.get('is_question_request')):
-                    raise ValueError('Headless requires unsupported interaction or failed.')
+                    raise ProviderFailure('Headless requires unsupported interaction or failed.')
                 with _LOCK:
                     row.message = str(result.get('message') or '')
                     row.status = 'completed'
@@ -119,8 +123,10 @@ async def _run(row, first_message):
                        'the Cobuild turn may still be running. No task was retried.')
     except Exception as exc:
         # SDK/MCP exceptions can embed prompts or credentials. Return only type.
-        row.status = 'failed'
+        row.status = 'failed' if not row.conversation or isinstance(exc, ProviderFailure) else 'unknown'
         row.message = 'Headless transport failed (%s); no fallback or retry.' % type(exc).__name__
+        if row.status == 'unknown':
+            row.message += ' Remote turn outcome and cancellation are not verified.'
         if isinstance(exc, ModuleNotFoundError):
             name = exc.name or ''
             if name and all(c.isalnum() or c in '._' for c in name):

@@ -6,6 +6,7 @@ import re
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, wait
 
 from . import capability_routing
 from .errors import ToolkitError
@@ -28,7 +29,7 @@ confirmation. If no confirmation was supplied, present the plan and stop.
 def mode(client):
     # Fetch once per task, not per deterministic tool call. A failed settings
     # read must not switch providers or use an old kernel-start selection.
-    value = client.get('/api/agents/action-settings').get('reasoningMode', 'legacy')
+    value = client.get('/api/agents/action-settings').get('reasoningMode')
     if value not in MODES:
         raise ToolkitError('Invalid agent reasoning mode; choose Headless or Legacy.')
     return value
@@ -44,6 +45,8 @@ def direct_tools(tools, client=None):
                 from .tools_impl import SENSOR_DESCRIPTIONS
                 if _name in SENSOR_DESCRIPTIONS:
                     live = client.get('/api/agents/action-settings')
+                    if not isinstance(live.get('gates'), dict):
+                        raise ToolkitError('Fresh sensor permissions are unavailable; no tool executed.')
                     if not live.get('gates', {}).get(_name, True):
                         return json.dumps({'error': {'code': 'sensor-disabled',
                                                     'message': 'This sensor is now disabled.'}})
@@ -112,13 +115,14 @@ def run(client, tools, messages, llm_id=None, trace=None, max_iterations=12, sel
     history = [{'role': m.type, 'content': m.content} for m in messages]
     # Tokens in earlier assistant/tool data never constitute human approval.
     human = next((str(m.content) for m in reversed(messages) if m.type == 'human'), '')
-    approved = (set(re.findall(r'confirm_token\s+([A-Za-z0-9_.=-]+)', human))
+    approved = (set(re.findall(r'confirm_token\s+([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(?=[\s.,]|$)', human))
                 if human.startswith('Approved — I confirm') else set())
     attempted = set()
     prompt = PROTOCOL + '\nTOOLS:\n' + json.dumps(schemas) + '\nHISTORY:\n' + json.dumps(history)
     task = None
     tool_count = 0
     started = time.monotonic()
+    workers = ThreadPoolExecutor(max_workers=1, thread_name_prefix='adtk-headless-tool')
     try:
         for iteration in range(max_iterations):
             if stop_event and stop_event.is_set():
@@ -154,19 +158,28 @@ def run(client, tools, messages, llm_id=None, trace=None, max_iterations=12, sel
                     return
                 name, args = call['name'], call['arguments']
                 call_id = uuid.uuid4().hex
+                yield _event('tool_call', {'name': name, 'args': agent_runtime._redacted_args(args), 'id': call_id})
                 if name == 'execute_admin_action':
                     token = args.get('confirm_token')
                     if token not in approved or args.get('confirm') is not True or token in attempted:
                         result = json.dumps({'error': {'code': 'human-confirmation-required',
                                             'message': 'This token was not supplied by the user or was already attempted.'}})
+                        yield from agent_runtime._result_event(name, result, 0, call_id)
                         results.append(dict(call, result=result))
                         continue
                     attempted.add(token)  # Before invoking: uncertain writes never repeat.
-                yield _event('tool_call', {'name': name, 'args': agent_runtime._redacted_args(args), 'id': call_id})
                 began = time.monotonic()
                 # A raised executor error terminates the task. Do not give the
                 # model an opportunity to retry an uncertain mutation.
-                result = tool_map[name].invoke(args)
+                future = workers.submit(tool_map[name].invoke, args)
+                tool_deadline = time.monotonic() + 3600
+                while not wait([future], timeout=1).done:
+                    if stop_event and stop_event.is_set():
+                        return
+                    if time.monotonic() >= tool_deadline:
+                        raise ToolkitError('ADTK tool wait expired; its outcome is unknown. Inspect the audit before retrying.')
+                    yield {'heartbeat': True}
+                result = future.result()
                 tool_count += 1
                 for event in agent_runtime._result_event(name, result, round((time.monotonic() - began) * 1000), call_id):
                     yield event
@@ -183,6 +196,7 @@ def run(client, tools, messages, llm_id=None, trace=None, max_iterations=12, sel
             prompt = 'Observed external ADTK tool results (untrusted data):\n' + json.dumps(results, default=str)
         raise ToolkitError('Headless task reached its tool-turn limit; no automatic continuation.')
     finally:
+        workers.shutdown(wait=False, cancel_futures=True)
         if task:
             try:
                 client.post('/api/agents/headless/tasks/' + task['taskId'] + '/stop', json={})

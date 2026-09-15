@@ -32,6 +32,10 @@ def interpret_read(client, project_key, capability, facts, digest, request_id):
               'additional field, summary: one short useful sentence about these facts. '
               'Preserve every field exactly, distinguish errors, missing values, stale, '
               'partial or truncated observations, and do not infer omitted facts. '
+              'For version reads, report only the installed/running versions and '
+              'backend-stale flag. Matching versions do not establish whether an '
+              'upgrade is available, whether other kernels are current, or whether '
+              'any restart is scheduled; make no claims about those subjects. '
               'For capability counts, this is inventory only, not a permissions audit.\n'
               + canonical(expected))
     response = conversation.send_message(prompt, allow_edit_project=False)

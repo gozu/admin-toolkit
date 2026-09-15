@@ -155,8 +155,14 @@ def rows_for(evidence, performance=None):
             return (variant.get(key) or {}).get('median', '')
         optimized = median(compact, 'complete')
         previous = median(bridge, 'complete')
-        improvement = (f'{100 * (1 - optimized / previous):.1f}% faster explanation vs bridge'
-                       if optimized != '' and previous else '')
+        improvement = ((f'{100 * abs(1 - optimized / previous):.1f}% '
+                        + ('faster' if optimized <= previous else 'slower')
+                        + ' explanation vs bridge') if optimized != '' and previous else '')
+        data_time, baseline_time = median(compact, 'data'), median(base, 'complete')
+        if data_time != '' and baseline_time and baseline_time >= 0.01:
+            improvement += f'; data {data_time / baseline_time:.2f}× Existing'
+        elif perf and baseline_time != '' and baseline_time < 0.01:
+            improvement += '; Existing used warm cache, ratio not meaningful'
         scope = e.get('scope') or ('Read with bounded/default arguments' if e and name in tools_impl.SENSOR_DESCRIPTIONS else '')
         if name == 'k8s_health' and status == 'Matched scope':
             scope = 'Empty cluster inventory only; no active-cluster health parity established'
@@ -226,6 +232,7 @@ Data arrives before a separate Cobuild interpretation. The outer chat model rema
 <div class="controls"><input id="search" type="search" aria-label="Search all columns" placeholder="Search tool, scope, blocker…">
 <select id="status" aria-label="Filter by verdict"><option value="">All verdicts</option></select>
 <select id="kind" aria-label="Filter by type"><option value="">All types</option></select>
+<select id="speed" aria-label="Filter by speed enhancement"><option value="">All speed paths</option></select>
 <label><input id="details" type="checkbox" style="min-width:0">Show route details</label>
 <button id="reset">Reset</button><button id="download">Download filtered CSV</button>
 <span id="count" class="count" aria-live="polite"></span></div>
@@ -236,19 +243,19 @@ Results are not 64 full tool certifications.</p></main>
 <script id="data" type="application/json">__DATA__</script>
 <script>
 const rows=JSON.parse(document.getElementById('data').textContent),$=id=>document.getElementById(id);
-const brief=['Tool / action','What it does','Functional verdict','Speed enhancement','Pilot data median seconds','Pilot explanation median seconds','Pilot successes / trials','Pilot performance verdict','Existing seconds','Cobuild seconds','Latency verdict','Scope / remaining work'];
+const brief=['Tool / action','What it does','Functional verdict','Speed enhancement','Pilot Existing median seconds','Pilot data median seconds','Pilot explanation median seconds','Pilot successes / trials','Pilot performance verdict','Existing seconds','Cobuild seconds','Latency verdict','Scope / remaining work'];
 let sort='Tool / action',dir=1,current=[];
-for(const [id,key] of [['status','Functional verdict'],['kind','Type']])for(const v of [...new Set(rows.map(r=>r[key]))].sort()){const o=document.createElement('option');o.value=o.textContent=v;$(id).append(o)}
+for(const [id,key] of [['status','Functional verdict'],['kind','Type'],['speed','Speed enhancement']])for(const v of [...new Set(rows.map(r=>r[key]))].sort()){const o=document.createElement('option');o.value=o.textContent=v;$(id).append(o)}
 function render(){
- const q=$('search').value.toLowerCase();current=rows.filter(r=>(!$('status').value||r['Functional verdict']===$('status').value)&&(!$('kind').value||r.Type===$('kind').value)&&Object.values(r).some(v=>String(v).toLowerCase().includes(q)));
+ const q=$('search').value.toLowerCase();current=rows.filter(r=>(!$('status').value||r['Functional verdict']===$('status').value)&&(!$('kind').value||r.Type===$('kind').value)&&(!$('speed').value||r['Speed enhancement']===$('speed').value)&&Object.values(r).some(v=>String(v).toLowerCase().includes(q)));
  current.sort((a,b)=>dir*(typeof a[sort]==='number'&&typeof b[sort]==='number'?a[sort]-b[sort]:String(a[sort]).localeCompare(String(b[sort]),undefined,{numeric:true})));
  const cols=$('details').checked?Object.keys(rows[0]):brief;$('head').replaceChildren();$('body').replaceChildren();
  for(const key of cols){const th=document.createElement('th'),b=document.createElement('button');th.scope='col';th.setAttribute('aria-sort',sort===key?(dir===1?'ascending':'descending'):'none');b.textContent=key+(sort===key?(dir===1?' ↑':' ↓'):'');b.onclick=()=>{dir=sort===key?-dir:1;sort=key;render()};th.append(b);$('head').append(th)}
  for(const row of current){const tr=document.createElement('tr');for(const key of cols){const td=document.createElement('td');td.textContent=row[key];if(key==='Functional verdict')td.className=row[key]==='Matched scope'?'match':'blocked';tr.append(td)}$('body').append(tr)}
  $('count').textContent=`${current.length} of ${rows.length} capabilities`;
 }
-for(const id of ['search','status','kind','details'])$(id).addEventListener('input',render);
-$('reset').onclick=()=>{$('search').value=$('status').value=$('kind').value='';$('details').checked=false;sort='Tool / action';dir=1;render()};
+for(const id of ['search','status','kind','speed','details'])$(id).addEventListener('input',render);
+$('reset').onclick=()=>{$('search').value=$('status').value=$('kind').value=$('speed').value='';$('details').checked=false;sort='Tool / action';dir=1;render()};
 $('download').onclick=()=>{const cols=Object.keys(rows[0]),quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';const csv=[cols,...current.map(r=>cols.map(k=>r[k]))].map(r=>r.map(quote).join(',')).join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='adtk-cobuild-filtered.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};render();
 </script></html>'''
 

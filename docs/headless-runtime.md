@@ -175,8 +175,12 @@ frontend type/contract checks and the production build. The Permissions browser
 check passed with the new selector. The 64-case timings above remain labeled
 0.4.867; they are not silently reassigned to the later release.
 
+Release 0.4.868 was installed on DEV and TAMGLOBAL. DEV's post-deployment HTTP
+chat read passed through Headless, reported installed/running version 0.4.868
+with `backendStale=false`, and restored the saved Legacy mode.
+
 DEV's plugin environment has the pinned dependencies installed. TAMGLOBAL's
-release ZIP can be deployed through its secure wrapper, but the available TAM
+release ZIP was deployed through its secure wrapper, but the available TAM
 API key returns HTTP 401 when updating its Python environment. Headless there
 remains unverified until a working key or an administrator completes that
 environment update and restarts the backend. Legacy remains the default.

@@ -1,5 +1,7 @@
 # Fresh Legacy versus Headless validation
 
+The [0.4.868 follow-up](headless-remaining-validation-2026-09-16.md) covers the six cases blocked in this dated report. The measurements below remain unchanged.
+
 Measured plugin: **0.4.867**. Transport: actual Dataiku Headless MCP.
 
 **57 passed**, **0 failed**, **6 blocked**, **1 excluded**.

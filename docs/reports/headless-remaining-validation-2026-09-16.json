@@ -1,0 +1,149 @@
+{
+  "generated_at": "2026-09-16T01:06:30.613128+00:00",
+  "plugin_version_measured": "0.4.868",
+  "transport": "whole-task Legacy versus Dataiku Headless MCP v1",
+  "counts": {
+    "passed": 5,
+    "blocked": 1
+  },
+  "cleanup": {
+    "cluster_definition_deleted": true,
+    "comparison_plugin_and_environment_deleted": true
+  },
+  "rows": [
+    {
+      "capability": "cluster-start",
+      "status": "passed",
+      "trials": {
+        "legacy": {
+          "status": "passed",
+          "task_seconds": 835.181,
+          "model_turns": 3,
+          "model_seconds": 11.601,
+          "tool_seconds": 823.579,
+          "execution_attempted": true,
+          "postcondition_verified": true
+        },
+        "headless": {
+          "status": "passed",
+          "task_seconds": 874.249,
+          "model_turns": 3,
+          "model_seconds": 19.078,
+          "tool_seconds": 855.165,
+          "execution_attempted": true,
+          "postcondition_verified": true
+        }
+      },
+      "legacy_seconds": 835.181,
+      "headless_seconds": 874.249,
+      "headless_time_ratio": 1.047
+    },
+    {
+      "capability": "cluster-stop",
+      "status": "passed",
+      "trials": {
+        "legacy": {
+          "status": "passed",
+          "task_seconds": 544.081,
+          "model_turns": 3,
+          "model_seconds": 10.014,
+          "tool_seconds": 534.065,
+          "execution_attempted": true,
+          "postcondition_verified": true
+        },
+        "headless": {
+          "status": "passed",
+          "task_seconds": 557.583,
+          "model_turns": 3,
+          "model_seconds": 13.061,
+          "tool_seconds": 544.519,
+          "execution_attempted": true,
+          "postcondition_verified": true
+        }
+      },
+      "legacy_seconds": 544.081,
+      "headless_seconds": 557.583,
+      "headless_time_ratio": 1.025
+    },
+    {
+      "capability": "cluster-pods-cleanup",
+      "status": "passed",
+      "trials": {},
+      "legacy_seconds": 14.729,
+      "headless_seconds": 14.182,
+      "headless_time_ratio": 0.963
+    },
+    {
+      "capability": "k8s-apply-fix",
+      "status": "passed",
+      "trials": {},
+      "legacy_seconds": 15.35,
+      "headless_seconds": 17.178,
+      "headless_time_ratio": 1.119
+    },
+    {
+      "capability": "image-delete",
+      "status": "blocked",
+      "trials": {}
+    },
+    {
+      "capability": "python-run",
+      "status": "passed",
+      "trials": {
+        "legacy": {
+          "status": "passed",
+          "task_seconds": 12.767,
+          "model_turns": 3,
+          "model_seconds": 12.671,
+          "tool_seconds": 0.095,
+          "execution_attempted": true,
+          "postcondition_verified": true
+        },
+        "headless": {
+          "status": "passed",
+          "task_seconds": 14.158,
+          "model_turns": 3,
+          "model_seconds": 14.06,
+          "tool_seconds": 0.095,
+          "execution_attempted": true,
+          "postcondition_verified": true
+        }
+      },
+      "legacy_seconds": 12.767,
+      "headless_seconds": 14.158,
+      "headless_time_ratio": 1.109
+    }
+  ],
+  "verification": {
+    "cloud_absent": true,
+    "owned_volumes_absent": true,
+    "other_clusters_preserved": true,
+    "dss_cluster_absent": true,
+    "comparison_plugin_absent": true,
+    "comparison_env_absent": true,
+    "observer_plugin_absent": true,
+    "mode_legacy": true,
+    "gates_restored": true,
+    "autonomous_restored": true,
+    "audit_counts": {
+      "cluster-stop": 2,
+      "cluster-start": 2,
+      "python-run": 2,
+      "cluster-pods-cleanup": 2,
+      "k8s-apply-fix": 2
+    },
+    "current_images_preserved": true
+  },
+  "backend_tests": {
+    "passed": 946,
+    "subtests_passed": 23
+  },
+  "cumulative_counts": {
+    "passed": 62,
+    "excluded": 1,
+    "blocked": 1
+  },
+  "cumulative_evidence_note": "Original unaffected cases were measured on 0.4.867; this follow-up measured only the six previously blocked cases on 0.4.868. This is not a full rerun on one release.",
+  "image_execution_note": "No image deleted. Eligible old-image dry run passed; current-image age guard rejected deletion. Specific approval for the two pre-existing DSS 15.0.0 base images is pending.",
+  "remaining_readiness_limit": "Original 240-second Headless stall has no established root cause; Legacy remains the saved default."
+}

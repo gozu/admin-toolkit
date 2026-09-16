@@ -2,6 +2,8 @@
 
 Implemented routing (2026-09-15): interactive chat, scheduled recommendation drafting and autonomous planning select Headless or Legacy at the task boundary. Headless uses the actual MCP conversation tools with no outer Mesh model and no per-operation Cobuild bridge. ADTK retains execution authority and approvals. Standalone AI features are unchanged. See the [fresh comparison inventory](reports/headless-validation-2026-09-15.md); its comparison adapter is separate from production routing, and Legacy remains the default while readiness limits are unresolved.
 
+Follow-up testing on akaos is recorded separately in the [remaining-check report](reports/headless-remaining-validation-2026-09-16.md), measured on 0.4.868. The original inventory retains its 0.4.867 provenance.
+
 # ADTK with Cobuild handling agent inference
 
 Assessment: 14 September 2026. **Make Cobuild the target inference path for the in-scope agent features; retain ADTK as the operational application and tool backend.** Start with evidence-based scheduled recommendations. Full interactive and autonomous parity is conditional on a supported tool bridge, reliable background operation, and verified customer usage attribution.

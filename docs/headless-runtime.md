@@ -147,8 +147,8 @@ The 64-check runner supports fresh Legacy/Headless runs:
 
 Reports distinguish passed, failed, blocked and excluded. Historical passes are
 not imported. Plugin deployment stays excluded. Cloud/image/Python destructive
-cases need fresh fixtures or authorization and remain explicitly blocked until
-those prerequisites exist. Keep the deployed default on Legacy while these
+cases require fresh fixtures or authorization; their current status is recorded
+in the dated reports below. Keep the deployed default on Legacy while these
 readiness limits and the stalled remote call's root cause remain unresolved.
 
 ### Fresh comparison and release evidence — 2026-09-15
@@ -184,3 +184,23 @@ release ZIP was deployed through its secure wrapper, but the available TAM
 API key returns HTTP 401 when updating its Python environment. Headless there
 remains unverified until a working key or an administrator completes that
 environment update and restarts the backend. Legacy remains the default.
+
+### Remaining-case follow-up — 2026-09-16 UTC
+
+The [akaos follow-up](reports/headless-remaining-validation-2026-09-16.md)
+measured **0.4.868**: cluster start, cluster stop, finished-pod cleanup,
+ConfigMap fix and Python execution passed in both modes. Image deletion remains
+blocked pending specific approval for two pre-existing old base images; its
+eligible-target dry run and current-image age rejection were verified without
+deleting images. Plugin deployment remains excluded.
+
+Across the original and follow-up reports, cumulative capability evidence is
+**62 passed, one blocked, one excluded**. The original 57 passes remain labeled
+0.4.867; this was not a full 64-case rerun on 0.4.868. One cluster definition was
+reused sequentially, with exactly one Ready `t3.small` worker per start and full
+cloud absence verified before restarting. Both cloud incarnations, the DSS
+attachment, temporary plugins and isolated comparison environment are gone.
+Permissions and autonomous selections were restored, ten successful action
+audit rows verified, and Legacy remains the saved default. Local backend checks
+passed **946 tests plus 23 subtests**. These single pairs do not resolve the
+historical 240-second stall or establish equal reliability.

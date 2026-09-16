@@ -2,6 +2,8 @@
 
 Implemented routing (2026-09-15): Headless MCP → Cobuild reasoning → deterministic ADTK adapter → guarded ADTK execution → Headless observation/final answer. Legacy retains LLM Mesh independently. All 64 capabilities retain their ADTK executors; native Headless writes are unavailable. See the [fresh comparison inventory](reports/headless-validation-2026-09-15.md) for actual outcomes rather than interpreting the native-coverage tables below as application coverage. Legacy remains the deployed default pending readiness validation.
 
+Follow-up testing on akaos is recorded separately in the [remaining-check report](reports/headless-remaining-validation-2026-09-16.md), measured on 0.4.868. The original inventory retains its 0.4.867 provenance.
+
 # Dataiku Headless integration assessment
 
 Investigated 14 September 2026. Recommendation: reuse Headless for standard DSS
